@@ -48,13 +48,24 @@ if necessary.
 In this diagram, a channel is a collection of slots, and it knows how to make them communicate. It also controls the 
 lifetime of slots.
 
+When a channel is being shutdown, it will issue shutdown_direction messages in the appropriate direction. If it is in the read
+direction, it will call shutdown_direction on the first slot. Conversely, in the write direction, it will call shutdown_direction
+on the last slot in the channel. When all slots have successfully shutdown, the channel can be safely cleaned up and de-allocated.
+
 ### Slots
 ![Slots Diagram](docs/images/slots.png)
 
-Slots contain 2 queues, one for the write direction, and one for the read direction. In addition, they maintain their links
-to adjacent slots in the channel. Most importantly, they contain a reference to a handler. Handlers are responsible for doing
-most of the work (see below). Finally, slots have an API that manages invoking the handler, from the channel's perspective, as well
-as utilities for manipulating the connections of the slots themselves.
+Slots contain 2 queues, one for the write (to the io) direction, and one for the read (from the io) direction. Each slot
+owns the lifetime of its queues. In addition, they maintain their links to adjacent slots in the channel. So as the channel
+is processed, each slot will read from its left-adjacent slot's read queue, send those messages to the handler, and queue
+messages to the read queue for that slot. Conversely, each slot will read from its right-adjacent slot's write queue,
+send those messages to the handler, and send messages to the write queue for that slot. Most importantly, slots contain a 
+reference to a handler. Handlers are responsible for doing most of the work (see below). Finally, slots have an 
+API that manages invoking the handler, from the channel's perspective, as well as utilities for manipulating the connections 
+of the slots themselves.
+
+Slots can also be added and removed dynamically from a channel. When a slot is removed it will make sure its queues are drained
+and its messages moved to the appropriate new siblings. 
 
 ### Channel Handlers
 The channel handler is the fundamental unit that protocol developers will work with. It contains all of your
@@ -76,17 +87,22 @@ Data Out is invoked by the slot when an application level message is received in
 The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
 write queue.
 
-`size_t update_window (size_t size_)`
+`int update_window (size_t size_)`
 
 Update Window is invoked by the slot when a framework level message is received from a downstream handler.
 It only applies in the read direction. This gives the handler a chance to make a programmatic decision about 
-what its read window should be. The return value will be passed to the next adjacent handler.
+what its read window should be. Upon receiving an update_window message, a handler decides what its window should be and 
+likely issues a window update message to its slot. Shrinking a window has no effect. If a handler makes its window larger
+than a downstream window, it is responsible for honoring the downstream window and buffering any data it produces that is 
+greater than that window.
 
 `int shutdown_notify (int error_code_)`
 
 Shutdown notify is invoked by the slot when a framework level message is received from an adjacent handler.
 This notifies the handler that the previous handler in the chain has shutdown and will no longer be sending or
-receiving messages. Upon sending a shutdown_notify message, that handler and slot will be removed from the channel.
+receiving messages. The handler should make a decision about what it wants to do in response, and likely begins
+its shutdown process (if any). Once the handler has safely reached a safe state, if should issue a shutdown_notification
+to the slot.
 
 `int shutdown_direction ( enum aws_channel_direction dir_)`
 
@@ -94,6 +110,11 @@ Shutdown direction is invoked by the slot to close the message processing in a g
 This is a notification to begin the process. For example, in TLS, there is a shutdown sequence that happens between client and server,
 so it may take a few ticks of the event loop for this process to finish. A handler will invoke shutdown_notify when it has
 completed this process.
+
+`size_t get_current_window_size (void)`
+
+When a handler is added to a slot, the slot will call this function to determine the initial window size and will propogate
+a window_update message down the channel.
 
 `void destroy()`
 
