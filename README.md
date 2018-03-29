@@ -204,3 +204,165 @@ Write back pressure comes into play when the application can produce data more q
 underlying io. To manage this, messages have members to attach a promise fn and context data to. When a handler exposes
 and API, it has the responsibility to take a fn and data from the user if over write is a possibility. The io-handler will
 invoke the promise after it has successfully written the last byte to the underlying io.
+
+## Terminology
+We use a few terms in the following sections that are not necessarily "C concepts". We assume you know C, but here's some
+definitions that may be helpful.
+
+### Run-time Polymorphic
+This means that the API is driven by a virtual-table. This is simply a struct of function pointers. They are invoked via
+a c extern style API, but ultimately those public functions simply invoke the cooresponding function in the v-table.
+
+These are reserved for types that: 
+a.) Need to be configurable, changable at runtime
+b.) Do not have immediate performance concerns caused by an indirect function call.
+
+### Compile-time Polymorphic
+This means that the API is not necessarily driven by a virtual-table. It is exposed as a c extern style API, but the 
+build system makes a decision about which symbols to compile based on factors such as platform and compile-time flags.
+
+These are reserved for types that:
+a.) Need to be configurable at compile-time based on platform or compile-time options.
+b.) Have performance concerns caused by an indirect function call.
+
+Note: that runtime configurability may still be something we need to expose here. In that case, a compiler flag
+will be used to denote that we are using a custom implementation for x feature. Then we will expose an implementation
+that indirectly invokes from a v-table and provides hooks for the application to plug into at runtime.
+
+### Promise, Promise Context
+There are many phrases for this, callback, baton, event-handler etc... The key idea is that APIs that need to notify a 
+caller when an asynchronous action is completed, should take a callback function and a pointer to an opaque object
+and invoke it upon completion. This term doesn't refer to the layout of the data. A promise in some instances may be a 
+collection of functions in a structure. It's simply the language we use for the concept.
+ 
+## API
+
+**Note: unless otherwise stated, no functions in this API are allowed to block.**
+
+### Event Loop
+
+Event Loops are run-time polymorphic. We provide some implementations out of the box and a way to get an implementation
+without having to call a different function per platform. However, you can also create your own implementation and use it
+on any API that takes an event loop as a parameter.
+
+#### Layout
+    struct aws_event_loop {
+        struct aws_event_loop_vtable vtable;
+        aws_clock clock;
+        struct aws_allocator *allocator;
+        struct aws_common_hash_table local_storage;
+        void *impl_data;
+    };
+
+#### V-Table
+
+    struct aws_event_loop_vtable {
+        void (*destroy)(struct aws_event_loop *);
+        int (*run) (struct aws_event_loop *);
+        int (*stop) (struct aws_event_loop *, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+        int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+        int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *ctx);
+        int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
+        BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+    };
+
+Every implementation of aws_event_loop must implement this table. Let's look at some details for what each entry does.
+
+    void (*destroy)(struct aws_event_loop *);
+
+This function is invoked when the event loop is finished processing and is ready to be cleaned up and deallocated.
+
+    int (*run) (struct aws_event_loop *);
+
+This function starts the running of the event loop and then immediately returns. This could kick off a thread, or setup some resources to run and 
+recieve events in a back channel API. For example, you could have an epoll loop that runs in a thread, or you could have an event loop pumped by a system
+loop such as glib, or libevent etc... and then publish events to your event loop implementation. 
+
+    int (*stop) (struct aws_event_loop *,
+     void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+
+The stop function signals the event loop to shutdown. This function should not block but it should remove active io handles from the
+currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
+Once the event loop has shutdown to a safe state, it should invoke the stopped_promise function.
+
+    int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+
+This function schedules a task to run in its task scheduler at the time specified by run_at. Each event loop is responsible for implementing
+a task scheduler. This function must not block, and must be thread-safe. How this is implemented will depend on platform. For example,
+one reasonable implementation is if the call comes from the event-loop's thread, to queue it in the task scheduler directly. Otherwise,
+write to a pipe that the event-loop is listening for events on. Upon noticing the write to the pipe, it can read the task from the pipe
+and schedule the task.
+
+`task` must be copied.
+
+`run_at` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
+
+    int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *ctx);
+
+A subscriber will call this function to register an io_handle for event monitoring. 
+
+`events` is a bit field of the events the subscriber wants to receive. A few events will always be registered (regardless of the value passed here), such
+as `AWS_IO_EVENT_HANDLE_REMOVED`. The event loop will invoke `on_event` anytime it receives one or more of the registered events.
+
+**NOTE: The event-loop is not responsible for manipulating or setting io flags on io_handles. It will never call, read(), write(), connect(), accept(), close() etc...
+on any io handle it does not explicitly own. It is the subscriber's responsibility to know how to respond to the event.**
+
+**NOTE: The event-loop will not maintain any state other than the io handles it is polling. So, for example, in edge-triggered epoll, it does
+not maintain a read ready list. It is the subscriber's responsibility to know it has more data to read or write and to schedule its tasks
+appropriately.**
+
+    int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
+
+A subscriber will call this function to remove its io handle from the monitored events. For example, it would may this immediately before calling
+close() on a socke or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs.
+
+    BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+
+Returns `TRUE` if the caller is on the same thread as the event loop. Returns `FALSE` otherwise. This allows users of the event loop to make a decision
+about whether it is safe to interact with the loop directly, or if they need to schedule a task to run in the correct thread.
+
+#### API
+
+    int aws_event_loop_base_init (struct aws_allocator *, aws_clock clock, ...);
+
+Initializes common data for all event loops regardless of implementation. All implementations must call this function before returning from their allocation function.
+
+    int aws_event_loop_base_clean_up (struct aws_event_loop *);
+
+Cleans up common data for all event loops regardless of implementaiton. All implementations must call this function before returning from their destory function.
+
+    struct aws_event_loop *aws_event_loop_default_new (struct aws_allocator *, aws_clock clock, ...);
+
+Allocates and initializes the default event loop implementation for the current platform. Calls `aws_event_loop_base_init` before returning.
+
+    struct aws_event_loop *aws_event_loop_default_destroy (struct aws_event_loop *);
+
+Cleans up internal state of the default event loop implementation, invokes `aws_event_loop_base_clean_up`, and deallocates the event-loop.
+
+    int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
+
+All event loops contain local storage for all users of the event loop to store common data into. This function is for fetching one of those objects by key. The key for this
+store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
+the caller must first schedule a task on the event loopn to enter the correct thread. 
+
+    int aws_event_loop_put_local_item ( struct aws_event_loop *, void *key, void *item);
+
+All event loops contain local storage for all users of the event loop to store common data into. This function is for putting one of those objects by key. The key for this
+store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
+the caller must first schedule a task on the event loopn to enter the correct thread. 
+
+    int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, void **item);
+
+All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
+store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
+the caller must first schedule a task on the event loopn to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`. 
+It is the removers responsibility to free the memory pointed to by item. If it is NULL, the default deallocation strategy for the event loop will be used.
+
+    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks)
+
+Gets the current tick count/timestamp for the event loop's clock.
+
+#### V-Table Shims
+The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
