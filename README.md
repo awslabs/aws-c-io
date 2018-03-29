@@ -329,17 +329,13 @@ about whether it is safe to interact with the loop directly, or if they need to 
 
 Initializes common data for all event loops regardless of implementation. All implementations must call this function before returning from their allocation function.
 
-    int aws_event_loop_base_clean_up (struct aws_event_loop *);
-
-Cleans up common data for all event loops regardless of implementaiton. All implementations must call this function before returning from their destory function.
-
     struct aws_event_loop *aws_event_loop_default_new (struct aws_allocator *, aws_clock clock, ...);
 
 Allocates and initializes the default event loop implementation for the current platform. Calls `aws_event_loop_base_init` before returning.
 
     struct aws_event_loop *aws_event_loop_destroy (struct aws_event_loop *);
 
-Cleans up internal state of the event loop implementation, calls, invokes `aws_event_loop_base_clean_up`, and then calls the v-table `destroy` function.
+Cleans up internal state of the event loop implementation, and then calls the v-table `destroy` function.
 
     int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
 
