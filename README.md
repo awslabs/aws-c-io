@@ -337,9 +337,9 @@ Cleans up common data for all event loops regardless of implementaiton. All impl
 
 Allocates and initializes the default event loop implementation for the current platform. Calls `aws_event_loop_base_init` before returning.
 
-    struct aws_event_loop *aws_event_loop_default_destroy (struct aws_event_loop *);
+    struct aws_event_loop *aws_event_loop_destroy (struct aws_event_loop *);
 
-Cleans up internal state of the default event loop implementation, invokes `aws_event_loop_base_clean_up`, and deallocates the event-loop.
+Cleans up internal state of the event loop implementation, calls, invokes `aws_event_loop_base_clean_up`, and then calls the v-table `destroy` function.
 
     int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
 
