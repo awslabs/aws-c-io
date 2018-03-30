@@ -73,52 +73,6 @@ state machinery, framing, and optionally end-user APIs.
 
 ![Handler Diagram](docs/images/handler.png)
 
-Channel Handlers are runtime polymorphic. Here's some details on the virtual table (v-table).
-
-`int data_in ( struct aws_io_message *msg)`
-
-Data in is invoked by the slot when an application level message is received in the read direction (from the io).
-The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
-read queue.
-
-`int data_out (struct aws_io_message *msg)`
-
-Data Out is invoked by the slot when an application level message is received in the write direction (to the io).
-The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
-write queue.
-
-`int update_window (size_t size_)`
-
-Update Window is invoked by the slot when a framework level message is received from a downstream handler.
-It only applies in the read direction. This gives the handler a chance to make a programmatic decision about 
-what its read window should be. Upon receiving an update_window message, a handler decides what its window should be and 
-likely issues a window update message to its slot. Shrinking a window has no effect. If a handler makes its window larger
-than a downstream window, it is responsible for honoring the downstream window and buffering any data it produces that is 
-greater than that window.
-
-`int shutdown_notify (int error_code_)`
-
-Shutdown notify is invoked by the slot when a framework level message is received from an adjacent handler.
-This notifies the handler that the previous handler in the chain has shutdown and will no longer be sending or
-receiving messages. The handler should make a decision about what it wants to do in response, and likely begins
-its shutdown process (if any). Once the handler has safely reached a safe state, if should issue a shutdown_notification
-to the slot.
-
-`int shutdown_direction ( enum aws_channel_direction dir_)`
-
-Shutdown direction is invoked by the slot to close the message processing in a given direction (either read, write, or both).
-This is a notification to begin the process. For example, in TLS, there is a shutdown sequence that happens between client and server,
-so it may take a few ticks of the event loop for this process to finish. A handler will invoke shutdown_notify when it has
-completed this process.
-
-`size_t get_current_window_size (void)`
-
-When a handler is added to a slot, the slot will call this function to determine the initial window size and will propogate
-a window_update message down the channel.
-
-`void destroy()`
-
-Clean up any memory or resources owned by this handler, and then deallocate the handler itself.
 
 #### Special, pre-defined handlers
 Out of the box you get a few handlers pre-implemented.
@@ -362,3 +316,126 @@ Gets the current tick count/timestamp for the event loop's clock.
 
 #### V-Table Shims
 The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
+
+### Channels and Slots
+
+#### Layout
+
+    struct aws_channel_slot {
+        struct aws_allocator *alloc;
+        struct aws_linked_list_node write_queue;
+        struct aws_linked_list_node read_queue;
+        struct aws_channel_slot_ref adj_left;
+        struct aws_channel_slot_ref adj_right;
+        struct aws_channel_handler *handler;    
+    };
+    
+    struct aws_channel_slot_ref {
+        struct aws_channel_slot *slot;
+        struct aws_allocator *alloc;
+        uint16_t ref_count;
+    }
+    
+#### API
+
+    struct aws_channel_slot_ref *aws_channel_slot_new (struct aws_allocator *alloc, 
+        struct aws_channel_slot_ref *left, struct aws_channel_slot_ref *right);
+        
+    int aws_channel_slot_set_handler ( struct aws_channel_slot *, struct aws_channel_handler *handler );
+    
+    int aws_channel_slot_ref_decrement (struct aws_channel_slot_ref *ref);
+    
+    int aws_channel_remove_slot_ref (struct aws_channel_slot_ref *ref);    
+    
+    int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot_ref *right);
+    
+    int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot_ref *left);
+    
+    int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir);
+    
+    int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message);
+    
+    int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
+    
+    int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code);
+    
+    int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, enum aws_channel_direction dir);
+    
+### Channel Handlers
+Channel Handlers are runtime polymorphic. Here's some details on the virtual table (v-table):
+
+#### Layout
+    struct aws_channel_handler {
+        struct aws_channel_handler_vtable vtable;
+        struct aws_allocator *alloc;
+        void *impl;
+    };  
+    
+#### V-Table    
+    struct aws_channel_handler_vtable {
+        int (*data_in) ( struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+            struct aws_io_message *message );
+        int (*data_out) ( struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                    struct aws_io_message *message ); 
+        int (*on_window_update) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size)
+        int (*on_shutdown_notify) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+            enum aws_channel_direction dir, int error_code);
+        int (*shutdown_direction) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                    enum aws_channel_direction dir);  
+        size_t (*get_current_window_size) (struct aws_channel_handler *handler);
+        void (*destroy)(struct aws_channel_handler *handler);                             
+    };     
+
+
+`int data_in ( struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                           struct aws_io_message *message)`
+
+Data in is invoked by the slot when an application level message is received in the read direction (from the io).
+The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
+read queue.
+
+`int data_out (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                                   struct aws_io_message *message)`
+
+Data Out is invoked by the slot when an application level message is received in the write direction (to the io).
+The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
+write queue.
+
+`int on_window_update (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size)`
+
+Update Window is invoked by the slot when a framework level message is received from a downstream handler.
+It only applies in the read direction. This gives the handler a chance to make a programmatic decision about 
+what its read window should be. Upon receiving an update_window message, a handler decides what its window should be and 
+likely issues a window update message to its slot. Shrinking a window has no effect. If a handler makes its window larger
+than a downstream window, it is responsible for honoring the downstream window and buffering any data it produces that is 
+greater than that window.
+
+`int on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                                  enum aws_channel_direction dir, int error_code)`
+
+Shutdown notify is invoked by the slot when a framework level message is received from an adjacent handler.
+This notifies the handler that the previous handler in the chain has shutdown and will no longer be sending or
+receiving messages. The handler should make a decision about what it wants to do in response, and likely begins
+its shutdown process (if any). Once the handler has safely reached a safe state, if should issue a shutdown_notification
+to the slot.
+
+`int shutdown_direction ( struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
+                                              enum aws_channel_direction dir)`
+
+Shutdown direction is invoked by the slot to close the message processing in a given direction (either read, write, or both).
+This is a notification to begin the process. For example, in TLS, there is a shutdown sequence that happens between client and server,
+so it may take a few ticks of the event loop for this process to finish. A handler will invoke shutdown_notify when it has
+completed this process.
+
+`size_t get_current_window_size (struct aws_channel_handler *handler)`
+
+When a handler is added to a slot, the slot will call this function to determine the initial window size and will propogate
+a window_update message down the channel.
+
+`void destroy(struct aws_channel_handler *handler)`
+
+Clean up any memory or resources owned by this handler, and then deallocate the handler itself. 
+
+#### API
+
+All exported functions, simply shim into the v-table and return.         
