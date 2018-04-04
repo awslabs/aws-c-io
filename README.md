@@ -24,6 +24,7 @@ Platform | Implementation
 Linux | Edge-Triggered Epoll
 BSD Variants and Apple Devices | KQueue
 Windows | IOCP (IO Completion Ports)
+Solaris | /dev/poll
 Default Fallback | Select
 
 Also, you can always implement your own as well.
@@ -180,6 +181,9 @@ it is responsible for checking which thread it was invoked from. If it is invoke
 proceed as planned. If it is not, it is required to queue a task to do the work. When the task is executed, it will be executed
 in the correct thread.
 
+The functions we specify as thread-safe, we do so because those functions are necessary for abiding by the stated threading model.
+For example, since scheduling a task is the main function for addressing cross-threaded operations, it has to be thread-safe.
+
 ## Terminology
 We use a few terms in the following sections that are not necessarily "C concepts". We assume you know C, but here's some
 definitions that may be helpful.
@@ -215,7 +219,7 @@ collection of functions in a structure. It's simply the language we use for the 
 **Note: unless otherwise stated,**
 
 * no functions in this API are allowed to block.
-* nothing is thread-safe unless it explicitly says it is.
+* nothing is thread-safe unless explicitly stated.
 
 
 ### Event Loop
@@ -224,7 +228,7 @@ Event Loops are run-time polymorphic. We provide some implementations out of the
 without having to call a different function per platform. However, you can also create your own implementation and use it
 on any API that takes an event loop as a parameter.
 
-From a design perspective, the event loop is not aware of channels, or any of it's handlers. It interacts with other entities
+From a design perspective, the event loop is not aware of channels or any of it's handlers. It interacts with other entities
 only via its API.
 
 #### Layout
@@ -341,7 +345,7 @@ It is the removers responsibility to free the memory pointed to by item. If it i
 
     int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
 
-Gets the current tick count/timestamp for the event loop's clock. This function is thread safe.
+Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
 
 #### V-Table Shims
 The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
