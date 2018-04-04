@@ -25,7 +25,8 @@ Linux | Edge-Triggered Epoll
 BSD Variants and Apple Devices | KQueue
 Windows | IOCP (IO Completion Ports)
 Default Fallback | Select
-Custom | Whatever you want!
+
+Also, you can always implement your own as well.
 
 An Event Loop has a few jobs.
 
@@ -68,7 +69,7 @@ Slots can also be added and removed dynamically from a channel. When a slot is r
 and its messages moved to the appropriate new siblings. 
 
 ### Channel Handlers
-The channel handler is the fundamental unit that protocol developers will work with. It contains all of your
+The channel handler is the fundamental unit that protocol developers will implement. It contains all of your
 state machinery, framing, and optionally end-user APIs.
 
 ![Handler Diagram](docs/images/handler.png)
@@ -87,7 +88,8 @@ Linux | Signal-to-noise (s2n) see github.com/awslabs/s2n
 BSD Variants | s2n
 Apple Devices | Security Framework/ Secure Transport. See https://developer.apple.com/documentation/security/secure_transport
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
-Custom | You can always write your own handler around your favorite implementation
+
+In addition, you can always write your own handler around your favorite implementation and use that.
 
 ### Typical Channel
 ![Typical Channel Diagram](docs/images/typical_channel.png)
@@ -105,6 +107,16 @@ Note however, that a channel is always pinned to a single thread. It provides ut
 handlers to move a task into that thread, but it is very important that handlers and application users
 of your handlers never block.
 
+### Channel IO Operation Fairness
+
+Since multiple channels run in the same event loop, we need to make sure channels are not starved by other active channels.
+To address this, the handlers consuming IO events from the event loop should determine the appropriate max read and write
+and context switch before continuing. A context switch is performed, simply by scheduling a task to run at the current timestamp,
+to continue the IO operation.
+
+A reasonable default is 16kb, but a savy implementation may want to upgrade a few connections to 256kb if they notice a particularly
+fast connection (e.g. you notice EAGAIN or EWOULDBLOCK is never returned from write() calls).
+
 ### Read Back Pressure
 
 One of the most challenging aspects of asynchronous io programming, is managing when back-pressure should be applied to
@@ -112,8 +124,8 @@ the underlying io layer. In the read direction, this is managed via update_windo
 for an example of how this works.
 
 In this example, we have a channel setup with an event loop which manages io event notifications. The first slot contains a socket handler.
-The socket handler will always context switch after reading 16kb to ensure fairness for other channels, but it doesn't have a 
-window. The second slot has a TLS handler. Its only job is to encrypt/decrypt the data passed to it and pass it back to the channel.
+The socket handler will read directly from the socket. The second slot has a TLS handler. 
+Its only job is to encrypt/decrypt the data passed to it and pass it back to the channel.
 The third and final slot contains the actual application protocol handler (could be Http, SIP, RTP it doesn't really matter).
 
 The application protocol exposes an API to the application. As data is processed, we don't want to endlessly read, allocate,
@@ -145,7 +157,8 @@ time however, the window is 0, so the socket does not schedule another read task
 3. The application notifies the channel (via the API on the application protocol handler) it has processed 20kb
 of data. This causes the protocol handler to issue an update_window message with an update of 20kb.
 
-    Slot 2 passes the message on to the TLS handler. It evaluates the message and simply returns unlimited for its window.
+    Slot 2 passes the message on to the TLS handler. It evaluates the message and simply, sends a 20kb window update message
+    to its slot.
 
     The socket handler receives the update_window message and schedules a new read task.
 
@@ -158,6 +171,14 @@ Write back pressure comes into play when the application can produce data more q
 underlying io. To manage this, messages have members to attach a promise fn and context data to. When a handler exposes
 and API, it has the responsibility to take a fn and data from the user if over write is a possibility. The io-handler will
 invoke the promise after it has successfully written the last byte to the underlying io.
+
+### Thread Safety
+
+In general, the plan for addressing thread-safety is to not share memory across threads. This library is designed around 
+single threaded event loops which process one or more channels. Anywhere a handler or channel exposes a back-channel API,
+it is responsible for checking which thread it was invoked from. If it is invoked from the event loop's thread, then it may
+proceed as planned. If it is not, it is required to queue a task to do the work. When the task is executed, it will be executed
+in the correct thread.
 
 ## Terminology
 We use a few terms in the following sections that are not necessarily "C concepts". We assume you know C, but here's some
@@ -191,13 +212,20 @@ collection of functions in a structure. It's simply the language we use for the 
  
 ## API
 
-**Note: unless otherwise stated, no functions in this API are allowed to block.**
+**Note: unless otherwise stated,**
+
+* no functions in this API are allowed to block.
+* nothing is thread-safe unless it explicitly says it is.
+
 
 ### Event Loop
 
 Event Loops are run-time polymorphic. We provide some implementations out of the box and a way to get an implementation
 without having to call a different function per platform. However, you can also create your own implementation and use it
 on any API that takes an event loop as a parameter.
+
+From a design perspective, the event loop is not aware of channels, or any of it's handlers. It interacts with other entities
+only via its API.
 
 #### Layout
     struct aws_event_loop {
@@ -255,7 +283,7 @@ and schedule the task.
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
             void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *ctx);
 
-A subscriber will call this function to register an io_handle for event monitoring. 
+A subscriber will call this function to register an io_handle for event monitoring. This function is thread-safe.
 
 `events` is a bit field of the events the subscriber wants to receive. A few events will always be registered (regardless of the value passed here), such
 as `AWS_IO_EVENT_HANDLE_REMOVED`. The event loop will invoke `on_event` anytime it receives one or more of the registered events.
@@ -276,6 +304,7 @@ close() on a socke or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_
 
 Returns `TRUE` if the caller is on the same thread as the event loop. Returns `FALSE` otherwise. This allows users of the event loop to make a decision
 about whether it is safe to interact with the loop directly, or if they need to schedule a task to run in the correct thread.
+This function is thread-safe.
 
 #### API
 
@@ -294,8 +323,8 @@ Cleans up internal state of the event loop implementation, and then calls the v-
     int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for fetching one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
-the caller must first schedule a task on the event loopn to enter the correct thread. 
+store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
+the caller must first schedule a task on the event loop to enter the correct thread. 
 
     int aws_event_loop_put_local_item ( struct aws_event_loop *, void *key, void *item);
 
@@ -306,13 +335,13 @@ the caller must first schedule a task on the event loopn to enter the correct th
     int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
-the caller must first schedule a task on the event loopn to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`. 
+store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
+the caller must first schedule a task on the event loop to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`. 
 It is the removers responsibility to free the memory pointed to by item. If it is NULL, the default deallocation strategy for the event loop will be used.
 
-    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks)
+    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
 
-Gets the current tick count/timestamp for the event loop's clock.
+Gets the current tick count/timestamp for the event loop's clock. This function is thread safe.
 
 #### V-Table Shims
 The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
@@ -320,9 +349,15 @@ The remaining exported functions on event loop simply invoke the v-table functio
 ### Channels and Slots
 
 #### Layout
+    struct aws_channel {
+        struct aws_allocator *alloc;
+        struct aws_event_loop *loop;
+        struct aws_channel_slot_ref *first;
+    };
 
     struct aws_channel_slot {
         struct aws_allocator *alloc;
+        struct aws_channel *channel;
         struct aws_linked_list_node write_queue;
         struct aws_linked_list_node read_queue;
         struct aws_channel_slot_ref adj_left;
@@ -334,32 +369,94 @@ The remaining exported functions on event loop simply invoke the v-table functio
         struct aws_channel_slot *slot;
         struct aws_allocator *alloc;
         uint16_t ref_count;
+        struct aws_mutex count_guard;
     }
     
-#### API
+#### API (Channel/Slot interaction)
 
-    struct aws_channel_slot_ref *aws_channel_slot_new (struct aws_allocator *alloc, 
-        struct aws_channel_slot_ref *left, struct aws_channel_slot_ref *right);
+    struct aws_channel_slot_ref *aws_channel_slot_new (struct aws_channel *channel);
+    
+Creates a new slot and slot reference using the channel's allocator, increments the reference count, and returns
+the new slot reference.
         
     int aws_channel_slot_set_handler ( struct aws_channel_slot *, struct aws_channel_handler *handler );
     
+Sets the handler on the slot. This should only be called once per slot.
+    
     int aws_channel_slot_ref_decrement (struct aws_channel_slot_ref *ref);
     
-    int aws_channel_remove_slot_ref (struct aws_channel_slot_ref *ref);    
+Thread-safe. Decrements the slot reference count. When the slot reference hits zero, it will be de-allocated.
+
+    int aws_channel_slot_ref_increment (struct aws_channel_slot_ref *ref);
+    
+Thread-safe. Increments the slot reference count.
+    
+    int aws_channel_remove_slot_ref (struct aws_channel *channel, struct aws_channel_slot_ref *ref);    
+    
+Removes a slot reference from the channel. Decrements the reference count.
     
     int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot_ref *right);
     
+Adds a slot reference to the right of slot. Increments the reference count.
+  
     int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot_ref *left);
+    
+Adds a slot reference to the left of slot. Increments the reference count.
     
     int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir);
     
-    int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message);
+Invokes the handler on the slot if it is non-null.
     
+    int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message, enum aws_channel_direction dir);
+ 
+Usually called by a handler, this function queues a message on the read or write queue of the slot, based on the `dir` argument.  
+
     int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
+ 
+Usually called by a handler, this function queues a window update message on the write queue of the slot.  
     
     int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code);
     
+Usually called by a handler, this function queues a shutdown notify message on the read or write queue of the slot, based on the `dir` argument.  
+
     int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, enum aws_channel_direction dir);
+    
+Usually called by a handler, this function queues a shutdown message on the read or write queue of the slot, based on the `dir` argument.  
+    
+### API (Channel specific)
+
+    int aws_channel_init (struct aws_channel *channel, struct aws_allocator *alloc, struct aws_event_loop *el);
+    
+Initializes a channel for operation. The event loop will be used for driving the channel.
+    
+    int aws_channel_clean_up (struct aws_channel *channel);
+
+Cleans up resources for the channel.
+
+    int aws_channel_shutdown (struct aws_channel *channel, 
+        void (*on_shutdown_completed)(struct aws_channel *channel, void *ctx), void *ctx);
+        
+Starts the shutdown process, invokes on_shutdown_completed once each handler has shutdown.
+        
+    int aws_channel_current_clock_time( struct aws_channel *, uint64_t *ticks);
+    
+Gets the current ticks from the event loop's clock.
+    
+    int aws_channel_fetch_local_item ( struct aws_channel *, void *key, void **item);    
+    
+Fetches data from the event loop's data store. This data is shared by each channel using that event loop.
+    
+    int aws_channel_put_local_item ( struct aws_channel *, void *key, void *item);
+   
+Puts data into the event loop's data store. This data is shared by each channel using that event loop.
+   
+    int aws_channel_schedule_task (struct aws_channel *, struct aws_task *task, uint64_t run_at);
+    
+Schedules a task to run on the event loop. This function is thread-safe.
+    
+    BOOL aws_channel_is_on_callers_thread (struct aws_channel *);
+    
+Checks if the caller is on the event loop's thread. This function is thread-safe.    
     
 ### Channel Handlers
 Channel Handlers are runtime polymorphic. Here's some details on the virtual table (v-table):

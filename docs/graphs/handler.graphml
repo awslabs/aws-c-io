@@ -114,7 +114,7 @@ an event loop or an application layer<y:LabelModel>
           <y:Geometry height="198.0" width="334.0" x="567.5" y="365.0"/>
           <y:Fill color="#FF9900" transparent="false"/>
           <y:BorderStyle hasColor="false" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="171.625" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="333.302734375" x="0.3486328125" y="13.1875">Slot Invoke()
+          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="171.625" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="333.302734375" x="0.3486328125" y="13.1875">Slot invoke()
 
 Drains the queue coresponding to direction,
 based on the message type, it routes the message
