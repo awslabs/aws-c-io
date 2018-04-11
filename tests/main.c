@@ -20,5 +20,7 @@
 #include <event_loop_test.c>
 
 int main (int argc, char *argv[]) {
-    AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute);
+    AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
+                       &read_write_notifications
+                      );
 }

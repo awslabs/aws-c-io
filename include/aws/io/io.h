@@ -25,19 +25,23 @@ struct aws_io_handle {
 #else
     int handle;
 #endif
+    void *private_event_loop_data;
 };
 
 typedef int (*aws_io_clock)(uint64_t *timestamp);
 
 typedef enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
-    AWS_IO_EVENT_LOOP_ERROR_SYS_CALL_FAILURE,
+    AWS_IO_SYS_CALL_FAILURE,
     AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
     AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
     AWS_IO_TLS_ERROR_WRITE_FAILURE,
     AWS_IO_TLS_CTX_ERROR,
     AWS_IO_FILE_NOT_FOUND,
     AWS_IO_FILE_VALIDATION_FAILURE,
+    AWS_IO_WRITE_WOULD_BLOCK,
+    AWS_IO_READ_WOULD_BLOCK,
+    AWS_IO_BROKEN_PIPE,
 
     AWS_IO_ERROR_END_RANGE =  0x07FF
 } aws_io_errors;

@@ -67,18 +67,44 @@ struct aws_event_loop_local_object {
 extern "C" {
 #endif
 
+/**
+ * Initializes common event-loop data structures, called by *new() functions for implementations.
+ */
 AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
 
+/**
+ * Creates an instance of the default event loop implementation for the current architecture and operating system.
+ */
 AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock clock);
 
+/**
+ * Common cleanup code for all implementations, called by aws_event_loop_destroy()
+ */
 AWS_IO_API void aws_event_loop_base_clean_up(struct aws_event_loop *);
 
+/**
+ * Invokes the destroy() fn for the event loop implementation, also calls aws_event_loop_base_clean_up
+ */
 AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
 
+/**
+ * Fetches an item from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * This function is not thread safe and should be called inside the event-loop's thread.
+ */
 AWS_IO_API int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, struct aws_event_loop_local_object *item);
 
+/**
+ * Puts an item into the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * The lifetime of item must live until remove or a put item overrides it. This function is not thread safe and should be called
+ * inside the event-loop's thread.
+ */
 AWS_IO_API int aws_event_loop_put_local_item ( struct aws_event_loop *, struct aws_event_loop_local_object *item);
 
+/**
+ * Removes an item from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * If removed_item is not null, the removed item will be moved to it if it exists. Otherwise, the default deallocation strategy
+ * will be used. This function is not thread safe and should be called inside the event-loop's thread.
+ */
 AWS_IO_API int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, struct aws_event_loop_local_object *removed_item);
 
 /**
@@ -102,11 +128,22 @@ AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*sto
  */
 AWS_IO_API int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
 
+/**
+ * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were received.
+ * The definition for these values can be found in aws_io_event_type. Currently, only AWS_IO_EVENT_TYPE_READABLE and
+ * AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions and closure.
+ */
 AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
                     aws_event_loop_on_event on_event, void *ctx);
 
+/**
+ * Unsubscribes handle from event-loop notifications.
+ */
 AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
+/**
+ * Utility fn to hint to a caller if it should schedule a task instead of mutating state directly.
+ */
 AWS_IO_API bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop);
 
 #ifdef __cplusplus
