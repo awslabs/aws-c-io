@@ -23,4 +23,8 @@ add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/resources ${CMAKE_CURRENT_BINARY_DIR})
 
+add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_tasks_execute)
+add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
+
+
 
