@@ -19,7 +19,7 @@
 static struct aws_error_info errors[] = {
         AWS_DEFINE_ERROR_INFO(aws_io_channel_error_cant_accept_input, AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT,
                               "Channel cannot accept input", LIB_NAME),
-        AWS_DEFINE_ERROR_INFO(aws_io_event_loop_sys_call_failure, AWS_IO_EVENT_LOOP_ERROR_SYS_CALL_FAILURE,
+        AWS_DEFINE_ERROR_INFO(aws_io_sys_call_failure, AWS_IO_SYS_CALL_FAILURE,
                               "System call failure", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_tls_negotiation_failure, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
                               "TLS (SSL) negotiation failed", LIB_NAME),
@@ -33,6 +33,12 @@ static struct aws_error_info errors[] = {
                               "Unable to open file", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_file_validation_failure, AWS_IO_FILE_VALIDATION_FAILURE,
                               "A file was read and the input did not match the expected value", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_write_would_block, AWS_IO_WRITE_WOULD_BLOCK,
+                              "Write operation would block, try again later", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_read_would_block, AWS_IO_READ_WOULD_BLOCK,
+                              "Read operation would block, try again later", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_broken_pipe, AWS_IO_BROKEN_PIPE,
+                              "Attempt to read or write to io handle that has already been closed.", LIB_NAME),
 };
 
 static struct aws_error_info_list list = {
