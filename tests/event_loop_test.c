@@ -47,7 +47,7 @@ static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator
     ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
 
     struct event_loop_stopped_args stopped_args;
-    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex, allocator), "Mutex initialization failed");
+    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex), "Mutex initialization failed");
 
     struct task_args task_args = {0};
     struct aws_task task = {
@@ -115,7 +115,7 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
 
     struct event_loop_stopped_args stopped_args;
-    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex, allocator), "Mutex initialization failed");
+    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex), "Mutex initialization failed");
 
     struct aws_io_handle read_handle = {0};
     struct aws_io_handle write_handle = {0};
@@ -130,7 +130,7 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
 
     struct pipe_data write_data = {0};
 
-    ASSERT_SUCCESS(aws_mutex_init(&read_data.semaphore, allocator), "Mutex init failed.");
+    ASSERT_SUCCESS(aws_mutex_init(&read_data.semaphore), "Mutex init failed.");
 
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(event_loop, &read_handle,
                            AWS_IO_EVENT_TYPE_READABLE, on_pipe_readable, &read_data), "Event loop read subscription failed.");
