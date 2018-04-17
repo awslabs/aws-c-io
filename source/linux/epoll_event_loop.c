@@ -17,9 +17,12 @@
 #include <aws/io/pipe.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+#include <aws/common/mutex.h>
+#include <aws/common/condition_variable.h>
 
 #include <sys/epoll.h>
 #include <unistd.h>
+#include <errno.h>
 
 static void destroy(struct aws_event_loop *);
 static int run (struct aws_event_loop *);
@@ -83,38 +86,32 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     if (!loop) {
         aws_raise_error(AWS_ERROR_OOM);
-        goto cleanup_error;
+        return NULL;
     }
 
-    bool base_init = false;
     if (aws_event_loop_base_init(loop, alloc, clock)) {
-        goto cleanup_error;
+        goto clean_up_loop;
     }
-    base_init = true;
 
     struct epoll_loop *epoll_loop = aws_mem_acquire(alloc, sizeof(struct epoll_loop));
 
     if (!epoll_loop) {
         aws_raise_error(AWS_ERROR_OOM);
-        goto cleanup_error;
+        goto clean_up_loop;
     }
-
-    bool thread_init = false;
-    if (aws_thread_init(&epoll_loop->thread, alloc)) {
-        goto cleanup_error;
-    }
-    thread_init = true;
-
-    bool pipe_init = false;
-    /* this pipe is for task scheduling. */
-    if (aws_pipe_open(alloc, &epoll_loop->read_task_handle, &epoll_loop->write_task_handle)) {
-        goto cleanup_error;
-    }
-    pipe_init = true;
 
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
-        goto cleanup_error;
+        goto clean_up_epoll;
+    }
+
+    if (aws_thread_init(&epoll_loop->thread, alloc)) {
+        goto clean_up_epoll;
+    }
+
+    /* this pipe is for task scheduling. */
+    if (aws_pipe_open(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle)) {
+        goto clean_up_thread;
     }
 
     epoll_loop->should_continue = true;
@@ -126,40 +123,54 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     return loop;
 
-cleanup_error:
-    if (epoll_loop) {
-        if (thread_init) {
-            aws_thread_clean_up(&epoll_loop->thread);
-        }
+clean_up_thread:
+    aws_thread_clean_up(&epoll_loop->thread);
 
-        if (pipe_init) {
-            aws_pipe_close(alloc, &epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
-        }
-
-        if (epoll_loop->epoll_fd < 0) {
-            close (epoll_loop->epoll_fd);
-        }
-
-        aws_mem_release(alloc, epoll_loop);
+clean_up_epoll:
+    if (epoll_loop->epoll_fd >= 0) {
+        close (epoll_loop->epoll_fd);
     }
 
-    if (loop) {
+    aws_mem_release(alloc, epoll_loop);
 
-        if (base_init) {
-            aws_event_loop_base_clean_up(loop);
-        }
+clean_up_loop:
 
-        aws_mem_release(alloc, loop);
-    }
+     aws_event_loop_base_clean_up(loop);
+     aws_mem_release(alloc, loop);
 
     return NULL;
+}
+
+struct epoll_loop_stopped_args {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+};
+
+static void on_epoll_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
+    struct epoll_loop_stopped_args *args = (struct epoll_loop_stopped_args *)ctx;
+
+    aws_mutex_lock(&args->mutex);
+    aws_condition_variable_notify_one(&args->condition_variable);
+    aws_mutex_unlock((&args->mutex));
 }
 
 static void destroy(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
+    /* if event loop is still running, it needs to be shut down in line */
+    if (epoll_loop->should_continue) {
+        struct epoll_loop_stopped_args stop_args = {
+                .mutex = AWS_MUTEX_INIT,
+                .condition_variable = AWS_CONDITION_VARIABLE_INIT
+        };
+
+        aws_mutex_lock(&stop_args.mutex);
+        aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args);
+        aws_condition_variable_wait(&stop_args.condition_variable, &stop_args.mutex);
+    }
+
     aws_thread_clean_up(&epoll_loop->thread);
-    aws_pipe_close(event_loop->alloc, &epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
+    aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
     close (epoll_loop->epoll_fd);
     aws_mem_release(event_loop->alloc, epoll_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -168,6 +179,7 @@ static void destroy(struct aws_event_loop *event_loop) {
 static int run (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
+    epoll_loop->should_continue = true;
     return aws_thread_launch(&epoll_loop->thread, &main_loop, event_loop, NULL);
 }
 
@@ -220,19 +232,18 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
         return aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, run_at);
     }
 
-    /* otherwise write the memory to a pipe and the event loop will pick it up */
-    struct pipe_task_data *pipe_data = (struct pipe_task_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct pipe_task_data));
-    pipe_data->task = *task;
-    pipe_data->timestamp;
+    struct pipe_task_data pipe_data = {
+            .task = *task,
+            .timestamp = run_at
+    };
 
     size_t written = 0;
     struct aws_byte_buf task_buf = {
             .buffer = (uint8_t *)&pipe_data,
-            .len = sizeof(void *),
+            .len = sizeof(struct pipe_task_data),
     };
 
-    if (aws_pipe_write(&epoll_loop->write_task_handle, &task_buf, &written) || written != sizeof(void *)) {
-        aws_mem_release(event_loop->alloc, pipe_data);
+    if (aws_pipe_write(&epoll_loop->write_task_handle, &task_buf, &written) || written != sizeof(struct pipe_task_data)) {
         return AWS_OP_ERR;
     }
 
@@ -285,21 +296,82 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     return AWS_OP_SUCCESS;
 }
 
+struct finalize_unsubscribe_args {
+    struct aws_allocator *alloc;
+    struct epoll_event_data *event_data;
+};
+
+static void finalize_unsubscribe(void *args) {
+    struct finalize_unsubscribe_args *unsubscribe_args = (struct finalize_unsubscribe_args *)args;
+    aws_mem_release(unsubscribe_args->alloc, unsubscribe_args->event_data);
+    aws_mem_release(unsubscribe_args->alloc, unsubscribe_args);
+}
+
+/*
+ * This is here to address a race condition where an event handler, unsubscribed another event from notifications,
+ * in that case the epoll set would contain bad memory when we try to access it. Instead, free up the memory in a task
+ * that is guaranteed to run after the events are handled.
+ */
+static int schedule_unsubscribe_cleanup(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
+
+    /*
+     * The task scheduler pipe should only ever be getting unregistered from the event loop's termination.
+     * go ahead and clean it up immediately without out a task.
+     */
+    if (AWS_UNLIKELY(epoll_loop->read_task_handle.handle == handle->handle)) {
+        aws_mem_release(event_loop->alloc, handle->private_event_loop_data);
+        handle->private_event_loop_data = NULL;
+    }
+
+    if(handle->private_event_loop_data) {
+        struct finalize_unsubscribe_args *unsubscribe_args =
+                (struct finalize_unsubscribe_args *) aws_mem_acquire(event_loop->alloc,
+                                                                     sizeof(struct finalize_unsubscribe_args));
+
+        if (!unsubscribe_args) {
+            return aws_raise_error(AWS_ERROR_OOM);
+        }
+
+        unsubscribe_args->alloc = event_loop->alloc;
+        unsubscribe_args->event_data = handle->private_event_loop_data;
+
+        struct aws_task task = {
+                .fn = finalize_unsubscribe,
+                .arg = unsubscribe_args
+        };
+
+        uint64_t now = 0;
+        if (event_loop->clock(&now)) {
+            aws_mem_release(event_loop->alloc, unsubscribe_args);
+            return AWS_OP_ERR;
+        }
+
+        handle->private_event_loop_data = NULL;
+
+        return aws_event_loop_schedule_task(event_loop, &task, now);
+    }
+}
+
 static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     struct epoll_event compat_event = {
-        .data = { .ptr = NULL },
+        .data = { .ptr = handle->private_event_loop_data },
         .events = 0
     };
 
-    if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->handle, &compat_event)) {
+    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->handle, &compat_event))) {
+        int err = errno;
+        if (handle->private_event_loop_data && (err == ENOENT || err == EBADF)) {
+            schedule_unsubscribe_cleanup(event_loop, handle);
+        }
+
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
     if (handle->private_event_loop_data) {
-        aws_mem_release(event_loop->alloc, handle->private_event_loop_data);
-        handle->private_event_loop_data = NULL;
+        return schedule_unsubscribe_cleanup(event_loop, handle);
     }
 
     return AWS_OP_SUCCESS;
@@ -317,18 +389,17 @@ static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_i
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
-        struct pipe_task_data *task_data = NULL;
+        struct pipe_task_data task_data = {0};
 
         size_t read = 0;
         struct aws_byte_buf pipe_read_buf = {
                 .buffer = (uint8_t *)&task_data,
-                .len = sizeof(void *),
+                .len = sizeof(struct pipe_task_data),
         };
 
         /* several tasks could have been written, make sure we process all of them. */
-        while (!aws_pipe_read(handle, &pipe_read_buf, &read) && read == sizeof(void *)) {
-            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, &task_data->task, task_data->timestamp);
-            aws_mem_release(event_loop->alloc, task_data);
+        while (!aws_pipe_read(handle, &pipe_read_buf, &read) && read == sizeof(struct pipe_task_data)) {
+            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, &task_data.task, task_data.timestamp);
         }
     }
 }
@@ -362,7 +433,6 @@ static void main_loop (void *args) {
      */
     while ( epoll_loop->should_continue ) {
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
-        aws_task_scheduler_run_all(&epoll_loop->scheduler, NULL);
 
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
@@ -402,13 +472,13 @@ static void main_loop (void *args) {
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
 
+    aws_task_scheduler_clean_up(&epoll_loop->scheduler);
+
     /*
      * If the user passed a promise to stop, execute it now.
      */
     if (epoll_loop->stopped_promise) {
         epoll_loop->stopped_promise(event_loop, epoll_loop->stop_ctx);
     }
-
-    aws_task_scheduler_clean_up(&epoll_loop->scheduler);
 }
 

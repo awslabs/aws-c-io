@@ -18,8 +18,8 @@
 
 static void data_element_removed(struct aws_common_hash_element element) {
     struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)element.value;
-    if(object->on_data_eviction) {
-        object->on_data_eviction(object);
+    if(object->on_data_removed) {
+        object->on_data_removed(object);
     }
 }
 

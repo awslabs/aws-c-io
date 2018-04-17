@@ -27,13 +27,18 @@ extern "C" {
  * Opens a OS specific bidirectional pipe. The read direction is stored in read_handle. Write direction is stored in
  * write_handle. These are always non-blocking.
  */
-AWS_IO_API int aws_pipe_open(struct aws_allocator *allocator, struct aws_io_handle *read_handle, struct aws_io_handle *write_handle);
+AWS_IO_API int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle);
 
 /**
- * Closes pipe. If read_handle is Not null, then the read direction will be closed. If the write_handle is not null then the write
- * direciton will be closed.
+ * Closes pipe in both directions.
  */
-AWS_IO_API int aws_pipe_close(struct aws_allocator *allocator, struct aws_io_handle *read_handle, struct aws_io_handle *write_handle);
+AWS_IO_API int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle);
+
+/**
+ * Closes pipe in a single direction.
+ */
+AWS_IO_API int aws_pipe_half_close(struct aws_io_handle *handle);
+
 
 /**
  * Writes up to buf::len to the pipe. The amount successfully written will be stored in written. Errors, such as EAGAIN, EWOULDBLOCK

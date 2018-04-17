@@ -15,22 +15,44 @@
 
 #include <aws/io/io.h>
 #include <aws/common/byte_buf.h>
+
+#ifdef __GLIBC__
+#define __USE_GNU
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <assert.h>
+#include <stdlib.h>
 
-int aws_pipe_open(struct aws_allocator *allocator, struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+
+int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     int pipe_fds[2] = {0};
 
+#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 9
+    if (pipe2(pipe_fds, O_NONBLOCK | O_CLOEXEC)) {
+        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    }
+
+    read_handle->handle = pipe_fds[0];
+    read_handle->private_event_loop_data = NULL;
+
+    write_handle->handle = pipe_fds[1];
+    write_handle->private_event_loop_data = NULL;
+
+    return AWS_OP_SUCCESS;
+
+#else
     if (pipe(pipe_fds)) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
     int flags = fcntl(pipe_fds[0], F_GETFL);
-    flags |= O_NONBLOCK;
+    flags |= O_NONBLOCK | O_CLOEXEC;
     fcntl(pipe_fds[0], F_SETFL, flags);
     flags = fcntl(pipe_fds[1], F_GETFL);
-    flags |= O_NONBLOCK;
+    flags |= O_NONBLOCK | O_CLOEXEC;
     fcntl(pipe_fds[1], F_SETFL, flags);
 
     read_handle->handle = pipe_fds[0];
@@ -40,16 +62,25 @@ int aws_pipe_open(struct aws_allocator *allocator, struct aws_io_handle *read_ha
     write_handle->private_event_loop_data = NULL;
 
     return AWS_OP_SUCCESS;
+#endif
 }
 
-int aws_pipe_close(struct aws_allocator *allocator, struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
-    if (read_handle) {
-        close(read_handle->handle);
-    }
+int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    assert(read_handle);
+    assert(write_handle);
 
-    if (write_handle) {
-        close(write_handle->handle);
-    }
+    close(read_handle->handle);
+    read_handle->handle = 0;
+    close(write_handle->handle);
+    write_handle->handle = 0;
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_pipe_half_close(struct aws_io_handle *handle) {
+    assert(handle);
+    close(handle->handle);
+    handle->handle = 0;
 
     return AWS_OP_SUCCESS;
 }

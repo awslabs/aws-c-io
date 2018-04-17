@@ -21,6 +21,7 @@
 
 int main (int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
-                       &read_write_notifications
+                       &read_write_notifications,
+                       &stop_then_restart
                       );
 }

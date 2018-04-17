@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-io)
 
+option(BUILD_RELOCATABLE_BINARIES
+        "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
+        OFF)
+
 file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
@@ -43,7 +47,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             )
 
     set(PLATFORM_LIBS "")
-elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR APPLE)
+elseif (APPLE)
 
     file(GLOB AWS_IO_OS_HEADERS
             )
@@ -54,15 +58,24 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR APPLE)
             "source/darwin/*.c"
             )
 
-    find_library(SECURITY_LIB Security)
-    if (NOT SECURITY_LIB)
-        message(FATAL_ERROR "Security framework not found")
-    endif ()
+        find_library(SECURITY_LIB Security)
+        if (NOT SECURITY_LIB)
+            message(FATAL_ERROR "Security framework not found")
+        endif ()
 
-    #No choice on TLS for apple, darwinssl will always be used.
-    set(PLATFORM_LIBS ${SECURITY_LIB})
-    set(TLS_STACK_DETERMINED ON)
-endif ()
+        #No choice on TLS for apple, darwinssl will always be used.
+        set(PLATFORM_LIBS ${SECURITY_LIB})
+        set(TLS_STACK_DETERMINED ON)
+
+elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+    file(GLOB AWS_IO_OS_HEADERS
+            )
+
+    file(GLOB AWS_IO_OS_SRC
+            "source/bsd/*.c"
+            "source/posix/*.c"
+            )
+endif()
 
 if (NOT CUSTOM_TLS)
     if (USE_S2N)
@@ -107,11 +120,16 @@ if (BUILD_SHARED_LIBS AND WIN32)
 endif ()
 
 if (BUILD_JNI_BINDINGS)
+    set(BUILD_RELOCATABLE_BINARIES ON)
     find_package(JNI)
     include_directories(${JNI_INCLUDE_DIRS})
     set(PLATFORM_LIBS ${PLATFORM_LIBS} ${JNI_LIBRARIES})
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DBUILD_JNI_BINDINGS")
 endif ()
+
+if (BUILD_RELOCATABLE_BINARIES)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")
+endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL "" OR CMAKE_BUILD_TYPE MATCHES DEBUG)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DDEBUG_BUILD")

@@ -17,23 +17,21 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
 #include <aws/common/task_scheduler.h>
-
-struct event_loop_stopped_args {
-    struct aws_mutex mutex;
-};
-
-static void on_event_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
-    struct event_loop_stopped_args *stopped_args = (struct event_loop_stopped_args *)ctx;
-    aws_mutex_unlock(&stopped_args->mutex);
-}
+#include <aws/common/condition_variable.h>
 
 struct task_args {
     int8_t invoked;
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
 };
 
 static void test_task(void *ctx) {
     struct task_args *args = (struct task_args *)ctx;
+
+    aws_mutex_lock(&args->mutex);
     args->invoked += 1;
+    aws_condition_variable_notify_one(&args->condition_variable);
+    aws_mutex_unlock((&args->mutex));
 }
 
 /*
@@ -44,31 +42,29 @@ static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct event_loop_stopped_args stopped_args;
-    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex), "Mutex initialization failed");
+    struct task_args task_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = 0
+    };
 
-    struct task_args task_args = {0};
     struct aws_task task = {
             .fn = test_task,
             .arg = &task_args
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+
     uint64_t now;
-    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now), "Clock get ticks failed.");
-    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now), "task schedule failed.");
+    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
+    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
 
-    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex), "Mutex lock failed");
-    ASSERT_SUCCESS(aws_event_loop_stop(event_loop, on_event_loop_stopped, &stopped_args), "Event loop stop failed.");
+    ASSERT_SUCCESS(aws_condition_variable_wait(&task_args.condition_variable, &task_args.mutex));
+    ASSERT_INT_EQUALS(1, task_args.invoked);
 
-    /*using it as a semaphore here. */
-    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex), "Mutex lock failed");
-    ASSERT_INT_EQUALS(1, task_args.invoked, "Task was not invoked");
-
-    /* now this should be safe. */
     aws_event_loop_destroy(event_loop);
-    aws_mutex_clean_up(&stopped_args.mutex);
 
     return AWS_OP_SUCCESS;
 }
@@ -78,7 +74,7 @@ AWS_TEST_CASE(xthread_scheduled_tasks_execute, test_xthread_scheduled_tasks_exec
 struct pipe_data {
     struct aws_byte_buf buf;
     size_t bytes_processed;
-    struct aws_mutex semaphore;
+    struct aws_condition_variable condition_variable;
     uint8_t invoked;
 };
 
@@ -92,7 +88,7 @@ static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_h
         aws_pipe_read(handle, &read_buf, &data_read);
         data->bytes_processed += data_read;
         data->invoked += 1;
-        aws_mutex_unlock(&data->semaphore);
+        aws_condition_variable_notify_one(&data->condition_variable);
     }
 }
 
@@ -100,7 +96,7 @@ static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_h
     if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
         struct pipe_data *data = (struct pipe_data *)ctx;
         data->invoked += 1;
-        aws_mutex_unlock(&data->semaphore);
+        aws_condition_variable_notify_one(&data->condition_variable);
     }
 }
 
@@ -114,23 +110,20 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
 
-    struct event_loop_stopped_args stopped_args;
-    ASSERT_SUCCESS(aws_mutex_init(&stopped_args.mutex), "Mutex initialization failed");
-
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_io_handle read_handle = {0};
     struct aws_io_handle write_handle = {0};
 
-    ASSERT_SUCCESS(aws_pipe_open(allocator, &read_handle, &write_handle), "Pipe open failed");
+    ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle), "Pipe open failed");
 
     uint8_t read_buffer[1024] = {0};
     struct pipe_data read_data = {
             .buf = aws_byte_buf_from_array(read_buffer, sizeof(read_buffer)),
             .bytes_processed = 0,
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT
     };
 
     struct pipe_data write_data = {0};
-
-    ASSERT_SUCCESS(aws_mutex_init(&read_data.semaphore), "Mutex init failed.");
 
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(event_loop, &read_handle,
                            AWS_IO_EVENT_TYPE_READABLE, on_pipe_readable, &read_data), "Event loop read subscription failed.");
@@ -145,15 +138,15 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
 
     struct aws_byte_buf write_byte_buf = aws_byte_buf_from_array(write_buffer, 512);
 
-    ASSERT_SUCCESS(aws_mutex_lock(&read_data.semaphore), "read mutex lock failed.");
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex), "read mutex lock failed.");
     size_t written = 0;
     ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_buf, &written), "Pipe write failed");
 
-    ASSERT_SUCCESS(aws_mutex_lock(&read_data.semaphore), "read mutex lock failed.");
+    ASSERT_SUCCESS(aws_condition_variable_wait(&read_data.condition_variable, &mutex));
     write_byte_buf = aws_byte_buf_from_array(write_buffer + 512, 512);
     ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_buf, &written), "Pipe write failed");
 
-    ASSERT_SUCCESS(aws_mutex_lock(&read_data.semaphore), "read mutex lock failed.");
+    ASSERT_SUCCESS(aws_condition_variable_wait(&read_data.condition_variable, &mutex));
 
     ASSERT_BIN_ARRAYS_EQUALS(write_buffer, 1024, read_data.buf.buffer, read_data.buf.len, "Read data didn't match written data");
     ASSERT_INT_EQUALS(2, read_data.invoked, "Read callback should have been invoked twice.");
@@ -163,20 +156,76 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_event_loop_unsubscribe_from_io_events(event_loop, &read_handle), "read unsubscribe from event loop failed");
     ASSERT_SUCCESS(aws_event_loop_unsubscribe_from_io_events(event_loop, &write_handle), "write unsubscribe from event loop failed");
 
-    ASSERT_SUCCESS(aws_pipe_close(allocator, &read_handle, &write_handle), "Pipe close failed");
+    ASSERT_SUCCESS(aws_pipe_close(&read_handle, &write_handle), "Pipe close failed");
 
-    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex), "Mutex lock failed");
-    ASSERT_SUCCESS(aws_event_loop_stop(event_loop, on_event_loop_stopped, &stopped_args), "Event loop stop failed.");
-
-    /*using it as a semaphore here. */
-    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex), "Mutex lock failed");
-
-    /* now this should be safe. */
     aws_event_loop_destroy(event_loop);
-    aws_mutex_clean_up(&stopped_args.mutex);
-    aws_mutex_clean_up(&read_data.semaphore);
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(read_write_notifications, test_read_write_notifications)
+
+struct stopped_args {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+};
+
+static void on_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
+    struct stopped_args *args = (struct stopped_args *)ctx;
+
+    aws_mutex_lock(&args->mutex);
+    aws_condition_variable_notify_one(&args->condition_variable);
+    aws_mutex_unlock((&args->mutex));
+}
+
+static int test_stop_then_restart (struct aws_allocator *allocator, void *ctx) {
+
+    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct task_args task_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = 0
+    };
+
+    struct aws_task task = {
+            .fn = test_task,
+            .arg = &task_args
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+
+    uint64_t now;
+    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
+    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+
+    ASSERT_SUCCESS(aws_condition_variable_wait(&task_args.condition_variable, &task_args.mutex));
+    ASSERT_INT_EQUALS(1, task_args.invoked);
+
+    struct stopped_args stopped_args = {
+            .mutex = AWS_MUTEX_INIT,
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex));
+
+    ASSERT_SUCCESS(aws_event_loop_stop(event_loop, on_loop_stopped, &stopped_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&stopped_args.condition_variable, &stopped_args.mutex));
+
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
+    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+
+    ASSERT_SUCCESS(aws_condition_variable_wait(&task_args.condition_variable, &task_args.mutex));
+    ASSERT_INT_EQUALS(2, task_args.invoked);
+
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(stop_then_restart, test_stop_then_restart)
