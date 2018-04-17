@@ -25,7 +25,7 @@ struct task_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void test_task(void *ctx) {
+static void test_task(void *ctx, aws_task_status status) {
     struct task_args *args = (struct task_args *)ctx;
 
     aws_mutex_lock(&args->mutex);

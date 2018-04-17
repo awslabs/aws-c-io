@@ -33,7 +33,6 @@ static int subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle
 static int unsubscribe_from_io_events (struct aws_event_loop *, struct aws_io_handle *handle);
 static bool is_on_callers_thread (struct aws_event_loop *);
 
-
 static void main_loop (void *args);
 
 static struct aws_event_loop_vtable vtable = {
@@ -114,7 +113,11 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
         goto clean_up_thread;
     }
 
-    epoll_loop->should_continue = true;
+    if (aws_task_scheduler_init(&epoll_loop->scheduler, alloc, loop->clock)) {
+        goto clean_up_pipe;
+    }
+
+    epoll_loop->should_continue = false;
     epoll_loop->stopped_promise = NULL;
     epoll_loop->stop_ctx = NULL;
 
@@ -122,6 +125,9 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     loop->vtable = vtable;
 
     return loop;
+
+clean_up_pipe:
+    aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
 
 clean_up_thread:
     aws_thread_clean_up(&epoll_loop->thread);
@@ -169,6 +175,7 @@ static void destroy(struct aws_event_loop *event_loop) {
         aws_condition_variable_wait(&stop_args.condition_variable, &stop_args.mutex);
     }
 
+    aws_task_scheduler_clean_up(&epoll_loop->scheduler);
     aws_thread_clean_up(&epoll_loop->thread);
     aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
     close (epoll_loop->epoll_fd);
@@ -183,16 +190,18 @@ static int run (struct aws_event_loop *event_loop) {
     return aws_thread_launch(&epoll_loop->thread, &main_loop, event_loop, NULL);
 }
 
-static void stop_task (void *args) {
+static void stop_task (void *args, aws_task_status status) {
     struct stop_task_args *stop_task = (struct stop_task_args *)args;
     struct epoll_loop *epoll_loop = (struct epoll_loop *)stop_task->event_loop->impl_data;
 
-    /*
-     * this allows the event loop to invoke the promise once the event loop has completed.
-     */
-    epoll_loop->should_continue = false;
-    epoll_loop->stopped_promise = stop_task->promise;
-    epoll_loop->stop_ctx = stop_task->stop_ctx;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        /*
+         * this allows the event loop to invoke the promise once the event loop has completed.
+         */
+        epoll_loop->should_continue = false;
+        epoll_loop->stopped_promise = stop_task->promise;
+        epoll_loop->stop_ctx = stop_task->stop_ctx;
+    }
 
     aws_mem_release(stop_task->event_loop->alloc, args);
 }
@@ -301,7 +310,7 @@ struct finalize_unsubscribe_args {
     struct epoll_event_data *event_data;
 };
 
-static void finalize_unsubscribe(void *args) {
+static void finalize_unsubscribe(void *args, aws_task_status status) {
     struct finalize_unsubscribe_args *unsubscribe_args = (struct finalize_unsubscribe_args *)args;
     aws_mem_release(unsubscribe_args->alloc, unsubscribe_args->event_data);
     aws_mem_release(unsubscribe_args->alloc, unsubscribe_args);
@@ -408,10 +417,6 @@ static void main_loop (void *args) {
     struct aws_event_loop *event_loop = (struct aws_event_loop *)args;
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
-    if (aws_task_scheduler_init(&epoll_loop->scheduler, event_loop->alloc, event_loop->clock)) {
-        return;
-    }
-
     if (subscribe_to_io_events(event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, on_tasks_to_schedule, NULL)) {
         return;
     }
@@ -471,8 +476,6 @@ static void main_loop (void *args) {
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
-
-    aws_task_scheduler_clean_up(&epoll_loop->scheduler);
 
     /*
      * If the user passed a promise to stop, execute it now.
