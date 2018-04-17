@@ -25,6 +25,7 @@ add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
 
 add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_tasks_execute)
 add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
+add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
 
 
 
