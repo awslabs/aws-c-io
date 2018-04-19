@@ -27,8 +27,8 @@ typedef enum aws_socket_domain {
 } aws_socket_domain;
 
 typedef enum aws_socket_type {
-    AWS_IO_SOCKET_STREAM,
-    AWS_IO_SOCKET_DGRAM
+    AWS_SOCKET_STREAM,
+    AWS_SOCKET_DGRAM
 } aws_socket_type;
 
 struct aws_socket_options {
@@ -45,10 +45,9 @@ struct aws_socket;
 struct aws_event_loop;
 
 struct aws_socket_creation_args {
-    void(*on_incoming_connection)(struct aws_socket *socket, const char* address,
-                                  uint16_t port, struct aws_socket *new_socket, void *ctx);
+    void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx);
     void(*on_connection_established)(struct aws_socket *socket, void *ctx);
-    void(*on_closed)(struct aws_socket *socket, int err_code, void *ctx);
+    void(*on_error)(struct aws_socket *socket, int err_code, void *ctx);
     void *ctx;
 };
 
@@ -66,31 +65,29 @@ struct aws_socket {
     struct aws_io_handle io_handle;
     struct aws_socket_creation_args creation_args;
     struct aws_event_loop *connection_loop;
+    int state;
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-AWS_IO_API int aws_socket_outgoing_init(struct aws_socket *socket, struct aws_allocator *alloc,
+AWS_IO_API int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
                                         struct aws_socket_options *options,
                                         struct aws_event_loop *connection_loop,
-                                        struct aws_socket_creation_args *creation_args);
-
-AWS_IO_API int aws_socket_incoming_init(struct aws_socket *socket, struct aws_allocator *alloc,
-                                        struct aws_socket_options *options, struct aws_event_loop *connection_loop,
                                         struct aws_socket_creation_args *creation_args);
 
 AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
 
 AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint);
 
-AWS_IO_API int aws_socket_bind(struct aws_socket *socket, struct aws_endpoint *local_endpoint);
+AWS_IO_API int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
 AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 AWS_IO_API int aws_socket_start_accept(struct aws_socket *socket);
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
-AWS_IO_API void aws_socket_shutdown(struct aws_socket *socket);
+AWS_IO_API int aws_socket_shutdown(struct aws_socket *socket);
 AWS_IO_API struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *socket);
+AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
 
 #ifdef __cplusplus
 }

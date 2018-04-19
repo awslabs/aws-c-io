@@ -55,10 +55,21 @@ static struct aws_error_info errors[] = {
                               "socket connect failure, no route to host.", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_socket_invalid_operation, AWS_IO_SOCKET_NETWORK_DOWN,
                               "network is down.", LIB_NAME),
-        AWS_DEFINE_ERROR_INFO(aws_io_socket_invalid_operation, AWS_IO_SOCKET_CLOSED,
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_closed, AWS_IO_SOCKET_CLOSED,
                               "socket is closed.", LIB_NAME),
-        AWS_DEFINE_ERROR_INFO(aws_io_socket_invalid_operation, AWS_IO_SOCKET_NOT_CONNECTED,
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_not_connected, AWS_IO_SOCKET_NOT_CONNECTED,
                               "socket not connected.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_invalid_options, AWS_IO_SOCKET_INVALID_OPTIONS,
+                              "Invalid socket options.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_address_in_use, AWS_IO_SOCKET_ADDRESS_IN_USE,
+                              "Socket address already in use.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_invalid_address, AWS_IO_SOCKET_INVALID_ADDRESS,
+                              "Invalid socket address.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_illegal_operation_for_state, AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE,
+                              "Illegal operation for socket state.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_socket_connection_aborted, AWS_IO_SOCKET_CONNECT_ABORTED,
+                              "Incoming connection was aborted.", LIB_NAME),
+
 };
 
 static struct aws_error_info_list list = {
