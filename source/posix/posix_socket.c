@@ -32,14 +32,14 @@
 #include <sys/un.h>
 
 enum socket_state {
-    INIT,
-    CONNECTING,
-    CONNECTED_READ,
-    CONNECTED_WRITE,
-    BOUND,
-    LISTENING,
-    TIMEDOUT,
-    ERROR
+    INIT = 0x01,
+    CONNECTING = 0x02,
+    CONNECTED_READ = 0x04,
+    CONNECTED_WRITE = 0x08,
+    BOUND = 0x10,
+    LISTENING = 0x20,
+    TIMEDOUT = 0x40,
+    ERROR = 0x80
 };
 
 static int convert_domain(enum aws_socket_domain domain) {
@@ -131,17 +131,21 @@ void aws_socket_clean_up(struct aws_socket *socket) {
 
 static void on_connection_error(struct aws_socket *socket, int error);
 
-static void on_connection_success(struct aws_socket *socket) {
+static int on_connection_success(struct aws_socket *socket) {
 
-    aws_event_loop_unsubscribe_from_io_events(socket->connection_loop, &socket->io_handle);
-    socket->connection_loop = NULL;
+    if (socket->connection_loop) {
+        aws_event_loop_unsubscribe_from_io_events(socket->connection_loop, &socket->io_handle);
+        socket->connection_loop = NULL;
+    }
 
     if (aws_socket_set_options(socket, &socket->options)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
 
-        if (socket->creation_args.on_error) {
+        if (socket->creation_args.on_error && socket->options.type == AWS_SOCKET_STREAM) {
             socket->creation_args.on_error(socket, AWS_IO_SOCKET_INVALID_OPTIONS, socket->creation_args.ctx);
         }
+
+        return AWS_OP_ERR;
     }
 
     int connect_result;
@@ -149,6 +153,12 @@ static void on_connection_success(struct aws_socket *socket) {
 
     if (getsockopt(socket->io_handle.handle, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
         on_connection_error(socket, errno);
+        return AWS_OP_ERR;
+    }
+
+    if (connect_result) {
+        on_connection_error(socket, connect_result);
+        return AWS_OP_ERR;
     }
     else {
         struct sockaddr_storage address = {0};
@@ -176,7 +186,7 @@ static void on_connection_success(struct aws_socket *socket) {
         }
         else {
             on_connection_error(socket, errno);
-            return;
+            return AWS_OP_ERR;
         }
     }
 
@@ -185,7 +195,7 @@ static void on_connection_success(struct aws_socket *socket) {
         socket->state |= CONNECTED_READ;
     }
 
-    if (socket->creation_args.on_connection_established) {
+    if (socket->creation_args.on_connection_established && socket->options.type == AWS_SOCKET_STREAM) {
         socket->creation_args.on_connection_established(socket, socket->creation_args.ctx);
     }
 }
@@ -225,7 +235,7 @@ static void on_connection_error(struct aws_socket *socket, int error) {
 
     aws_raise_error(error_code);
     socket->state = ERROR;
-    if (socket->creation_args.on_error) {
+    if (socket->creation_args.on_error && socket->options.type == AWS_SOCKET_STREAM) {
         socket->creation_args.on_error(socket, error_code, socket->creation_args.ctx);
     }
 }
@@ -236,7 +246,6 @@ struct socket_connect_args {
 };
 
 void socket_connect_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
-
     struct socket_connect_args *socket_args = (struct socket_connect_args *)ctx;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE) {

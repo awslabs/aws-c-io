@@ -31,4 +31,10 @@ add_test(local_socket_communication ${TEST_BINARY_NAME} local_socket_communicati
 add_test(tcp_socket_communication ${TEST_BINARY_NAME} tcp_socket_communication)
 add_test(udp_socket_communication ${TEST_BINARY_NAME} udp_socket_communication)
 add_test(connect_timeout ${TEST_BINARY_NAME} connect_timeout)
+add_test(outgoing_local_sock_errors ${TEST_BINARY_NAME} outgoing_local_sock_errors)
+add_test(incoming_local_sock_errors ${TEST_BINARY_NAME} incoming_local_sock_errors)
+add_test(outgoing_tcp_sock_error ${TEST_BINARY_NAME} outgoing_tcp_sock_error)
+add_test(incoming_tcp_sock_errors ${TEST_BINARY_NAME} incoming_tcp_sock_errors)
+add_test(incoming_udp_sock_errors ${TEST_BINARY_NAME} incoming_udp_sock_errors)
+add_test(non_connected_read_write_fails ${TEST_BINARY_NAME} non_connected_read_write_fails)
 

@@ -467,20 +467,23 @@ static void main_loop (void *args) {
         }
 
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
-        timeout = DEFAULT_TIMEOUT;
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
-
-        int scheduler_timeout = 0;
 
         if (next_run_time) {
             uint64_t offset = 0;
             event_loop->clock(&offset);
             next_run_time -= offset;
-            scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
+            int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
+            /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
+             * but not quite ready. so just sleep one ms*/
+            timeout = scheduler_timeout > 0 ?
+                                              scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout :DEFAULT_TIMEOUT
+                      : 1;
         }
-
-        timeout = scheduler_timeout > 0 && timeout > scheduler_timeout ? scheduler_timeout : timeout;
+        else {
+            timeout = DEFAULT_TIMEOUT;
+        }
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
