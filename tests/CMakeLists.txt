@@ -27,5 +27,8 @@ add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_t
 add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
 add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
 
-
+add_test(local_socket_communication ${TEST_BINARY_NAME} local_socket_communication)
+add_test(tcp_socket_communication ${TEST_BINARY_NAME} tcp_socket_communication)
+add_test(udp_socket_communication ${TEST_BINARY_NAME} udp_socket_communication)
+add_test(connect_timeout ${TEST_BINARY_NAME} connect_timeout)
 

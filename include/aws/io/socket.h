@@ -68,6 +68,8 @@ struct aws_socket {
     int state;
 };
 
+struct aws_byte_buf;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -88,6 +90,9 @@ AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 AWS_IO_API int aws_socket_shutdown(struct aws_socket *socket);
 AWS_IO_API struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *socket);
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
+AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *read);
+AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written);
+
 
 #ifdef __cplusplus
 }

@@ -471,7 +471,15 @@ static void main_loop (void *args) {
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
 
-        int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
+        int scheduler_timeout = 0;
+
+        if (next_run_time) {
+            uint64_t offset = 0;
+            event_loop->clock(&offset);
+            next_run_time -= offset;
+            scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
+        }
+
         timeout = scheduler_timeout > 0 && timeout > scheduler_timeout ? scheduler_timeout : timeout;
     }
 

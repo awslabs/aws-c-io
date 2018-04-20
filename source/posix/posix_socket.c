@@ -15,6 +15,8 @@
 
 #include <aws/io/socket.h>
 #include <aws/io/event_loop.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/byte_buf.h>
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -32,9 +34,11 @@
 enum socket_state {
     INIT,
     CONNECTING,
-    CONNECTED,
+    CONNECTED_READ,
+    CONNECTED_WRITE,
     BOUND,
     LISTENING,
+    TIMEDOUT,
     ERROR
 };
 
@@ -68,7 +72,9 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
 
     int fd = socket(convert_domain(options->domain), convert_type(options->type),  0);
     int flags = fcntl(fd, F_GETFL, 0);
-    fcntl(fd, F_SETFL, flags | O_NONBLOCK | SOCK_CLOEXEC);
+    flags |= O_NONBLOCK;
+    flags |= SOCK_CLOEXEC;
+    fcntl(fd, F_SETFL, flags);
 
     if(fd != -1) {
         sock->io_handle.handle = fd;
@@ -102,15 +108,14 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
                              struct aws_socket_creation_args *creation_args) {
 
     assert(options);
+    assert(creation_args);
 
-    if (options->type == AWS_SOCKET_STREAM ) {
-        if (!(connection_loop && creation_args)) {
-            assert(0);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
-        socket->creation_args = *creation_args;
+    if (options->type == AWS_SOCKET_STREAM && !connection_loop) {
+        assert(0);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
+    socket->creation_args = *creation_args;
     socket->allocator = alloc;
     socket->io_handle = (struct aws_io_handle){0};
     socket->connection_loop = connection_loop;
@@ -127,6 +132,9 @@ void aws_socket_clean_up(struct aws_socket *socket) {
 static void on_connection_error(struct aws_socket *socket, int error);
 
 static void on_connection_success(struct aws_socket *socket) {
+
+    aws_event_loop_unsubscribe_from_io_events(socket->connection_loop, &socket->io_handle);
+    socket->connection_loop = NULL;
 
     if (aws_socket_set_options(socket, &socket->options)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -172,7 +180,11 @@ static void on_connection_success(struct aws_socket *socket) {
         }
     }
 
-    socket->state = CONNECTED;
+    socket->state = CONNECTED_WRITE;
+    if (socket->options.type == AWS_SOCKET_STREAM) {
+        socket->state |= CONNECTED_READ;
+    }
+
     if (socket->creation_args.on_connection_established) {
         socket->creation_args.on_connection_established(socket, socket->creation_args.ctx);
     }
@@ -218,30 +230,54 @@ static void on_connection_error(struct aws_socket *socket, int error) {
     }
 }
 
+struct socket_connect_args {
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+};
+
 void socket_connect_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
 
-    struct aws_socket *socket = (struct aws_socket *) ctx;
-    aws_event_loop_unsubscribe_from_io_events(event_loop, handle);
+    struct socket_connect_args *socket_args = (struct socket_connect_args *)ctx;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        on_connection_success(socket);
+        if (socket_args->socket) {
+            struct aws_socket *socket = socket_args->socket;
+            socket_args->socket = NULL;
+            on_connection_success(socket);
+        }
         return;
     }
 
-    on_connection_error(socket, errno);
+    on_connection_error(socket_args->socket, errno);
+}
+
+static void handle_socket_timeout (void *args, aws_task_status status) {
+    struct socket_connect_args *socket_args = (struct socket_connect_args *)args;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (socket_args->socket) {
+            socket_args->socket->state = TIMEDOUT;
+            aws_event_loop_unsubscribe_from_io_events(socket_args->socket->connection_loop, &socket_args->socket->io_handle);
+            close(socket_args->socket->io_handle.handle);
+
+            if (socket_args->socket->creation_args.on_error) {
+                socket_args->socket->creation_args.on_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT,
+                                                            socket_args->socket->creation_args.ctx);
+            }
+        }
+    }
+
+    aws_mem_release(socket_args->allocator, socket_args);
 }
 
 int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint) {
-    if (socket->options.type != AWS_SOCKET_STREAM) {
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
-    }
 
     socket->state = CONNECTING;
     memcpy(socket->remote_endpoint.port, remote_endpoint->port, sizeof(remote_endpoint->port));
     memcpy(socket->remote_endpoint.socket_name, remote_endpoint->socket_name, sizeof(remote_endpoint->socket_name));
     memcpy(socket->remote_endpoint.address, remote_endpoint->address, sizeof(socket->remote_endpoint.address));
 
-    if (socket->creation_args.on_incoming_connection) {
+    if (socket->creation_args.on_connection_established) {
         int error_code = -1;
         if (socket->options.domain == AWS_SOCKET_IPV4) {
             struct sockaddr_in addr_in;
@@ -270,20 +306,44 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
         }
 
         if(!error_code) {
-
             on_connection_success(socket);
             return AWS_OP_SUCCESS;
         }
 
         error_code = errno;
         if(error_code == EINPROGRESS || error_code == EALREADY) {
-            return aws_event_loop_subscribe_to_io_events(socket->connection_loop, &socket->io_handle,
+            struct socket_connect_args *sock_args = (struct socket_connect_args *)aws_mem_acquire(socket->allocator,
+                                                                                                    sizeof(struct socket_connect_args));
+
+            if (!sock_args) {
+                close(socket->io_handle.handle);
+                return aws_raise_error(AWS_ERROR_OOM);
+            }
+
+            sock_args->socket = socket;
+            sock_args->allocator = socket->allocator;
+
+            uint64_t time_to_run = 0;
+            /* TODO: move the timestamp pull to the event loop */
+            aws_high_res_clock_get_ticks(&time_to_run);
+            time_to_run += (socket->options.connect_timeout * 1000000);
+            struct aws_task task = {
+                    .fn = handle_socket_timeout,
+                    .arg = sock_args
+            };
+
+            if (!aws_event_loop_subscribe_to_io_events(socket->connection_loop, &socket->io_handle,
                                                          AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE,
-                                                         socket_connect_event, socket);
+                                                         socket_connect_event, sock_args)) {
+                return aws_event_loop_schedule_task(socket->connection_loop, &task, time_to_run);
+            }
+
+            aws_mem_release(socket->allocator, sock_args);
+            return AWS_OP_ERR;
         }
 
         on_connection_error(socket, error_code);
-        return AWS_OP_SUCCESS;
+        return AWS_OP_ERR;
     }
 
     return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
@@ -323,7 +383,13 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
     }
 
     if(!error_code) {
-        socket->state = BOUND;
+        if (socket->options.type == AWS_SOCKET_STREAM) {
+            socket->state = BOUND;
+        }
+        else {
+            socket->state = CONNECTED_READ;
+        }
+
         return AWS_OP_SUCCESS;
     }
 
@@ -403,11 +469,12 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
             }
 
             new_sock->allocator = socket->allocator;
-            new_sock->io_handle = (struct aws_io_handle){0};
+            new_sock->io_handle = (struct aws_io_handle){.handle = in_fd, .private_event_loop_data = NULL};
             new_sock->creation_args = (struct aws_socket_creation_args){0};
             new_sock->connection_loop = NULL;
             new_sock->options = (struct aws_socket_options){0};
             new_sock->options.type = AWS_SOCKET_STREAM;
+            new_sock->state = CONNECTED_WRITE | CONNECTED_READ;
             memcpy(&new_sock->local_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
             new_sock->remote_endpoint = (struct aws_socket_endpoint){0};
 
@@ -428,8 +495,7 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
                 new_sock->options.domain = AWS_SOCKET_IPV6;
             }
             else if (in_addr.ss_family == AF_UNIX) {
-                struct sockaddr_un *s = (struct sockaddr_un *)&in_addr;
-                inet_ntop(AF_UNIX, &s->sun_path, new_sock->remote_endpoint.socket_name, sizeof(new_sock->remote_endpoint.socket_name));
+                memcpy(&new_sock->remote_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
                 new_sock->options.domain = AWS_SOCKET_LOCAL;
             }
 
@@ -506,9 +572,57 @@ int aws_socket_shutdown(struct aws_socket *socket) {
         if (err_code) {
             return AWS_OP_ERR;
         }
-
-        close(socket->io_handle.handle);
     }
 
+    close(socket->io_handle.handle);
+
     return AWS_OP_SUCCESS;
+}
+
+int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
+    if (!(socket->state & CONNECTED_READ)) {
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+    }
+
+    ssize_t read_val = read(socket->io_handle.handle, buffer->buffer, buffer->len);
+
+    if (read_val > 0) {
+        *amount_read = (size_t)read_val;
+        return AWS_OP_SUCCESS;
+    }
+
+    int error = errno;
+    if (error == EAGAIN) {
+        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+    }
+
+    if (error == EPIPE) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
+
+    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+}
+
+int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written) {
+    if (!(socket->state & CONNECTED_WRITE)) {
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+    }
+
+    ssize_t write_val = write(socket->io_handle.handle, buffer->buffer, buffer->len);
+
+    if (write_val > 0) {
+        *written = (size_t)write_val;
+        return AWS_OP_SUCCESS;
+    }
+
+    int error = errno;
+    if (error == EAGAIN) {
+        return aws_raise_error(AWS_IO_WRITE_WOULD_BLOCK);
+    }
+
+    if (error == EPIPE) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
+
+    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
