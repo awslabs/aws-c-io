@@ -333,9 +333,9 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
             sock_args->allocator = socket->allocator;
 
             uint64_t time_to_run = 0;
-            /* TODO: move the timestamp pull to the event loop */
-            aws_high_res_clock_get_ticks(&time_to_run);
+            aws_event_loop_current_ticks(socket->connection_loop, &time_to_run);
             time_to_run += (socket->options.connect_timeout * 1000000);
+
             struct aws_task task = {
                     .fn = handle_socket_timeout,
                     .arg = sock_args

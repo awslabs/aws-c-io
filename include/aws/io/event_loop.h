@@ -156,6 +156,12 @@ AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *
  */
 AWS_IO_API bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop);
 
+/**
+ * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+ */
+AWS_IO_API int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
+
+
 #ifdef __cplusplus
 }
 #endif

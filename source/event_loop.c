@@ -119,3 +119,7 @@ bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.is_on_callers_thread);
     return event_loop->vtable.is_on_callers_thread(event_loop);
 }
+
+int aws_event_loop_current_ticks ( struct aws_event_loop *event_loop, uint64_t *ticks) {
+    return event_loop->clock(ticks);
+}
