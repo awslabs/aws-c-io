@@ -25,18 +25,19 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc, s
 }
 
 void aws_channel_clean_up(struct aws_channel *channel) {
-    struct aws_channel_slot_ref *current_ref = channel->first;
-    while (current_ref && current_ref->control_block) {
-        current_ref = &current_ref->control_block->slot->adj_right;
-        aws_channel_slot_ref_decrement(current_ref);
+    struct aws_channel_slot_ref current_ref = channel->first;
+    while (current_ref.control_block) {
+        struct aws_channel_slot_ref *tmp = &current_ref.control_block->slot->adj_right;
+        aws_channel_slot_ref_decrement(&current_ref);
+        current_ref = *tmp;
     }
     *channel = (struct aws_channel){0};
 }
 
 int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction dir,
                          aws_channel_on_shutdown_completed on_completed, void *ctx) {
-    struct aws_channel_slot_ref *current_ref = channel->first;
-    while (current_ref && current_ref->control_block) {
+    struct aws_channel_slot_ref *current_ref = &channel->first;
+    while (current_ref->control_block) {
         aws_channel_slot_shutdown_direction(current_ref->control_block->slot, dir);
         current_ref = &current_ref->control_block->slot->adj_right;
     }

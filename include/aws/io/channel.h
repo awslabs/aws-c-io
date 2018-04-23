@@ -34,7 +34,7 @@ struct aws_task;
 struct aws_channel {
     struct aws_allocator *alloc;
     struct aws_event_loop *loop;
-    struct aws_channel_slot_ref *first;
+    struct aws_channel_slot_ref first;
 };
 
 struct aws_io_message;
