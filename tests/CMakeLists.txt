@@ -27,5 +27,14 @@ add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_t
 add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
 add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
 
-
+add_test(local_socket_communication ${TEST_BINARY_NAME} local_socket_communication)
+add_test(tcp_socket_communication ${TEST_BINARY_NAME} tcp_socket_communication)
+add_test(udp_socket_communication ${TEST_BINARY_NAME} udp_socket_communication)
+add_test(connect_timeout ${TEST_BINARY_NAME} connect_timeout)
+add_test(outgoing_local_sock_errors ${TEST_BINARY_NAME} outgoing_local_sock_errors)
+add_test(incoming_local_sock_errors ${TEST_BINARY_NAME} incoming_local_sock_errors)
+add_test(outgoing_tcp_sock_error ${TEST_BINARY_NAME} outgoing_tcp_sock_error)
+add_test(incoming_tcp_sock_errors ${TEST_BINARY_NAME} incoming_tcp_sock_errors)
+add_test(incoming_udp_sock_errors ${TEST_BINARY_NAME} incoming_udp_sock_errors)
+add_test(non_connected_read_write_fails ${TEST_BINARY_NAME} non_connected_read_write_fails)
 

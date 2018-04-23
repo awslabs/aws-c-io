@@ -18,10 +18,21 @@
 #endif
 
 #include <event_loop_test.c>
+#include <socket_test.c>
 
 int main (int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
-                       &stop_then_restart
+                       &stop_then_restart,
+                       &local_socket_communication,
+                       &tcp_socket_communication,
+                       &udp_socket_communication,
+                       &connect_timeout,
+                       &outgoing_local_sock_errors,
+                       &incoming_local_sock_errors,
+                       &outgoing_tcp_sock_error,
+                       &incoming_tcp_sock_errors,
+                       &incoming_udp_sock_errors,
+                       &non_connected_read_write_fails
                       );
 }
