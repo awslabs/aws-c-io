@@ -17,6 +17,8 @@
 */
 #include <aws/io/exports.h>
 #include <aws/common/common.h>
+#include <aws/common/byte_buf.h>
+#include <aws/common/linked_list.h>
 #include <stdint.h>
 
 struct aws_io_handle {
@@ -28,10 +30,35 @@ struct aws_io_handle {
     void *private_event_loop_data;
 };
 
+typedef enum aws_io_message_type {
+    AWS_IO_MESSAGE_APPLICATION_DATA,
+    AWS_IO_MESSAGE_WINDOW_UPDATE,
+    AWS_IO_MESSAGE_SHUTDOWN_NOTIFY,
+    AWS_IO_MESSAGE_SHUTDOWN
+} aws_io_message_type;
+
+struct aws_io_message;
+struct aws_channel;
+
+typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *ctx);
+
+struct aws_io_message {
+    struct aws_allocator *allocator;
+    struct aws_byte_buf message_data;
+    aws_io_message_type message_type;
+    int message_tag;
+    size_t copy_mark;
+    aws_channel_on_message_write_completed on_completion;
+    void *ctx;
+};
+
+aws_linked_list_of(struct aws_io_message *, aws_io_message_queue);
+
 typedef int (*aws_io_clock)(uint64_t *timestamp);
 
 typedef enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
+    AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
     AWS_IO_SYS_CALL_FAILURE,
     AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
     AWS_IO_TLS_ERROR_NOT_NEGOTIATED,

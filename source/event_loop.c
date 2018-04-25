@@ -49,10 +49,9 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
 }
 
 int aws_event_loop_fetch_local_item(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *local_obj) {
-    struct aws_common_hash_element object = {0};
-
-    if (!aws_common_hash_table_find(&event_loop->local_data, (void *)(uintptr_t)key, (void *)&object)) {
-        *local_obj = *(struct aws_event_loop_local_object *)object.value;
+    struct aws_common_hash_element *object = NULL;
+    if (!aws_common_hash_table_find(&event_loop->local_data, (void *)(uintptr_t)key, &object) && object) {
+        *local_obj = *(struct aws_event_loop_local_object *)object->value;
         return AWS_OP_SUCCESS;
     }
 
