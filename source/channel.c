@@ -297,12 +297,12 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
     if (dir == AWS_CHANNEL_DIR_READ) {
         assert(slot->adj_right);
         assert(slot->adj_right->handler);
-        return aws_channel_handler_process_write_message(slot->adj_right->handler, slot->adj_right, message);
+        return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
     }
     else {
         assert(slot->adj_left);
         assert(slot->adj_left->handler);
-        return aws_channel_handler_process_read_message(slot->adj_left->handler, slot->adj_left, message);    }
+        return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);    }
 }
 
 int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
