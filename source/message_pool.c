@@ -79,7 +79,7 @@ int aws_message_pool_init(struct aws_message_pool *msg_pool, struct aws_allocato
                           struct aws_message_pool_creation_args *args) {
     msg_pool->alloc = alloc;
 
-    size_t msg_data_size = args->application_data_msg_data_size + sizeof(struct aws_io_message_queue) + sizeof(struct aws_io_message);
+    size_t msg_data_size = args->application_data_msg_data_size + sizeof(struct aws_io_message);
 
     if (aws_memory_pool_init(&msg_pool->application_data_pool, alloc, args->application_data_msg_count, msg_data_size)) {
         goto cleanup_app_pool;
@@ -99,9 +99,9 @@ void aws_message_pool_clean_up(struct aws_message_pool *msg_pool) {
     *msg_pool = (struct aws_message_pool){0};
 }
 
-struct aws_io_message_queue *aws_message_pool_acquire ( struct aws_message_pool* msg_pool, aws_io_message_type message_type,
+struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_pool, aws_io_message_type message_type,
                                                   size_t data_size) {
-    struct aws_io_message_queue *message = NULL;
+    struct aws_io_message *message = NULL;
     size_t max_size = 0;
     switch(message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
@@ -114,23 +114,21 @@ struct aws_io_message_queue *aws_message_pool_acquire ( struct aws_message_pool*
             return NULL;
     }
 
-    message->value = (struct aws_io_message *)((uint8_t *)message + sizeof(struct aws_io_message_queue));
-    aws_linked_list_init(&message->list);
-    message->value->message_type = message_type;
-    message->value->message_tag = 0;
-    message->value->ctx = 0;
-    message->value->allocator = NULL;
-    message->value->copy_mark = 0;
-    message->value->on_completion = 0;
+    message->message_type = message_type;
+    message->message_tag = 0;
+    message->ctx = 0;
+    message->allocator = NULL;
+    message->copy_mark = 0;
+    message->on_completion = 0;
     /* the buffer shares the allocation with the message. It's the bit at the end. */
-    message->value->message_data.buffer = (uint8_t *)message + sizeof(struct aws_io_message_queue) + sizeof(struct aws_io_message);
-    message->value->message_data.len = data_size > max_size ? max_size : data_size;
+    message->message_data.buffer = (uint8_t *)message + sizeof(struct aws_io_message);
+    message->message_data.len = data_size > max_size ? max_size : data_size;
 
     return message;
 }
 
-void aws_message_pool_release (struct aws_message_pool* msg_pool, struct aws_io_message_queue *message) {
-    switch(message->value->message_type) {
+void aws_message_pool_release (struct aws_message_pool* msg_pool, struct aws_io_message *message) {
+    switch(message->message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
             aws_memory_pool_release(&msg_pool->application_data_pool, message);
             break;

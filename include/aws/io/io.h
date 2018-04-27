@@ -49,8 +49,6 @@ struct aws_io_message {
     void *ctx;
 };
 
-aws_linked_list_of(struct aws_io_message *, aws_io_message_queue);
-
 typedef int (*aws_io_clock)(uint64_t *timestamp);
 
 typedef enum aws_io_errors {

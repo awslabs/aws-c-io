@@ -25,17 +25,17 @@ struct rw_test_handler_impl {
 };
 
 static int rw_handler_process_read (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                         struct aws_io_message_queue *message) {
+                         struct aws_io_message *message) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
     if (slot->adj_right) {
-        struct aws_io_message_queue *msg =
+        struct aws_io_message *msg =
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                 message->value->message_data.len +
+                                                 message->message_data.len +
                                                  handler_impl->read_tag.len);
 
-        memcpy(msg->value->message_data.buffer, message->value->message_data.buffer, message->value->message_data.len);
-        memcpy(msg->value->message_data.buffer + message->value->message_data.len, handler_impl->read_tag.buffer,
+        memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
+        memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->read_tag.buffer,
                   handler_impl->read_tag.len);
 
         aws_channel_release_message_to_pool(slot->channel, message);
@@ -43,14 +43,14 @@ static int rw_handler_process_read (struct aws_channel_handler *handler, struct 
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
     }
 
-    struct aws_io_message_queue *msg =
+    struct aws_io_message *msg =
             aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                 message->value->message_data.len + handler_impl->read_tag.len
+                                                 message->message_data.len + handler_impl->read_tag.len
                                                  + handler_impl->write_tag.len);
 
-    memcpy(msg->value->message_data.buffer, message->value->message_data.buffer, message->value->message_data.len);
-    memcpy(msg->value->message_data.buffer + message->value->message_data.len, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
-    memcpy(msg->value->message_data.buffer + message->value->message_data.len + handler_impl->read_tag.len,
+    memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
+    memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
+    memcpy(msg->message_data.buffer + message->message_data.len + handler_impl->read_tag.len,
            handler_impl->write_tag.buffer, handler_impl->write_tag.len);
 
 
@@ -60,17 +60,17 @@ static int rw_handler_process_read (struct aws_channel_handler *handler, struct 
 }
 
 static int rw_handler_process_write_message ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                               struct aws_io_message_queue *message ) {
+                               struct aws_io_message *message ) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
     if (slot->adj_left) {
-        struct aws_io_message_queue *msg =
+        struct aws_io_message *msg =
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                     message->value->message_data.len +
+                                                     message->message_data.len +
                                                      handler_impl->write_tag.len);
 
-        memcpy(msg->value->message_data.buffer, message->value->message_data.buffer, message->value->message_data.len);
-        memcpy(msg->value->message_data.buffer + message->value->message_data.len, handler_impl->write_tag.buffer,
+        memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
+        memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->write_tag.buffer,
                handler_impl->write_tag.len);
 
         aws_channel_release_message_to_pool(slot->channel, message);
@@ -78,9 +78,9 @@ static int rw_handler_process_write_message ( struct aws_channel_handler *handle
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
     }
 
-    aws_byte_buf_alloc(handler->alloc, &handler_impl->final_message, message->value->message_data.len + handler_impl->write_tag.len);
-    memcpy(handler_impl->final_message.buffer, message->value->message_data.buffer, message->value->message_data.len);
-    memcpy(handler_impl->final_message.buffer + message->value->message_data.len, handler_impl->write_tag.buffer, handler_impl->write_tag.len);
+    aws_byte_buf_alloc(handler->alloc, &handler_impl->final_message, message->message_data.len + handler_impl->write_tag.len);
+    memcpy(handler_impl->final_message.buffer, message->message_data.buffer, message->message_data.len);
+    memcpy(handler_impl->final_message.buffer + message->message_data.len, handler_impl->write_tag.buffer, handler_impl->write_tag.len);
 
     aws_channel_release_message_to_pool(slot->channel, message);
 
@@ -146,11 +146,11 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
 static void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
-    struct aws_io_message_queue *msg =
+    struct aws_io_message *msg =
             aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
                                                  handler_impl->read_tag.len);
 
-    memcpy(msg->value->message_data.buffer, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
+    memcpy(msg->message_data.buffer, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
     aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
 }
 

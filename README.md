@@ -41,9 +41,8 @@ provides a API to move a cross-thread call into the event-loop thread if necessa
 ### Channels and Slots
 A channel is simply a container that drives the slots. It is responsible for providing an interface
 between slots and the underlying event-loop as well as invoking the slots to pass messages. As a channel 
-runs, it makes sure that all messages queues are empty before returning control to the caller. It also provides
-utilities for making sure slots and their handlers run in the correct thread and moving execution to that thread
-if necessary.
+runs. It also provides utilities for making sure slots and their handlers run in the correct thread and moving execution 
+to that thread if necessary.
 
 ![Channels and Slots Diagram](docs/images/channels_slots.png)
 
@@ -57,17 +56,14 @@ on the last slot in the channel. When all slots have successfully shutdown, the 
 ### Slots
 ![Slots Diagram](docs/images/slots.png)
 
-Slots contain 2 queues, one for the write (to the io) direction, and one for the read (from the io) direction. Each slot
-owns the lifetime of its queues. In addition, they maintain their links to adjacent slots in the channel. So as the channel
-is processed, each slot will read from its left-adjacent slot's read queue, send those messages to the handler, and queue
-messages to the read queue for that slot. Conversely, each slot will read from its right-adjacent slot's write queue,
-send those messages to the handler, and send messages to the write queue for that slot. Most importantly, slots contain a 
-reference to a handler. Handlers are responsible for doing most of the work (see below). Finally, slots have an 
-API that manages invoking the handler, from the channel's perspective, as well as utilities for manipulating the connections 
-of the slots themselves.
+Slots maintain their links to adjacent slots in the channel. So as the channel
+is processed, each slot will read from its left-adjacent slot, send those messages to the handler, and call their right-adjacent
+slot when it needs to send a message. Conversely, each slot will read from its right-adjacent slot,
+send those messages to the handler, and send messages to the left-adjacent slot in the channel. Most importantly, slots contain a 
+reference to a handler. Handlers are responsible for doing most of the work (see below). Finally, slots have
+utilities for manipulating the connections of the slots themselves.
 
-Slots can also be added and removed dynamically from a channel. When a slot is removed it will make sure its queues are drained
-and its messages moved to the appropriate new siblings. 
+Slots can also be added, removed, or replaced dynamically from a channel. 
 
 ### Channel Handlers
 The channel handler is the fundamental unit that protocol developers will implement. It contains all of your
@@ -356,76 +352,60 @@ The remaining exported functions on event loop simply invoke the v-table functio
     struct aws_channel {
         struct aws_allocator *alloc;
         struct aws_event_loop *loop;
-        struct aws_channel_slot_ref *first;
+        struct aws_channel_slot *first;
     };
 
     struct aws_channel_slot {
         struct aws_allocator *alloc;
         struct aws_channel *channel;
-        struct aws_linked_list_node write_queue;
-        struct aws_linked_list_node read_queue;
         struct aws_channel_slot_ref adj_left;
         struct aws_channel_slot_ref adj_right;
         struct aws_channel_handler *handler;    
     };
-    
-    struct aws_channel_slot_ref {
-        struct aws_channel_slot *slot;
-        struct aws_allocator *alloc;
-        uint16_t ref_count;
-        struct aws_mutex count_guard;
-    }
-    
+        
 #### API (Channel/Slot interaction)
 
     struct aws_channel_slot_ref *aws_channel_slot_new (struct aws_channel *channel);
     
-Creates a new slot and slot reference using the channel's allocator, increments the reference count, and returns
-the new slot reference.
+Creates a new slot using the channel's allocator, if it is the first slot in the channel, it will be added as the first
+slot in the channel. Otherwise, you'll need to use the insert or replace apis for slots.
         
     int aws_channel_slot_set_handler ( struct aws_channel_slot *, struct aws_channel_handler *handler );
     
 Sets the handler on the slot. This should only be called once per slot.
-    
-    int aws_channel_slot_ref_decrement (struct aws_channel_slot_ref *ref);
-    
-Thread-safe. Decrements the slot reference count. When the slot reference hits zero, it will be de-allocated.
+      
+    int aws_channel_slot_remove (struct aws_channel_slot *slot); 
 
-    int aws_channel_slot_ref_increment (struct aws_channel_slot_ref *ref);
+Removes a slot from its channel. The slot and it's handler will be cleaned up and deallocated.
     
-Thread-safe. Increments the slot reference count.
-    
-    int aws_channel_remove_slot_ref (struct aws_channel *channel, struct aws_channel_slot_ref *ref);    
-    
-Removes a slot reference from the channel. Decrements the reference count.
+    int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channel_slot *new);
+   
+Replaces `remove` in the channel with `new` and cleans up and deallocates `remove` and its handler.    
     
     int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot_ref *right);
     
-Adds a slot reference to the right of slot. Increments the reference count.
+Adds a slot to the right of slot.
   
     int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot_ref *left);
     
-Adds a slot reference to the left of slot. Increments the reference count.
-    
-    int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir);
-    
-Invokes the handler on the slot if it is non-null.
-    
+Adds a slot to the left of slot.
+     
     int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message, enum aws_channel_direction dir);
  
-Usually called by a handler, this function queues a message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by a handler, this calls the adjacent slot in the channel based on the `dir` argument. You may want to return
+any unneeded messages to the channel pool to avoid unnecessary allocations. 
 
     int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
  
-Usually called by a handler, this function queues a window update message on the write queue of the slot.  
+Usually called by a handler, this function calls the left-adjacent slot.  
     
     int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code);
     
-Usually called by a handler, this function queues a shutdown notify message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by a handler, this function calls the adjacent slot on shutdown notify based on the `dir` argument.  
 
     int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, enum aws_channel_direction dir);
     
-Usually called by a handler, this function queues a shutdown message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by an operation on the channel, this function calls shutdown() for the current slot.  
     
 ### API (Channel specific)
 

@@ -47,8 +47,6 @@ struct aws_channel_slot_ref;
 struct aws_channel_slot {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
-    struct aws_linked_list_node write_queue;
-    struct aws_linked_list_node read_queue;
     struct aws_channel_slot *adj_left;
     struct aws_channel_slot *adj_right;
     struct aws_channel_handler *handler;
@@ -58,9 +56,9 @@ typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, vo
 
 struct aws_channel_handler_vtable {
     int (*process_read_message) ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                     struct aws_io_message_queue *message );
+                     struct aws_io_message *message );
     int (*process_write_message) ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                      struct aws_io_message_queue *message );
+                      struct aws_io_message *message );
     int (*on_window_update) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
     int (*on_shutdown_notify) (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                enum aws_channel_direction dir, int error_code);
@@ -90,9 +88,9 @@ AWS_IO_API int aws_channel_current_clock_time(struct aws_channel *, uint64_t *ti
 AWS_IO_API int aws_channel_fetch_local_item (struct aws_channel *, const void *key, struct aws_event_loop_local_object *item);
 AWS_IO_API int aws_channel_put_local_item (struct aws_channel *, const void *key, const struct aws_event_loop_local_object *item);
 AWS_IO_API int aws_channel_remove_local_item ( struct aws_channel *, const void *key, struct aws_event_loop_local_object *removed_item);
-AWS_IO_API struct aws_io_message_queue *aws_channel_aquire_message_from_pool(struct aws_channel *,
+AWS_IO_API struct aws_io_message *aws_channel_aquire_message_from_pool(struct aws_channel *,
                                                                              aws_io_message_type message_type, size_t data_size);
-AWS_IO_API void aws_channel_release_message_to_pool ( struct aws_channel *, struct aws_io_message_queue *message);
+AWS_IO_API void aws_channel_release_message_to_pool ( struct aws_channel *, struct aws_io_message *message);
 
 AWS_IO_API int aws_channel_schedule_task(struct aws_channel *, struct aws_task *task, uint64_t run_at);
 AWS_IO_API bool aws_channel_is_on_callers_thread (struct aws_channel *);
@@ -104,17 +102,16 @@ AWS_IO_API int aws_channel_slot_remove (struct aws_channel_slot *slot);
 AWS_IO_API int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channel_slot *new);
 AWS_IO_API int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot *right);
 AWS_IO_API int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot *left);
-AWS_IO_API int aws_channel_slot_invoke (struct aws_channel_slot *slot, aws_channel_direction dir);
-AWS_IO_API int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message_queue *message, enum aws_channel_direction dir);
+AWS_IO_API int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message, enum aws_channel_direction dir);
 AWS_IO_API int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
 AWS_IO_API int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, aws_channel_direction dir, int error_code);
 AWS_IO_API int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir);
 
 AWS_IO_API void aws_channel_handler_destroy(struct aws_channel_handler *handler);
 AWS_IO_API int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                 struct aws_io_message_queue *message );
+                 struct aws_io_message *message );
 AWS_IO_API int aws_channel_handler_process_write_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                          struct aws_io_message_queue *message);
+                                                          struct aws_io_message *message);
 AWS_IO_API int aws_channel_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
 AWS_IO_API int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir, int error_code);

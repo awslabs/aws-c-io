@@ -52,10 +52,10 @@ AWS_IO_API int aws_message_pool_init(struct aws_message_pool *msg_pool, struct a
 
 AWS_IO_API void aws_message_pool_clean_up(struct aws_message_pool *msg_pool);
 
-AWS_IO_API struct aws_io_message_queue *aws_message_pool_acquire ( struct aws_message_pool*,
+AWS_IO_API struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool*,
                                                                    aws_io_message_type message_type, size_t data_size);
 
-AWS_IO_API void aws_message_pool_release (struct aws_message_pool*, struct aws_io_message_queue *message);
+AWS_IO_API void aws_message_pool_release (struct aws_message_pool*, struct aws_io_message *message);
 
 
 

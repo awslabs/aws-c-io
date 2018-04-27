@@ -172,12 +172,12 @@ int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction
     }
 }
 
-struct aws_io_message_queue *aws_channel_aquire_message_from_pool ( struct aws_channel *channel,
+struct aws_io_message *aws_channel_aquire_message_from_pool ( struct aws_channel *channel,
                                                               aws_io_message_type message_type, size_t data_size) {
     return aws_message_pool_acquire(channel->msg_pool, message_type, data_size);
 }
 
-void aws_channel_release_message_to_pool ( struct aws_channel *channel, struct aws_io_message_queue *message) {
+void aws_channel_release_message_to_pool ( struct aws_channel *channel, struct aws_io_message *message) {
     aws_message_pool_release(channel->msg_pool, message);
 }
 
@@ -195,8 +195,6 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     new_slot->adj_left = NULL;
     new_slot->handler = NULL;
     new_slot->channel = channel;
-    aws_linked_list_init(&new_slot->read_queue);
-    aws_linked_list_init(&new_slot->write_queue);
 
     if (!channel->first) {
         channel->first = new_slot;
@@ -295,72 +293,21 @@ int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_chan
     return AWS_OP_SUCCESS;
 }
 
-int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir) {
-    if (slot->handler) {
-        struct aws_linked_list_node *head = NULL;
-
-        if (dir == AWS_CHANNEL_DIR_READ) {
-            head = &slot->adj_left->read_queue;
-        }
-        else {
-            head = &slot->adj_right->write_queue;
-        }
-
-        int err_code = 0;
-        while (!aws_linked_list_empty(head) && !err_code) {
-
-            aws_linked_list_pop_front(head);
-            struct aws_io_message_queue *msg_queue = aws_container_of(head, struct aws_io_message_queue, list);
-            struct aws_io_message *message = msg_queue->value;
-
-            switch (message->message_type) {
-                case AWS_IO_MESSAGE_APPLICATION_DATA:
-                    if (dir == AWS_CHANNEL_DIR_READ) {
-                        err_code = aws_channel_handler_process_read_message(slot->handler, slot, msg_queue);
-                    }
-                    else {
-                        err_code = aws_channel_handler_process_write_message(slot->handler, slot, msg_queue);
-                    }
-                    break;
-                default:
-                    assert(0);
-                    aws_raise_error(AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE);
-                    err_code = AWS_OP_ERR;
-                    break;
-            }
-        }
-
-        if (err_code) {
-            return aws_raise_error(err_code);
-        }
-
-        if (dir == AWS_CHANNEL_DIR_READ) {
-            aws_linked_list_init(&slot->adj_left->read_queue);
-        }
-        else {
-            aws_linked_list_init(&slot->adj_right->write_queue);
-        }
-
-        return AWS_OP_SUCCESS;
-    }
-
-    return AWS_OP_ERR;
-}
-
-int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message_queue *message, enum aws_channel_direction dir) {
+int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message, enum aws_channel_direction dir) {
     if (dir == AWS_CHANNEL_DIR_READ) {
-        aws_linked_list_push_back(&slot->read_queue, &message->list);
-        return aws_channel_slot_invoke(slot->adj_right, dir);
+        assert(slot->adj_right);
+        assert(slot->adj_right->handler);
+        return aws_channel_handler_process_write_message(slot->adj_right->handler, slot->adj_right, message);
     }
     else {
-        aws_linked_list_push_back(&slot->write_queue, &message->list);
-        return aws_channel_slot_invoke(slot->adj_left, dir);
-    }
+        assert(slot->adj_left);
+        assert(slot->adj_left->handler);
+        return aws_channel_handler_process_read_message(slot->adj_left->handler, slot->adj_left, message);    }
 }
 
 int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
     if (slot->adj_left && slot->adj_left->handler) {
-        return slot->adj_left->handler->vtable.on_window_update(slot->adj_left->handler, slot->adj_left, window);
+        return aws_channel_handler_on_window_update(slot->adj_left->handler, slot->adj_left, window);
     }
 
     return AWS_OP_SUCCESS;
@@ -369,13 +316,13 @@ int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window
 int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code) {
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (slot->adj_right && slot->adj_right->handler) {
-            return slot->adj_right->handler->vtable.on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
+            return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
         }
     }
     else {
         if (slot->adj_left && slot->adj_left->handler) {
-            return slot->adj_left->handler->vtable.on_shutdown_notify(slot->adj_left->handler, slot->adj_left, dir,
-                                                                      error_code);
+            return aws_channel_handler_on_shutdown_notify(slot->adj_left->handler, slot->adj_left, dir,
+                                                          error_code);
         }
     }
 
@@ -392,13 +339,13 @@ void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
 }
 
 int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                        struct aws_io_message_queue *message) {
+                                                        struct aws_io_message *message) {
     assert(handler->vtable.process_read_message);
     return handler->vtable.process_read_message(handler, slot, message);
 }
 
 int aws_channel_handler_process_write_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                         struct aws_io_message_queue *message) {
+                                                         struct aws_io_message *message) {
     assert(handler->vtable.process_write_message);
     return handler->vtable.process_write_message(handler, slot, message);
 }
