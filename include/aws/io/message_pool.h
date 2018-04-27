@@ -26,20 +26,11 @@ struct aws_memory_pool {
 
 struct aws_message_pool {
     struct aws_allocator *alloc;
-    struct aws_memory_pool shutdown_pool;
-    struct aws_memory_pool window_pool;
-    struct aws_memory_pool shutdown_notify_pool;
     struct aws_memory_pool application_data_pool;
 };
 
 struct aws_message_pool_creation_args {
-    size_t shutdown_msg_data_size;
-    size_t window_msg_data_size;
-    size_t shutdown_notify_msg_data_size;
     size_t application_data_msg_data_size;
-    uint8_t shutdown_msg_count;
-    uint8_t window_msg_count;
-    uint8_t shutdown_notify_msg_count;
     uint8_t application_data_msg_count;
 };
 

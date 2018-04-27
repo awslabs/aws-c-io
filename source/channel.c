@@ -22,11 +22,6 @@
 static size_t MESSAGE_POOL_KEY = 0;
 static size_t KB_16 = 16 * 1024;
 
-struct shutdown_notification_message_data {
-    aws_channel_direction dir;
-    int error_code;
-};
-
 struct channel_setup_args {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -60,14 +55,8 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
                 goto cleanup_setup_args;
             }
             struct aws_message_pool_creation_args creation_args = {
-                    .window_msg_data_size = sizeof(size_t),
-                    .window_msg_count = 2,
                     .application_data_msg_data_size = KB_16,
-                    .application_data_msg_count = 4,
-                    .shutdown_notify_msg_count = 2,
-                    .shutdown_notify_msg_data_size = sizeof(struct shutdown_notification_message_data),
-                    .shutdown_msg_data_size = sizeof(aws_channel_direction),
-                    .shutdown_msg_count = 2
+                    .application_data_msg_count = 4
             };
 
             if (aws_message_pool_init(message_pool, setup_args->alloc, &creation_args)) {
@@ -111,7 +100,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
                      struct aws_event_loop *event_loop, aws_channel_on_setup_completed on_completed, void *ctx) {
     channel->alloc = alloc;
     channel->loop = event_loop;
-    channel->first = (struct aws_channel_slot_ref){0};
+    channel->first = NULL;
     channel->msg_pool = NULL;
 
     struct channel_setup_args *setup_args = (struct channel_setup_args *)aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
@@ -138,14 +127,23 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     return aws_event_loop_schedule_task(event_loop, &task, current_time);
 }
 
-void aws_channel_clean_up(struct aws_channel *channel) {
-    struct aws_channel_slot_ref current_ref = channel->first;
+static inline void cleanup_slot(struct aws_channel_slot *slot) {
 
-    while (current_ref.control_block) {
-        struct aws_channel_slot_ref *tmp = &current_ref.control_block->slot->adj_right;
-        current_ref.control_block->ref_count = 0;
-        aws_channel_slot_ref_decrement(&current_ref);
-        current_ref = *tmp;
+    if (slot) {
+        if (slot->handler) {
+            aws_channel_handler_destroy(slot->handler);
+        }
+        aws_mem_release(slot->alloc, slot);
+    }
+}
+
+void aws_channel_clean_up(struct aws_channel *channel) {
+    struct aws_channel_slot *current = channel->first;
+
+    while (current) {
+        struct aws_channel_slot *tmp = current->adj_right;
+        cleanup_slot(current);
+        current = tmp;
     }
 
     *channel = (struct aws_channel){0};
@@ -153,10 +151,24 @@ void aws_channel_clean_up(struct aws_channel *channel) {
 
 int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction dir,
                          aws_channel_on_shutdown_completed on_completed, void *ctx) {
-    struct aws_channel_slot_ref *current_ref = &channel->first;
-    while (current_ref->control_block) {
-        aws_channel_slot_shutdown_direction(current_ref->control_block->slot, dir);
-        current_ref = &current_ref->control_block->slot->adj_right;
+    struct aws_channel_slot *slot = channel->first;
+
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        while (slot) {
+            aws_channel_slot_shutdown_direction(slot, dir);
+            slot = slot->adj_right;
+        }
+    }
+    else {
+        while (slot->adj_right) {
+            aws_channel_slot_shutdown_direction(slot, dir);
+            slot = slot->adj_right;
+        }
+
+        while (slot) {
+            aws_channel_slot_shutdown_direction(slot, dir);
+            slot = slot->adj_left;
+        }
     }
 }
 
@@ -169,45 +181,28 @@ void aws_channel_release_message_to_pool ( struct aws_channel *channel, struct a
     aws_message_pool_release(channel->msg_pool, message);
 }
 
-int aws_channel_slot_new(struct aws_channel *channel, struct aws_channel_slot_ref *ref) {
+struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     struct aws_channel_slot *new_slot =
             (struct aws_channel_slot *)aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot));
 
     if (!new_slot) {
-        return aws_raise_error(AWS_OP_ERR);
-    }
-
-    struct aws_channel_slot_control_block *control_block =
-        (struct aws_channel_slot_control_block *)aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot_control_block));
-
-    if (!control_block) {
-        aws_mem_release(channel->alloc, new_slot);
-        return aws_raise_error(AWS_OP_ERR);
+        aws_raise_error(AWS_ERROR_OOM);
+        return NULL;
     }
 
     new_slot->alloc = channel->alloc;
-    new_slot->adj_right = (struct aws_channel_slot_ref){0};
-    new_slot->adj_left = (struct aws_channel_slot_ref){0};
+    new_slot->adj_right = NULL;
+    new_slot->adj_left = NULL;
     new_slot->handler = NULL;
     new_slot->channel = channel;
-    new_slot->read_queue = (struct aws_linked_list_node){0};
-    new_slot->write_queue = (struct aws_linked_list_node){0};
+    aws_linked_list_init(&new_slot->read_queue);
+    aws_linked_list_init(&new_slot->write_queue);
 
-    control_block->slot = new_slot;
-    control_block->count_guard = (struct aws_mutex)AWS_MUTEX_INIT;
-    control_block->ref_count = 0;
-
-    ref->control_block = control_block;
-    ref->alloc = channel->alloc;
-
-    new_slot->owner = *ref;
-
-    if (!channel->first.control_block) {
-        ref->control_block->ref_count += 1;
-        channel->first = *ref;
+    if (!channel->first) {
+        channel->first = new_slot;
     }
 
-    return AWS_OP_SUCCESS;
+    return new_slot;
 }
 
 int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *ticks) {
@@ -239,91 +234,76 @@ int aws_channel_slot_set_handler ( struct aws_channel_slot *slot, struct aws_cha
     return aws_channel_slot_update_window(slot, slot->handler->vtable.get_current_window_size(handler));
 }
 
-int aws_channel_slot_ref_decrement (struct aws_channel_slot_ref *ref) {
-    aws_mutex_lock(&ref->control_block->count_guard);
-    ref->control_block->ref_count -= 1;
+int aws_channel_slot_remove (struct aws_channel_slot *slot) {
+    if (slot->adj_right) {
+        slot->adj_right->adj_left = slot->adj_left;
 
-    if (ref->control_block->ref_count <= 0) {
-        if (ref->control_block->slot->handler) {
-            aws_channel_handler_destroy(ref->control_block->slot->handler);
+        if (slot == slot->channel->first) {
+            slot->channel->first = slot->adj_right;
         }
-        aws_mem_release(ref->alloc, ref->control_block->slot);
-        aws_mutex_unlock(&ref->control_block->count_guard);
-        aws_mem_release(ref->alloc, ref->control_block);
-        *ref = (struct aws_channel_slot_ref){0};
-        return AWS_OP_SUCCESS;
     }
 
-    return aws_mutex_unlock(&ref->control_block->count_guard);
-}
-
-int aws_channel_slot_ref_increment (struct aws_channel_slot_ref *ref) {
-    aws_mutex_lock(&ref->control_block->count_guard);
-    ref->control_block->ref_count += 1;
-    return aws_mutex_unlock(&ref->control_block->count_guard);
-}
-
-int aws_channel_remove_slot_ref (struct aws_channel *channel, struct aws_channel_slot_ref *ref) {
-
-    if (ref->control_block && ref->control_block->slot->adj_left.control_block) {
-        ref->control_block->slot->adj_left.control_block->slot->adj_right = ref->control_block->slot->adj_right;
-        aws_channel_slot_ref_decrement(ref);
+    if (slot->adj_left) {
+        slot->adj_left->adj_right = slot->adj_right;
     }
 
-    if (ref->control_block && ref->control_block->slot->adj_right.control_block) {
-        ref->control_block->slot->adj_right.control_block->slot->adj_left = ref->control_block->slot->adj_left;
-        aws_channel_slot_ref_decrement(ref);
-    }
+    cleanup_slot(slot);
     return AWS_OP_SUCCESS;
 }
 
-int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot_ref *right) {
-    if (slot->adj_right.control_block) {
-        right->control_block->slot->adj_right = slot->adj_right;
-        slot->adj_right.control_block->slot->adj_left = *right;
-        aws_channel_slot_ref_increment(right);
+int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channel_slot *new) {
+    new->adj_left = remove->adj_left;
+
+    if (remove->adj_left) {
+        remove->adj_left->adj_right = new;
     }
 
-    right->control_block->slot->adj_left = slot->owner;
+    new->adj_right = remove->adj_right;
 
-    if(!slot->adj_right.control_block) {
-        aws_channel_slot_ref_increment(&slot->owner);
+    if (remove->adj_right) {
+        remove->adj_right->adj_left = new;
     }
 
-    slot->adj_right = *right;
-    aws_channel_slot_ref_increment(right);
+    if (remove == remove->channel->first) {
+        remove->channel->first = new;
+    }
+
+    cleanup_slot(remove);
+    return AWS_OP_SUCCESS;
+}
+
+int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot *right) {
+    if (slot->adj_right) {
+        right->adj_right = slot->adj_right;
+        slot->adj_right->adj_left = right;
+    }
+
+    slot->adj_right = right;
+    right->adj_left = slot;
 
     return AWS_OP_SUCCESS;
 }
 
-int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot_ref *left) {
-    if (slot->adj_left.control_block) {
-        left->control_block->slot->adj_left = slot->adj_left;
-        slot->adj_left.control_block->slot->adj_right = *left;
-        aws_channel_slot_ref_increment(left);
+int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot *left) {
+    if (slot->adj_left) {
+        left->adj_left = slot->adj_left;
+        slot->adj_left->adj_right = left;
     }
 
-    left->control_block->slot->adj_right = slot->owner;
-
-    if(!slot->adj_left.control_block) {
-        aws_channel_slot_ref_increment(&slot->owner);
-    }
-
-    slot->adj_left = *left;
-    aws_channel_slot_ref_increment(left);
+    slot->adj_left = left;
+    left->adj_right = slot;
     return AWS_OP_SUCCESS;
 }
 
 int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir) {
     if (slot->handler) {
-        struct shutdown_notification_message_data *msg_data = NULL;
         struct aws_linked_list_node *head = NULL;
 
         if (dir == AWS_CHANNEL_DIR_READ) {
-            head = &slot->read_queue;
+            head = &slot->adj_left->read_queue;
         }
         else {
-            head = &slot->write_queue;
+            head = &slot->adj_right->write_queue;
         }
 
         int err_code = 0;
@@ -335,20 +315,12 @@ int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_dir
 
             switch (message->message_type) {
                 case AWS_IO_MESSAGE_APPLICATION_DATA:
-                    err_code = aws_channel_handler_process_read_message(slot->handler, slot, msg_queue);
-                    break;
-                case AWS_IO_MESSAGE_WINDOW_UPDATE:
-                    err_code = aws_channel_handler_on_window_update(slot->handler, slot, (size_t)*message->message_data.buffer);
-                    aws_message_pool_release(slot->channel->msg_pool, msg_queue);
-                    break;
-                case AWS_IO_MESSAGE_SHUTDOWN:
-                    err_code = aws_channel_handler_shutdown_direction(slot->handler, slot, (aws_channel_direction)*message->message_data.buffer);
-                    aws_message_pool_release(slot->channel->msg_pool, msg_queue);
-                    break;
-                case AWS_IO_MESSAGE_SHUTDOWN_NOTIFY:
-                    msg_data = (struct shutdown_notification_message_data *)message->message_data.buffer;
-                    err_code = aws_channel_handler_on_shutdown_notify(slot->handler, slot, msg_data->dir, msg_data->error_code);
-                    aws_message_pool_release(slot->channel->msg_pool, msg_queue);
+                    if (dir == AWS_CHANNEL_DIR_READ) {
+                        err_code = aws_channel_handler_process_read_message(slot->handler, slot, msg_queue);
+                    }
+                    else {
+                        err_code = aws_channel_handler_process_write_message(slot->handler, slot, msg_queue);
+                    }
                     break;
                 default:
                     assert(0);
@@ -363,10 +335,10 @@ int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_dir
         }
 
         if (dir == AWS_CHANNEL_DIR_READ) {
-            aws_linked_list_init(&slot->read_queue);
+            aws_linked_list_init(&slot->adj_left->read_queue);
         }
         else {
-            aws_linked_list_init(&slot->write_queue);
+            aws_linked_list_init(&slot->adj_right->write_queue);
         }
 
         return AWS_OP_SUCCESS;
@@ -378,53 +350,40 @@ int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_dir
 int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message_queue *message, enum aws_channel_direction dir) {
     if (dir == AWS_CHANNEL_DIR_READ) {
         aws_linked_list_push_back(&slot->read_queue, &message->list);
-        return aws_channel_slot_invoke(slot->adj_right.control_block->slot, dir);
+        return aws_channel_slot_invoke(slot->adj_right, dir);
     }
     else {
         aws_linked_list_push_back(&slot->write_queue, &message->list);
-        return aws_channel_slot_invoke(slot->adj_left.control_block->slot, dir);
+        return aws_channel_slot_invoke(slot->adj_left, dir);
     }
 }
 
 int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
-    struct aws_io_message_queue *message =
-            aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_WINDOW_UPDATE, sizeof(size_t));
-
-    if (!message) {
-        return AWS_OP_ERR;
+    if (slot->adj_left && slot->adj_left->handler) {
+        return slot->adj_left->handler->vtable.on_window_update(slot->adj_left->handler, slot->adj_left, window);
     }
 
-    memcpy(message->value->message_data.buffer, &window, sizeof(window));
-    return aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
+    return AWS_OP_SUCCESS;
 }
 
 int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code) {
-    struct aws_io_message_queue *message = aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_SHUTDOWN_NOTIFY,
-                                                                          sizeof(struct shutdown_notification_message_data));
-
-    if (!message) {
-        return AWS_OP_ERR;
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        if (slot->adj_right && slot->adj_right->handler) {
+            return slot->adj_right->handler->vtable.on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
+        }
+    }
+    else {
+        if (slot->adj_left && slot->adj_left->handler) {
+            return slot->adj_left->handler->vtable.on_shutdown_notify(slot->adj_left->handler, slot->adj_left, dir,
+                                                                      error_code);
+        }
     }
 
-    struct shutdown_notification_message_data *notify_data =
-            (struct shutdown_notification_message_data *)message->value->message_data.buffer;
-    notify_data->error_code = error_code;
-    notify_data->dir = dir;
-
-    return aws_channel_slot_send_message(slot, message, dir);
+    return AWS_OP_ERR;
 }
 
 int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir) {
-    struct aws_io_message_queue *message_queue = aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_SHUTDOWN, sizeof(dir));
-
-    if (!message_queue) {
-        return AWS_OP_ERR;
-    }
-
-    struct aws_io_message *message = message_queue->value;
-
-    memcpy(message->message_data.buffer, &dir, sizeof(dir));
-    return aws_channel_slot_send_message(slot, message_queue, dir);
+    return slot->handler->vtable.shutdown_direction(slot->handler, slot, dir);
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {

@@ -32,9 +32,6 @@ struct aws_io_handle {
 
 typedef enum aws_io_message_type {
     AWS_IO_MESSAGE_APPLICATION_DATA,
-    AWS_IO_MESSAGE_WINDOW_UPDATE,
-    AWS_IO_MESSAGE_SHUTDOWN_NOTIFY,
-    AWS_IO_MESSAGE_SHUTDOWN
 } aws_io_message_type;
 
 struct aws_io_message;

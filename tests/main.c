@@ -37,6 +37,7 @@ int main (int argc, char *argv[]) {
                        &non_connected_read_write_fails,
                        &channel_setup,
                        &channel_single_slot_cleans_up,
-                       &channel_slots_clean_up
+                       &channel_slots_clean_up,
+                       &channel_message_passing
                       );
 }
