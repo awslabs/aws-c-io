@@ -18,6 +18,7 @@
 
 #include <aws/io/io.h>
 #include <stdbool.h>
+#include "channel.h"
 
 typedef enum aws_socket_domain {
     AWS_SOCKET_IPV4,
@@ -125,6 +126,11 @@ AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
  * Calls `close()` on the socket and unregisters all io operations from the event loop.
  */
 AWS_IO_API int aws_socket_shutdown(struct aws_socket *socket);
+
+/**
+ * Calls `shutdown()` on the socket based on direction.
+ */
+AWS_IO_API int aws_socket_half_close(struct aws_socket *socket, aws_channel_direction dir);
 
 /**
  * Fetches the underlying io handle for use in event loop registrations and channel handlers.

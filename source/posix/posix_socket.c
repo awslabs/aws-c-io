@@ -588,6 +588,17 @@ int aws_socket_shutdown(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
+int aws_socket_half_close(struct aws_socket *socket, aws_channel_direction dir) {
+    int how = dir == AWS_CHANNEL_DIR_READ ? 0 : 1;
+
+    if (shutdown(socket->io_handle.handle, how)) {
+        on_connection_error(socket, errno);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
     if (!(socket->state & CONNECTED_READ)) {
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);

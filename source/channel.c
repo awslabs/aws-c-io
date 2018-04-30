@@ -311,8 +311,8 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
 }
 
 int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
-    slot->window_size += window;
 
+    slot->window_size += window;
     if (slot->adj_left && slot->adj_left->handler) {
         return aws_channel_handler_on_window_update(slot->adj_left->handler, slot->adj_left, window);
     }
@@ -353,6 +353,7 @@ void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
 int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                                         struct aws_io_message *message) {
     assert(handler->vtable.process_read_message);
+    slot->window_size -= message->message_data.len;
     return handler->vtable.process_read_message(handler, slot, message);
 }
 
