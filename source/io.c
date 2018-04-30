@@ -19,6 +19,10 @@
 static struct aws_error_info errors[] = {
         AWS_DEFINE_ERROR_INFO(aws_io_channel_error_cant_accept_input, AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT,
                               "Channel cannot accept input", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_channel_unknown_message_type, AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
+                              "Channel unknown message type", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_channel_read_would_exceed_window, AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
+                              "A channel handler attempted to propagate a read larger than the upstream window", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_sys_call_failure, AWS_IO_SYS_CALL_FAILURE,
                               "System call failure", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_tls_negotiation_failure, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,

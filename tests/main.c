@@ -19,6 +19,7 @@
 
 #include <event_loop_test.c>
 #include <socket_test.c>
+#include <channel_test.c>
 
 int main (int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
@@ -33,6 +34,10 @@ int main (int argc, char *argv[]) {
                        &outgoing_tcp_sock_error,
                        &incoming_tcp_sock_errors,
                        &incoming_udp_sock_errors,
-                       &non_connected_read_write_fails
+                       &non_connected_read_write_fails,
+                       &channel_setup,
+                       &channel_single_slot_cleans_up,
+                       &channel_slots_clean_up,
+                       &channel_message_passing
                       );
 }

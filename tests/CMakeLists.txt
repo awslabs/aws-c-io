@@ -37,4 +37,7 @@ add_test(outgoing_tcp_sock_error ${TEST_BINARY_NAME} outgoing_tcp_sock_error)
 add_test(incoming_tcp_sock_errors ${TEST_BINARY_NAME} incoming_tcp_sock_errors)
 add_test(incoming_udp_sock_errors ${TEST_BINARY_NAME} incoming_udp_sock_errors)
 add_test(non_connected_read_write_fails ${TEST_BINARY_NAME} non_connected_read_write_fails)
-
+add_test(channel_setup ${TEST_BINARY_NAME} channel_setup)
+add_test(channel_single_slot_cleans_up ${TEST_BINARY_NAME} channel_single_slot_cleans_up)
+add_test(channel_slots_clean_up ${TEST_BINARY_NAME} channel_slots_clean_up)
+add_test(channel_message_passing ${TEST_BINARY_NAME} channel_message_passing)

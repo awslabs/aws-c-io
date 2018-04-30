@@ -111,22 +111,14 @@ an event loop or an application layer<y:LabelModel>
     <node id="n1">
       <data key="d6">
         <y:GenericNode configuration="BevelNode3">
-          <y:Geometry height="198.0" width="334.0" x="567.5" y="365.0"/>
+          <y:Geometry height="96.0" width="327.0" x="567.5" y="119.0"/>
           <y:Fill color="#FF9900" transparent="false"/>
           <y:BorderStyle hasColor="false" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="171.625" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="333.302734375" x="0.3486328125" y="13.1875">Slot invoke()
+          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="73.84375" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="198.625" x="64.1875" y="11.078125">send_message ()
 
-Drains the queue coresponding to direction,
-based on the message type, it routes the message
-data to the appropriate handler function.
-
-For example, a Window Update message would invoke
-update_window().
-
-A Shutdown Notification message would invoke 
-shutdown_notify() etc...
-
-<y:LabelModel>
+The slot will manage passing
+the message to the appropriate 
+handler<y:LabelModel>
               <y:SmartNodeLabelModel distance="4.0"/>
             </y:LabelModel>
             <y:ModelParameter>
@@ -139,33 +131,13 @@ shutdown_notify() etc...
     <node id="n2">
       <data key="d6">
         <y:GenericNode configuration="BevelNode3">
-          <y:Geometry height="96.0" width="327.0" x="567.5" y="119.0"/>
-          <y:Fill color="#FF9900" transparent="false"/>
-          <y:BorderStyle hasColor="false" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="73.84375" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="308.46484375" x="9.267578125" y="11.078125">Slot queue_message ()
-
-The slot will manage queueing the message
-And then notifies the channel there are messages 
-to be processed.<y:LabelModel>
-              <y:SmartNodeLabelModel distance="4.0"/>
-            </y:LabelModel>
-            <y:ModelParameter>
-              <y:SmartNodeLabelModelParameter labelRatioX="0.0" labelRatioY="0.0" nodeRatioX="0.0" nodeRatioY="0.0" offsetX="0.0" offsetY="0.0" upX="0.0" upY="-1.0"/>
-            </y:ModelParameter>
-          </y:NodeLabel>
-        </y:GenericNode>
-      </data>
-    </node>
-    <node id="n3">
-      <data key="d6">
-        <y:GenericNode configuration="BevelNode3">
           <y:Geometry height="99.0" width="458.0" x="567.5" y="238.0"/>
           <y:Fill color="#FF9900" transparent="false"/>
           <y:BorderStyle hasColor="false" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="438.34375" x="9.828125" y="19.5625">Slot update_window(), shutdown_notify(), shutdown_direction()
+          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="413.166015625" x="22.4169921875" y="19.5625">Slot update_window(), shutdown_notify(), shutdown_direction()
 
-These are functions only for the handler, they translate into messages
-that the slot and the channel will make sure are passed to the next slot.<y:LabelModel>
+These are functions only for the handler, the channel will propogate
+to the appropriate handler<y:LabelModel>
               <y:SmartNodeLabelModel distance="4.0"/>
             </y:LabelModel>
             <y:ModelParameter>
@@ -175,19 +147,7 @@ that the slot and the channel will make sure are passed to the next slot.<y:Labe
         </y:GenericNode>
       </data>
     </node>
-    <edge id="e0" source="n1" target="n0::n0">
-      <data key="d10">
-        <y:ArcEdge>
-          <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0">
-            <y:Point x="502.1001892089844" y="391.1202392578125"/>
-          </y:Path>
-          <y:LineStyle color="#000000" type="line" width="1.0"/>
-          <y:Arrows source="none" target="standard"/>
-          <y:Arc height="74.12031555175781" ratio="0.6389485597610474" type="fixedRatio"/>
-        </y:ArcEdge>
-      </data>
-    </edge>
-    <edge id="e1" source="n0::n0" target="n2">
+    <edge id="e0" source="n0::n0" target="n1">
       <data key="d10">
         <y:ArcEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0">
@@ -199,7 +159,7 @@ that the slot and the channel will make sure are passed to the next slot.<y:Labe
         </y:ArcEdge>
       </data>
     </edge>
-    <edge id="e2" source="n0::n0" target="n3">
+    <edge id="e1" source="n0::n0" target="n2">
       <data key="d10">
         <y:ArcEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0">
