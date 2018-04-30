@@ -50,6 +50,7 @@ struct aws_channel_slot {
     struct aws_channel_slot *adj_left;
     struct aws_channel_slot *adj_right;
     struct aws_channel_handler *handler;
+    size_t window_size;
 };
 
 typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, void *ctx);
@@ -106,6 +107,8 @@ AWS_IO_API int aws_channel_slot_send_message (struct aws_channel_slot *slot, str
 AWS_IO_API int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
 AWS_IO_API int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, aws_channel_direction dir, int error_code);
 AWS_IO_API int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir);
+
+AWS_IO_API size_t aws_channel_slot_upstream_read_window (struct aws_channel_slot *slot);
 
 AWS_IO_API void aws_channel_handler_destroy(struct aws_channel_handler *handler);
 AWS_IO_API int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,

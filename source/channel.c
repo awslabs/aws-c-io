@@ -297,15 +297,22 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
     if (dir == AWS_CHANNEL_DIR_READ) {
         assert(slot->adj_right);
         assert(slot->adj_right->handler);
-        return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
+
+        if (slot->adj_right->window_size >= message->message_data.len) {
+            return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
+        }
+        return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
     }
     else {
         assert(slot->adj_left);
         assert(slot->adj_left->handler);
-        return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);    }
+        return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
+    }
 }
 
 int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
+    slot->window_size += window;
+
     if (slot->adj_left && slot->adj_left->handler) {
         return aws_channel_handler_on_window_update(slot->adj_left->handler, slot->adj_left, window);
     }
@@ -327,6 +334,11 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
     }
 
     return AWS_OP_ERR;
+}
+
+size_t aws_channel_slot_upstream_read_window (struct aws_channel_slot *slot) {
+    assert(slot->adj_right);
+    return slot->adj_right->window_size;
 }
 
 int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir) {
