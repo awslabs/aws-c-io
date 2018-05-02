@@ -155,6 +155,7 @@ AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *b
  */
 AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written);
 
+AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
 
 #ifdef __cplusplus
 }

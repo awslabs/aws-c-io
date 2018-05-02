@@ -102,6 +102,10 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     channel->loop = event_loop;
     channel->first = NULL;
     channel->msg_pool = NULL;
+    channel->read_shutdown_ctx = NULL;
+    channel->write_shutdown_ctx = NULL;
+    channel->on_read_shutdown_completed = NULL;
+    channel->on_write_shutdown_completed = NULL;
 
     struct channel_setup_args *setup_args = (struct channel_setup_args *)aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
 
@@ -154,21 +158,18 @@ int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction
     struct aws_channel_slot *slot = channel->first;
 
     if (dir == AWS_CHANNEL_DIR_READ) {
-        while (slot) {
-            aws_channel_slot_shutdown_direction(slot, dir);
-            slot = slot->adj_right;
-        }
+        channel->on_read_shutdown_completed = on_completed;
+        channel->read_shutdown_ctx = ctx;
+        aws_channel_slot_shutdown_direction(slot, dir);
     }
     else {
         while (slot->adj_right) {
-            aws_channel_slot_shutdown_direction(slot, dir);
             slot = slot->adj_right;
         }
 
-        while (slot) {
-            aws_channel_slot_shutdown_direction(slot, dir);
-            slot = slot->adj_left;
-        }
+        channel->on_write_shutdown_completed = on_completed;
+        channel->write_shutdown_ctx = ctx;
+        aws_channel_slot_shutdown_direction(slot, dir);
     }
 }
 
@@ -228,7 +229,6 @@ bool aws_channel_is_on_callers_thread (struct aws_channel *channel) {
 
 int aws_channel_slot_set_handler ( struct aws_channel_slot *slot, struct aws_channel_handler *handler ) {
     slot->handler = handler;
-
     return aws_channel_slot_update_window(slot, slot->handler->vtable.get_current_window_size(handler));
 }
 
@@ -325,12 +325,28 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
         if (slot->adj_right && slot->adj_right->handler) {
             return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
         }
+
+        if (slot->channel->on_read_shutdown_completed) {
+            slot->channel->on_read_shutdown_completed(slot->channel, slot->channel->read_shutdown_ctx);
+            slot->channel->on_read_shutdown_completed = NULL;
+            slot->channel->read_shutdown_ctx = NULL;
+        }
+
+        return AWS_OP_SUCCESS;
     }
     else {
         if (slot->adj_left && slot->adj_left->handler) {
             return aws_channel_handler_on_shutdown_notify(slot->adj_left->handler, slot->adj_left, dir,
                                                           error_code);
         }
+
+        if (slot->channel->on_write_shutdown_completed) {
+            slot->channel->on_write_shutdown_completed(slot->channel, slot->channel->write_shutdown_ctx);
+            slot->channel->on_write_shutdown_completed = NULL;
+            slot->channel->write_shutdown_ctx = NULL;
+        }
+
+        return AWS_OP_SUCCESS;
     }
 
     return AWS_OP_ERR;

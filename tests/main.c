@@ -40,6 +40,7 @@ int main (int argc, char *argv[]) {
                        &channel_single_slot_cleans_up,
                        &channel_slots_clean_up,
                        &channel_message_passing,
-                       &socket_echo
+                       &socket_handler_echo,
+                       &socket_handler_close
                       );
 }

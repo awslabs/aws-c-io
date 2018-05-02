@@ -168,8 +168,54 @@ static int test_channel_slots_clean_up (struct aws_allocator *allocator, void *c
 
 AWS_TEST_CASE(channel_slots_clean_up, test_channel_slots_clean_up)
 
-static void rw_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
+struct channel_rw_test_args {
+    struct aws_byte_buf read_tag;
+    struct aws_byte_buf write_tag;
+    struct aws_byte_buf latest_message;
+    bool shutdown_completed;
+    bool write_on_read;
+};
 
+static void rw_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+
+    rw_test_args->shutdown_completed = true;
+}
+
+static struct aws_byte_buf channel_rw_test_on_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                                    struct aws_byte_buf *data_read, void *ctx);
+
+static struct aws_byte_buf channel_rw_test_on_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                                   struct aws_byte_buf *data_read, void *ctx) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+
+    if (data_read) {
+        memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
+        memcpy(rw_test_args->latest_message.buffer + data_read->len, rw_test_args->read_tag.buffer,
+               rw_test_args->read_tag.len);
+        rw_test_args->latest_message.len = data_read->len + rw_test_args->read_tag.len;
+    }
+    else {
+        return rw_test_args->read_tag;
+    }
+
+    if (rw_test_args->write_on_read) {
+        struct aws_byte_buf write_data = channel_rw_test_on_write(handler, slot, &rw_test_args->latest_message, ctx);
+        rw_handler_write(handler, slot, &write_data);
+    }
+
+    return rw_test_args->latest_message;
+}
+
+static struct aws_byte_buf channel_rw_test_on_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                                    struct aws_byte_buf *data_read, void *ctx) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+
+    memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
+    memcpy(rw_test_args->latest_message.buffer + data_read->len, rw_test_args->write_tag.buffer, rw_test_args->write_tag.len);
+    rw_test_args->latest_message.len = data_read->len + rw_test_args->write_tag.len;
+
+    return rw_test_args->latest_message;
 }
 
 static int test_channel_message_passing (struct aws_allocator *allocator, void *ctx) {
@@ -203,33 +249,56 @@ static int test_channel_message_passing (struct aws_allocator *allocator, void *
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
 
-    struct aws_byte_buf handler_1_read_buf = aws_byte_buf_from_literal("handler 1 read, ");
-    struct aws_byte_buf handler_1_write_buf = aws_byte_buf_from_literal("handler 1 written, ");
+    uint8_t handler_1_latest_message[128] = {0};
+    uint8_t handler_2_latest_message[128] = {0};
+    uint8_t handler_3_latest_message[128] = {0};
 
-    struct aws_channel_handler *handler_1 = rw_test_handler_new(allocator, handler_1_read_buf, handler_1_write_buf);
+    struct channel_rw_test_args handler_1_args = {
+            .shutdown_completed = false,
+            .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
+            .read_tag = aws_byte_buf_from_literal("handler 1 read, "),
+            .write_tag = aws_byte_buf_from_literal("handler 1 written, "),
+            .write_on_read = false
+    };
+
+    struct aws_channel_handler *handler_1 = rw_test_handler_new(allocator, channel_rw_test_on_read, channel_rw_test_on_write,
+                                                                false, 10000, &handler_1_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
-    struct aws_byte_buf handler_2_read_buf = aws_byte_buf_from_literal("handler 2 read, ");
-    struct aws_byte_buf handler_2_write_buf = aws_byte_buf_from_literal("handler 2 written, ");
+    struct channel_rw_test_args handler_2_args = {
+            .shutdown_completed = false,
+            .latest_message = aws_byte_buf_from_array(handler_2_latest_message, sizeof(handler_1_latest_message)),
+            .read_tag = aws_byte_buf_from_literal("handler 2 read, "),
+            .write_tag = aws_byte_buf_from_literal("handler 2 written, "),
+            .write_on_read = false,
+    };
 
-    struct aws_channel_handler *handler_2 = rw_test_handler_new(allocator, handler_2_read_buf, handler_2_write_buf);
+    struct aws_channel_handler *handler_2 = rw_test_handler_new(allocator, channel_rw_test_on_read, channel_rw_test_on_write,
+                                                                false, 10000, &handler_2_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_2, handler_2));
 
-    struct aws_byte_buf handler_3_read_buf = aws_byte_buf_from_literal("handler 3 read, ");
-    struct aws_byte_buf handler_3_write_buf = aws_byte_buf_from_literal("handler 3 written, ");
+    struct channel_rw_test_args handler_3_args = {
+            .shutdown_completed = false,
+            .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_1_latest_message)),
+            .read_tag = aws_byte_buf_from_literal("handler 3 read, "),
+            .write_tag = aws_byte_buf_from_literal("handler 3 written, "),
+            .write_on_read = true
+    };
 
-    struct aws_channel_handler *handler_3 = rw_test_handler_new(allocator, handler_3_read_buf, handler_3_write_buf);
+    struct aws_channel_handler *handler_3 = rw_test_handler_new(allocator, channel_rw_test_on_read, channel_rw_test_on_write, false, 10000, &handler_3_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_3, handler_3));
 
     rw_handler_trigger_read(handler_1, slot_1);
-    struct aws_byte_buf final_message = rw_handler_get_final_message(handler_1);
+    struct aws_byte_buf final_message = handler_1_args.latest_message;
 
     struct aws_byte_buf expected = aws_byte_buf_from_literal("handler 1 read, handler 2 read, handler 3 read, "
                                                                      "handler 3 written, handler 2 written, handler 1 written, ");
     ASSERT_BIN_ARRAYS_EQUALS(expected.buffer, expected.len, final_message.buffer, final_message.len);
 
-    aws_channel_shutdown(&channel, AWS_CHANNEL_DIR_READ, rw_test_on_shutdown_completed, NULL);
-    aws_channel_shutdown(&channel, AWS_CHANNEL_DIR_WRITE, rw_test_on_shutdown_completed, NULL);
+    aws_channel_shutdown(&channel, AWS_CHANNEL_DIR_READ, rw_test_on_shutdown_completed, &handler_3_args);
+    aws_channel_shutdown(&channel, AWS_CHANNEL_DIR_WRITE, rw_test_on_shutdown_completed, &handler_1_args);
+    ASSERT_TRUE(handler_1_args.shutdown_completed);
+    ASSERT_TRUE(handler_3_args.shutdown_completed);
 
     ASSERT_TRUE(rw_handler_shutdown_notify_called(handler_1));
     ASSERT_TRUE(rw_handler_shutdown_notify_called(handler_2));

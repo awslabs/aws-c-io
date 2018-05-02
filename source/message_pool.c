@@ -128,6 +128,10 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
 }
 
 void aws_message_pool_release (struct aws_message_pool* msg_pool, struct aws_io_message *message) {
+
+    memset(message->message_data.buffer, 0, message->message_data.len);
+    aws_linked_list_init(&message->queueing_handle);
+
     switch(message->message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
             aws_memory_pool_release(&msg_pool->application_data_pool, message);

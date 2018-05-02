@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/un.h>
+#include <zconf.h>
 
 enum socket_state {
     INIT = 0x01,
@@ -200,38 +201,34 @@ static int on_connection_success(struct aws_socket *socket) {
     }
 }
 
-static void on_connection_error(struct aws_socket *socket, int error) {
-    int error_code = 0;
+static int determine_socket_error(int error) {
     switch(error) {
         case ECONNREFUSED:
-            error_code = AWS_IO_SOCKET_CONNECTION_REFUSED;
-            break;
+            return AWS_IO_SOCKET_CONNECTION_REFUSED;
         case ETIMEDOUT:
-            error_code = AWS_IO_SOCKET_TIMEOUT;
-            break;
+            return AWS_IO_SOCKET_TIMEOUT;
         case ENETUNREACH:
-            error_code = AWS_IO_SOCKET_NO_ROUTE_TO_HOST;
-            break;
+            return AWS_IO_SOCKET_NO_ROUTE_TO_HOST;
         case ENETDOWN:
-            error_code = AWS_IO_SOCKET_NETWORK_DOWN;
-            break;
+            return AWS_IO_SOCKET_NETWORK_DOWN;
         case ECONNABORTED:
-            error_code = AWS_IO_SOCKET_CONNECT_ABORTED;
-            break;
+            return AWS_IO_SOCKET_CONNECT_ABORTED;
         case ENOBUFS:
         case ENOMEM:
-            error_code = AWS_ERROR_OOM;
-            break;
+            return AWS_ERROR_OOM;
         case EMFILE:
         case ENFILE:
-            error_code = AWS_IO_MAX_FDS_EXCEEDED;
-            break;
+            return AWS_IO_MAX_FDS_EXCEEDED;
         case 0:
-            error_code = AWS_IO_SOCKET_NOT_CONNECTED;
-            break;
+            return AWS_IO_SOCKET_NOT_CONNECTED;
         default:
-            error_code = AWS_IO_SOCKET_NOT_CONNECTED;
+            return AWS_IO_SOCKET_NOT_CONNECTED;
     }
+
+}
+
+static void on_connection_error(struct aws_socket *socket, int error) {
+    int error_code = determine_socket_error(error);
 
     aws_raise_error(error_code);
     socket->state = ERROR;
@@ -612,6 +609,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     }
 
     int error = errno;
+
     if (error == EAGAIN) {
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
@@ -645,4 +643,19 @@ int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffe
     }
 
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+}
+
+int aws_socket_get_error(struct aws_socket *socket) {
+    int connect_result;
+    socklen_t result_length = sizeof(connect_result);
+
+    if (getsockopt(socket->io_handle.handle, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
+        return AWS_OP_ERR;
+    }
+
+    if (connect_result) {
+        return determine_socket_error(connect_result);
+    }
+
+    return AWS_OP_ERR;
 }

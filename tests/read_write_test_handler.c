@@ -14,75 +14,58 @@
 * express or implied. See the License for the specific language governing
 * permissions and limitations under the License.
 */
+
 #include <aws/io/channel.h>
 
+typedef struct aws_byte_buf(*rw_test_handler_driver)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                                     struct aws_byte_buf *data_read, void *ctx);
+
 struct rw_test_handler_impl {
-    struct aws_byte_buf read_tag;
-    struct aws_byte_buf write_tag;
-    struct aws_byte_buf final_message;
     bool shutdown_notify_called;
     bool window_update_called;
+    rw_test_handler_driver on_read;
+    rw_test_handler_driver on_write;
+    bool event_loop_driven;
+    size_t window;
+    int shutdown_error;
+    void *ctx;
 };
 
 static int rw_handler_process_read (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                          struct aws_io_message *message) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
+    struct aws_byte_buf next_data = handler_impl->on_read(handler, slot, &message->message_data, handler_impl->ctx);
+    aws_channel_release_message_to_pool(slot->channel, message);
+
     if (slot->adj_right) {
+
         struct aws_io_message *msg =
-                aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                 message->message_data.len +
-                                                 handler_impl->read_tag.len);
+                aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, next_data.len);
 
-        memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
-        memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->read_tag.buffer,
-                  handler_impl->read_tag.len);
-
-        aws_channel_release_message_to_pool(slot->channel, message);
+        memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
 
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
     }
 
-    struct aws_io_message *msg =
-            aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                 message->message_data.len + handler_impl->read_tag.len
-                                                 + handler_impl->write_tag.len);
-
-    memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
-    memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
-    memcpy(msg->message_data.buffer + message->message_data.len + handler_impl->read_tag.len,
-           handler_impl->write_tag.buffer, handler_impl->write_tag.len);
-
-
-    aws_channel_release_message_to_pool(slot->channel, message);
-
-    return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
+    return AWS_OP_SUCCESS;
 }
 
 static int rw_handler_process_write_message ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                struct aws_io_message *message ) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
+    struct aws_byte_buf next_data = handler_impl->on_write(handler, slot, &message->message_data, handler_impl->ctx);
+    aws_channel_release_message_to_pool(slot->channel, message);
+
     if (slot->adj_left) {
         struct aws_io_message *msg =
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                     message->message_data.len +
-                                                     handler_impl->write_tag.len);
+                                                     next_data.len);
 
-        memcpy(msg->message_data.buffer, message->message_data.buffer, message->message_data.len);
-        memcpy(msg->message_data.buffer + message->message_data.len, handler_impl->write_tag.buffer,
-               handler_impl->write_tag.len);
-
-        aws_channel_release_message_to_pool(slot->channel, message);
-
+        memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
     }
-
-    aws_byte_buf_alloc(handler->alloc, &handler_impl->final_message, message->message_data.len + handler_impl->write_tag.len);
-    memcpy(handler_impl->final_message.buffer, message->message_data.buffer, message->message_data.len);
-    memcpy(handler_impl->final_message.buffer + message->message_data.len, handler_impl->write_tag.buffer, handler_impl->write_tag.len);
-
-    aws_channel_release_message_to_pool(slot->channel, message);
 
     return AWS_OP_SUCCESS;
 }
@@ -90,7 +73,6 @@ static int rw_handler_process_write_message ( struct aws_channel_handler *handle
 static int rw_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     handler_impl->window_update_called = true;
-
     aws_channel_slot_update_window(slot, size);
     return AWS_OP_SUCCESS;
 }
@@ -99,8 +81,8 @@ static int rw_handler_on_shutdown_notify(struct aws_channel_handler *handler, st
                            enum aws_channel_direction dir, int error_code) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     handler_impl->shutdown_notify_called = true;
-
-    return AWS_OP_SUCCESS;
+    handler_impl->shutdown_error = error_code;
+    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
 }
 
 static int rw_handler_shutdown_direction (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -109,18 +91,18 @@ static int rw_handler_shutdown_direction (struct aws_channel_handler *handler, s
 }
 
 static size_t rw_handler_get_current_window_size (struct aws_channel_handler *handler) {
-    return 10000;
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
+    return handler_impl->window;
 }
 
 static void rw_handler_destroy(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    aws_byte_buf_free(handler->alloc, &handler_impl->final_message);
     aws_mem_release(handler->alloc, handler_impl);
     aws_mem_release(handler->alloc, handler);
 }
 
-struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator, struct aws_byte_buf read_tag,
-                                                struct aws_byte_buf write_tag) {
+struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator, rw_test_handler_driver on_read,
+                                                rw_test_handler_driver on_write, bool event_loop_driven, size_t window, void *ctx) {
     struct aws_channel_handler *handler = (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
     handler->alloc = allocator;
     handler->vtable = (struct aws_channel_handler_vtable){
@@ -135,9 +117,14 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
 
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)aws_mem_acquire(allocator, sizeof(struct rw_test_handler_impl));
     handler_impl->shutdown_notify_called = false;
-    handler_impl->write_tag = write_tag;
-    handler_impl->read_tag = read_tag;
     handler_impl->window_update_called = false;
+    handler_impl->on_read = on_read;
+    handler_impl->on_write = on_write;
+    handler_impl->ctx = ctx;
+    handler_impl->event_loop_driven = event_loop_driven;
+    handler_impl->shutdown_error = 0;
+    handler_impl->window = window;
+
     handler->impl = handler_impl;
 
     return handler;
@@ -146,17 +133,109 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
 static void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
-    struct aws_io_message *msg =
-            aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                 handler_impl->read_tag.len);
+    struct aws_byte_buf next_data = handler_impl->on_read(handler, slot, NULL, handler_impl->ctx);
 
-    memcpy(msg->message_data.buffer, handler_impl->read_tag.buffer, handler_impl->read_tag.len);
+    struct aws_io_message *msg =
+            aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, next_data.len);
+
+    memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
+
     aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
 }
 
-static struct aws_byte_buf rw_handler_get_final_message(struct aws_channel_handler *handler) {
+struct rw_handler_write_task_args {
+    struct aws_channel_handler *handler;
+    struct aws_channel_slot *slot;
+    struct aws_byte_buf *buffer;
+};
+
+static void rw_handler_write_task(void *arg, aws_task_status task_status) {
+    struct rw_handler_write_task_args *write_task_args = (struct rw_handler_write_task_args *)arg;
+
+    struct aws_io_message *msg =
+            aws_channel_aquire_message_from_pool(write_task_args->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                 write_task_args->buffer->len);
+
+    memcpy(msg->message_data.buffer, write_task_args->buffer->buffer, write_task_args->buffer->len);
+    msg->message_data.len = write_task_args->buffer->len;
+
+    aws_channel_slot_send_message(write_task_args->slot, msg, AWS_CHANNEL_DIR_WRITE);
+
+    aws_mem_release(write_task_args->handler->alloc, write_task_args);
+}
+
+static void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    return handler_impl->final_message;
+
+    if (!handler_impl->event_loop_driven || aws_channel_is_on_callers_thread(slot->channel)) {
+        struct aws_io_message *msg =
+                aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                     buffer->len);
+
+        memcpy(msg->message_data.buffer, buffer->buffer, buffer->len);
+        msg->message_data.len = buffer->len;
+
+        aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
+    }
+    else {
+        struct rw_handler_write_task_args *write_task_args = (struct rw_handler_write_task_args *) aws_mem_acquire(
+                handler->alloc,
+                sizeof(struct rw_handler_write_task_args));
+        write_task_args->handler = handler;
+        write_task_args->buffer = buffer;
+        write_task_args->slot = slot;
+
+        struct aws_task task = {
+                .fn = rw_handler_write_task,
+                .arg = write_task_args
+        };
+
+        uint64_t now = 0;
+        aws_channel_current_clock_time(slot->channel, &now);
+        aws_channel_schedule_task(slot->channel, &task, now);
+    }
+}
+
+struct window_update_task_args {
+    size_t window_update;
+    struct aws_channel_handler *handler;
+    struct aws_channel_slot *slot;
+};
+
+static void window_update_task(void *arg, aws_task_status task_status) {
+    struct window_update_task_args *window_update_task_args = (struct window_update_task_args *)arg;
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)window_update_task_args->handler->impl;
+
+    handler_impl->window += window_update_task_args->window_update;
+    aws_channel_slot_update_window(window_update_task_args->slot, window_update_task_args->window_update);
+
+    aws_mem_release(window_update_task_args->handler->alloc, window_update_task_args);
+}
+
+static void rw_handler_update_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t window_update) {
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
+
+    if (!handler_impl->event_loop_driven || aws_channel_is_on_callers_thread(slot->channel)) {
+        handler_impl->window += window_update;
+        aws_channel_slot_update_window(slot, window_update);
+    }
+    else {
+        struct window_update_task_args *window_update_task_args = (struct window_update_task_args *) aws_mem_acquire(
+                handler->alloc,
+                sizeof(struct window_update_task_args));
+        window_update_task_args->handler = handler;
+        window_update_task_args->window_update = window_update;
+        window_update_task_args->slot = slot;
+
+        struct aws_task task = {
+                .fn = window_update_task,
+                .arg = window_update_task_args
+        };
+
+        uint64_t now = 0;
+        aws_channel_current_clock_time(slot->channel, &now);
+        aws_channel_schedule_task(slot->channel, &task, now);
+    }
 }
 
 static bool rw_handler_shutdown_notify_called(struct aws_channel_handler *handler) {
@@ -167,6 +246,11 @@ static bool rw_handler_shutdown_notify_called(struct aws_channel_handler *handle
 static bool rw_handler_window_update_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     return handler_impl->window_update_called;
+}
+
+static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
+    return handler_impl->shutdown_error;
 }
 
 #endif /*READ_WRITE_TEST_HANDLER*/
