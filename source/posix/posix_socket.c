@@ -657,5 +657,5 @@ int aws_socket_get_error(struct aws_socket *socket) {
         return determine_socket_error(connect_result);
     }
 
-    return AWS_OP_ERR;
+    return AWS_OP_SUCCESS;
 }

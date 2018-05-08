@@ -238,17 +238,43 @@ AWS_IO_API int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slo
  */
 AWS_IO_API size_t aws_channel_slot_upstream_read_window (struct aws_channel_slot *slot);
 
-/** The following functions simply call the vtable for the handler */
+/**
+ * Calls destroy on handler's vtable
+ */
 AWS_IO_API void aws_channel_handler_destroy(struct aws_channel_handler *handler);
+
+/**
+ * Decrements window size by message data len. Then calls process_read_message on handler's vtable
+ */
 AWS_IO_API int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                  struct aws_io_message *message );
+
+/**
+ * Calls process_write_message on handler's vtable.
+ */
 AWS_IO_API int aws_channel_handler_process_write_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                                           struct aws_io_message *message);
+
+/**
+ * Calls on_window_update on handler's vtable.
+ */
 AWS_IO_API int aws_channel_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
+
+/**
+ * calls on_shutdown_notify on handler's vtable.
+ */
 AWS_IO_API int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir, int error_code);
+
+/**
+ * calls shutdown_direction on handler's vtable.
+ */
 AWS_IO_API int aws_channel_handler_shutdown_direction(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir);
+
+/**
+ * Calls get_current_window_size on handler's vtable.
+ */
 AWS_IO_API size_t aws_channel_handler_get_current_window_size(struct aws_channel_handler *handler);
 
 #ifdef __cplusplus

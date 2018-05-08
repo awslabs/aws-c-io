@@ -96,7 +96,7 @@ struct aws_byte_buf socket_test_handle_write(struct aws_channel_handler *handler
     return (struct aws_byte_buf){0};
 }
 
-static int socket_echo_test (struct aws_allocator *allocator, void *ctx) {
+static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, void *ctx) {
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -228,7 +228,7 @@ static int socket_echo_test (struct aws_allocator *allocator, void *ctx) {
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(socket_handler_echo, socket_echo_test)
+AWS_TEST_CASE(socket_handler_echo_and_backpressure, socket_echo_and_backpressure_test)
 
 static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);

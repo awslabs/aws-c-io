@@ -155,6 +155,10 @@ AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *b
  */
 AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written);
 
+/**
+ * Gets the latest error from the socket. If no error has occurred AWS_OP_SUCCESS will be returned. This function does not
+ * raise any errors to the installed error handlers.
+ */
 AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
 
 #ifdef __cplusplus

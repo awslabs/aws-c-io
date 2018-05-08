@@ -42,5 +42,5 @@ add_test(channel_single_slot_cleans_up ${TEST_BINARY_NAME} channel_single_slot_c
 add_test(channel_slots_clean_up ${TEST_BINARY_NAME} channel_slots_clean_up)
 add_test(channel_message_passing ${TEST_BINARY_NAME} channel_message_passing)
 
-add_test(socket_handler_echo ${TEST_BINARY_NAME} socket_handler_echo)
+add_test(socket_handler_echo_and_backpressure ${TEST_BINARY_NAME} socket_handler_echo_and_backpressure)
 add_test(socket_handler_close ${TEST_BINARY_NAME} socket_handler_close)
