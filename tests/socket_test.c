@@ -25,13 +25,17 @@ struct local_listener_args {
     bool error_invoked;
 };
 
+static bool incoming_predicate(void *arg) {
+    struct local_listener_args *listener_args = (struct local_listener_args *)arg;
+
+    return listener_args->incoming_invoked || listener_args->error_invoked;
+}
+
 static void local_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx) {
     struct local_listener_args *listener_args = (struct local_listener_args *)ctx;
-    aws_mutex_lock(listener_args->mutex);
     listener_args->incoming = new_socket;
     listener_args->incoming_invoked = true;
     aws_condition_variable_notify_one(listener_args->condition_variable);
-    aws_mutex_unlock(listener_args->mutex);
 }
 
 static void local_listener_error(struct aws_socket *socket, int err_code, void *ctx) {
@@ -47,13 +51,16 @@ struct local_outgoing_args {
     struct aws_condition_variable *condition_variable;
 };
 
+static bool connection_completed_predicate(void *arg) {
+    struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)arg;
+
+    return outgoing_args->connect_invoked || outgoing_args->error_invoked;
+}
+
 static void local_outgoing_connection(struct aws_socket *socket, void *ctx) {
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)ctx;
 
-    if (socket->options.domain != AWS_SOCKET_LOCAL) {
-        aws_mutex_lock(outgoing_args->mutex);
-        aws_condition_variable_notify_one(outgoing_args->condition_variable);
-    }
+    aws_condition_variable_notify_one(outgoing_args->condition_variable);
 
     outgoing_args->connect_invoked = true;
 
@@ -122,10 +129,8 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint));
 
     if (options->type == AWS_SOCKET_STREAM) {
-        ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    }
-    if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
-        ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, incoming_predicate, &listener_args));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, connection_completed_predicate, &outgoing_args));
     }
 
     struct aws_socket *server_sock = &listener;
@@ -298,7 +303,6 @@ static void null_sock_error_handler(struct aws_socket *socket, int err_code, voi
 
     error_args->error_code = err_code;
     aws_condition_variable_notify_one(&error_args->condition_variable);
-    aws_mutex_unlock(&error_args->mutex);
 }
 
 static void null_sock_connection(struct aws_socket *socket, void *ctx) {
@@ -387,6 +391,12 @@ static int test_incoming_local_sock_errors (struct aws_allocator *allocator, voi
 
 AWS_TEST_CASE(incoming_local_sock_errors, test_incoming_local_sock_errors)
 
+static bool outgoing_tcp_error_predicate(void *args) {
+    struct error_test_args *test_args = (struct error_test_args *)args;
+
+    return test_args->error_code != 0;
+}
+
 static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *ctx) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
@@ -422,7 +432,7 @@ static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *
     /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&args.condition_variable, &args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, outgoing_tcp_error_predicate, &args));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
 
 

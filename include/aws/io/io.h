@@ -47,6 +47,9 @@ struct aws_io_message {
     size_t copy_mark;
     aws_channel_on_message_write_completed on_completion;
     void *ctx;
+    /* it's incredibly likely something is going to need to queue this,
+     * go ahead and make sure the list info is part of the original allocation. */
+    struct aws_linked_list_node queueing_handle;
 };
 
 typedef int (*aws_io_clock)(uint64_t *timestamp);

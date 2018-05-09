@@ -150,14 +150,20 @@ clean_up_loop:
 struct epoll_loop_stopped_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
+    bool stopped;
 };
 
 static void on_epoll_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
     struct epoll_loop_stopped_args *args = (struct epoll_loop_stopped_args *)ctx;
 
-    aws_mutex_lock(&args->mutex);
+    args->stopped = true;
     aws_condition_variable_notify_one(&args->condition_variable);
-    aws_mutex_unlock((&args->mutex));
+}
+
+static bool epoll_loop_stopped_predicate(void *arg) {
+    struct epoll_loop_stopped_args *event_loop_stopped_args = (struct epoll_loop_stopped_args *)arg;
+
+    return event_loop_stopped_args->stopped;
 }
 
 static void destroy(struct aws_event_loop *event_loop) {
@@ -167,12 +173,13 @@ static void destroy(struct aws_event_loop *event_loop) {
     if (epoll_loop->should_continue) {
         struct epoll_loop_stopped_args stop_args = {
                 .mutex = AWS_MUTEX_INIT,
-                .condition_variable = AWS_CONDITION_VARIABLE_INIT
+                .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                .stopped = false
         };
 
         aws_mutex_lock(&stop_args.mutex);
         aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args);
-        aws_condition_variable_wait(&stop_args.condition_variable, &stop_args.mutex);
+        aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex, epoll_loop_stopped_predicate, &stop_args);
     }
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
