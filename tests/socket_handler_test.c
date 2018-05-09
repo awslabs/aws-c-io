@@ -30,6 +30,11 @@ struct socket_test_args {
     bool error_invoked;
 };
 
+static bool channel_setup_predicate(void *ctx) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)ctx;
+    return setup_test_args->rw_slot != NULL;
+}
+
 static void socket_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)ctx;
 
@@ -44,11 +49,8 @@ static void socket_channel_setup_test_on_setup_completed(struct aws_channel *cha
     aws_channel_slot_insert_right(socket_slot, rw_slot);
     setup_test_args->rw_slot = rw_slot;
 
-    aws_mutex_lock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-    aws_mutex_unlock(setup_test_args->mutex);
 }
-
 
 static void socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx) {
     struct socket_test_args *listener_args = (struct socket_test_args *)ctx;
@@ -74,7 +76,14 @@ struct socket_test_rw_args {
     struct aws_condition_variable *condition_variable;
     struct aws_byte_buf received_message;
     int read_invocations;
+    bool invocation_happened;
 };
+
+static bool socket_test_read_predicate(void *ctx) {
+    struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
+
+    return rw_args->invocation_happened;
+}
 
 struct aws_byte_buf socket_test_handle_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                              struct aws_byte_buf *data_read, void *ctx) {
@@ -83,9 +92,8 @@ struct aws_byte_buf socket_test_handle_read(struct aws_channel_handler *handler,
     memcpy(rw_args->received_message.buffer + rw_args->received_message.len, data_read->buffer, data_read->len);
     rw_args->received_message.len += data_read->len;
     rw_args->read_invocations += 1;
-    aws_mutex_lock(rw_args->mutex);
+    rw_args->invocation_happened = true;
     aws_condition_variable_notify_one(rw_args->condition_variable);
-    aws_mutex_unlock(rw_args->mutex);
 
     return rw_args->received_message;
 }
@@ -115,12 +123,14 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
             .mutex = &mutex,
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(incoming_received_message, 0),
+            .invocation_happened = false,
     };
 
     struct socket_test_rw_args outgoing_rw_args = {
             .mutex = &mutex,
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(outgoing_received_message, 0),
+            .invocation_happened = false,
     };
 
     /* make the windows small to make sure back pressure is honored. */
@@ -191,23 +201,25 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &outgoing_args));
 
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &incoming_rw_args));
 
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &outgoing_rw_args));
+    incoming_rw_args.invocation_happened = false;
+    outgoing_rw_args.invocation_happened = false;
 
     ASSERT_INT_EQUALS(1, outgoing_rw_args.read_invocations);
     ASSERT_INT_EQUALS(1, incoming_rw_args.read_invocations);
 
     /* Go ahead and verify back-pressure works*/
     rw_handler_update_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &incoming_rw_args));
     rw_handler_update_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(2, outgoing_rw_args.read_invocations);
     ASSERT_INT_EQUALS(2, incoming_rw_args.read_invocations);
@@ -270,6 +282,7 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
             .error_invoked = 0,
             .socket = NULL,
             .rw_handler = incoming_rw_handler,
+            .rw_slot = NULL
     };
 
     struct socket_test_args outgoing_args = {
@@ -280,6 +293,7 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
             .error_invoked = 0,
             .socket = NULL,
             .rw_handler = outgoing_rw_handler,
+            .rw_slot = NULL
     };
 
     struct aws_socket_options options = (struct aws_socket_options){0};
@@ -321,8 +335,8 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &outgoing_args));
 
     aws_socket_shutdown(incoming_args.socket);
 
