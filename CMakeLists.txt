@@ -45,7 +45,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "source/linux/*.c"
             "source/posix/*.c"
             )
-
     set(PLATFORM_LIBS "")
 elseif (APPLE)
 
@@ -75,6 +74,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             "source/bsd/*.c"
             "source/posix/*.c"
             )
+
 endif()
 
 if (NOT CUSTOM_TLS)
@@ -82,7 +82,7 @@ if (NOT CUSTOM_TLS)
         set(TLS_STACK_DETERMINED ON)
     endif ()
     if (NOT TLS_STACK_DETERMINED)
-        if (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+        if (NOT WIN32 AND NOT APPLE)
             set(USE_S2N ON)
         endif ()
     endif ()

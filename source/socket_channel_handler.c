@@ -84,6 +84,8 @@ static int do_write(struct socket_handler *socket_handler) {
             return socket_shutdown_direction(socket_handler->slot->handler, socket_handler->slot, AWS_CHANNEL_DIR_WRITE);
         }
 
+        fwrite(next_message->message_data.buffer, 1, next_message->message_data.len, stderr);
+
         written += written_to_wire;
         next_message->copy_mark += written_to_wire;
         if (next_message->copy_mark == next_message->message_data.len) {
@@ -149,6 +151,7 @@ static void do_read(struct socket_handler *socket_handler) {
             total_read += read;
 
             message->message_data.len = read;
+            fwrite(message->message_data.buffer, 1, message->message_data.len, stderr);
             if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 return;

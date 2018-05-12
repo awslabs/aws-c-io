@@ -21,6 +21,7 @@
 #include <socket_test.c>
 #include <channel_test.c>
 #include <socket_handler_test.c>
+#include <tls_handler_test.c>
 
 int main (int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
@@ -41,6 +42,7 @@ int main (int argc, char *argv[]) {
                        &channel_slots_clean_up,
                        &channel_message_passing,
                        &socket_handler_echo_and_backpressure,
-                       &socket_handler_close
+                       &socket_handler_close,
+                       &tls_channel_echo_and_backpressure_test
                       );
 }
