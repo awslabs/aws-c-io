@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <errno.h>
 
+static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
+
 struct s2n_handler {
     struct s2n_connection *connection;
     struct aws_channel_slot *slot;
@@ -149,12 +151,27 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
+        int s2n_error = s2n_errno;
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
-            s2n_handler->protocol = aws_byte_buf_from_literal(s2n_get_application_protocol(s2n_handler->connection));
-            s2n_handler->server_name = aws_byte_buf_from_literal(s2n_get_server_name(s2n_handler->connection));
 
-            if (s2n_handler->slot->adj_right) {
+            /*now lets match the upstream window now that negotiation is finished. */
+            size_t upstream_window = aws_channel_slot_upstream_read_window(s2n_handler->slot);
+            s2n_handler->slot->window_size = upstream_window + EST_TLS_RECORD_OVERHEAD;
+
+            const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
+
+            if (protocol) {
+                s2n_handler->protocol = aws_byte_buf_from_literal(protocol);
+            }
+
+            const char *server_name = s2n_get_server_name(s2n_handler->connection);
+
+            if (server_name) {
+                s2n_handler->server_name = aws_byte_buf_from_literal(server_name);
+            }
+
+            if (s2n_handler->slot->adj_right && protocol) {
                 struct aws_io_message *message = aws_channel_aquire_message_from_pool(s2n_handler->slot->channel,
                                                                                       AWS_IO_MESSAGE_APPLICATION_DATA,
                                                                                       sizeof(struct aws_tls_negotiated_protocol_message));
@@ -171,7 +188,8 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             break;
-        } else if (!(blocked && errno == EAGAIN)) {
+        } else if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
+            fprintf(stderr, "%s\n", s2n_strerror(s2n_error, "EN"));
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -221,13 +239,15 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
-    aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
+    if (message) {
+        aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
 
-    if (!s2n_handler->negotiation_finished) {
-        size_t message_len = message->message_data.len;
-        int neg_err = drive_negotiation(handler);
-        aws_channel_slot_update_window(slot, message_len);
-        return neg_err;
+        if (!s2n_handler->negotiation_finished) {
+            size_t message_len = message->message_data.len;
+            int neg_err = drive_negotiation(handler);
+            aws_channel_slot_update_window(slot, message_len);
+            return neg_err;
+        }
     }
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
@@ -237,7 +257,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
     while (processed < upstream_window && blocked == S2N_NOT_BLOCKED) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                                                            upstream_window - processed);
+                                                                                            upstream_window);
         if (!outgoing_read_message) {
             return aws_raise_error(AWS_ERROR_OOM);
         }
@@ -270,7 +290,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
 
 static int s2n_handler_process_write_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                              struct aws_io_message *message) {
-    struct s2n_handler *s2n_handler = (struct s2n_handler *) handler;
+    struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
@@ -318,14 +338,15 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
 }
 
 static int s2n_handler_on_window_update (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
-    aws_channel_slot_update_window(slot, size);
+    aws_channel_slot_update_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
-    size_t upstream_window = aws_channel_slot_upstream_read_window(slot);
+    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    /* we actually aren't opinionated here what the window should be. Make sure if ours is different from the upstream window
-     * we simply honor it. */
-    if (upstream_window != slot->window_size) {
-        slot->window_size = upstream_window;
+    if (s2n_handler->negotiation_finished) {
+        /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data to read).
+         * Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we have no idea what's going
+         * on inside there. So we need to attempt another read.*/
+        s2n_handler_process_read_message(handler, slot, NULL);
     }
 
     return AWS_OP_SUCCESS;
@@ -430,7 +451,8 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     if (options->verify_host_fn) {
         if (s2n_connection_set_verify_host_callback(s2n_handler->connection, s2n_handler_verify_host_callback, handler)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-            goto cleanup_conn;        }
+            goto cleanup_conn;
+        }
     }
 
     /*TODO: update s2n to support connection level alpn*/
@@ -476,6 +498,8 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
         s2n_config_free(s2n_ctx->s2n_config);
         aws_mem_release(ctx->alloc, (void *) s2n_ctx);
     }
+
+    aws_mem_release(ctx->alloc, ctx);
 }
 
 static int
@@ -509,7 +533,7 @@ read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **b
     return aws_raise_error(AWS_IO_FILE_NOT_FOUND);
 }
 
-struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, s2n_mode mode) {
     struct aws_tls_ctx *ctx = (struct aws_tls_ctx *) aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
 
     if (!ctx) {
@@ -527,11 +551,12 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     ctx->alloc = alloc;
     ctx->impl = s2n_ctx;
     s2n_ctx->s2n_config = s2n_config_new();
-    s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
 
     if (!s2n_ctx->s2n_config) {
         goto cleanup_s2n_ctx;
     }
+
+    s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
 
     if (options->certificate_path && options->private_key_path) {
         uint8_t *cert_blob = NULL;
@@ -562,7 +587,7 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     }
 
     if (options->verify_peer) {
-        if (s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
+        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
@@ -572,6 +597,11 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
+        }
+
+        if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
+            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            goto cleanup_s2n_config;
         }
     }
     else {
@@ -631,12 +661,12 @@ cleanup_ctx:
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    return aws_tls_ctx_new(alloc, options);
+    return aws_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc,
                                               struct aws_tls_ctx_options *options) {
-    return aws_tls_ctx_new(alloc, options);
+    return aws_tls_ctx_new(alloc, options, S2N_CLIENT);
 }
 
 

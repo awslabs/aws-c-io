@@ -84,8 +84,6 @@ static int do_write(struct socket_handler *socket_handler) {
             return socket_shutdown_direction(socket_handler->slot->handler, socket_handler->slot, AWS_CHANNEL_DIR_WRITE);
         }
 
-        fwrite(next_message->message_data.buffer, 1, next_message->message_data.len, stderr);
-
         written += written_to_wire;
         next_message->copy_mark += written_to_wire;
         if (next_message->copy_mark == next_message->message_data.len) {
@@ -97,6 +95,7 @@ static int do_write(struct socket_handler *socket_handler) {
     }
 
     if (!aws_linked_list_empty(&socket_handler->write_queue)) {
+
         /* if we got here, the socket is still in the write state. We won't receive edge trigger and we still have data to send
          * go ahead and schedule another run. */
         struct aws_task task = {
@@ -119,10 +118,8 @@ static int socket_process_write_message( struct aws_channel_handler *handler, st
                                struct aws_io_message *message ) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    struct aws_linked_list_node *head = &socket_handler->write_queue;
-
     if (message) {
-        aws_linked_list_push_back(head, &message->queueing_handle);
+        aws_linked_list_push_back(&socket_handler->write_queue, &message->queueing_handle);
     }
 
     return do_write(socket_handler);
@@ -151,7 +148,6 @@ static void do_read(struct socket_handler *socket_handler) {
             total_read += read;
 
             message->message_data.len = read;
-            fwrite(message->message_data.buffer, 1, message->message_data.len, stderr);
             if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 return;
