@@ -77,12 +77,25 @@ struct socket_test_rw_args {
     struct aws_byte_buf received_message;
     int read_invocations;
     bool invocation_happened;
+    bool shutdown_finished;
 };
 
 static bool socket_test_read_predicate(void *ctx) {
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
 
     return rw_args->invocation_happened;
+}
+
+static bool socket_test_shutdown_predicate(void *ctx) {
+    struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
+
+    return rw_args->shutdown_finished;
+}
+
+void socket_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
+    struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
+    rw_args->shutdown_finished = true;
+    aws_condition_variable_notify_one(rw_args->condition_variable);
 }
 
 struct aws_byte_buf socket_test_handle_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -124,6 +137,7 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(incoming_received_message, 0),
             .invocation_happened = false,
+            .shutdown_finished = false,
     };
 
     struct socket_test_rw_args outgoing_rw_args = {
@@ -131,6 +145,7 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(outgoing_received_message, 0),
             .invocation_happened = false,
+            .shutdown_finished = false,
     };
 
     /* make the windows small to make sure back pressure is honored. */
@@ -228,6 +243,16 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
                              incoming_rw_args.received_message.len);
     ASSERT_BIN_ARRAYS_EQUALS(read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer,
                              outgoing_rw_args.received_message.len);
+
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &incoming_rw_args);
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &incoming_rw_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &incoming_rw_args));
+
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &outgoing_rw_args);
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &outgoing_rw_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &outgoing_rw_args));
 
     aws_channel_clean_up(&incoming_args.channel);
     aws_channel_clean_up(&outgoing_args.channel);

@@ -160,7 +160,6 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             s2n_handler->slot->window_size = upstream_window + EST_TLS_RECORD_OVERHEAD;
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
-
             if (protocol) {
                 s2n_handler->protocol = aws_byte_buf_from_literal(protocol);
             }
@@ -189,7 +188,6 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
 
             break;
         } else if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
-            fprintf(stderr, "%s\n", s2n_strerror(s2n_error, "EN"));
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -337,6 +335,14 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
     return s2n_handler_handle_shutdown_direction(handler, slot, dir);
 }
 
+static void run_read(void *arg, aws_task_status status) {
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_channel_handler *handler = (struct aws_channel_handler *) arg;
+        struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
+        s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
+    }
+}
+
 static int s2n_handler_on_window_update (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     aws_channel_slot_update_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
@@ -346,7 +352,18 @@ static int s2n_handler_on_window_update (struct aws_channel_handler *handler, st
         /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data to read).
          * Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we have no idea what's going
          * on inside there. So we need to attempt another read.*/
-        s2n_handler_process_read_message(handler, slot, NULL);
+        uint64_t now = 0;
+
+        if (aws_channel_current_clock_time(slot->channel, &now)) {
+            return AWS_OP_ERR;
+        }
+
+        struct aws_task task = {
+                .fn = run_read,
+                .arg = handler
+        };
+
+        return aws_channel_schedule_task(slot->channel, &task, now);
     }
 
     return AWS_OP_SUCCESS;
@@ -502,8 +519,7 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     aws_mem_release(ctx->alloc, ctx);
 }
 
-static int
-read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **blob, size_t *len) {
+static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **blob, size_t *len) {
     FILE *fp = fopen(filename, "r");
 
     if (fp) {
@@ -511,12 +527,14 @@ read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **b
         *len = (size_t) ftell(fp);
 
         fseek(fp, 0L, SEEK_SET);
-        *blob = (uint8_t *) aws_mem_acquire(alloc, *len);
+        *blob = (uint8_t *) aws_mem_acquire(alloc, *len + 1);
 
         if(!*blob) {
             fclose(fp);
             return aws_raise_error(AWS_ERROR_OOM);
         }
+
+        memset(*blob, 0, *len + 1);
 
         size_t read = fread(*blob, 1, *len, fp);
         fclose(fp);
@@ -587,7 +605,8 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     }
 
     if (options->verify_peer) {
-        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1)) {
+        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) ||
+                s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }

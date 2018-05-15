@@ -31,24 +31,41 @@ struct tls_test_args {
     struct aws_channel_handler *rw_handler;
     struct aws_channel_slot *rw_slot;
     struct aws_tls_ctx *tls_ctx;
+    struct aws_byte_buf negotiated_protocol;
+    struct aws_byte_buf server_name;
+    struct aws_byte_buf returned_server_name;
+    bool tls_negotiated;
     bool error_invoked;
     bool server;
 };
 
 static bool tls_channel_setup_predicate(void *ctx) {
     struct tls_test_args *setup_test_args = (struct tls_test_args *)ctx;
-    return setup_test_args->rw_slot != NULL;
+    return setup_test_args->tls_negotiated || setup_test_args->error_invoked;
 }
 
 static bool tls_verify_host_trust_all(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx) {
     return true;
 }
 
+/*
+static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx) {
+    return false;
+}*/
+
 void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx) {
+    struct tls_test_args *setup_test_args = (struct tls_test_args *) ctx;
+
     if (!err_code) {
-        struct tls_test_args *setup_test_args = (struct tls_test_args *) ctx;
-        aws_condition_variable_notify_one(setup_test_args->condition_variable);
+        setup_test_args->negotiated_protocol = aws_tls_handler_protocol(setup_test_args->tls_handler);
+        setup_test_args->server_name = aws_tls_handler_server_name(setup_test_args->tls_handler);
+        setup_test_args->tls_negotiated = true;
     }
+    else {
+        setup_test_args->error_invoked = 1;
+    }
+
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
@@ -159,6 +176,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(incoming_received_message, 0),
             .invocation_happened = false,
+            .read_invocations = 0,
     };
 
     struct tls_test_rw_args outgoing_rw_args = {
@@ -166,6 +184,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .condition_variable = &condition_variable,
             .received_message = aws_byte_buf_from_array(outgoing_received_message, 0),
             .invocation_happened = false,
+            .read_invocations = 0,
     };
 
     /* make the windows small to make sure back pressure is honored. */
@@ -197,10 +216,12 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .on_data_read = NULL,
             .on_negotiation_result = tls_on_negotiation_result,
             .on_error = NULL,
+            .server_name = "localhost",
     };
 
     struct aws_tls_ctx_options server_ctx_options = {
-            .alpn_list = NULL,
+            .alpn_list = "h2;http/1.1",
+            .server_name = "localhost",
             .verify_peer = false,
             .server_name = NULL,
             .ca_path = NULL,
@@ -224,10 +245,11 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .tls_handler = NULL,
             .server = true,
             .tls_ctx = server_ctx,
+            .tls_negotiated = false,
     };
 
     struct aws_tls_ctx_options client_ctx_options = {
-            .alpn_list = NULL,
+            .alpn_list = "h2;http/1.1",
             .verify_peer = true,
             .server_name = NULL,
             .ca_path = NULL,
@@ -250,7 +272,8 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .options = &tls_client_conn_options,
             .tls_handler = NULL,
             .server = false,
-            .tls_ctx = client_ctx
+            .tls_ctx = client_ctx,
+            .tls_negotiated = false,
     };
 
     struct aws_socket_options options = (struct aws_socket_options){0};
@@ -293,8 +316,30 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_channel_setup_predicate, &incoming_args));
+
+    ASSERT_FALSE(incoming_args.error_invoked);
+
+    /* check ALPN and SNI was properly negotiated */
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_literal("h2");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
+                             incoming_args.negotiated_protocol.buffer, incoming_args.negotiated_protocol.len);
+
+    struct aws_byte_buf server_name = aws_byte_buf_from_literal("localhost");
+    ASSERT_BIN_ARRAYS_EQUALS(server_name.buffer, server_name.len,
+                             incoming_args.server_name.buffer, incoming_args.server_name.len);
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_channel_setup_predicate, &outgoing_args));
 
+    ASSERT_FALSE(outgoing_args.error_invoked);
+
+    ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
+                             outgoing_args.negotiated_protocol.buffer, outgoing_args.negotiated_protocol.len);
+    ASSERT_BIN_ARRAYS_EQUALS(server_name.buffer, server_name.len,
+                             outgoing_args.server_name.buffer, outgoing_args.server_name.len);
+
+    ASSERT_FALSE(outgoing_args.error_invoked);
+
+    /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &incoming_rw_args));
 
@@ -328,10 +373,11 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_destroy(server_ctx);
+
     aws_tls_clean_up_static_state(allocator);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn)
+AWS_TEST_CASE_SUPRESSION(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn, 1)

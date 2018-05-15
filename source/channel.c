@@ -196,6 +196,7 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     new_slot->adj_left = NULL;
     new_slot->handler = NULL;
     new_slot->channel = channel;
+    new_slot->window_size = 0;
 
     if (!channel->first) {
         channel->first = new_slot;
@@ -326,7 +327,12 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
             return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
         }
 
-        if (slot->channel->on_read_shutdown_completed) {
+        struct aws_channel_slot *end = slot->channel->first;
+        while (end->adj_right) {
+            end = end->adj_right;
+        }
+
+        if (end == slot && slot->channel->on_read_shutdown_completed) {
             slot->channel->on_read_shutdown_completed(slot->channel, slot->channel->read_shutdown_ctx);
             slot->channel->on_read_shutdown_completed = NULL;
             slot->channel->read_shutdown_ctx = NULL;
@@ -340,7 +346,7 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
                                                           error_code);
         }
 
-        if (slot->channel->on_write_shutdown_completed) {
+        if (slot->channel->first == slot && slot->channel->on_write_shutdown_completed) {
             slot->channel->on_write_shutdown_completed(slot->channel, slot->channel->write_shutdown_ctx);
             slot->channel->on_write_shutdown_completed = NULL;
             slot->channel->write_shutdown_ctx = NULL;
