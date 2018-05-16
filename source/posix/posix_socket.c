@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <sys/un.h>
 #include <zconf.h>
+#include <signal.h>
 
 enum socket_state {
     INIT = 0x01,
@@ -107,7 +108,6 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
                              struct aws_socket_options *options, struct aws_event_loop *connection_loop,
                              struct aws_socket_creation_args *creation_args) {
-
     assert(options);
     assert(creation_args);
 
@@ -626,7 +626,7 @@ int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffe
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t write_val = write(socket->io_handle.handle, buffer->buffer, buffer->len);
+    ssize_t write_val = send(socket->io_handle.handle, buffer->buffer, buffer->len, MSG_NOSIGNAL);
 
     if (write_val > 0) {
         *written = (size_t)write_val;

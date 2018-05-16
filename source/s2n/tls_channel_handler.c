@@ -21,6 +21,7 @@
 #include <s2n.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <inttypes.h>
 
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
@@ -179,7 +180,9 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
                     (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
 
                 protocol_message->protocol = s2n_handler->protocol;
-                aws_channel_slot_send_message(s2n_handler->slot, message, AWS_CHANNEL_DIR_READ);
+                if (aws_channel_slot_send_message(s2n_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
+                    aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
+                }
             }
 
             if (s2n_handler->options.on_negotiation_result) {
@@ -319,6 +322,11 @@ static int s2n_handler_handle_shutdown_direction(struct aws_channel_handler *han
     }
     else {
         s2n_handler->read_shutdown = true;
+        while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
+            struct aws_linked_list_node *node = aws_linked_list_remove(&s2n_handler->input_queue);
+            struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
+            aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
+        }
     }
 
     if (s2n_handler->read_shutdown && s2n_handler->write_shutdown) {

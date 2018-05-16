@@ -365,8 +365,15 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
 
     aws_socket_shutdown(incoming_args.socket);
 
-    int count = 0;
-    while (count++ < 10000) continue;
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &incoming_rw_args);
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &incoming_rw_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &incoming_rw_args));
+
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &outgoing_rw_args);
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &outgoing_rw_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, rw_handler_last_error_code(outgoing_args.rw_handler));
 

@@ -37,6 +37,7 @@ struct tls_test_args {
     bool tls_negotiated;
     bool error_invoked;
     bool server;
+    bool shutdown_finished;
 };
 
 static bool tls_channel_setup_predicate(void *ctx) {
@@ -53,7 +54,19 @@ static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, stru
     return false;
 }*/
 
-void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx) {
+static bool tls_test_shutdown_predicate(void *ctx) {
+    struct tls_test_args *tls_args = (struct tls_test_args *)ctx;
+
+    return tls_args->shutdown_finished;
+}
+
+static void tls_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
+    struct tls_test_args *tls_args = (struct tls_test_args *)ctx;
+    tls_args->shutdown_finished = true;
+    aws_condition_variable_notify_one(tls_args->condition_variable);
+}
+
+static void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx) {
     struct tls_test_args *setup_test_args = (struct tls_test_args *) ctx;
 
     if (!err_code) {
@@ -246,6 +259,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .server = true,
             .tls_ctx = server_ctx,
             .tls_negotiated = false,
+            .shutdown_finished = false,
     };
 
     struct aws_tls_ctx_options client_ctx_options = {
@@ -274,6 +288,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .server = false,
             .tls_ctx = client_ctx,
             .tls_negotiated = false,
+            .shutdown_finished = false,
     };
 
     struct aws_socket_options options = (struct aws_socket_options){0};
@@ -365,6 +380,16 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     ASSERT_BIN_ARRAYS_EQUALS(read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer,
                              outgoing_rw_args.received_message.len);
 
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, tls_test_on_shutdown_completed, &incoming_args);
+    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, tls_test_on_shutdown_completed, &incoming_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_shutdown_predicate, &incoming_args));
+
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, tls_test_on_shutdown_completed, &outgoing_args);
+    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, tls_test_on_shutdown_completed, &outgoing_args);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_shutdown_predicate, &outgoing_args));
+
     aws_channel_clean_up(&incoming_args.channel);
     aws_channel_clean_up(&outgoing_args.channel);
 
@@ -380,4 +405,4 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE_SUPRESSION(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn, 1)
+AWS_TEST_CASE(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn)

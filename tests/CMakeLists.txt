@@ -44,3 +44,5 @@ add_test(channel_message_passing ${TEST_BINARY_NAME} channel_message_passing)
 
 add_test(socket_handler_echo_and_backpressure ${TEST_BINARY_NAME} socket_handler_echo_and_backpressure)
 add_test(socket_handler_close ${TEST_BINARY_NAME} socket_handler_close)
+
+add_test(tls_channel_echo_and_backpressure_test ${TEST_BINARY_NAME} tls_channel_echo_and_backpressure_test)

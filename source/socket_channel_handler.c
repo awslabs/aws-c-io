@@ -82,7 +82,7 @@ static int do_write(struct socket_handler *socket_handler) {
             if (next_message->on_completion) {
                 next_message->on_completion(socket_handler->slot->channel, next_message, aws_last_error(), next_message->ctx);
             }
-            socket_handler->write_queue = *head->next;
+            aws_channel_release_message_to_pool(socket_handler->slot->channel, next_message);
             return socket_shutdown_direction(socket_handler->slot->handler, socket_handler->slot, AWS_CHANNEL_DIR_WRITE);
         }
 
