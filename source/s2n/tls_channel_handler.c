@@ -153,6 +153,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
         int s2n_error = s2n_errno;
+        fprintf(stderr, "%s\n", s2n_strerror(s2n_error, NULL));
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
 

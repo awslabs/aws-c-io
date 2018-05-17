@@ -49,10 +49,10 @@ static bool tls_verify_host_trust_all(struct aws_channel_handler *handler, struc
     return true;
 }
 
-/*
+
 static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx) {
     return false;
-}*/
+}
 
 static bool tls_test_shutdown_predicate(void *ctx) {
     struct tls_test_args *tls_args = (struct tls_test_args *)ctx;
@@ -107,10 +107,12 @@ static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel 
     aws_channel_slot_set_handler(tls_slot, setup_test_args->tls_handler);
     aws_channel_slot_insert_right(socket_slot, tls_slot);
 
-    struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
-    aws_channel_slot_insert_right(tls_slot, rw_slot);
-    aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
-    setup_test_args->rw_slot = rw_slot;
+    if (setup_test_args->rw_handler) {
+        struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+        aws_channel_slot_insert_right(tls_slot, rw_slot);
+        aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+        setup_test_args->rw_slot = rw_slot;
+    }
 
     if (!setup_test_args->server) {
         aws_tls_client_handler_start_negotiation(setup_test_args->tls_handler);
@@ -208,8 +210,6 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     struct aws_channel_handler *incoming_rw_handler = rw_test_handler_new(allocator, tls_test_handle_read,
                                                                           tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
-
-    aws_tls_init_static_state(allocator);
 
     struct aws_tls_connection_options tls_server_conn_options = {
             .server_name = NULL,
@@ -399,10 +399,156 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_destroy(server_ctx);
 
-    aws_tls_clean_up_static_state(allocator);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn)
+
+static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, void *ctx) {
+    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+
+    struct aws_tls_connection_options tls_server_conn_options = {
+            .server_name = NULL,
+            .verify_peer = false,
+            .alpn_list = NULL,
+            .verify_host_fn = NULL,
+            .on_data_read = NULL,
+            .on_negotiation_result = tls_on_negotiation_result,
+            .on_error = NULL,
+    };
+
+    struct aws_tls_connection_options tls_client_conn_options = {
+            .server_name = NULL,
+            .verify_peer = true,
+            .alpn_list = NULL,
+            .verify_host_fn = tls_verify_host_trust_none,
+            .on_data_read = NULL,
+            .on_negotiation_result = tls_on_negotiation_result,
+            .on_error = NULL,
+            .server_name = "localhost",
+    };
+
+    struct aws_tls_ctx_options server_ctx_options = {
+            .alpn_list = "h2;http/1.1",
+            .server_name = "localhost",
+            .verify_peer = false,
+            .server_name = NULL,
+            .ca_path = NULL,
+            .ca_file = NULL,
+            .private_key_path = "./unittests.key",
+            .certificate_path = "./unittests.crt",
+            .version_blacklist = 0,
+    };
+
+    struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
+
+    struct tls_test_args incoming_args = {
+            .mutex = &mutex,
+            .event_loop = event_loop,
+            .allocator = allocator,
+            .condition_variable = &condition_variable,
+            .error_invoked = 0,
+            .socket = NULL,
+            .rw_handler = NULL,
+            .options = &tls_server_conn_options,
+            .tls_handler = NULL,
+            .server = true,
+            .tls_ctx = server_ctx,
+            .tls_negotiated = false,
+            .shutdown_finished = false,
+    };
+
+    struct aws_tls_ctx_options client_ctx_options = {
+            .alpn_list = "h2;http/1.1",
+            .verify_peer = true,
+            .server_name = NULL,
+            .ca_path = NULL,
+            .ca_file = "./unittests.crt",
+            .private_key_path = NULL,
+            .certificate_path = NULL,
+            .version_blacklist = 0
+    };
+
+    struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
+
+    struct tls_test_args outgoing_args = {
+            .mutex = &mutex,
+            .event_loop = event_loop,
+            .allocator = allocator,
+            .condition_variable = &condition_variable,
+            .error_invoked = 0,
+            .socket = NULL,
+            .rw_handler = NULL,
+            .options = &tls_client_conn_options,
+            .tls_handler = NULL,
+            .server = false,
+            .tls_ctx = client_ctx,
+            .tls_negotiated = false,
+            .shutdown_finished = false,
+    };
+
+    struct aws_socket_options options = (struct aws_socket_options){0};
+    options.connect_timeout = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_LOCAL;
+
+    uint64_t timestamp = 0;
+    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
+
+    struct aws_socket_endpoint endpoint;
+
+    sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
+
+    struct aws_socket_creation_args listener_creation_args = {
+            .on_incoming_connection = tls_socket_test_listener_incoming,
+            .on_error = tls_socket_test_listener_on_error,
+            .on_connection_established = NULL,
+            .ctx = &incoming_args,
+    };
+
+    struct aws_socket listener;
+    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options, event_loop, &listener_creation_args));
+
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
+    ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener));
+
+    struct aws_socket_creation_args outgoing_creation_args = {
+            .on_connection_established = tls_socket_test_connection_handler,
+            .on_error = NULL,
+            .ctx = &outgoing_args
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
+
+    /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_channel_setup_predicate, &incoming_args));
+
+    ASSERT_TRUE(incoming_args.error_invoked);
+
+    aws_channel_clean_up(&incoming_args.channel);
+    aws_channel_clean_up(&outgoing_args.channel);
+
+    aws_mem_release(allocator, incoming_args.socket);
+    aws_socket_clean_up(&listener);
+
+    aws_tls_ctx_destroy(client_ctx);
+    aws_tls_ctx_destroy(server_ctx);
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_channel_negotiation_error, tls_channel_negotiation_error_fn)
