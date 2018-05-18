@@ -118,7 +118,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
 
     socket->creation_args = *creation_args;
     socket->allocator = alloc;
-    socket->io_handle = (struct aws_io_handle){0};
+    socket->io_handle = (struct aws_io_handle){-1};
     socket->connection_loop = connection_loop;
     socket->state = INIT;
 
@@ -128,6 +128,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
 void aws_socket_clean_up(struct aws_socket *socket) {
     aws_socket_shutdown(socket);
     *socket = (struct aws_socket){0};
+    socket->io_handle.handle = -1;
 }
 
 static void on_connection_error(struct aws_socket *socket, int error);
@@ -578,11 +579,13 @@ int aws_socket_shutdown(struct aws_socket *socket) {
         if (err_code) {
             return AWS_OP_ERR;
         }
-
-        socket->io_handle.handle = -1;
+        socket->connection_loop = NULL;
     }
 
-    close(socket->io_handle.handle);
+    if (socket->io_handle.handle >= 0) {
+        close(socket->io_handle.handle);
+        socket->io_handle.handle = -1;
+    }
 
     return AWS_OP_SUCCESS;
 }

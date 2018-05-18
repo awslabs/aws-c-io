@@ -16,6 +16,7 @@
 */
 
 #include <aws/io/channel.h>
+#include <aws/common/condition_variable.h>
 
 typedef struct aws_byte_buf(*rw_test_handler_driver)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                                      struct aws_byte_buf *data_read, void *ctx);
@@ -27,6 +28,8 @@ struct rw_test_handler_impl {
     rw_test_handler_driver on_write;
     bool event_loop_driven;
     size_t window;
+    struct aws_condition_variable condition_variable;
+    struct aws_mutex mutex;
     int shutdown_error;
     void *ctx;
 };
@@ -82,6 +85,7 @@ static int rw_handler_on_shutdown_notify(struct aws_channel_handler *handler, st
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     handler_impl->shutdown_notify_called = true;
     handler_impl->shutdown_error = error_code;
+    aws_condition_variable_notify_one(&handler_impl->condition_variable);
     return aws_channel_slot_shutdown_notify(slot, dir, error_code);
 }
 
@@ -124,6 +128,8 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
     handler_impl->event_loop_driven = event_loop_driven;
     handler_impl->shutdown_error = 0;
     handler_impl->window = window;
+    handler_impl->condition_variable = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
+    handler_impl->mutex = (struct aws_mutex)AWS_MUTEX_INIT;
 
     handler->impl = handler_impl;
 
@@ -251,6 +257,17 @@ static bool rw_handler_window_update_called(struct aws_channel_handler *handler)
 static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     return handler_impl->shutdown_error;
+}
+
+static bool rw_test_handler_shutdown_predicate(void *arg) {
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)arg;
+    return handler_impl->shutdown_notify_called;
+
+}
+static int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
+    return aws_condition_variable_wait_pred(&handler_impl->condition_variable, &handler_impl->mutex,
+                                            rw_test_handler_shutdown_predicate, handler_impl);
 }
 
 #endif /*READ_WRITE_TEST_HANDLER*/

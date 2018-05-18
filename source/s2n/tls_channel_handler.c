@@ -242,9 +242,9 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
 
         if (!s2n_handler->negotiation_finished) {
             size_t message_len = message->message_data.len;
-            int neg_err = drive_negotiation(handler);
+            drive_negotiation(handler);
             aws_channel_slot_update_window(slot, message_len);
-            return neg_err;
+            return AWS_OP_SUCCESS;
         }
     }
 
@@ -331,7 +331,6 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
             struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
             aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
         }
-
     }
 
     return aws_channel_slot_shutdown_notify(slot, dir, error_code);

@@ -358,6 +358,7 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
 
     aws_socket_shutdown(incoming_args.socket);
 
+    ASSERT_SUCCESS(rw_handler_wait_on_shutdown(outgoing_args.rw_handler));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, rw_handler_last_error_code(outgoing_args.rw_handler));
 
     aws_channel_clean_up(&incoming_args.channel);

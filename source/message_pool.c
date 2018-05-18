@@ -15,6 +15,7 @@
 
 #include <aws/io/message_pool.h>
 #include <assert.h>
+#include <aws/common/thread.h>
 
 int aws_memory_pool_init(struct aws_memory_pool *mempool, struct aws_allocator *alloc,
                          uint16_t ideal_segment_count, size_t segment_size) {
@@ -55,13 +56,13 @@ void aws_memory_pool_clean_up(struct aws_memory_pool *mempool) {
 
 void *aws_memory_pool_acquire(struct aws_memory_pool *mempool) {
     void *back = NULL;
-
     if(!aws_array_list_back(&mempool->stack, &back)) {
         aws_array_list_pop_back(&mempool->stack);
         return back;
     }
 
-    return aws_mem_acquire(mempool->alloc, mempool->segment_size);
+    void *mem = aws_mem_acquire(mempool->alloc, mempool->segment_size);
+    return mem;
 }
 
 void aws_memory_pool_release(struct aws_memory_pool *mempool, void *to_release) {

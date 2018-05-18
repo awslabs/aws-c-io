@@ -210,14 +210,14 @@ void aws_channel_clean_up(struct aws_channel *channel) {
 }
 
 int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
-    struct aws_channel_slot *slot = channel->first;
-    channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
+    if (channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+        struct aws_channel_slot *slot = channel->first;
+        channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
 
-    if (slot) {
-        return aws_channel_slot_shutdown(slot, error_code, error_code != AWS_OP_SUCCESS);
+        if (slot) {
+            return aws_channel_slot_shutdown(slot, error_code, error_code != AWS_OP_SUCCESS);
+        }
     }
-
-    channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
 
     return AWS_OP_SUCCESS;
 }
@@ -371,6 +371,10 @@ int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window
 }
 
 int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code) {
+    if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+        return AWS_OP_SUCCESS;
+    }
+
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (slot->adj_right && slot->adj_right->handler) {
             return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);

@@ -241,7 +241,7 @@ static void shutdown_ran_task(void *arg, aws_task_status status) {
 static int do_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort) {
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
-    if (abort) {
+    if (abort && socket_handler->socket->io_handle.handle >= 0) {
         aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop,
                                                   &socket_handler->socket->io_handle);
         aws_socket_shutdown(socket_handler->socket);
@@ -276,7 +276,7 @@ int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_c
                            enum aws_channel_direction dir, int error_code) {
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
-    while(!aws_linked_list_empty(&socket_handler->write_queue)) {
+    while(dir == AWS_CHANNEL_DIR_WRITE && !aws_linked_list_empty(&socket_handler->write_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_remove(&socket_handler->write_queue);
         struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
 
@@ -288,7 +288,7 @@ int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_c
     }
 
     aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop,
-                                              &socket_handler->socket->io_handle);
+                                                  &socket_handler->socket->io_handle);
     aws_socket_shutdown(socket_handler->socket);
 
     return aws_channel_slot_shutdown_notify(slot, AWS_CHANNEL_DIR_WRITE, error_code);
