@@ -17,6 +17,8 @@
 */
 #include <aws/io/exports.h>
 #include <aws/common/common.h>
+#include <aws/common/byte_buf.h>
+#include <aws/common/linked_list.h>
 #include <stdint.h>
 
 struct aws_io_handle {
@@ -28,10 +30,34 @@ struct aws_io_handle {
     void *private_event_loop_data;
 };
 
+typedef enum aws_io_message_type {
+    AWS_IO_MESSAGE_APPLICATION_DATA,
+} aws_io_message_type;
+
+struct aws_io_message;
+struct aws_channel;
+
+typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *ctx);
+
+struct aws_io_message {
+    struct aws_allocator *allocator;
+    struct aws_byte_buf message_data;
+    aws_io_message_type message_type;
+    int message_tag;
+    size_t copy_mark;
+    aws_channel_on_message_write_completed on_completion;
+    void *ctx;
+    /* it's incredibly likely something is going to need to queue this,
+     * go ahead and make sure the list info is part of the original allocation. */
+    struct aws_linked_list_node queueing_handle;
+};
+
 typedef int (*aws_io_clock)(uint64_t *timestamp);
 
 typedef enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
+    AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
+    AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
     AWS_IO_SYS_CALL_FAILURE,
     AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
     AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
@@ -42,6 +68,21 @@ typedef enum aws_io_errors {
     AWS_IO_WRITE_WOULD_BLOCK,
     AWS_IO_READ_WOULD_BLOCK,
     AWS_IO_BROKEN_PIPE,
+    AWS_IO_MAX_FDS_EXCEEDED,
+    AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY,
+    AWS_IO_NO_PERMISSION,
+    AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE,
+    AWS_IO_SOCKET_CONNECTION_REFUSED,
+    AWS_IO_SOCKET_TIMEOUT,
+    AWS_IO_SOCKET_NO_ROUTE_TO_HOST,
+    AWS_IO_SOCKET_NETWORK_DOWN,
+    AWS_IO_SOCKET_CLOSED,
+    AWS_IO_SOCKET_NOT_CONNECTED,
+    AWS_IO_SOCKET_INVALID_OPTIONS,
+    AWS_IO_SOCKET_ADDRESS_IN_USE,
+    AWS_IO_SOCKET_INVALID_ADDRESS,
+    AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE,
+    AWS_IO_SOCKET_CONNECT_ABORTED,
 
     AWS_IO_ERROR_END_RANGE =  0x07FF
 } aws_io_errors;

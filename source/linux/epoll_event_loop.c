@@ -150,14 +150,20 @@ clean_up_loop:
 struct epoll_loop_stopped_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
+    bool stopped;
 };
 
 static void on_epoll_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
     struct epoll_loop_stopped_args *args = (struct epoll_loop_stopped_args *)ctx;
 
-    aws_mutex_lock(&args->mutex);
+    args->stopped = true;
     aws_condition_variable_notify_one(&args->condition_variable);
-    aws_mutex_unlock((&args->mutex));
+}
+
+static bool epoll_loop_stopped_predicate(void *arg) {
+    struct epoll_loop_stopped_args *event_loop_stopped_args = (struct epoll_loop_stopped_args *)arg;
+
+    return event_loop_stopped_args->stopped;
 }
 
 static void destroy(struct aws_event_loop *event_loop) {
@@ -167,12 +173,13 @@ static void destroy(struct aws_event_loop *event_loop) {
     if (epoll_loop->should_continue) {
         struct epoll_loop_stopped_args stop_args = {
                 .mutex = AWS_MUTEX_INIT,
-                .condition_variable = AWS_CONDITION_VARIABLE_INIT
+                .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                .stopped = false
         };
 
         aws_mutex_lock(&stop_args.mutex);
         aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args);
-        aws_condition_variable_wait(&stop_args.condition_variable, &stop_args.mutex);
+        aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex, epoll_loop_stopped_predicate, &stop_args);
     }
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
@@ -467,12 +474,23 @@ static void main_loop (void *args) {
         }
 
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
-        timeout = DEFAULT_TIMEOUT;
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
 
-        int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
-        timeout = scheduler_timeout > 0 && timeout > scheduler_timeout ? scheduler_timeout : timeout;
+        if (next_run_time) {
+            uint64_t offset = 0;
+            event_loop->clock(&offset);
+            next_run_time -= offset;
+            int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
+            /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
+             * but not quite ready. so just sleep one ms*/
+            timeout = scheduler_timeout > 0 ?
+                                              scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout :DEFAULT_TIMEOUT
+                      : 1;
+        }
+        else {
+            timeout = DEFAULT_TIMEOUT;
+        }
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);

@@ -21,13 +21,13 @@
 #include <aws/io/io.h>
 #include <stdbool.h>
 
-enum aws_io_event_type {
+typedef enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
     AWS_IO_EVENT_TYPE_REMOTE_HANG_UP = 4,
     AWS_IO_EVENT_TYPE_CLOSED = 8,
     AWS_IO_EVENT_TYPE_ERROR = 16
-};
+} aws_io_event_type;
 
 struct aws_event_loop;
 struct aws_task;
@@ -50,7 +50,7 @@ struct aws_event_loop {
     struct aws_event_loop_vtable vtable;
     struct aws_allocator *alloc;
     aws_io_clock clock;
-    struct aws_common_hash_table local_data;
+    struct aws_hash_table local_data;
     void *impl_data;
 };
 
@@ -155,6 +155,12 @@ AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *
  * Utility fn to hint to a caller if it should schedule a task instead of mutating state directly.
  */
 AWS_IO_API bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop);
+
+/**
+ * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+ */
+AWS_IO_API int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
+
 
 #ifdef __cplusplus
 }
