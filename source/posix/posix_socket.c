@@ -578,6 +578,8 @@ int aws_socket_shutdown(struct aws_socket *socket) {
         if (err_code) {
             return AWS_OP_ERR;
         }
+
+        socket->io_handle.handle = -1;
     }
 
     close(socket->io_handle.handle);

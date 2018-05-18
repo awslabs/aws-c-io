@@ -17,6 +17,8 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
 #include <aws/common/task_scheduler.h>
+#include <aws/common/condition_variable.h>
+
 #include <assert.h>
 
 static size_t MESSAGE_POOL_KEY = 0;
@@ -77,6 +79,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
 
         setup_args->channel->msg_pool = message_pool;
         setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->ctx);
+        setup_args->channel->channel_state = AWS_CHANNEL_ACTIVE;
         aws_mem_release(setup_args->alloc, setup_args);
         return;
     }
@@ -97,15 +100,13 @@ cleanup_setup_args:
 }
 
 int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
-                     struct aws_event_loop *event_loop, aws_channel_on_setup_completed on_completed, void *ctx) {
+                     struct aws_event_loop *event_loop, struct aws_channel_creation_callbacks *callbacks) {
     channel->alloc = alloc;
     channel->loop = event_loop;
     channel->first = NULL;
     channel->msg_pool = NULL;
-    channel->read_shutdown_ctx = NULL;
-    channel->write_shutdown_ctx = NULL;
-    channel->on_read_shutdown_completed = NULL;
-    channel->on_write_shutdown_completed = NULL;
+    channel->on_shutdown_completed = callbacks->on_shutdown_completed;
+    channel->shutdown_ctx = callbacks->shutdown_ctx;
 
     struct channel_setup_args *setup_args = (struct channel_setup_args *)aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
 
@@ -113,10 +114,11 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
         return aws_raise_error(AWS_ERROR_OOM);
     }
 
+    channel->channel_state = AWS_CHANNEL_SETTING_UP;
     setup_args->alloc = alloc;
     setup_args->channel = channel;
-    setup_args->on_setup_completed = on_completed;
-    setup_args->ctx = ctx;
+    setup_args->on_setup_completed = callbacks->on_setup_completed;
+    setup_args->ctx = callbacks->setup_ctx;
 
     struct aws_task task = {
         .fn = on_channel_setup_complete,
@@ -141,8 +143,62 @@ static inline void cleanup_slot(struct aws_channel_slot *slot) {
     }
 }
 
+struct channel_shutdown_args {
+    struct aws_channel *channel;
+    struct aws_condition_variable condition_variable;
+    aws_channel_on_shutdown_completed on_shutdown_completed;
+    void *shutdown_ctx;
+};
+
+static bool shutdown_finished_predicate(void *arg) {
+    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)arg;
+    return shutdown_args->channel->channel_state == AWS_CHANNEL_SHUT_DOWN;
+}
+
+static void shutdown_finished(struct aws_channel *channel, void *ctx) {
+    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)ctx;
+
+    if (shutdown_args->on_shutdown_completed) {
+        shutdown_args->on_shutdown_completed(shutdown_args->channel, shutdown_args->shutdown_ctx);
+    }
+    shutdown_args->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+
+    aws_condition_variable_notify_one(&shutdown_args->condition_variable);
+}
+
 void aws_channel_clean_up(struct aws_channel *channel) {
+
     struct aws_channel_slot *current = channel->first;
+
+    if (!current) {
+        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+        return;
+    }
+
+    if (!current->handler) {
+        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+    }
+
+    /* as much as it hurts my feelings, the choice is either block if the user hasn't done shutdown properly,
+     * or segfault. If we segfault, I'll get blamed, so we'll have to block in that case. */
+    if (channel->channel_state != AWS_CHANNEL_SHUT_DOWN) {
+        channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
+
+        struct channel_shutdown_args shutdown_args = {
+                .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                .channel = channel,
+                .shutdown_ctx = channel->shutdown_ctx,
+                .on_shutdown_completed = channel->on_shutdown_completed
+        };
+
+        channel->on_shutdown_completed = shutdown_finished;
+        channel->shutdown_ctx = &shutdown_args;
+
+        aws_channel_slot_shutdown(current, AWS_OP_SUCCESS, true);
+        struct aws_mutex mutex = AWS_MUTEX_INIT;
+
+        aws_condition_variable_wait_pred(&shutdown_args.condition_variable, &mutex, shutdown_finished_predicate, &shutdown_args);
+    }
 
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
@@ -153,24 +209,17 @@ void aws_channel_clean_up(struct aws_channel *channel) {
     *channel = (struct aws_channel){0};
 }
 
-int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction dir,
-                         aws_channel_on_shutdown_completed on_completed, void *ctx) {
+int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
     struct aws_channel_slot *slot = channel->first;
+    channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
 
-    if (dir == AWS_CHANNEL_DIR_READ) {
-        channel->on_read_shutdown_completed = on_completed;
-        channel->read_shutdown_ctx = ctx;
-        aws_channel_slot_shutdown_direction(slot, dir);
+    if (slot) {
+        return aws_channel_slot_shutdown(slot, error_code, error_code != AWS_OP_SUCCESS);
     }
-    else {
-        while (slot->adj_right) {
-            slot = slot->adj_right;
-        }
 
-        channel->on_write_shutdown_completed = on_completed;
-        channel->write_shutdown_ctx = ctx;
-        aws_channel_slot_shutdown_direction(slot, dir);
-    }
+    channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+
+    return AWS_OP_SUCCESS;
 }
 
 struct aws_io_message *aws_channel_aquire_message_from_pool ( struct aws_channel *channel,
@@ -326,16 +375,8 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
         if (slot->adj_right && slot->adj_right->handler) {
             return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
         }
-
-        struct aws_channel_slot *end = slot->channel->first;
-        while (end->adj_right) {
-            end = end->adj_right;
-        }
-
-        if (end == slot && slot->channel->on_read_shutdown_completed) {
-            slot->channel->on_read_shutdown_completed(slot->channel, slot->channel->read_shutdown_ctx);
-            slot->channel->on_read_shutdown_completed = NULL;
-            slot->channel->read_shutdown_ctx = NULL;
+        else {
+            return aws_channel_handler_on_shutdown_notify(slot->handler, slot, AWS_CHANNEL_DIR_WRITE, error_code);
         }
 
         return AWS_OP_SUCCESS;
@@ -346,10 +387,8 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
                                                           error_code);
         }
 
-        if (slot->channel->first == slot && slot->channel->on_write_shutdown_completed) {
-            slot->channel->on_write_shutdown_completed(slot->channel, slot->channel->write_shutdown_ctx);
-            slot->channel->on_write_shutdown_completed = NULL;
-            slot->channel->write_shutdown_ctx = NULL;
+        if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
+            slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_ctx);
         }
 
         return AWS_OP_SUCCESS;
@@ -358,13 +397,14 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
     return AWS_OP_ERR;
 }
 
-size_t aws_channel_slot_upstream_read_window (struct aws_channel_slot *slot) {
+size_t aws_channel_slot_downstream_read_window (struct aws_channel_slot *slot) {
     assert(slot->adj_right);
     return slot->adj_right->window_size;
 }
 
-int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir) {
-    return slot->handler->vtable.shutdown_direction(slot->handler, slot, dir);
+int aws_channel_slot_shutdown (struct aws_channel_slot *slot, int err_code, bool abort_immediately) {
+    assert(slot->handler);
+    return aws_channel_handler_shutdown(slot->handler, slot, err_code, abort_immediately);
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
@@ -396,10 +436,10 @@ int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler *handler, 
     return handler->vtable.on_shutdown_notify(handler, slot, dir, error_code);
 }
 
-int aws_channel_handler_shutdown_direction(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                      enum aws_channel_direction dir) {
-    assert(handler->vtable.shutdown_direction);
-    return handler->vtable.shutdown_direction(handler, slot, dir);
+int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code,
+                                 bool abort_immediately) {
+    assert(handler->vtable.shutdown);
+    return handler->vtable.shutdown(handler, slot, error_code, abort_immediately);
 }
 
 size_t aws_channel_handler_get_current_window_size(struct aws_channel_handler *handler) {

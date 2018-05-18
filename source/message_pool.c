@@ -114,6 +114,10 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
             return NULL;
     }
 
+    if (!message) {
+        return NULL;
+    }
+
     message->message_type = message_type;
     message->message_tag = 0;
     message->ctx = 0;

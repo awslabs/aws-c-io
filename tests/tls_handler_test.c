@@ -54,18 +54,6 @@ static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, stru
     return false;
 }
 
-static bool tls_test_shutdown_predicate(void *ctx) {
-    struct tls_test_args *tls_args = (struct tls_test_args *)ctx;
-
-    return tls_args->shutdown_finished;
-}
-
-static void tls_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
-    struct tls_test_args *tls_args = (struct tls_test_args *)ctx;
-    tls_args->shutdown_finished = true;
-    aws_condition_variable_notify_one(tls_args->condition_variable);
-}
-
 static void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx) {
     struct tls_test_args *setup_test_args = (struct tls_test_args *) ctx;
 
@@ -122,8 +110,16 @@ static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel 
 static void tls_socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx) {
     struct tls_test_args *listener_args = (struct tls_test_args *)ctx;
     listener_args->socket = new_socket;
+
+    struct aws_channel_creation_callbacks callbacks = {
+            .on_setup_completed = tls_socket_channel_setup_test_on_setup_completed,
+            .setup_ctx = listener_args,
+            .on_shutdown_completed = NULL,
+            .shutdown_ctx = NULL
+    };
+
     aws_channel_init(&listener_args->channel, listener_args->allocator,
-                     listener_args->event_loop, tls_socket_channel_setup_test_on_setup_completed, listener_args);
+                     listener_args->event_loop, &callbacks);
 }
 
 static void tls_socket_test_listener_on_error(struct aws_socket *socket, int err_code, void *ctx) {
@@ -134,8 +130,16 @@ static void tls_socket_test_listener_on_error(struct aws_socket *socket, int err
 static void tls_socket_test_connection_handler(struct aws_socket *socket, void *ctx) {
     struct tls_test_args *connection_args = (struct tls_test_args *)ctx;
     connection_args->socket = socket;
+
+    struct aws_channel_creation_callbacks callbacks = {
+            .on_setup_completed = tls_socket_channel_setup_test_on_setup_completed,
+            .setup_ctx = connection_args,
+            .on_shutdown_completed = NULL,
+            .shutdown_ctx = NULL
+    };
+
     aws_channel_init(&connection_args->channel, connection_args->allocator,
-                     connection_args->event_loop, tls_socket_channel_setup_test_on_setup_completed, connection_args);
+                     connection_args->event_loop, &callbacks);
 }
 
 struct tls_test_rw_args {
@@ -380,16 +384,6 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     ASSERT_BIN_ARRAYS_EQUALS(read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer,
                              outgoing_rw_args.received_message.len);
 
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, tls_test_on_shutdown_completed, &incoming_args);
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, tls_test_on_shutdown_completed, &incoming_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_shutdown_predicate, &incoming_args));
-
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, tls_test_on_shutdown_completed, &outgoing_args);
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, tls_test_on_shutdown_completed, &outgoing_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_shutdown_predicate, &outgoing_args));
-
     aws_channel_clean_up(&incoming_args.channel);
     aws_channel_clean_up(&outgoing_args.channel);
 
@@ -534,9 +528,9 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_channel_setup_predicate, &outgoing_args));
 
-    ASSERT_TRUE(incoming_args.error_invoked);
+    ASSERT_TRUE(outgoing_args.error_invoked);
 
     aws_channel_clean_up(&incoming_args.channel);
     aws_channel_clean_up(&outgoing_args.channel);

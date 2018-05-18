@@ -23,9 +23,7 @@
 #include <socket_handler_test.c>
 #include <tls_handler_test.c>
 
-int main (int argc, char *argv[]) {
-    aws_tls_init_static_state(aws_default_allocator());
-
+static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
                        &stop_then_restart,
@@ -47,8 +45,12 @@ int main (int argc, char *argv[]) {
                        &socket_handler_close,
                        &tls_channel_echo_and_backpressure_test,
                        &tls_channel_negotiation_error
-                      );
+    );
+}
 
+int main (int argc, char *argv[]) {
+    aws_tls_init_static_state(aws_default_allocator());
+    int ret_val = run_tests(argc, argv);
     aws_tls_clean_up_static_state(aws_default_allocator());
-
+    return ret_val;
 }

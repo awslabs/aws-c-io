@@ -26,8 +26,6 @@ struct socket_handler {
     struct aws_channel_slot *slot;
     struct aws_linked_list_node write_queue;
     size_t max_rw_size;
-    bool read_closed;
-    bool write_closed;
 };
 
 static int socket_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -83,7 +81,7 @@ static int do_write(struct socket_handler *socket_handler) {
                 next_message->on_completion(socket_handler->slot->channel, next_message, aws_last_error(), next_message->ctx);
             }
             aws_channel_release_message_to_pool(socket_handler->slot->channel, next_message);
-            return socket_shutdown_direction(socket_handler->slot->handler, socket_handler->slot, AWS_CHANNEL_DIR_WRITE);
+            return aws_channel_shutdown(socket_handler->slot->channel, aws_last_error());
         }
 
         written += written_to_wire;
@@ -130,7 +128,7 @@ static int socket_process_write_message( struct aws_channel_handler *handler, st
 static void read_task(void *arg, aws_task_status status);
 
 static void do_read(struct socket_handler *socket_handler) {
-    size_t upstream_window = aws_channel_slot_upstream_read_window(socket_handler->slot);
+    size_t upstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
             upstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : upstream_window;
 
@@ -187,23 +185,22 @@ static void on_socket_event(struct aws_event_loop *event_loop, struct aws_io_han
     struct aws_channel_handler *channel_handler = (struct aws_channel_handler *)arg;
     struct socket_handler *socket_handler = (struct socket_handler *)channel_handler->impl;
 
-    bool shutdown_already_in_progress = socket_handler->read_closed && socket_handler->write_closed;
-    if (events & AWS_IO_EVENT_TYPE_ERROR && !shutdown_already_in_progress) {
+    if (events & AWS_IO_EVENT_TYPE_ERROR) {
         int error = aws_socket_get_error(socket_handler->socket);
-        aws_channel_slot_shutdown_notify(socket_handler->slot, AWS_CHANNEL_DIR_READ, error);
+        aws_channel_shutdown(socket_handler->slot->channel, error);
         return;
     }
 
-    if ((events & AWS_IO_EVENT_TYPE_CLOSED || events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP) && !shutdown_already_in_progress) {
-        aws_channel_slot_shutdown_notify(socket_handler->slot, AWS_CHANNEL_DIR_READ, AWS_IO_SOCKET_CLOSED);
+    if ((events & AWS_IO_EVENT_TYPE_CLOSED || events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP)) {
+        aws_channel_shutdown(socket_handler->slot->channel, AWS_IO_SOCKET_CLOSED);
         return;
     }
 
-    if (events & AWS_IO_EVENT_TYPE_READABLE && !shutdown_already_in_progress) {
+    if (events & AWS_IO_EVENT_TYPE_READABLE) {
         do_read(socket_handler);
     }
 
-    if (events & AWS_IO_EVENT_TYPE_WRITABLE && !shutdown_already_in_progress) {
+    if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
         socket_process_write_message(channel_handler, socket_handler->slot, NULL);
     }
 
@@ -226,7 +223,6 @@ int socket_on_window_update(struct aws_channel_handler *handler, struct aws_chan
 }
 
 struct shutdown_args {
-    enum aws_channel_direction dir;
     struct socket_handler *handler;
     struct aws_allocator *allocator;
     int error_code;
@@ -235,80 +231,71 @@ struct shutdown_args {
 static void shutdown_ran_task(void *arg, aws_task_status status) {
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct shutdown_args *shutdown_args = (struct shutdown_args *) arg;
-        aws_event_loop_unsubscribe_from_io_events(shutdown_args->handler->event_loop, &shutdown_args->handler->socket->io_handle);
 
-        aws_channel_slot_shutdown_notify(shutdown_args->handler->slot, shutdown_args->dir, shutdown_args->error_code);
+        aws_channel_slot_shutdown_notify(shutdown_args->handler->slot, AWS_CHANNEL_DIR_READ, shutdown_args->error_code);
 
         aws_mem_release(shutdown_args->allocator, shutdown_args);
     }
 }
 
-static int do_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                enum aws_channel_direction dir, int error_code) {
+static int do_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort) {
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_READ) {
-        socket_handler->read_closed = true;
-    }
-    else {
-        socket_handler->write_closed = true;
-    }
-
-    aws_socket_half_close(socket_handler->socket, dir);
-
-    if (dir == AWS_CHANNEL_DIR_WRITE) {
-
-        while(!aws_linked_list_empty(&socket_handler->write_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_remove(&socket_handler->write_queue);
-            struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
-
-            if (message->on_completion) {
-                message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->ctx);
-            }
-
-            aws_channel_release_message_to_pool(slot->channel, message);
-        }
-
+    if (abort) {
+        aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop,
+                                                  &socket_handler->socket->io_handle);
+        aws_socket_shutdown(socket_handler->socket);
     }
 
-    /* we need to make sure the unregister runs in a task so that we don't unregister and deallocate in the middle of
-     * events for this socket that have already been returned by the event-loop. */
-    if (socket_handler->read_closed && socket_handler->write_closed) {
-        struct shutdown_args *shutdown_args = aws_mem_acquire(handler->alloc, sizeof(struct shutdown_args));
+    struct shutdown_args *shutdown_args = aws_mem_acquire(handler->alloc, sizeof(struct shutdown_args));
 
-        if (!shutdown_args) {
-            return aws_raise_error(AWS_ERROR_OOM);
-        }
-
-        shutdown_args->error_code = error_code;
-        shutdown_args->dir = dir;
-        shutdown_args->handler = socket_handler;
-        shutdown_args->allocator = handler->alloc;
-
-        struct aws_task task = {
-                .fn = shutdown_ran_task,
-                .arg = shutdown_args,
-        };
-
-        uint64_t now = 0;
-
-        if (aws_channel_current_clock_time(slot->channel, &now)) {
-            aws_mem_release(handler->alloc, shutdown_args);
-            return AWS_OP_ERR;
-        }
-
-        return aws_channel_schedule_task(slot->channel, &task, now);
+    if (!shutdown_args) {
+        return aws_raise_error(AWS_ERROR_OOM);
     }
+
+    shutdown_args->error_code = error_code;
+    shutdown_args->handler = socket_handler;
+    shutdown_args->allocator = handler->alloc;
+
+    struct aws_task task = {
+            .fn = shutdown_ran_task,
+            .arg = shutdown_args,
+    };
+
+    uint64_t now = 0;
+
+    if (aws_channel_current_clock_time(slot->channel, &now)) {
+        aws_mem_release(handler->alloc, shutdown_args);
+        return AWS_OP_ERR;
+    }
+
+    aws_channel_schedule_task(slot->channel, &task, now);
 }
 
 int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir, int error_code) {
-    return do_shutdown(handler, slot, dir, error_code);
+    struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
+
+    while(!aws_linked_list_empty(&socket_handler->write_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_remove(&socket_handler->write_queue);
+        struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
+
+        if (message->on_completion) {
+            message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->ctx);
+        }
+
+        aws_channel_release_message_to_pool(slot->channel, message);
+    }
+
+    aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop,
+                                              &socket_handler->socket->io_handle);
+    aws_socket_shutdown(socket_handler->socket);
+
+    return aws_channel_slot_shutdown_notify(slot, AWS_CHANNEL_DIR_WRITE, error_code);
 }
 
-int socket_shutdown_direction (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir) {
-    return do_shutdown(handler, slot, dir, AWS_OP_SUCCESS);
+int socket_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort_immediately) {
+    return do_shutdown(handler, slot, error_code, abort_immediately);
 }
 
 size_t socket_get_current_window_size (struct aws_channel_handler *handler) {
@@ -329,7 +316,7 @@ static struct aws_channel_handler_vtable vtable = {
         .get_current_window_size = socket_get_current_window_size,
         .on_window_update = socket_on_window_update,
         .on_shutdown_notify = socket_on_shutdown_notify,
-        .shutdown_direction = socket_shutdown_direction
+        .shutdown = socket_shutdown
 };
 
 struct aws_channel_handler *aws_socket_handler_new(struct aws_allocator *allocator, struct aws_socket *socket,
@@ -352,8 +339,6 @@ struct aws_channel_handler *aws_socket_handler_new(struct aws_allocator *allocat
     impl->slot = slot;
     impl->max_rw_size = max_rw_size;
     impl->event_loop = event_loop;
-    impl->read_closed = false;
-    impl->write_closed = false;
     aws_linked_list_init(&impl->write_queue);
 
     handler->alloc = allocator;

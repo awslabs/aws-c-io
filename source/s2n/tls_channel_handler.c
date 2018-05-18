@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <assert.h>
 
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
@@ -34,8 +35,6 @@ struct s2n_handler {
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed latest_message_on_completion;
     void *latest_message_completion_ctx;
-    bool read_shutdown;
-    bool write_shutdown;
     bool negotiation_finished;
 };
 
@@ -153,12 +152,11 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
         int s2n_error = s2n_errno;
-        fprintf(stderr, "%s\n", s2n_strerror(s2n_error, NULL));
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
 
-            /*now lets match the upstream window now that negotiation is finished. */
-            size_t upstream_window = aws_channel_slot_upstream_read_window(s2n_handler->slot);
+            /*now lets match the downstream window now that negotiation is finished. */
+            size_t upstream_window = aws_channel_slot_downstream_read_window(s2n_handler->slot);
             s2n_handler->slot->window_size = upstream_window + EST_TLS_RECORD_OVERHEAD;
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
@@ -195,15 +193,13 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+            aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
             if (s2n_handler->options.on_negotiation_result) {
                 s2n_handler->options.on_negotiation_result(handler, s2n_handler->slot,
                                                            AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
                                                            s2n_handler->options.ctx);
             }
-
-            aws_channel_slot_shutdown_notify(s2n_handler->slot, AWS_CHANNEL_DIR_READ, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-            aws_channel_slot_shutdown_notify(s2n_handler->slot, AWS_CHANNEL_DIR_WRITE, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
             return AWS_OP_ERR;
          }
@@ -253,7 +249,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
     }
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
-    size_t upstream_window = aws_channel_slot_upstream_read_window(slot);
+    size_t upstream_window = aws_channel_slot_downstream_read_window(slot);
     size_t processed = 0;
 
     while (processed < upstream_window && blocked == S2N_NOT_BLOCKED) {
@@ -314,34 +310,31 @@ static int s2n_handler_process_write_message(struct aws_channel_handler *handler
     return AWS_OP_SUCCESS;
 }
 
-static int s2n_handler_handle_shutdown_direction(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                 enum aws_channel_direction dir) {
+static int s2n_handler_handle_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                       int error_code, bool abort_immediately) {
+    /*this should never occur since this couldn't possibly be the first handler in the channel */
+    assert(0);
+}
+
+static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                           enum aws_channel_direction dir, int error_code) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        s2n_handler->write_shutdown = true;
+        s2n_blocked_status blocked;
+        /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
+        s2n_shutdown(s2n_handler->connection, &blocked);
     }
     else {
-        s2n_handler->read_shutdown = true;
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_remove(&s2n_handler->input_queue);
             struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
             aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
         }
+
     }
 
-    if (s2n_handler->read_shutdown && s2n_handler->write_shutdown) {
-        s2n_blocked_status blocked;
-        /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
-        s2n_shutdown(s2n_handler->connection, &blocked);
-    }
-
-    return aws_channel_slot_shutdown_notify(slot, dir, AWS_OP_SUCCESS);
-}
-
-static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code) {
-    return s2n_handler_handle_shutdown_direction(handler, slot, dir);
+    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
 }
 
 static void run_read(void *arg, aws_task_status status) {
@@ -399,7 +392,7 @@ static struct aws_channel_handler_vtable handler_vtable = {
         .destroy = s2n_handler_destroy,
         .process_read_message = s2n_handler_process_read_message,
         .process_write_message = s2n_handler_process_write_message,
-        .shutdown_direction = s2n_handler_handle_shutdown_direction,
+        .shutdown = s2n_handler_handle_shutdown,
         .on_shutdown_notify = s2n_handler_on_shutdown_notify,
         .on_window_update = s2n_handler_on_window_update,
         .get_current_window_size = s2n_handler_get_current_window_size,
@@ -450,8 +443,6 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     handler->vtable = handler_vtable;
 
     s2n_handler->options = *options;
-    s2n_handler->write_shutdown = false;
-    s2n_handler->read_shutdown = false;
     s2n_handler->latest_message_completion_ctx = NULL;
     s2n_handler->latest_message_on_completion = NULL;
     s2n_handler->slot = slot;
@@ -473,6 +464,7 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_send_cb(s2n_handler->connection, s2n_handler_send);
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
+    s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
     if (options->verify_host_fn) {
         if (s2n_connection_set_verify_host_callback(s2n_handler->connection, s2n_handler_verify_host_callback, handler)) {

@@ -55,8 +55,16 @@ static void socket_channel_setup_test_on_setup_completed(struct aws_channel *cha
 static void socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx) {
     struct socket_test_args *listener_args = (struct socket_test_args *)ctx;
     listener_args->socket = new_socket;
+
+    struct aws_channel_creation_callbacks callbacks = {
+            .on_setup_completed = socket_channel_setup_test_on_setup_completed,
+            .setup_ctx = listener_args,
+            .on_shutdown_completed = NULL,
+            .shutdown_ctx = NULL
+    };
+
     aws_channel_init(&listener_args->channel, listener_args->allocator,
-                     listener_args->event_loop, socket_channel_setup_test_on_setup_completed, listener_args);
+                     listener_args->event_loop, &callbacks);
 }
 
 static void socket_test_listener_on_error(struct aws_socket *socket, int err_code, void *ctx) {
@@ -67,8 +75,15 @@ static void socket_test_listener_on_error(struct aws_socket *socket, int err_cod
 static void socket_test_connection_handler(struct aws_socket *socket, void *ctx) {
     struct socket_test_args *connection_args = (struct socket_test_args *)ctx;
     connection_args->socket = socket;
+
+    struct aws_channel_creation_callbacks callbacks = {
+            .on_setup_completed = socket_channel_setup_test_on_setup_completed,
+            .setup_ctx = connection_args,
+            .on_shutdown_completed = NULL,
+            .shutdown_ctx = NULL
+    };
     aws_channel_init(&connection_args->channel, connection_args->allocator,
-                     connection_args->event_loop, socket_channel_setup_test_on_setup_completed, connection_args);
+                     connection_args->event_loop, &callbacks);
 }
 
 struct socket_test_rw_args {
@@ -84,18 +99,6 @@ static bool socket_test_read_predicate(void *ctx) {
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
 
     return rw_args->invocation_happened;
-}
-
-static bool socket_test_shutdown_predicate(void *ctx) {
-    struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
-
-    return rw_args->shutdown_finished;
-}
-
-void socket_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
-    struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)ctx;
-    rw_args->shutdown_finished = true;
-    aws_condition_variable_notify_one(rw_args->condition_variable);
 }
 
 struct aws_byte_buf socket_test_handle_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -244,16 +247,6 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     ASSERT_BIN_ARRAYS_EQUALS(read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer,
                              outgoing_rw_args.received_message.len);
 
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &incoming_rw_args);
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &incoming_rw_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &incoming_rw_args));
-
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &outgoing_rw_args);
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &outgoing_rw_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &outgoing_rw_args));
-
     aws_channel_clean_up(&incoming_args.channel);
     aws_channel_clean_up(&outgoing_args.channel);
 
@@ -364,16 +357,6 @@ static int socket_close_test (struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &outgoing_args));
 
     aws_socket_shutdown(incoming_args.socket);
-
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &incoming_rw_args);
-    aws_channel_shutdown(&incoming_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &incoming_rw_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &incoming_rw_args));
-
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_READ, socket_test_on_shutdown_completed, &outgoing_rw_args);
-    aws_channel_shutdown(&outgoing_args.channel, AWS_CHANNEL_DIR_WRITE, socket_test_on_shutdown_completed, &outgoing_rw_args);
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_shutdown_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, rw_handler_last_error_code(outgoing_args.rw_handler));
 

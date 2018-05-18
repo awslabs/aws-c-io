@@ -85,9 +85,9 @@ static int rw_handler_on_shutdown_notify(struct aws_channel_handler *handler, st
     return aws_channel_slot_shutdown_notify(slot, dir, error_code);
 }
 
-static int rw_handler_shutdown_direction (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir) {
-    return aws_channel_slot_shutdown_notify(slot, dir, 0);
+static int rw_handler_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                int error_code, bool abort_immediately) {
+    return aws_channel_slot_shutdown_notify(slot, AWS_CHANNEL_DIR_READ, error_code);
 }
 
 static size_t rw_handler_get_current_window_size (struct aws_channel_handler *handler) {
@@ -106,7 +106,7 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
     struct aws_channel_handler *handler = (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
     handler->alloc = allocator;
     handler->vtable = (struct aws_channel_handler_vtable){
-            .shutdown_direction = rw_handler_shutdown_direction,
+            .shutdown = rw_handler_shutdown,
             .on_shutdown_notify = rw_handler_on_shutdown_notify,
             .on_window_update = rw_handler_on_window_update,
             .get_current_window_size = rw_handler_get_current_window_size,

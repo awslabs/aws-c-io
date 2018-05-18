@@ -21,13 +21,13 @@
 #include <aws/io/io.h>
 #include <stdbool.h>
 
-enum aws_io_event_type {
+typedef enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
     AWS_IO_EVENT_TYPE_REMOTE_HANG_UP = 4,
     AWS_IO_EVENT_TYPE_CLOSED = 8,
     AWS_IO_EVENT_TYPE_ERROR = 16
-};
+} aws_io_event_type;
 
 struct aws_event_loop;
 struct aws_task;
@@ -50,7 +50,7 @@ struct aws_event_loop {
     struct aws_event_loop_vtable vtable;
     struct aws_allocator *alloc;
     aws_io_clock clock;
-    struct aws_common_hash_table local_data;
+    struct aws_hash_table local_data;
     void *impl_data;
 };
 

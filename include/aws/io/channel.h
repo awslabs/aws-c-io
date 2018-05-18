@@ -35,15 +35,28 @@ typedef void(*aws_channel_on_setup_completed)(struct aws_channel *channel, int e
 
 typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, void *ctx);
 
+typedef enum aws_channel_state {
+    AWS_CHANNEL_SETTING_UP,
+    AWS_CHANNEL_ACTIVE,
+    AWS_CHANNEL_SHUTTING_DOWN,
+    AWS_CHANNEL_SHUT_DOWN
+} aws_channel_state;
+
 struct aws_channel {
     struct aws_allocator *alloc;
     struct aws_event_loop *loop;
     struct aws_channel_slot *first;
     struct aws_message_pool *msg_pool;
-    aws_channel_on_shutdown_completed on_read_shutdown_completed;
-    void *read_shutdown_ctx;
-    aws_channel_on_shutdown_completed on_write_shutdown_completed;
-    void *write_shutdown_ctx;
+    aws_channel_state channel_state;
+    aws_channel_on_shutdown_completed on_shutdown_completed;
+    void *shutdown_ctx;
+};
+
+struct aws_channel_creation_callbacks {
+    aws_channel_on_setup_completed on_setup_completed;
+    aws_channel_on_shutdown_completed on_shutdown_completed;
+    void *setup_ctx;
+    void *shutdown_ctx;
 };
 
 struct aws_channel_handler;
@@ -88,11 +101,10 @@ struct aws_channel_handler_vtable {
                                enum aws_channel_direction dir, int error_code);
 
     /**
-     * Called by the channel for handlers on the edge (beginning or end) of the channel to begin iniating a shutdown. Issue a
-     * shutdown notification once this has completed.
+     * Called by the channel for handlers on the edge (beginning or end) of the channel to begin initiating a shutdown.
+     * if abort_immediately is true, the must be done in the call (not a scheduled task).
      */
-    int (*shutdown_direction) (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                               enum aws_channel_direction dir);
+    int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort_immediately);
 
     /**
      * Called by the channel when the handler is added to a slot, to get the initial window size.
@@ -120,7 +132,7 @@ extern "C" {
  * It will be executed in the event loop's thread.
  */
 AWS_IO_API int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
-                                struct aws_event_loop *event_loop, aws_channel_on_setup_completed on_completed, void *ctx);
+                                struct aws_event_loop *event_loop, struct aws_channel_creation_callbacks *callbacks);
 
 /**
  * Shuts down the channel if it hasn't been already, cleans up all slots and handlers.
@@ -130,8 +142,7 @@ AWS_IO_API void aws_channel_clean_up(struct aws_channel *channel);
 /**
  * Shuts down the channel in the dir direction. on_completed will be executed in the event loops thread upon completion.
  */
-AWS_IO_API int aws_channel_shutdown(struct aws_channel *channel, enum aws_channel_direction dir,
-                                    aws_channel_on_shutdown_completed on_completed, void *ctx);
+AWS_IO_API int aws_channel_shutdown(struct aws_channel *channel, int error_code);
 
 /**
  * Allocates and initializes a new slot for use with the channel. If this is the first slot in the channel, it will automatically
@@ -227,16 +238,15 @@ AWS_IO_API int aws_channel_slot_update_window (struct aws_channel_slot *slot, si
 AWS_IO_API int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, aws_channel_direction dir, int error_code);
 
 /**
- * Initiates shutdown on slot based on dir. In the read direction the first slot in the channel will be called. In write direction
- * the last slot in the channel will be called.
+ * Initiates shutdown on slot. The first slot in the channel will be called.
  */
-AWS_IO_API int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, aws_channel_direction dir);
+AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, int err_code, bool abort_immediately);
 
 /**
- * Fetches the upstream read window. This gives you the information necessary to honor the read window. If you call send_message()
+ * Fetches the downstream read window. This gives you the information necessary to honor the read window. If you call send_message()
  * and it exceeds this window, the message will be rejected.
  */
-AWS_IO_API size_t aws_channel_slot_upstream_read_window (struct aws_channel_slot *slot);
+AWS_IO_API size_t aws_channel_slot_downstream_read_window (struct aws_channel_slot *slot);
 
 /**
  * Calls destroy on handler's vtable
@@ -269,8 +279,8 @@ AWS_IO_API int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler
 /**
  * calls shutdown_direction on handler's vtable.
  */
-AWS_IO_API int aws_channel_handler_shutdown_direction(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir);
+AWS_IO_API int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code,
+                                            bool abort_immediately);
 
 /**
  * Calls get_current_window_size on handler's vtable.
