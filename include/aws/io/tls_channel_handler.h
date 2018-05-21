@@ -41,7 +41,6 @@ typedef void(*aws_tls_on_data_read)(struct aws_channel_handler *handler, struct 
 typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err, const char *message);
 
 struct aws_tls_connection_options {
-    bool verify_peer;
     const char *alpn_list;
     const char *server_name;
     aws_tls_verify_host_fn verify_host_fn;
@@ -49,6 +48,8 @@ struct aws_tls_connection_options {
     aws_tls_on_data_read on_data_read;
     aws_tls_on_error on_error;
     void *ctx;
+    bool verify_peer;
+    bool advertise_alpn_message;
 };
 
 struct aws_tls_ctx_options {
@@ -68,6 +69,9 @@ struct aws_tls_negotiated_protocol_message {
 
 static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 
+typedef struct aws_channel_handler *(*aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol,
+                                                                        void *ctx);
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -83,6 +87,9 @@ AWS_IO_API struct aws_channel_handler *aws_tls_client_handler_new(struct aws_all
 AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(struct aws_allocator *allocator, struct aws_tls_ctx *ctx,
                                                                   struct aws_tls_connection_options *options,
                                                                   struct aws_channel_slot *slot);
+
+AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *allocator,
+                                                                aws_tls_on_protocol_negotiated on_protocol_negotiated, void *ctx);
 
 AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
 

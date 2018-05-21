@@ -33,6 +33,8 @@ static struct aws_error_info errors[] = {
                               "Failed to write to TLS handler", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_tls_ctx_failure, AWS_IO_TLS_CTX_ERROR,
                               "Failed to create tls context", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(aws_io_missing_alpn, AWS_IO_MISSING_ALPN_MESSAGE,
+                              "An ALPN message was expected but not received", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_file_not_found, AWS_IO_FILE_NOT_FOUND,
                               "Unable to open file", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(aws_io_file_validation_failure, AWS_IO_FILE_VALIDATION_FAILURE,

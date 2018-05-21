@@ -170,7 +170,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
                 s2n_handler->server_name = aws_byte_buf_from_literal(server_name);
             }
 
-            if (s2n_handler->slot->adj_right && protocol) {
+            if (s2n_handler->slot->adj_right && s2n_handler->options.advertise_alpn_message && protocol) {
                 struct aws_io_message *message = aws_channel_aquire_message_from_pool(s2n_handler->slot->channel,
                                                                                       AWS_IO_MESSAGE_APPLICATION_DATA,
                                                                                       sizeof(struct aws_tls_negotiated_protocol_message));
@@ -181,6 +181,8 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
                 protocol_message->protocol = s2n_handler->protocol;
                 if (aws_channel_slot_send_message(s2n_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                     aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
+                    aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
+                    return AWS_OP_SUCCESS;
                 }
             }
 
@@ -687,8 +689,4 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc,
                                               struct aws_tls_ctx_options *options) {
     return aws_tls_ctx_new(alloc, options, S2N_CLIENT);
 }
-
-
-
-
 

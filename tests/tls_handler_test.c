@@ -223,6 +223,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .on_data_read = NULL,
             .on_negotiation_result = tls_on_negotiation_result,
             .on_error = NULL,
+            .advertise_alpn_message = false
     };
 
     struct aws_tls_connection_options tls_client_conn_options = {
@@ -234,6 +235,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .on_negotiation_result = tls_on_negotiation_result,
             .on_error = NULL,
             .server_name = "localhost",
+            .advertise_alpn_message = false
     };
 
     struct aws_tls_ctx_options server_ctx_options = {
@@ -417,6 +419,7 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .on_data_read = NULL,
             .on_negotiation_result = tls_on_negotiation_result,
             .on_error = NULL,
+            .advertise_alpn_message = false
     };
 
     struct aws_tls_connection_options tls_client_conn_options = {
@@ -428,6 +431,7 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .on_negotiation_result = tls_on_negotiation_result,
             .on_error = NULL,
             .server_name = "localhost",
+            .advertise_alpn_message = false
     };
 
     struct aws_tls_ctx_options server_ctx_options = {
