@@ -48,38 +48,40 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     event_loop->vtable.destroy(event_loop);
 }
 
-int aws_event_loop_fetch_local_item(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *local_obj) {
+int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *key,
+                                      struct aws_event_loop_local_object *obj) {
     struct aws_hash_element *object = NULL;
     if (!aws_hash_table_find(&event_loop->local_data, (void *)(uintptr_t)key, &object) && object) {
-        *local_obj = *(struct aws_event_loop_local_object *)object->value;
+        *obj = *(struct aws_event_loop_local_object *)object->value;
         return AWS_OP_SUCCESS;
     }
 
     return AWS_OP_ERR;
 }
 
-int aws_event_loop_put_local_item(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *local_obj) {
+int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj) {
     struct aws_hash_element *object = NULL;
     int was_created = 0;
 
-    if (!aws_hash_table_create(&event_loop->local_data, (const void *)(uintptr_t)local_obj->key, &object, &was_created)) {
-        object->key = local_obj->key;
-        object->value = local_obj;
+    if (!aws_hash_table_create(&event_loop->local_data, (const void *)(uintptr_t)obj->key, &object, &was_created)) {
+        object->key = obj->key;
+        object->value = obj;
         return AWS_OP_SUCCESS;
     }
 
     return AWS_OP_ERR;
 }
 
-int aws_event_loop_remove_local_item ( struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *removed_item) {
+int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *key,
+                                       struct aws_event_loop_local_object *removed_obj) {
     struct aws_hash_element existing_object = {0};
     int was_present = 0;
 
-    struct aws_hash_element *remove_candidate = removed_item ? &existing_object : NULL;
+    struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;
 
     if (!aws_hash_table_remove(&event_loop->local_data, (void *)(uintptr_t)key, remove_candidate, &was_present)) {
         if (remove_candidate && was_present) {
-            *removed_item = *(struct aws_event_loop_local_object *)existing_object.value;
+            *removed_obj = *(struct aws_event_loop_local_object *)existing_object.value;
         }
 
         return AWS_OP_SUCCESS;
@@ -93,9 +95,9 @@ int aws_event_loop_run(struct aws_event_loop *event_loop) {
     return event_loop->vtable.run(event_loop);
 }
 
-int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx) {
+int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data) {
     assert(event_loop->vtable.stop);
-    return event_loop->vtable.stop(event_loop, stopped_promise, promise_ctx);
+    return event_loop->vtable.stop(event_loop, stopped_promise, promise_user_data);
 }
 
 int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
@@ -104,9 +106,9 @@ int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_t
 }
 
 int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                                                     aws_event_loop_on_event on_event, void *ctx) {
+                                                     aws_event_loop_on_event on_event, void *user_data) {
     assert(event_loop->vtable.subscribe_to_io_events);
-    return event_loop->vtable.subscribe_to_io_events(event_loop, handle, events, on_event, ctx);
+    return event_loop->vtable.subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -114,7 +116,7 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
     return event_loop->vtable.unsubscribe_from_io_events(event_loop, handle);
 }
 
-bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop) {
+bool aws_event_loop_thread_is_callers_thread (struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.is_on_callers_thread);
     return event_loop->vtable.is_on_callers_thread(event_loop);
 }

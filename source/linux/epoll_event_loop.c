@@ -26,10 +26,10 @@
 
 static void destroy(struct aws_event_loop *);
 static int run (struct aws_event_loop *);
-static int stop (struct aws_event_loop *, aws_event_loop_stopped_promise promise, void *);
+static int stop (struct aws_event_loop *, aws_event_loop_on_stopped promise, void *);
 static int schedule_task (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 static int subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                               aws_event_loop_on_event on_event, void *ctx);
+                               aws_event_loop_on_event on_event, void *user_data);
 static int unsubscribe_from_io_events (struct aws_event_loop *, struct aws_io_handle *handle);
 static bool is_on_callers_thread (struct aws_event_loop *);
 
@@ -52,14 +52,14 @@ struct epoll_loop {
     struct aws_io_handle write_task_handle;
     int epoll_fd;
     bool should_continue;
-    aws_event_loop_stopped_promise stopped_promise;
-    void *stop_ctx;
+    aws_event_loop_on_stopped stopped_promise;
+    void *stop_user_data;
 };
 
 struct stop_task_args {
     struct aws_event_loop *event_loop;
-    aws_event_loop_stopped_promise promise;
-    void *stop_ctx;
+    aws_event_loop_on_stopped promise;
+    void *stop_user_data;
 };
 
 struct pipe_task_data {
@@ -71,7 +71,7 @@ struct epoll_event_data {
     struct aws_allocator *alloc;
     struct aws_io_handle *handle;
     aws_event_loop_on_event on_event;
-    void *ctx;
+    void *user_data;
 };
 
 /* default timeout is 100 seconds */
@@ -101,7 +101,8 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
-        goto clean_up_epoll;
+        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        goto cleanup_base_loop;
     }
 
     if (aws_thread_init(&epoll_loop->thread, alloc)) {
@@ -119,7 +120,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     epoll_loop->should_continue = false;
     epoll_loop->stopped_promise = NULL;
-    epoll_loop->stop_ctx = NULL;
+    epoll_loop->stop_user_data = NULL;
 
     loop->impl_data = epoll_loop;
     loop->vtable = vtable;
@@ -139,9 +140,10 @@ clean_up_epoll:
 
     aws_mem_release(alloc, epoll_loop);
 
-clean_up_loop:
-
+cleanup_base_loop:
      aws_event_loop_base_clean_up(loop);
+
+clean_up_loop:
      aws_mem_release(alloc, loop);
 
     return NULL;
@@ -153,8 +155,8 @@ struct epoll_loop_stopped_args {
     bool stopped;
 };
 
-static void on_epoll_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
-    struct epoll_loop_stopped_args *args = (struct epoll_loop_stopped_args *)ctx;
+static void on_epoll_loop_stopped(struct aws_event_loop *event_loop, void *user_data) {
+    struct epoll_loop_stopped_args *args = (struct epoll_loop_stopped_args *)user_data;
 
     args->stopped = true;
     aws_condition_variable_notify_one(&args->condition_variable);
@@ -194,7 +196,12 @@ static int run (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     epoll_loop->should_continue = true;
-    return aws_thread_launch(&epoll_loop->thread, &main_loop, event_loop, NULL);
+    if (aws_thread_launch(&epoll_loop->thread, &main_loop, event_loop, NULL)) {
+        epoll_loop->should_continue = false;
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 static void stop_task (void *args, aws_task_status status) {
@@ -207,13 +214,13 @@ static void stop_task (void *args, aws_task_status status) {
          */
         epoll_loop->should_continue = false;
         epoll_loop->stopped_promise = stop_task->promise;
-        epoll_loop->stop_ctx = stop_task->stop_ctx;
+        epoll_loop->stop_user_data = stop_task->stop_user_data;
     }
 
     aws_mem_release(stop_task->event_loop->alloc, args);
 }
 
-static int stop (struct aws_event_loop *event_loop, aws_event_loop_stopped_promise promise, void *ctx) {
+static int stop (struct aws_event_loop *event_loop, aws_event_loop_on_stopped promise, void *user_data) {
     struct stop_task_args *stop_args = (struct stop_task_args *)aws_mem_acquire (event_loop->alloc, sizeof(struct stop_task_args));
 
     if (!stop_args) {
@@ -221,7 +228,7 @@ static int stop (struct aws_event_loop *event_loop, aws_event_loop_stopped_promi
     }
 
     stop_args->event_loop = event_loop;
-    stop_args->stop_ctx = ctx;
+    stop_args->stop_user_data = user_data;
     stop_args->promise = promise;
 
     struct aws_task task = {
@@ -267,7 +274,7 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
 }
 
 static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                                   aws_event_loop_on_event on_event, void *ctx) {
+                                   aws_event_loop_on_event on_event, void *user_data) {
 
     struct epoll_event_data *epoll_event_data = (struct epoll_event_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
     handle->private_event_loop_data = NULL;
@@ -277,7 +284,7 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     }
 
     epoll_event_data->alloc = event_loop->alloc;
-    epoll_event_data->ctx = ctx;
+    epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
 
@@ -401,7 +408,7 @@ static bool is_on_callers_thread (struct aws_event_loop * event_loop) {
 
 /* We treat the pipe fd with a subscription to io events just like any other managed file descriptor.
  * This is the event handler for events on that pipe.*/
-static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
+static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
@@ -470,7 +477,7 @@ static void main_loop (void *args) {
                 event_mask |= AWS_IO_EVENT_TYPE_ERROR;
             }
 
-            event_data->on_event(event_loop, event_data->handle, event_mask, event_data->ctx);
+            event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
         }
 
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
@@ -499,7 +506,7 @@ static void main_loop (void *args) {
      * If the user passed a promise to stop, execute it now.
      */
     if (epoll_loop->stopped_promise) {
-        epoll_loop->stopped_promise(event_loop, epoll_loop->stop_ctx);
+        epoll_loop->stopped_promise(event_loop, epoll_loop->stop_user_data);
     }
 }
 
