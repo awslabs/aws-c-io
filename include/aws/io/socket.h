@@ -46,10 +46,10 @@ struct aws_socket;
 struct aws_event_loop;
 
 struct aws_socket_creation_args {
-    void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx);
-    void(*on_connection_established)(struct aws_socket *socket, void *ctx);
-    void(*on_error)(struct aws_socket *socket, int err_code, void *ctx);
-    void *ctx;
+    void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data);
+    void(*on_connection_established)(struct aws_socket *socket, void *user_data);
+    void(*on_error)(struct aws_socket *socket, int err_code, void *user_data);
+    void *user_data;
 };
 
 struct aws_socket_endpoint {

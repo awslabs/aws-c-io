@@ -25,8 +25,8 @@ struct channel_setup_test_args {
     int error_code;
 };
 
-static void channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
-    struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)ctx;
+static void channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)user_data;
 
     aws_mutex_lock(&setup_test_args->mutex);
     setup_test_args->error_code |= error_code;
@@ -35,7 +35,7 @@ static void channel_setup_test_on_setup_completed(struct aws_channel *channel, i
 
 }
 
-static int test_channel_setup (struct aws_allocator *allocator, void *ctx) {
+static int test_channel_setup (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -53,9 +53,9 @@ static int test_channel_setup (struct aws_allocator *allocator, void *ctx) {
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
@@ -78,7 +78,7 @@ static int test_channel_setup (struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(channel_setup, test_channel_setup)
 
-static int test_channel_single_slot_cleans_up (struct aws_allocator *allocator, void *ctx) {
+static int test_channel_single_slot_cleans_up (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -95,9 +95,9 @@ static int test_channel_single_slot_cleans_up (struct aws_allocator *allocator, 
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
@@ -116,7 +116,7 @@ static int test_channel_single_slot_cleans_up (struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(channel_single_slot_cleans_up, test_channel_single_slot_cleans_up)
 
-static int test_channel_slots_clean_up (struct aws_allocator *allocator, void *ctx) {
+static int test_channel_slots_clean_up (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -133,9 +133,9 @@ static int test_channel_slots_clean_up (struct aws_allocator *allocator, void *c
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
@@ -197,18 +197,18 @@ struct channel_rw_test_args {
     bool write_on_read;
 };
 
-static void rw_test_on_shutdown_completed(struct aws_channel *channel, void *ctx) {
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+static void rw_test_on_shutdown_completed(struct aws_channel *channel, void *user_data) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     rw_test_args->shutdown_completed = true;
 }
 
 static struct aws_byte_buf channel_rw_test_on_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                    struct aws_byte_buf *data_read, void *ctx);
+                                                    struct aws_byte_buf *data_read, void *user_data);
 
 static struct aws_byte_buf channel_rw_test_on_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                   struct aws_byte_buf *data_read, void *ctx) {
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+                                                   struct aws_byte_buf *data_read, void *user_data) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     if (data_read) {
         memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
@@ -221,7 +221,7 @@ static struct aws_byte_buf channel_rw_test_on_read(struct aws_channel_handler *h
     }
 
     if (rw_test_args->write_on_read) {
-        struct aws_byte_buf write_data = channel_rw_test_on_write(handler, slot, &rw_test_args->latest_message, ctx);
+        struct aws_byte_buf write_data = channel_rw_test_on_write(handler, slot, &rw_test_args->latest_message, user_data);
         rw_handler_write(handler, slot, &write_data);
     }
 
@@ -229,8 +229,8 @@ static struct aws_byte_buf channel_rw_test_on_read(struct aws_channel_handler *h
 }
 
 static struct aws_byte_buf channel_rw_test_on_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                    struct aws_byte_buf *data_read, void *ctx) {
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)ctx;
+                                                    struct aws_byte_buf *data_read, void *user_data) {
+    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
     memcpy(rw_test_args->latest_message.buffer + data_read->len, rw_test_args->write_tag.buffer, rw_test_args->write_tag.len);
@@ -239,7 +239,7 @@ static struct aws_byte_buf channel_rw_test_on_write(struct aws_channel_handler *
     return rw_test_args->latest_message;
 }
 
-static int test_channel_message_passing (struct aws_allocator *allocator, void *ctx) {
+static int test_channel_message_passing (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -276,9 +276,9 @@ static int test_channel_message_passing (struct aws_allocator *allocator, void *
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = rw_test_on_shutdown_completed,
-            .shutdown_ctx = &handler_1_args,
+            .shutdown_user_data = &handler_1_args,
     };
 
 

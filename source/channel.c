@@ -28,7 +28,7 @@ struct channel_setup_args {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
     aws_channel_on_setup_completed on_setup_completed;
-    void *ctx;
+    void *user_data;
 };
 
 static void on_msg_pool_removed(struct aws_event_loop_local_object *object) {
@@ -48,7 +48,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
         struct aws_event_loop_local_object stack_obj = (struct aws_event_loop_local_object){0};
         local_object = &stack_obj;
 
-        if (aws_event_loop_fetch_local_item(setup_args->channel->loop, &MESSAGE_POOL_KEY, local_object) ) {
+        if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &MESSAGE_POOL_KEY, local_object) ) {
             local_object = (struct aws_event_loop_local_object *)aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
             message_pool = (struct aws_message_pool *)aws_mem_acquire(setup_args->alloc, sizeof(struct aws_message_pool));
 
@@ -69,7 +69,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
             local_object->object = message_pool;
             local_object->on_data_removed = on_msg_pool_removed;
 
-            if (aws_event_loop_put_local_item(setup_args->channel->loop, local_object)) {
+            if (aws_event_loop_put_local_object(setup_args->channel->loop, local_object)) {
                 goto cleanup_msg_pool;
             }
         }
@@ -78,7 +78,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
         }
 
         setup_args->channel->msg_pool = message_pool;
-        setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->ctx);
+        setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->user_data);
         setup_args->channel->channel_state = AWS_CHANNEL_ACTIVE;
         aws_mem_release(setup_args->alloc, setup_args);
         return;
@@ -94,7 +94,7 @@ cleanup_msg_pool_mem:
     aws_mem_release(setup_args->alloc, local_object);
 
 cleanup_setup_args:
-    setup_args->on_setup_completed(setup_args->channel, AWS_OP_ERR, setup_args->ctx);
+    setup_args->on_setup_completed(setup_args->channel, AWS_OP_ERR, setup_args->user_data);
     aws_mem_release(setup_args->alloc, setup_args);
 
 }
@@ -106,7 +106,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     channel->first = NULL;
     channel->msg_pool = NULL;
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
-    channel->shutdown_ctx = callbacks->shutdown_ctx;
+    channel->shutdown_user_data = callbacks->shutdown_user_data;
 
     struct channel_setup_args *setup_args = (struct channel_setup_args *)aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
 
@@ -118,7 +118,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     setup_args->alloc = alloc;
     setup_args->channel = channel;
     setup_args->on_setup_completed = callbacks->on_setup_completed;
-    setup_args->ctx = callbacks->setup_ctx;
+    setup_args->user_data = callbacks->setup_user_data;
 
     struct aws_task task = {
         .fn = on_channel_setup_complete,
@@ -147,7 +147,7 @@ struct channel_shutdown_args {
     struct aws_channel *channel;
     struct aws_condition_variable condition_variable;
     aws_channel_on_shutdown_completed on_shutdown_completed;
-    void *shutdown_ctx;
+    void *shutdown_user_data;
 };
 
 static bool shutdown_finished_predicate(void *arg) {
@@ -155,11 +155,11 @@ static bool shutdown_finished_predicate(void *arg) {
     return shutdown_args->channel->channel_state == AWS_CHANNEL_SHUT_DOWN;
 }
 
-static void shutdown_finished(struct aws_channel *channel, void *ctx) {
-    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)ctx;
+static void shutdown_finished(struct aws_channel *channel, void *user_data) {
+    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)user_data;
 
     if (shutdown_args->on_shutdown_completed) {
-        shutdown_args->on_shutdown_completed(shutdown_args->channel, shutdown_args->shutdown_ctx);
+        shutdown_args->on_shutdown_completed(shutdown_args->channel, shutdown_args->shutdown_user_data);
     }
     shutdown_args->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
 
@@ -187,12 +187,12 @@ void aws_channel_clean_up(struct aws_channel *channel) {
         struct channel_shutdown_args shutdown_args = {
                 .condition_variable = AWS_CONDITION_VARIABLE_INIT,
                 .channel = channel,
-                .shutdown_ctx = channel->shutdown_ctx,
+                .shutdown_user_data = channel->shutdown_user_data,
                 .on_shutdown_completed = channel->on_shutdown_completed
         };
 
         channel->on_shutdown_completed = shutdown_finished;
-        channel->shutdown_ctx = &shutdown_args;
+        channel->shutdown_user_data = &shutdown_args;
 
         aws_channel_slot_shutdown(current, AWS_OP_SUCCESS, true);
         struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -258,15 +258,18 @@ int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *ticks)
     return aws_event_loop_current_ticks(channel->loop, ticks);
 }
 
-int aws_channel_fetch_local_item (struct aws_channel *channel, const void *key, struct aws_event_loop_local_object *item) {
-    return aws_event_loop_fetch_local_item(channel->loop, (void *)key, item);
+int aws_channel_fetch_local_object(struct aws_channel *channel, const void *key,
+                                   struct aws_event_loop_local_object *obj) {
+    return aws_event_loop_fetch_local_object(channel->loop, (void *) key, obj);
 }
-int aws_channel_put_local_item (struct aws_channel *channel, const void *key, const struct aws_event_loop_local_object *item) {
-    return aws_event_loop_put_local_item(channel->loop, (struct aws_event_loop_local_object *)item);
+int aws_channel_put_local_object(struct aws_channel *channel, const void *key,
+                                 const struct aws_event_loop_local_object *obj) {
+    return aws_event_loop_put_local_object(channel->loop, (struct aws_event_loop_local_object *) obj);
 }
 
-int aws_channel_remove_local_item ( struct aws_channel *channel, const void *key, struct aws_event_loop_local_object *removed_item) {
-    return aws_event_loop_remove_local_item(channel->loop, (void *)key, removed_item);
+int aws_channel_remove_local_object(struct aws_channel *channel, const void *key,
+                                    struct aws_event_loop_local_object *removed_obj) {
+    return aws_event_loop_remove_local_object(channel->loop, (void *) key, removed_obj);
 }
 
 int aws_channel_schedule_task(struct aws_channel *channel, struct aws_task *task, uint64_t run_at) {
@@ -274,7 +277,7 @@ int aws_channel_schedule_task(struct aws_channel *channel, struct aws_task *task
 }
 
 bool aws_channel_is_on_callers_thread (struct aws_channel *channel) {
-    return aws_event_loop_is_on_callers_thread(channel->loop);
+    return aws_event_loop_thread_is_callers_thread(channel->loop);
 }
 
 int aws_channel_slot_set_handler ( struct aws_channel_slot *slot, struct aws_channel_handler *handler ) {
@@ -392,7 +395,7 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
         }
 
         if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
-            slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_ctx);
+            slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_user_data);
         }
 
         return AWS_OP_SUCCESS;

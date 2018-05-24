@@ -35,9 +35,9 @@ struct aws_tls_ctx {
     void *impl;
 };
 
-typedef bool(*aws_tls_verify_host_fn)(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx);
-typedef void(*aws_tls_on_negotiation_result)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx);
-typedef void(*aws_tls_on_data_read)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer, void *ctx);
+typedef bool(*aws_tls_verify_host_fn)(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data);
+typedef void(*aws_tls_on_negotiation_result)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *user_data);
+typedef void(*aws_tls_on_data_read)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer, void *user_data);
 typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err, const char *message);
 
 struct aws_tls_connection_options {
@@ -47,7 +47,7 @@ struct aws_tls_connection_options {
     aws_tls_on_negotiation_result on_negotiation_result;
     aws_tls_on_data_read on_data_read;
     aws_tls_on_error on_error;
-    void *ctx;
+    void *user_data;
     bool verify_peer;
     bool advertise_alpn_message;
 };
@@ -70,7 +70,7 @@ struct aws_tls_negotiated_protocol_message {
 static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 
 typedef struct aws_channel_handler *(*aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol,
-                                                                        void *ctx);
+                                                                        void *user_data);
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,7 +89,7 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(struct aws_all
                                                                   struct aws_channel_slot *slot);
 
 AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *allocator,
-                                                                aws_tls_on_protocol_negotiated on_protocol_negotiated, void *ctx);
+                                                                aws_tls_on_protocol_negotiated on_protocol_negotiated, void *user_data);
 
 AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
 
@@ -101,7 +101,7 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *allo
 AWS_IO_API void  aws_tls_ctx_destroy(struct aws_tls_ctx *ctx);
 
 AWS_IO_API int aws_tls_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buf,
-                                     aws_channel_on_message_write_completed on_write_completed, void *completion_ctx);
+                                     aws_channel_on_message_write_completed on_write_completed, void *completion_user_data);
 
 AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler);
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);

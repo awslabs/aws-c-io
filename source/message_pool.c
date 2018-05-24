@@ -121,7 +121,7 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
 
     message->message_type = message_type;
     message->message_tag = 0;
-    message->ctx = 0;
+    message->user_data = 0;
     message->allocator = NULL;
     message->copy_mark = 0;
     message->on_completion = 0;

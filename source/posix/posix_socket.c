@@ -144,7 +144,7 @@ static int on_connection_success(struct aws_socket *socket) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
 
         if (socket->creation_args.on_error && socket->options.type == AWS_SOCKET_STREAM) {
-            socket->creation_args.on_error(socket, AWS_IO_SOCKET_INVALID_OPTIONS, socket->creation_args.ctx);
+            socket->creation_args.on_error(socket, AWS_IO_SOCKET_INVALID_OPTIONS, socket->creation_args.user_data);
         }
 
         return AWS_OP_ERR;
@@ -198,7 +198,7 @@ static int on_connection_success(struct aws_socket *socket) {
     }
 
     if (socket->creation_args.on_connection_established && socket->options.type == AWS_SOCKET_STREAM) {
-        socket->creation_args.on_connection_established(socket, socket->creation_args.ctx);
+        socket->creation_args.on_connection_established(socket, socket->creation_args.user_data);
     }
 }
 
@@ -234,7 +234,7 @@ static void on_connection_error(struct aws_socket *socket, int error) {
     aws_raise_error(error_code);
     socket->state = ERROR;
     if (socket->creation_args.on_error && socket->options.type == AWS_SOCKET_STREAM) {
-        socket->creation_args.on_error(socket, error_code, socket->creation_args.ctx);
+        socket->creation_args.on_error(socket, error_code, socket->creation_args.user_data);
     }
 }
 
@@ -243,8 +243,8 @@ struct socket_connect_args {
     struct aws_socket *socket;
 };
 
-void socket_connect_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
-    struct socket_connect_args *socket_args = (struct socket_connect_args *)ctx;
+void socket_connect_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+    struct socket_connect_args *socket_args = (struct socket_connect_args *)user_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE) {
         if (socket_args->socket) {
@@ -269,7 +269,7 @@ static void handle_socket_timeout (void *args, aws_task_status status) {
 
             if (socket_args->socket->creation_args.on_error) {
                 socket_args->socket->creation_args.on_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT,
-                                                            socket_args->socket->creation_args.ctx);
+                                                            socket_args->socket->creation_args.user_data);
             }
         }
     }
@@ -447,8 +447,8 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
      return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
-static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
-    struct aws_socket *socket = (struct aws_socket *) ctx;
+static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+    struct aws_socket *socket = (struct aws_socket *) user_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         int in_fd = 0;
@@ -514,7 +514,7 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
             fcntl(in_fd, F_SETFL, flags);
 
             if (socket->creation_args.on_incoming_connection) {
-                socket->creation_args.on_incoming_connection(socket, new_sock, socket->creation_args.ctx);
+                socket->creation_args.on_incoming_connection(socket, new_sock, socket->creation_args.user_data);
             }
         }
     }

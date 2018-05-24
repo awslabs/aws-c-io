@@ -78,7 +78,7 @@ static int do_write(struct socket_handler *socket_handler) {
 
             /* this case something bad happened and we should initiate a shutdown. */
             if (next_message->on_completion) {
-                next_message->on_completion(socket_handler->slot->channel, next_message, aws_last_error(), next_message->ctx);
+                next_message->on_completion(socket_handler->slot->channel, next_message, aws_last_error(), next_message->user_data);
             }
             aws_channel_release_message_to_pool(socket_handler->slot->channel, next_message);
             return aws_channel_shutdown(socket_handler->slot->channel, aws_last_error());
@@ -88,7 +88,7 @@ static int do_write(struct socket_handler *socket_handler) {
         next_message->copy_mark += written_to_wire;
         if (next_message->copy_mark == next_message->message_data.len) {
             if (next_message->on_completion) {
-                next_message->on_completion(socket_handler->slot->channel, next_message, AWS_OP_SUCCESS, next_message->ctx);
+                next_message->on_completion(socket_handler->slot->channel, next_message, AWS_OP_SUCCESS, next_message->user_data);
             }
             aws_channel_release_message_to_pool(socket_handler->slot->channel, next_message);
         }
@@ -281,7 +281,7 @@ int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_c
         struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
 
         if (message->on_completion) {
-            message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->ctx);
+            message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->user_data);
         }
 
         aws_channel_release_message_to_pool(slot->channel, message);

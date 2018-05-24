@@ -37,7 +37,7 @@ typedef enum aws_io_message_type {
 struct aws_io_message;
 struct aws_channel;
 
-typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *ctx);
+typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *user_data);
 
 struct aws_io_message {
     struct aws_allocator *allocator;
@@ -46,7 +46,7 @@ struct aws_io_message {
     int message_tag;
     size_t copy_mark;
     aws_channel_on_message_write_completed on_completion;
-    void *ctx;
+    void *user_data;
     /* it's incredibly likely something is going to need to queue this,
      * go ahead and make sure the list info is part of the original allocation. */
     struct aws_linked_list_node queueing_handle;

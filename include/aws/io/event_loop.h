@@ -32,16 +32,16 @@ typedef enum aws_io_event_type {
 struct aws_event_loop;
 struct aws_task;
 
-typedef void (*aws_event_loop_stopped_promise) (struct aws_event_loop *, void *);
-typedef void (*aws_event_loop_on_event)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *);
+typedef void (*aws_event_loop_on_stopped) (struct aws_event_loop *, void *user_data);
+typedef void (*aws_event_loop_on_event)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *user_data);
 
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *);
     int (*run) (struct aws_event_loop *);
-    int (*stop) (struct aws_event_loop *, aws_event_loop_stopped_promise promise, void *);
+    int (*stop) (struct aws_event_loop *, aws_event_loop_on_stopped promise, void *);
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                                   aws_event_loop_on_event on_event, void *ctx);
+                                   aws_event_loop_on_event on_event, void *user_data);
     int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *handle);
     bool (*is_on_callers_thread) (struct aws_event_loop *);
 };
@@ -55,12 +55,12 @@ struct aws_event_loop {
 };
 
 struct aws_event_loop_local_object;
-typedef void(*aws_event_loop_on_local_data_removed)(struct aws_event_loop_local_object *);
+typedef void(*aws_event_loop_on_local_object_removed)(struct aws_event_loop_local_object *);
 
 struct aws_event_loop_local_object {
     const void *key;
     void *object;
-    aws_event_loop_on_local_data_removed on_data_removed;
+    aws_event_loop_on_local_object_removed on_data_removed;
 };
 
 #ifdef __cplusplus
@@ -93,24 +93,26 @@ AWS_IO_API void aws_event_loop_base_clean_up(struct aws_event_loop *);
 AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
 
 /**
- * Fetches an item from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
  * This function is not thread safe and should be called inside the event-loop's thread.
  */
-AWS_IO_API int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, struct aws_event_loop_local_object *item);
+AWS_IO_API int aws_event_loop_fetch_local_object(struct aws_event_loop *, void *key,
+                                                 struct aws_event_loop_local_object *obj);
 
 /**
- * Puts an item into the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * Puts an item object the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
  * The lifetime of item must live until remove or a put item overrides it. This function is not thread safe and should be called
  * inside the event-loop's thread.
  */
-AWS_IO_API int aws_event_loop_put_local_item ( struct aws_event_loop *, struct aws_event_loop_local_object *item);
+AWS_IO_API int aws_event_loop_put_local_object(struct aws_event_loop *, struct aws_event_loop_local_object *obj);
 
 /**
- * Removes an item from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+ * Removes an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
  * If removed_item is not null, the removed item will be moved to it if it exists. Otherwise, the default deallocation strategy
  * will be used. This function is not thread safe and should be called inside the event-loop's thread.
  */
-AWS_IO_API int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, struct aws_event_loop_local_object *removed_item);
+AWS_IO_API int aws_event_loop_remove_local_object(struct aws_event_loop *, void *key,
+                                                  struct aws_event_loop_local_object *removed_obj);
 
 /**
  * Triggers the running of the event loop. This function must not block. The event loop is not active until this function
@@ -128,11 +130,12 @@ AWS_IO_API int aws_event_loop_run(struct aws_event_loop *event_loop);
  * This function is not safe to call multiple times while a stop is in progress. Users should take care of how the ownership
  * of their event loops is managed.
  */
-AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped, void *user_data);
 
 /**
  * The event loop is responsible for queuing and executing scheduled tasks. If this function is invoked outside
  * of the event-loop's thread it is responsible for pushing the task into the correct thread before mutating state.
+ * Task is copied.
  * For example on edge triggered epoll, if this function is called outside of the event loop thread,
  * the task is written to a pipe. Epoll will notice the change on the pipe and then the loop will queue the task and execute it.
  */
@@ -144,7 +147,7 @@ AWS_IO_API int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, s
  * AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions and closure.
  */
 AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                    aws_event_loop_on_event on_event, void *ctx);
+                    aws_event_loop_on_event on_event, void *user_data);
 
 /**
  * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
@@ -152,9 +155,10 @@ AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *even
 AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
 /**
- * Utility fn to hint to a caller if it should schedule a task instead of mutating state directly.
+ * Utility fn to hint to a caller if it should schedule a task instead of mutating state directly. returns true if the event loop's
+ * thread is the same thread that called this function, otherwise false.
  */
-AWS_IO_API bool aws_event_loop_is_on_callers_thread (struct aws_event_loop *event_loop);
+AWS_IO_API bool aws_event_loop_thread_is_callers_thread (struct aws_event_loop *event_loop);
 
 /**
  * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.

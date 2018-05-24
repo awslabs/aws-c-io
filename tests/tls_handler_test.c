@@ -40,22 +40,22 @@ struct tls_test_args {
     bool shutdown_finished;
 };
 
-static bool tls_channel_setup_predicate(void *ctx) {
-    struct tls_test_args *setup_test_args = (struct tls_test_args *)ctx;
+static bool tls_channel_setup_predicate(void *user_data) {
+    struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
     return setup_test_args->tls_negotiated || setup_test_args->error_invoked;
 }
 
-static bool tls_verify_host_trust_all(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx) {
+static bool tls_verify_host_trust_all(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data) {
     return true;
 }
 
 
-static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *ctx) {
+static bool tls_verify_host_trust_none(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data) {
     return false;
 }
 
-static void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *ctx) {
-    struct tls_test_args *setup_test_args = (struct tls_test_args *) ctx;
+static void tls_on_negotiation_result(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *user_data) {
+    struct tls_test_args *setup_test_args = (struct tls_test_args *) user_data;
 
     if (!err_code) {
         setup_test_args->negotiated_protocol = aws_tls_handler_protocol(setup_test_args->tls_handler);
@@ -69,8 +69,8 @@ static void tls_on_negotiation_result(struct aws_channel_handler *handler, struc
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
-static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
-    struct tls_test_args *setup_test_args = (struct tls_test_args *)ctx;
+static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
     struct aws_channel_handler *socket_handler =
@@ -81,7 +81,7 @@ static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel 
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
     setup_test_args->tls_slot = tls_slot;
 
-    setup_test_args->options->ctx = setup_test_args;
+    setup_test_args->options->user_data = setup_test_args;
 
     if (setup_test_args->server) {
         setup_test_args->tls_handler = aws_tls_server_handler_new(setup_test_args->allocator, setup_test_args->tls_ctx,
@@ -107,35 +107,35 @@ static void tls_socket_channel_setup_test_on_setup_completed(struct aws_channel 
     }
 }
 
-static void tls_socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx) {
-    struct tls_test_args *listener_args = (struct tls_test_args *)ctx;
+static void tls_socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
+    struct tls_test_args *listener_args = (struct tls_test_args *)user_data;
     listener_args->socket = new_socket;
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = tls_socket_channel_setup_test_on_setup_completed,
-            .setup_ctx = listener_args,
+            .setup_user_data = listener_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL
+            .shutdown_user_data = NULL
     };
 
     aws_channel_init(&listener_args->channel, listener_args->allocator,
                      listener_args->event_loop, &callbacks);
 }
 
-static void tls_socket_test_listener_on_error(struct aws_socket *socket, int err_code, void *ctx) {
-    struct tls_test_args *listener_args = (struct tls_test_args *)ctx;
+static void tls_socket_test_listener_on_error(struct aws_socket *socket, int err_code, void *user_data) {
+    struct tls_test_args *listener_args = (struct tls_test_args *)user_data;
     listener_args->error_invoked = true;
 }
 
-static void tls_socket_test_connection_handler(struct aws_socket *socket, void *ctx) {
-    struct tls_test_args *connection_args = (struct tls_test_args *)ctx;
+static void tls_socket_test_connection_handler(struct aws_socket *socket, void *user_data) {
+    struct tls_test_args *connection_args = (struct tls_test_args *)user_data;
     connection_args->socket = socket;
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = tls_socket_channel_setup_test_on_setup_completed,
-            .setup_ctx = connection_args,
+            .setup_user_data = connection_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL
+            .shutdown_user_data = NULL
     };
 
     aws_channel_init(&connection_args->channel, connection_args->allocator,
@@ -150,15 +150,15 @@ struct tls_test_rw_args {
     bool invocation_happened;
 };
 
-static bool tls_test_read_predicate(void *ctx) {
-    struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)ctx;
+static bool tls_test_read_predicate(void *user_data) {
+    struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)user_data;
 
     return rw_args->invocation_happened;
 }
 
 struct aws_byte_buf tls_test_handle_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                            struct aws_byte_buf *data_read, void *ctx) {
-    struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)ctx;
+                                            struct aws_byte_buf *data_read, void *user_data) {
+    struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)user_data;
 
     memcpy(rw_args->received_message.buffer + rw_args->received_message.len, data_read->buffer, data_read->len);
     rw_args->received_message.len += data_read->len;
@@ -170,12 +170,12 @@ struct aws_byte_buf tls_test_handle_read(struct aws_channel_handler *handler, st
 }
 
 struct aws_byte_buf tls_test_handle_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                             struct aws_byte_buf *data_read, void *ctx) {
+                                             struct aws_byte_buf *data_read, void *user_data) {
     /*do nothing*/
     return (struct aws_byte_buf){0};
 }
 
-static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allocator, void *ctx) {
+static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allocator, void *user_data) {
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -313,7 +313,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .on_incoming_connection = tls_socket_test_listener_incoming,
             .on_error = tls_socket_test_listener_on_error,
             .on_connection_established = NULL,
-            .ctx = &incoming_args,
+            .user_data = &incoming_args,
     };
 
     struct aws_socket listener;
@@ -326,7 +326,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     struct aws_socket_creation_args outgoing_creation_args = {
             .on_connection_established = tls_socket_test_connection_handler,
             .on_error = NULL,
-            .ctx = &outgoing_args
+            .user_data = &outgoing_args
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -402,7 +402,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
 AWS_TEST_CASE(tls_channel_echo_and_backpressure_test, tls_channel_echo_and_backpressure_test_fn)
 
-static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, void *ctx) {
+static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, void *user_data) {
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -509,7 +509,7 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .on_incoming_connection = tls_socket_test_listener_incoming,
             .on_error = tls_socket_test_listener_on_error,
             .on_connection_established = NULL,
-            .ctx = &incoming_args,
+            .user_data = &incoming_args,
     };
 
     struct aws_socket listener;
@@ -522,7 +522,7 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
     struct aws_socket_creation_args outgoing_creation_args = {
             .on_connection_established = tls_socket_test_connection_handler,
             .on_error = NULL,
-            .ctx = &outgoing_args
+            .user_data = &outgoing_args
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));

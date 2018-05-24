@@ -18,7 +18,7 @@
 
 struct alpn_handler {
     aws_tls_on_protocol_negotiated on_protocol_negotiated;
-    void *ctx;
+    void *user_data;
 };
 
 int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -40,7 +40,7 @@ int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_
     }
 
     struct aws_channel_handler *new_handler = alpn_handler->on_protocol_negotiated(new_slot,
-                                                                                   &protocol_message->protocol, alpn_handler->ctx);
+                                                                                   &protocol_message->protocol, alpn_handler->user_data);
 
     if (!new_handler) {
         aws_mem_release(handler->alloc, (void *)new_slot);
@@ -68,7 +68,7 @@ void alpn_destroy(struct aws_channel_handler *handler) {
 }
 
 struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *allocator,
-                                                     aws_tls_on_protocol_negotiated on_protocol_negotiated, void *ctx) {
+                                                     aws_tls_on_protocol_negotiated on_protocol_negotiated, void *user_data) {
     struct aws_channel_handler *channel_handler = (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
     if (!channel_handler) {
@@ -85,7 +85,7 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *alloc
     }
 
     alpn_handler->on_protocol_negotiated = on_protocol_negotiated;
-    alpn_handler->ctx = ctx;
+    alpn_handler->user_data = user_data;
     channel_handler->impl = alpn_handler;
     channel_handler->alloc = allocator;
 

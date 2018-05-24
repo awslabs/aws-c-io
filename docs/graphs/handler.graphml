@@ -54,7 +54,7 @@
               <y:BorderStyle hasColor="false" type="line" width="1.0"/>
               <y:NodeLabel alignment="left" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="115.75" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="239.810546875" x="25.0947265625" y="20.125">V-Table:
 data_in ( msg )
-data_out ( msg, promise, promise_ctx )
+data_out ( msg, promise, promise_user_data )
 update_window ( window_size )
 shutdown_notify ( error )
 shutdown_direction ( direction )

@@ -88,9 +88,9 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -119,7 +119,7 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
 
     struct aws_io_message message = {
         .allocator = NULL,
-            .ctx = NULL,
+            .user_data = NULL,
             .message_tag = AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE,
             .message_data = aws_byte_buf_from_array((const uint8_t *)&protocol_message, sizeof(struct aws_tls_negotiated_protocol_message)),
             .copy_mark = 0,
@@ -157,9 +157,9 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -187,7 +187,7 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
 
     struct aws_io_message message = {
             .allocator = NULL,
-            .ctx = NULL,
+            .user_data = NULL,
             .message_tag = 0,
             .copy_mark = 0,
             .on_completion = NULL,
@@ -225,9 +225,9 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
-            .setup_ctx = &test_args,
+            .setup_user_data = &test_args,
             .on_shutdown_completed = NULL,
-            .shutdown_ctx = NULL,
+            .shutdown_user_data = NULL,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -245,7 +245,7 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
 
     struct aws_io_message message = {
             .allocator = NULL,
-            .ctx = NULL,
+            .user_data = NULL,
             .message_tag = AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE,
             .message_data = aws_byte_buf_from_array((const uint8_t *)&protocol_message, sizeof(struct aws_tls_negotiated_protocol_message)),
             .copy_mark = 0,

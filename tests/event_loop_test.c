@@ -25,8 +25,8 @@ struct task_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void test_task(void *ctx, aws_task_status status) {
-    struct task_args *args = (struct task_args *)ctx;
+static void test_task(void *user_data, aws_task_status status) {
+    struct task_args *args = (struct task_args *)user_data;
 
     aws_mutex_lock(&args->mutex);
     args->invoked += 1;
@@ -37,7 +37,7 @@ static void test_task(void *ctx, aws_task_status status) {
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
-static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator, void *ctx) {
+static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -78,9 +78,9 @@ struct pipe_data {
     uint8_t invoked;
 };
 
-static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
+static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
-        struct pipe_data *data = (struct pipe_data *)ctx;
+        struct pipe_data *data = (struct pipe_data *)user_data;
 
         size_t data_read = 0;
         struct aws_byte_buf read_buf =
@@ -92,9 +92,9 @@ static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_h
     }
 }
 
-static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *ctx) {
+static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        struct pipe_data *data = (struct pipe_data *)ctx;
+        struct pipe_data *data = (struct pipe_data *)user_data;
         data->invoked += 1;
         aws_condition_variable_notify_one(&data->condition_variable);
     }
@@ -103,7 +103,7 @@ static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_h
 /*
  * Test that read/write subscriptions are functional.
  */
-static int test_read_write_notifications (struct aws_allocator *allocator, void *ctx) {
+static int test_read_write_notifications (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -170,15 +170,15 @@ struct stopped_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void on_loop_stopped(struct aws_event_loop *event_loop, void *ctx) {
-    struct stopped_args *args = (struct stopped_args *)ctx;
+static void on_loop_stopped(struct aws_event_loop *event_loop, void *user_data) {
+    struct stopped_args *args = (struct stopped_args *)user_data;
 
     aws_mutex_lock(&args->mutex);
     aws_condition_variable_notify_one(&args->condition_variable);
     aws_mutex_unlock((&args->mutex));
 }
 
-static int test_stop_then_restart (struct aws_allocator *allocator, void *ctx) {
+static int test_stop_then_restart (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 

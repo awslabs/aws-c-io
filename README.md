@@ -241,10 +241,10 @@ only via its API.
     struct aws_event_loop_vtable {
         void (*destroy)(struct aws_event_loop *);
         int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+        int (*stop) (struct aws_event_loop *, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data);
         int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
         int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *ctx);
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
         int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
         BOOL (*is_on_callers_thread) (struct aws_event_loop *);
     };
@@ -262,7 +262,7 @@ recieve events in a back channel API. For example, you could have an epoll loop 
 loop such as glib, or libevent etc... and then publish events to your event loop implementation. 
 
     int (*stop) (struct aws_event_loop *,
-     void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+     void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data);
 
 The stop function signals the event loop to shutdown. This function should not block but it should remove active io handles from the
 currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
@@ -281,7 +281,7 @@ and schedule the task.
 `run_at` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
 
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *ctx);
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *user_data);
 
 A subscriber will call this function to register an io_handle for event monitoring. This function is thread-safe.
 
@@ -320,19 +320,19 @@ Allocates and initializes the default event loop implementation for the current 
 
 Cleans up internal state of the event loop implementation, and then calls the v-table `destroy` function.
 
-    int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
+    int aws_event_loop_fetch_local_object ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for fetching one of those objects by key. The key for this
 store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
 the caller must first schedule a task on the event loop to enter the correct thread. 
 
-    int aws_event_loop_put_local_item ( struct aws_event_loop *, void *key, void *item);
+    int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for putting one of those objects by key. The key for this
 store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
 the caller must first schedule a task on the event loopn to enter the correct thread. 
 
-    int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, void **item);
+    int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
 store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
@@ -418,7 +418,7 @@ Initializes a channel for operation. The event loop will be used for driving the
 Cleans up resources for the channel.
 
     int aws_channel_shutdown (struct aws_channel *channel, 
-        void (*on_shutdown_completed)(struct aws_channel *channel, void *ctx), void *ctx);
+        void (*on_shutdown_completed)(struct aws_channel *channel, void *user_data), void *user_data);
         
 Starts the shutdown process, invokes on_shutdown_completed once each handler has shutdown.
         
@@ -426,11 +426,11 @@ Starts the shutdown process, invokes on_shutdown_completed once each handler has
     
 Gets the current ticks from the event loop's clock.
     
-    int aws_channel_fetch_local_item ( struct aws_channel *, void *key, void **item);    
+    int aws_channel_fetch_local_object ( struct aws_channel *, void *key, void **item);    
     
 Fetches data from the event loop's data store. This data is shared by each channel using that event loop.
     
-    int aws_channel_put_local_item ( struct aws_channel *, void *key, void *item);
+    int aws_channel_put_local_object ( struct aws_channel *, void *key, void *item);
    
 Puts data into the event loop's data store. This data is shared by each channel using that event loop.
    
@@ -555,10 +555,10 @@ notifications.
 `AWS_SOCKET_DGRAM` is UDP
 
     struct aws_socket_creation_args {
-        void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *ctx);
-        void(*on_connection_established)(struct aws_socket *socket, void *ctx);
-        void(*on_error)(struct aws_socket *socket, int err_code, void *ctx);
-        void *ctx;
+        void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data);
+        void(*on_connection_established)(struct aws_socket *socket, void *user_data);
+        void(*on_error)(struct aws_socket *socket, int err_code, void *user_data);
+        void *user_data;
     };
 
 `on_incoming_connection()` will be invoked on a listening socket when new connections arrive. `socket` is the listening

@@ -31,9 +31,9 @@ struct aws_event_loop_local_object;
 struct aws_task;
 struct aws_message_pool;
 
-typedef void(*aws_channel_on_setup_completed)(struct aws_channel *channel, int error_code, void *ctx);
+typedef void(*aws_channel_on_setup_completed)(struct aws_channel *channel, int error_code, void *user_data);
 
-typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, void *ctx);
+typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, void *user_data);
 
 typedef enum aws_channel_state {
     AWS_CHANNEL_SETTING_UP,
@@ -49,14 +49,14 @@ struct aws_channel {
     struct aws_message_pool *msg_pool;
     aws_channel_state channel_state;
     aws_channel_on_shutdown_completed on_shutdown_completed;
-    void *shutdown_ctx;
+    void *shutdown_user_data;
 };
 
 struct aws_channel_creation_callbacks {
     aws_channel_on_setup_completed on_setup_completed;
     aws_channel_on_shutdown_completed on_shutdown_completed;
-    void *setup_ctx;
-    void *shutdown_ctx;
+    void *setup_user_data;
+    void *shutdown_user_data;
 };
 
 struct aws_channel_handler;
@@ -157,22 +157,25 @@ AWS_IO_API struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *cha
 AWS_IO_API int aws_channel_current_clock_time(struct aws_channel *, uint64_t *ticks);
 
 /**
- * Retrieves an item by key from the event loop's local storage. This function must be executed in the context of the event loop's
+ * Retrieves an object by key from the event loop's local storage. This function must be executed in the context of the event loop's
  * thread.
  */
-AWS_IO_API int aws_channel_fetch_local_item (struct aws_channel *, const void *key, struct aws_event_loop_local_object *item);
+AWS_IO_API int aws_channel_fetch_local_object(struct aws_channel *, const void *key,
+                                              struct aws_event_loop_local_object *obj);
 
 /**
- * Stores an item by key in the event loop's local storage. This function must be executed in the context of the event loop's
+ * Stores an object by key in the event loop's local storage. This function must be executed in the context of the event loop's
  * thread.
  */
-AWS_IO_API int aws_channel_put_local_item (struct aws_channel *, const void *key, const struct aws_event_loop_local_object *item);
+AWS_IO_API int aws_channel_put_local_object(struct aws_channel *, const void *key,
+                                            const struct aws_event_loop_local_object *obj);
 
 /**
- * Removes an item by key from the event loop's local storage. This function must be executed in the context of the event loop's
+ * Removes an object by key from the event loop's local storage. This function must be executed in the context of the event loop's
  * thread.
  */
-AWS_IO_API int aws_channel_remove_local_item ( struct aws_channel *, const void *key, struct aws_event_loop_local_object *removed_item);
+AWS_IO_API int aws_channel_remove_local_object(struct aws_channel *, const void *key,
+                                               struct aws_event_loop_local_object *removed_obj);
 
 /**
  * Acquires a message from the event loop's message pool. data_size is merely a hint, it may be smaller than you requested and you

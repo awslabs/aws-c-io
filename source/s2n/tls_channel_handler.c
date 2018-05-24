@@ -34,7 +34,7 @@ struct s2n_handler {
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed latest_message_on_completion;
-    void *latest_message_completion_ctx;
+    void *latest_message_completion_user_data;
     bool negotiation_finished;
 };
 
@@ -110,9 +110,9 @@ static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
         if (processed + message->message_data.len == buf->len) {
             message->on_completion = handler->latest_message_on_completion;
-            message->ctx = handler->latest_message_completion_ctx;
+            message->user_data = handler->latest_message_completion_user_data;
             handler->latest_message_on_completion = NULL;
-            handler->latest_message_completion_ctx = NULL;
+            handler->latest_message_completion_user_data = NULL;
         }
 
         aws_byte_buf_copy(&message->message_data, 0, buf, (size_t)processed);
@@ -187,7 +187,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             if (s2n_handler->options.on_negotiation_result) {
-                s2n_handler->options.on_negotiation_result(handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->options.ctx);
+                s2n_handler->options.on_negotiation_result(handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->options.user_data);
             }
 
             break;
@@ -200,7 +200,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             if (s2n_handler->options.on_negotiation_result) {
                 s2n_handler->options.on_negotiation_result(handler, s2n_handler->slot,
                                                            AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
-                                                           s2n_handler->options.ctx);
+                                                           s2n_handler->options.user_data);
             }
 
             return AWS_OP_ERR;
@@ -274,7 +274,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
         outgoing_read_message->message_data.len = (size_t)read;
 
         if (s2n_handler->options.on_data_read) {
-            s2n_handler->options.on_data_read(handler, slot, &outgoing_read_message->message_data, s2n_handler->options.ctx);
+            s2n_handler->options.on_data_read(handler, slot, &outgoing_read_message->message_data, s2n_handler->options.user_data);
         }
 
         if (slot->adj_right) {
@@ -297,7 +297,7 @@ static int s2n_handler_process_write_message(struct aws_channel_handler *handler
     }
 
     s2n_handler->latest_message_on_completion = message->on_completion;
-    s2n_handler->latest_message_completion_ctx = message->ctx;
+    s2n_handler->latest_message_completion_user_data = message->user_data;
 
     s2n_blocked_status blocked;
     ssize_t write_code = s2n_send(s2n_handler->connection, message->message_data.buffer, (ssize_t)message->message_data.len, &blocked);
@@ -406,7 +406,7 @@ static uint8_t s2n_handler_verify_host_callback(const char *host_name, size_t ho
 
         if (s2n_handler->options.verify_host_fn) {
             struct aws_byte_buf host_buf = aws_byte_buf_from_array((const uint8_t *)host_name, host_name_len);
-            return (uint8_t)s2n_handler->options.verify_host_fn(handler, &host_buf, s2n_handler->options.ctx);
+            return (uint8_t)s2n_handler->options.verify_host_fn(handler, &host_buf, s2n_handler->options.user_data);
         }
     }
 
@@ -444,7 +444,7 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     handler->vtable = handler_vtable;
 
     s2n_handler->options = *options;
-    s2n_handler->latest_message_completion_ctx = NULL;
+    s2n_handler->latest_message_completion_user_data = NULL;
     s2n_handler->latest_message_on_completion = NULL;
     s2n_handler->slot = slot;
     aws_linked_list_init(&s2n_handler->input_queue);
