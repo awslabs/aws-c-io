@@ -161,6 +161,11 @@ AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte
  */
 AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
 
+/**
+ * Returns true if the socket is still open (doesn't mean connected or listening, only that it hasn't had close() called.
+ */
+AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
+
 #ifdef __cplusplus
 }
 #endif

@@ -67,7 +67,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
 
             local_object->key = &MESSAGE_POOL_KEY;
             local_object->object = message_pool;
-            local_object->on_data_removed = on_msg_pool_removed;
+            local_object->on_object_removed = on_msg_pool_removed;
 
             if (aws_event_loop_put_local_object(setup_args->channel->loop, local_object)) {
                 goto cleanup_msg_pool;

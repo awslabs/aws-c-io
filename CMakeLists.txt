@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-io)
 
-option(BUILD_RELOCATABLE_BINARIES
+option(BUILD_PORTABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
         OFF)
 
@@ -120,14 +120,14 @@ if (BUILD_SHARED_LIBS AND WIN32)
 endif ()
 
 if (BUILD_JNI_BINDINGS)
-    set(BUILD_RELOCATABLE_BINARIES ON)
+    set(BUILD_PORTABLE_BINARIES ON)
     find_package(JNI)
     include_directories(${JNI_INCLUDE_DIRS})
     set(PLATFORM_LIBS ${PLATFORM_LIBS} ${JNI_LIBRARIES})
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DBUILD_JNI_BINDINGS")
 endif ()
 
-if (BUILD_RELOCATABLE_BINARIES)
+if (BUILD_PORTABLE_BINARIES)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")
 endif()
 

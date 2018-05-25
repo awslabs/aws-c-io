@@ -20,6 +20,13 @@
 #define __USE_GNU
 #endif
 
+/* TODO: move this detection to CMAKE and a config header */
+#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 9
+#define HAVE_PIPE2 1
+#else
+#define HAVE_PIPE2 0
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
@@ -30,19 +37,10 @@
 int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     int pipe_fds[2] = {0};
 
-#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 9
+#if HAVE_PIPE2
     if (pipe2(pipe_fds, O_NONBLOCK | O_CLOEXEC)) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
-
-    read_handle->handle = pipe_fds[0];
-    read_handle->private_event_loop_data = NULL;
-
-    write_handle->handle = pipe_fds[1];
-    write_handle->private_event_loop_data = NULL;
-
-    return AWS_OP_SUCCESS;
-
 #else
     if (pipe(pipe_fds)) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
@@ -54,40 +52,39 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
     flags = fcntl(pipe_fds[1], F_GETFL);
     flags |= O_NONBLOCK | O_CLOEXEC;
     fcntl(pipe_fds[1], F_SETFL, flags);
+#endif
+    read_handle->data = pipe_fds[0];
+    read_handle->additional_data = NULL;
 
-    read_handle->handle = pipe_fds[0];
-    read_handle->private_event_loop_data = NULL;
-
-    write_handle->handle = pipe_fds[1];
-    write_handle->private_event_loop_data = NULL;
+    write_handle->data = pipe_fds[1];
+    write_handle->additional_data = NULL;
 
     return AWS_OP_SUCCESS;
-#endif
 }
 
 int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     assert(read_handle);
     assert(write_handle);
 
-    close(read_handle->handle);
-    read_handle->handle = 0;
-    close(write_handle->handle);
-    write_handle->handle = 0;
+    close(read_handle->data);
+    read_handle->data = -1;
+    close(write_handle->data);
+    write_handle->data = -1;
 
     return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_half_close(struct aws_io_handle *handle) {
     assert(handle);
-    close(handle->handle);
-    handle->handle = 0;
+    close(handle->data);
+    handle->data = -1;
 
     return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_buf *buf, size_t *written) {
 
-    ssize_t write_val = write(handle->handle, buf->buffer, buf->len);
+    ssize_t write_val = write(handle->data, buf->buffer, buf->len);
 
     if (write_val > 0) {
         *written = (size_t)write_val;
@@ -107,7 +104,7 @@ int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_buf *buf
 }
 
 int aws_pipe_read (struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read) {
-    ssize_t read_val = read(handle->handle, buf->buffer, buf->len);
+    ssize_t read_val = read(handle->data, buf->buffer, buf->len);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;

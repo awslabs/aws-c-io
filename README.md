@@ -241,7 +241,7 @@ only via its API.
     struct aws_event_loop_vtable {
         void (*destroy)(struct aws_event_loop *);
         int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data);
+        int (*stop) (struct aws_event_loop *, void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
         int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
         int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
             void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
@@ -262,11 +262,11 @@ recieve events in a back channel API. For example, you could have an epoll loop 
 loop such as glib, or libevent etc... and then publish events to your event loop implementation. 
 
     int (*stop) (struct aws_event_loop *,
-     void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data);
+     void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
 
 The stop function signals the event loop to shutdown. This function should not block but it should remove active io handles from the
 currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
-Once the event loop has shutdown to a safe state, it should invoke the stopped_promise function.
+Once the event loop has shutdown to a safe state, it should invoke the on_stopped function.
 
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 

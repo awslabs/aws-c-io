@@ -29,7 +29,7 @@ static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 byt
 struct s2n_handler {
     struct s2n_connection *connection;
     struct aws_channel_slot *slot;
-    struct aws_linked_list_node input_queue;
+    struct aws_linked_list input_queue;
     struct aws_byte_buf protocol;
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
@@ -57,8 +57,8 @@ static int generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
     size_t written = 0;
 
     while (!aws_linked_list_empty(&handler->input_queue) && written < buf->len) {
-        struct aws_linked_list_node *head = aws_linked_list_remove(&handler->input_queue);
-        struct aws_io_message *message = aws_container_of(head, struct aws_io_message, queueing_handle);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&handler->input_queue);
+        struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
 
         size_t remaining_message_len = message->message_data.len - message->copy_mark;
         size_t remaining_buf_len = buf->len - written;
@@ -329,7 +329,7 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
     }
     else {
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_remove(&s2n_handler->input_queue);
+            struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
             struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
             aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
         }

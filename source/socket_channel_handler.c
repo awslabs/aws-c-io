@@ -24,7 +24,7 @@ struct socket_handler {
     struct aws_socket *socket;
     struct aws_event_loop *event_loop;
     struct aws_channel_slot *slot;
-    struct aws_linked_list_node write_queue;
+    struct aws_linked_list write_queue;
     size_t max_rw_size;
 };
 
@@ -53,8 +53,9 @@ static int do_write(struct socket_handler *socket_handler) {
     /* while we have data in the queue send as many messages as possible until we either run out or hit the
      * context switch value */
     while (!aws_linked_list_empty(&socket_handler->write_queue) && written < socket_handler->max_rw_size) {
-        struct aws_linked_list_node *head = aws_linked_list_remove(&socket_handler->write_queue);
-        struct aws_io_message *next_message = aws_container_of(head, struct aws_io_message, queueing_handle);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_handler->write_queue);
+
+        struct aws_io_message *next_message = aws_container_of(node, struct aws_io_message, queueing_handle);
 
         size_t left_to_write = next_message->message_data.len - next_message->copy_mark;
         size_t available_to_write = socket_handler->max_rw_size - written;
@@ -72,7 +73,6 @@ static int do_write(struct socket_handler *socket_handler) {
             if (aws_last_error() == AWS_IO_WRITE_WOULD_BLOCK) {
                 next_message->copy_mark += written_to_wire;
                 aws_linked_list_push_front(&socket_handler->write_queue, &next_message->queueing_handle);
-                socket_handler->write_queue = *head;
                 return aws_raise_error(AWS_IO_WRITE_WOULD_BLOCK);
             }
 
@@ -241,7 +241,7 @@ static void shutdown_ran_task(void *arg, aws_task_status status) {
 static int do_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort) {
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
-    if (abort && socket_handler->socket->io_handle.handle >= 0) {
+    if (abort && aws_socket_is_open(socket_handler->socket)) {
         aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop,
                                                   &socket_handler->socket->io_handle);
         aws_socket_shutdown(socket_handler->socket);
@@ -277,7 +277,7 @@ int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_c
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
     while(dir == AWS_CHANNEL_DIR_WRITE && !aws_linked_list_empty(&socket_handler->write_queue)) {
-        struct aws_linked_list_node *node = aws_linked_list_remove(&socket_handler->write_queue);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_handler->write_queue);
         struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
 
         if (message->on_completion) {
