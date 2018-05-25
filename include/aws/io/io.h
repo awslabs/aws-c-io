@@ -22,12 +22,11 @@
 #include <stdint.h>
 
 struct aws_io_handle {
-#ifdef _WIN32
-    HANDLE handle;
-#else
-    int handle;
-#endif
-    void *private_event_loop_data;
+    union {
+        int data;
+        void *dataptr;
+    };
+    void *additional_data;
 };
 
 typedef enum aws_io_message_type {
@@ -37,18 +36,48 @@ typedef enum aws_io_message_type {
 struct aws_io_message;
 struct aws_channel;
 
-typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *ctx);
+typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *user_data);
 
 struct aws_io_message {
+    /**
+     * Allocator used for the message and message data. If this is null, the message belongs to a pool or some other message manager.
+     */
     struct aws_allocator *allocator;
+
+    /**
+     * Buffer containing the data for message
+     */
     struct aws_byte_buf message_data;
+
+    /**
+     * type of the message. This is used for framework control messages. Currently the only type is AWS_IO_MESSAGE_APPLICATION_DATA
+     */
     aws_io_message_type message_type;
+
+    /**
+     * Conveys information about the contents of message_data (e.g. cast the ptr to some type). If 0, it's just opaque data.
+     */
     int message_tag;
+
+    /**
+     * In order to avoid excess allocations/copies, on a partial read or write, the copy mark is set to indicate how much of this
+     * message has already been processed or copied.
+     */
     size_t copy_mark;
+
+    /**
+     * Invoked by the channel once the entire message has been written to the data sink.
+     */
     aws_channel_on_message_write_completed on_completion;
-    void *ctx;
-    /* it's incredibly likely something is going to need to queue this,
-     * go ahead and make sure the list info is part of the original allocation. */
+
+    /**
+     * arbitrary user data for the on_completion callback     *
+     */
+    void *user_data;
+
+    /** it's incredibly likely something is going to need to queue this,
+     * go ahead and make sure the list info is part of the original allocation.
+     */
     struct aws_linked_list_node queueing_handle;
 };
 
@@ -63,6 +92,7 @@ typedef enum aws_io_errors {
     AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
     AWS_IO_TLS_ERROR_WRITE_FAILURE,
     AWS_IO_TLS_CTX_ERROR,
+    AWS_IO_MISSING_ALPN_MESSAGE,
     AWS_IO_FILE_NOT_FOUND,
     AWS_IO_FILE_VALIDATION_FAILURE,
     AWS_IO_WRITE_WOULD_BLOCK,

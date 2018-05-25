@@ -60,7 +60,7 @@ typedef void(*aws_event_loop_on_local_object_removed)(struct aws_event_loop_loca
 struct aws_event_loop_local_object {
     const void *key;
     void *object;
-    aws_event_loop_on_local_object_removed on_data_removed;
+    aws_event_loop_on_local_object_removed on_object_removed;
 };
 
 #ifdef __cplusplus

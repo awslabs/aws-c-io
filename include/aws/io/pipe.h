@@ -41,13 +41,13 @@ AWS_IO_API int aws_pipe_half_close(struct aws_io_handle *handle);
 
 
 /**
- * Writes up to buf::len to the pipe. The amount successfully written will be stored in written. Errors, such as EAGAIN, EWOULDBLOCK
+ * Writes up to buf->len to the pipe. The amount successfully written will be stored in written. Errors, such as EAGAIN, EWOULDBLOCK
  * will be indicated by -1 return value, call aws_last_error() to get the specific error.
  */
 AWS_IO_API int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_buf *buf, size_t *written);
 
 /**
- * Reads up to buf::len from the pipe. The amount successfully read will be stored in amount_read. Errors, such as EAGAIN, EWOULDBLOCK
+ * Reads up to buf->len from the pipe. The amount successfully read will be stored in amount_read. Errors, such as EAGAIN, EWOULDBLOCK
  * will be indicated by -1 return value, call aws_last_error() to get the specific error.
  */
 AWS_IO_API int aws_pipe_read (struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read);
