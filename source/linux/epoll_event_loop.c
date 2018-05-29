@@ -241,6 +241,7 @@ static void destroy(struct aws_event_loop *event_loop) {
 
     close (epoll_loop->epoll_fd);
     aws_mem_release(event_loop->alloc, epoll_loop);
+    aws_event_loop_base_clean_up(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
@@ -483,11 +484,11 @@ static void main_loop (void *args) {
      * call epoll_wait, if a task is scheduled, or a file descriptor has activity, it will
      * return.
      *
-     * Then run all currently scheduled tasks.
+     * process all events,
      *
-     * Then process all events,
+     * run all scheduled tasks.
      *
-     * then run all scheduled tasks again.
+     * process queued subscription cleanups.
      */
     while ( epoll_loop->should_continue ) {
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
