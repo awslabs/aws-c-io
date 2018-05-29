@@ -89,7 +89,6 @@ struct epoll_event_data {
     struct aws_io_handle *handle;
     aws_event_loop_on_event on_event;
     void *user_data;
-    struct epoll_loop *epoll_loop;
     struct aws_linked_list_node list_handle;
 };
 
@@ -348,7 +347,6 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
-    epoll_event_data->epoll_loop = epoll_loop;
     epoll_event_data->list_handle.next = NULL;
     epoll_event_data->list_handle.prev = NULL;
 
@@ -382,7 +380,7 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     return AWS_OP_SUCCESS;
 }
 
-static inline void process_unsubscribe_cleanup(struct epoll_loop *event_loop) {
+static inline void process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
     while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
@@ -391,10 +389,9 @@ static inline void process_unsubscribe_cleanup(struct epoll_loop *event_loop) {
     }
 }
 
-static void queue_unsubscribe_cleanup(void *arg, aws_task_status status) {
+static void unsubscribe_cleanup_task(void *arg, aws_task_status status) {
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
-
-    aws_linked_list_push_back(&event_data->epoll_loop->cleanup_list, &event_data->list_handle);
+    aws_mem_release(event_data->alloc, (void *)event_data);
 }
 
 static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -414,7 +411,7 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
     else if (handle->additional_data){
         struct aws_task task = {
                 .arg = handle->additional_data,
-                .fn = queue_unsubscribe_cleanup
+                .fn = unsubscribe_cleanup_task
         };
 
         uint64_t timestamp = 0;
@@ -525,7 +522,7 @@ static void main_loop (void *args) {
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
-        process_unsubscribe_cleanup(epoll_loop);
+        process_unsubscribe_cleanup_list(epoll_loop);
 
         if (next_run_time) {
             uint64_t offset = 0;
@@ -544,7 +541,7 @@ static void main_loop (void *args) {
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
-    process_unsubscribe_cleanup(epoll_loop);
+    process_unsubscribe_cleanup_list(epoll_loop);
 
     /*
      * If the user passed a promise to stop, execute it now.
