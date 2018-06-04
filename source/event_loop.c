@@ -16,10 +16,10 @@
 #include <aws/io/event_loop.h>
 #include <assert.h>
 
-static void data_element_removed(struct aws_hash_element element) {
+static void object_removed(struct aws_hash_element element) {
     struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)element.value;
-    if(object->on_data_removed) {
-        object->on_data_removed(object);
+    if(object->on_object_removed) {
+        object->on_object_removed(object);
     }
 }
 
@@ -29,7 +29,7 @@ int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_alloc
     event_loop->clock = clock;
 
     if (aws_hash_table_init(&event_loop->local_data, alloc, 20, aws_hash_ptr,
-                                        aws_ptr_eq, data_element_removed)) {
+                                        aws_ptr_eq, object_removed)) {
         return AWS_OP_ERR;
     }
 
@@ -42,16 +42,13 @@ void aws_event_loop_base_clean_up(struct aws_event_loop *event_loop) {
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.destroy);
-
-    aws_event_loop_base_clean_up(event_loop);
-
     event_loop->vtable.destroy(event_loop);
 }
 
 int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *key,
                                       struct aws_event_loop_local_object *obj) {
     struct aws_hash_element *object = NULL;
-    if (!aws_hash_table_find(&event_loop->local_data, (void *)(uintptr_t)key, &object) && object) {
+    if (!aws_hash_table_find(&event_loop->local_data, key, &object) && object) {
         *obj = *(struct aws_event_loop_local_object *)object->value;
         return AWS_OP_SUCCESS;
     }
@@ -63,7 +60,7 @@ int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aw
     struct aws_hash_element *object = NULL;
     int was_created = 0;
 
-    if (!aws_hash_table_create(&event_loop->local_data, (const void *)(uintptr_t)obj->key, &object, &was_created)) {
+    if (!aws_hash_table_create(&event_loop->local_data, obj->key, &object, &was_created)) {
         object->key = obj->key;
         object->value = obj;
         return AWS_OP_SUCCESS;
@@ -79,7 +76,7 @@ int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *
 
     struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;
 
-    if (!aws_hash_table_remove(&event_loop->local_data, (void *)(uintptr_t)key, remove_candidate, &was_present)) {
+    if (!aws_hash_table_remove(&event_loop->local_data, key, remove_candidate, &was_present)) {
         if (remove_candidate && was_present) {
             *removed_obj = *(struct aws_event_loop_local_object *)existing_object.value;
         }
@@ -122,5 +119,6 @@ bool aws_event_loop_thread_is_callers_thread (struct aws_event_loop *event_loop)
 }
 
 int aws_event_loop_current_ticks ( struct aws_event_loop *event_loop, uint64_t *ticks) {
+    assert(event_loop->clock);
     return event_loop->clock(ticks);
 }

@@ -83,12 +83,14 @@ AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocato
 AWS_IO_API void aws_event_loop_base_clean_up(struct aws_event_loop *);
 
 /**
- * Invokes the destroy() fn for the event loop implementation, also calls aws_event_loop_base_clean_up.
+ * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
  *
  * This function does not detect that a stop is in progress, it is up to the user to determine the best strategy for
  * when to call shutdown and if/when to manually call stop().
+ *
+ * Implementations must call aws_event_loop_base_clean_up before freeing up the event_loop memory.
  */
 AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
 
