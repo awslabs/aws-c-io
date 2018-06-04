@@ -545,13 +545,19 @@ static void main_loop (void *args) {
         if (next_run_time) {
             uint64_t offset = 0;
             event_loop->clock(&offset);
-            next_run_time -= offset;
-            int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
-            /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
-             * but not quite ready. so just sleep one ms*/
-            timeout = scheduler_timeout > 0 ?
-                                              scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout :DEFAULT_TIMEOUT
-                      : 1;
+
+            if (offset >= next_run_time) {
+                timeout = 0;
+            }
+            else {
+                next_run_time -= offset;
+                int scheduler_timeout = (int) (next_run_time / NANO_TO_MILLIS);
+                /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
+                 * but not quite ready. so just sleep one ms*/
+                timeout = scheduler_timeout > 0 ?
+                          scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout : DEFAULT_TIMEOUT
+                                                : 1;
+            }
         }
         else {
             timeout = DEFAULT_TIMEOUT;
