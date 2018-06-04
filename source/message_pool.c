@@ -127,8 +127,8 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
     message->on_completion = 0;
     /* the buffer shares the allocation with the message. It's the bit at the end. */
     message->message_data.buffer = (uint8_t *)message + sizeof(struct aws_io_message);
-    message->message_data.len = data_size > max_size ? max_size : data_size;
-    message->message_data.size = max_size;
+    message->message_data.len = 0;
+    message->message_data.size = data_size <= max_size ? data_size : max_size;
 
     return message;
 }

@@ -152,16 +152,19 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     uint8_t write_buffer[1024] = {1};
     memset(write_buffer + 512, 2, 512);
 
-    struct aws_byte_buf write_byte_buf = aws_byte_buf_from_array(write_buffer, 512);
+    struct aws_byte_buf write_byte_buf = aws_byte_buf_from_array(write_buffer, sizeof(write_buffer));
+    struct aws_byte_cursor write_byte_cursor = aws_byte_cursor_from_buf(&write_byte_buf);
+    write_byte_cursor.len = 512;
 
     ASSERT_SUCCESS(aws_mutex_lock(&read_data.mutex), "read mutex lock failed.");
     size_t written = 0;
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_buf, &written), "Pipe write failed");
+    ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_cursor, &written), "Pipe write failed");
 
     read_data.expected_invocations = 1;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, invocation_predicate, &read_data));
-    write_byte_buf = aws_byte_buf_from_array(write_buffer + 512, 512);
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_buf, &written), "Pipe write failed");
+    write_byte_cursor.len = sizeof(write_buffer);
+    aws_byte_cursor_advance(&write_byte_cursor, 512);
+    ASSERT_SUCCESS(aws_pipe_write(&write_handle, &write_byte_cursor, &written), "Pipe write failed");
 
     read_data.expected_invocations = 2;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, invocation_predicate, &read_data));

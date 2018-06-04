@@ -70,6 +70,7 @@ struct aws_socket {
 };
 
 struct aws_byte_buf;
+struct aws_byte_cursor;
 
 #ifdef __cplusplus
 extern "C" {
@@ -153,7 +154,7 @@ AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *b
  * Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be written.
  * `written` is the amount of data read from `buffer` and successfully written to `socket`.
  */
-AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written);
+AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cursor, size_t *written);
 
 /**
  * Gets the latest error from the socket. If no error has occurred AWS_OP_SUCCESS will be returned. This function does not

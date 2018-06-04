@@ -46,7 +46,8 @@ static int rw_handler_process_read (struct aws_channel_handler *handler, struct 
         struct aws_io_message *msg =
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, next_data.len);
 
-        memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
+        struct aws_byte_cursor next_data_cursor = aws_byte_cursor_from_buf(&next_data);
+        aws_byte_buf_append(&msg->message_data, &next_data_cursor);
 
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
     }
@@ -66,7 +67,8 @@ static int rw_handler_process_write_message ( struct aws_channel_handler *handle
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
                                                      next_data.len);
 
-        memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
+        struct aws_byte_cursor next_data_cursor = aws_byte_cursor_from_buf(&next_data);
+        aws_byte_buf_append(&msg->message_data, &next_data_cursor);
         return aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
     }
 
@@ -144,7 +146,8 @@ static void rw_handler_trigger_read(struct aws_channel_handler *handler, struct 
     struct aws_io_message *msg =
             aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, next_data.len);
 
-    memcpy(msg->message_data.buffer, next_data.buffer, next_data.len);
+    struct aws_byte_cursor next_data_cursor = aws_byte_cursor_from_buf(&next_data);
+    aws_byte_buf_append(&msg->message_data, &next_data_cursor);
 
     aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_READ);
 }
@@ -162,8 +165,8 @@ static void rw_handler_write_task(void *arg, aws_task_status task_status) {
             aws_channel_aquire_message_from_pool(write_task_args->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
                                                  write_task_args->buffer->len);
 
-    memcpy(msg->message_data.buffer, write_task_args->buffer->buffer, write_task_args->buffer->len);
-    msg->message_data.len = write_task_args->buffer->len;
+    struct aws_byte_cursor write_buffer = aws_byte_cursor_from_buf(write_task_args->buffer);
+    aws_byte_buf_append(&msg->message_data, &write_buffer);
 
     aws_channel_slot_send_message(write_task_args->slot, msg, AWS_CHANNEL_DIR_WRITE);
 
@@ -178,8 +181,8 @@ static void rw_handler_write(struct aws_channel_handler *handler, struct aws_cha
                 aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
                                                      buffer->len);
 
-        memcpy(msg->message_data.buffer, buffer->buffer, buffer->len);
-        msg->message_data.len = buffer->len;
+        struct aws_byte_cursor write_buffer = aws_byte_cursor_from_buf(buffer);
+        aws_byte_buf_append(&msg->message_data, &write_buffer);
 
         aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE);
     }

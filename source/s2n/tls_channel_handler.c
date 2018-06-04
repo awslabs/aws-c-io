@@ -65,10 +65,10 @@ static int generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
         size_t to_write = remaining_message_len < remaining_buf_len ? remaining_message_len : remaining_buf_len;
 
-        struct aws_byte_buf message_buf_cpy = message->message_data;
-        message_buf_cpy.len = message->copy_mark + to_write;
+        struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
+        aws_byte_cursor_advance(&message_cursor, message->copy_mark);
+        aws_byte_cursor_read(&message_cursor, buf->buffer + written, to_write);
 
-        aws_byte_buf_copy(buf, written, &message_buf_cpy, message->copy_mark);
         written += to_write;
 
         message->copy_mark += to_write;
@@ -108,15 +108,16 @@ static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
             return aws_raise_error(AWS_ERROR_OOM);
         }
 
-        if (processed + message->message_data.len == buf->len) {
+        struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
+        aws_byte_buf_append(&message->message_data, &buffer_cursor);
+        processed += message->message_data.len;
+
+        if (processed == buf->len) {
             message->on_completion = handler->latest_message_on_completion;
             message->user_data = handler->latest_message_completion_user_data;
             handler->latest_message_on_completion = NULL;
             handler->latest_message_completion_user_data = NULL;
         }
-
-        aws_byte_buf_copy(&message->message_data, 0, buf, (size_t)processed);
-        processed += message->message_data.len;
 
         aws_channel_slot_send_message(handler->slot, message, AWS_CHANNEL_DIR_WRITE);
     }
@@ -179,6 +180,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
                     (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
 
                 protocol_message->protocol = s2n_handler->protocol;
+                message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
                 if (aws_channel_slot_send_message(s2n_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                     aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
                     aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
@@ -263,7 +265,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
         }
 
         ssize_t read = s2n_recv(s2n_handler->connection, outgoing_read_message->message_data.buffer,
-                                outgoing_read_message->message_data.len, &blocked);
+                                outgoing_read_message->message_data.size, &blocked);
 
         if (read <= 0) {
             aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);

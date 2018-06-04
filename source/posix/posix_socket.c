@@ -606,10 +606,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t read_val = read(socket->io_handle.data, buffer->buffer, buffer->len);
+    ssize_t read_val = read(socket->io_handle.data, buffer->buffer, buffer->size);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
+        buffer->len = *amount_read;
         return AWS_OP_SUCCESS;
     }
 
@@ -626,12 +627,12 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
-int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written) {
+int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cursor, size_t *written) {
     if (!(socket->state & CONNECTED_WRITE)) {
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t write_val = send(socket->io_handle.data, buffer->buffer, buffer->len, MSG_NOSIGNAL);
+    ssize_t write_val = send(socket->io_handle.data, cursor->ptr, cursor->len, MSG_NOSIGNAL);
 
     if (write_val > 0) {
         *written = (size_t)write_val;

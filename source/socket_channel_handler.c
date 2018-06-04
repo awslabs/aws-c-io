@@ -62,12 +62,15 @@ static int do_write(struct socket_handler *socket_handler) {
         size_t max_write = left_to_write <= available_to_write ?
                            left_to_write : available_to_write;
 
-        struct aws_byte_buf buffer = aws_byte_buf_from_array(next_message->message_data.buffer + next_message->copy_mark,
-                                                             max_write);
+
         size_t written_to_wire = 0;
 
+        struct aws_byte_cursor to_write = aws_byte_cursor_from_buf(&next_message->message_data);
+        aws_byte_cursor_advance(&to_write, next_message->copy_mark);
+        to_write.len = max_write;
+
         /* if we didn't write everything we requested */
-        if (aws_socket_write(socket_handler->socket, &buffer, &written_to_wire)) {
+        if (aws_socket_write(socket_handler->socket, &to_write, &written_to_wire)) {
             /* this is a normal case, we just got a would block back from the socket. no need to schedule a task,
              * the edge trigger will wake us up. */
             if (aws_last_error() == AWS_IO_WRITE_WOULD_BLOCK) {
@@ -147,7 +150,6 @@ static void do_read(struct socket_handler *socket_handler) {
 
             total_read += read;
 
-            message->message_data.len = read;
             if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 return;

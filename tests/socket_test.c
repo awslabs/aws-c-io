@@ -152,18 +152,20 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     struct aws_byte_buf read_buffer = aws_byte_buf_from_array((const uint8_t *)read_data, sizeof(read_data));
     struct aws_byte_buf write_buffer = aws_byte_buf_from_array((const uint8_t *)write_data, sizeof(write_data));
 
+    struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
+
     size_t data_len = 0;
-    ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_buffer, &data_len));
-    ASSERT_INT_EQUALS(read_buffer.len, data_len);
+    ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_cursor, &data_len));
+    ASSERT_INT_EQUALS(read_cursor.len, data_len);
     ASSERT_SUCCESS(aws_socket_read(server_sock, &write_buffer, &data_len));
-    ASSERT_INT_EQUALS(read_buffer.len, data_len);
+    ASSERT_INT_EQUALS(write_buffer.len, data_len);
 
     ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
 
     memset((void *)write_data, 0, sizeof(write_data));
 
     if (options->type == AWS_SOCKET_STREAM) {
-        ASSERT_SUCCESS(aws_socket_write(server_sock, &read_buffer, &data_len));
+        ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, &data_len));
         ASSERT_INT_EQUALS(read_buffer.len, data_len);
         ASSERT_SUCCESS(aws_socket_read(&outgoing, &write_buffer, &data_len));
         ASSERT_INT_EQUALS(read_buffer.len, data_len);
