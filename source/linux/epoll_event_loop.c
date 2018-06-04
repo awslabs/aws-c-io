@@ -72,6 +72,7 @@ struct epoll_loop {
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
     struct stop_task_args stop_task_args;
+    struct aws_linked_list cleanup_list;
     int epoll_fd;
     bool should_continue;
 };
@@ -88,6 +89,7 @@ struct epoll_event_data {
     struct aws_io_handle *handle;
     aws_event_loop_on_event on_event;
     void *user_data;
+    struct aws_linked_list_node list_handle;
 };
 
 /* default timeout is 100 seconds */
@@ -154,6 +156,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     epoll_loop->on_stopped = NULL;
     epoll_loop->stop_user_data = NULL;
     epoll_loop->stop_task_args = (struct stop_task_args){0};
+    aws_linked_list_init(&epoll_loop->cleanup_list);
 
     loop->impl_data = epoll_loop;
     loop->vtable = vtable;
@@ -238,6 +241,7 @@ static void destroy(struct aws_event_loop *event_loop) {
 
     close (epoll_loop->epoll_fd);
     aws_mem_release(event_loop->alloc, epoll_loop);
+    aws_event_loop_base_clean_up(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
@@ -338,10 +342,14 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
         return aws_raise_error(AWS_ERROR_OOM);
     }
 
+    struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
+
     epoll_event_data->alloc = event_loop->alloc;
     epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
+    epoll_event_data->list_handle.next = NULL;
+    epoll_event_data->list_handle.prev = NULL;
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
@@ -362,7 +370,6 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
             .events = event_mask
     };
 
-    struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data, &epoll_event)) {
         aws_mem_release(event_loop->alloc, epoll_event_data);
@@ -374,61 +381,18 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     return AWS_OP_SUCCESS;
 }
 
-struct finalize_unsubscribe_args {
-    struct aws_allocator *alloc;
-    struct epoll_event_data *event_data;
-};
+static inline void process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
-static void finalize_unsubscribe(void *args, aws_task_status status) {
-    struct finalize_unsubscribe_args *unsubscribe_args = (struct finalize_unsubscribe_args *)args;
-    aws_mem_release(unsubscribe_args->alloc, unsubscribe_args->event_data);
-    aws_mem_release(unsubscribe_args->alloc, unsubscribe_args);
+    while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
+        struct epoll_event_data *event_data = aws_container_of(node, struct epoll_event_data, list_handle);
+        aws_mem_release(event_data->alloc, (void *)event_data);
+    }
 }
 
-/*
- * This is here to address a race condition where an event handler, unsubscribed another event from notifications,
- * in that case the epoll set would contain bad memory when we try to access it. Instead, free up the memory in a task
- * that is guaranteed to run after the events are handled.
- */
-static int schedule_unsubscribe_cleanup(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
-
-    /*
-     * The task scheduler pipe should only ever be getting unregistered from the event loop's termination.
-     * go ahead and clean it up immediately without out a task.
-     */
-    if (AWS_UNLIKELY(epoll_loop->read_task_handle.data == handle->data)) {
-        aws_mem_release(event_loop->alloc, handle->additional_data);
-        handle->additional_data = NULL;
-    }
-
-    if(handle->additional_data) {
-        struct finalize_unsubscribe_args *unsubscribe_args =
-                (struct finalize_unsubscribe_args *) aws_mem_acquire(event_loop->alloc,
-                                                                     sizeof(struct finalize_unsubscribe_args));
-
-        if (!unsubscribe_args) {
-            return aws_raise_error(AWS_ERROR_OOM);
-        }
-
-        unsubscribe_args->alloc = event_loop->alloc;
-        unsubscribe_args->event_data = handle->additional_data;
-
-        struct aws_task task = {
-                .fn = finalize_unsubscribe,
-                .arg = unsubscribe_args
-        };
-
-        uint64_t now = 0;
-        if (event_loop->clock(&now)) {
-            aws_mem_release(event_loop->alloc, unsubscribe_args);
-            return AWS_OP_ERR;
-        }
-
-        handle->additional_data = NULL;
-
-        return aws_event_loop_schedule_task(event_loop, &task, now);
-    }
+static void unsubscribe_cleanup_task(void *arg, aws_task_status status) {
+    struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
+    aws_mem_release(event_data->alloc, (void *)event_data);
 }
 
 static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -439,17 +403,34 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
         .events = 0
     };
 
-    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data, &compat_event))) {
-        int err = errno;
-        if (handle->additional_data && (err == ENOENT || err == EBADF)) {
-            schedule_unsubscribe_cleanup(event_loop, handle);
+    /* We can't clean up yet, because we have schedule tasks and more events to process, add it to the cleanup list
+     * and we'll process it after everything is finished for this event loop tick. */
+    if (is_on_callers_thread(event_loop) && handle->additional_data) {
+        aws_linked_list_push_back(&epoll_loop->cleanup_list,
+                                  &((struct epoll_event_data *) handle->additional_data)->list_handle);
+    }
+    else if (handle->additional_data){
+        struct aws_task task = {
+                .arg = handle->additional_data,
+                .fn = unsubscribe_cleanup_task
+        };
+
+        uint64_t timestamp = 0;
+        if (event_loop->clock(&timestamp)) {
+            return AWS_OP_ERR;
         }
 
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        if (schedule_task(event_loop, &task, timestamp)) {
+            return AWS_OP_ERR;
+        }
     }
 
-    if (handle->additional_data) {
-        return schedule_unsubscribe_cleanup(event_loop, handle);
+    handle->additional_data = NULL;
+
+
+
+    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data, &compat_event))) {
+        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
     return AWS_OP_SUCCESS;
@@ -503,11 +484,11 @@ static void main_loop (void *args) {
      * call epoll_wait, if a task is scheduled, or a file descriptor has activity, it will
      * return.
      *
-     * Then run all currently scheduled tasks.
+     * process all events,
      *
-     * Then process all events,
+     * run all scheduled tasks.
      *
-     * then run all scheduled tasks again.
+     * process queued subscription cleanups.
      */
     while ( epoll_loop->should_continue ) {
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
@@ -542,6 +523,8 @@ static void main_loop (void *args) {
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
+        process_unsubscribe_cleanup_list(epoll_loop);
+
         if (next_run_time) {
             uint64_t offset = 0;
             event_loop->clock(&offset);
@@ -565,6 +548,7 @@ static void main_loop (void *args) {
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
+    process_unsubscribe_cleanup_list(epoll_loop);
 
     /*
      * If the user passed a promise to stop, execute it now.
