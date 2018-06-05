@@ -63,9 +63,27 @@ struct aws_event_loop_local_object {
     aws_event_loop_on_local_object_removed on_object_removed;
 };
 
+typedef struct aws_event_loop *(*aws_new_event_loop)(struct aws_allocator *, aws_io_clock clock, void *);
+
+struct aws_event_loop_group {
+    struct aws_allocator *allocator;
+    struct aws_array_list event_loops;
+    volatile uint32_t current_index;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+AWS_IO_API int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc,
+                                         aws_io_clock clock, uint16_t el_count,
+                                         aws_new_event_loop new_loop_fn, void *new_loop_user_data);
+
+AWS_IO_API int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc);
+
+AWS_IO_API void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
+
+AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**
  * Initializes common event-loop data structures, called by *new() functions for implementations.
