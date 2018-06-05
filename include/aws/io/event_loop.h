@@ -38,7 +38,8 @@ typedef void (*aws_event_loop_on_event)(struct aws_event_loop *, struct aws_io_h
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *);
     int (*run) (struct aws_event_loop *);
-    int (*stop) (struct aws_event_loop *, aws_event_loop_on_stopped promise, void *);
+    int (*stop) (struct aws_event_loop *, aws_event_loop_on_stopped on_stopped, void *user_data);
+    int (*wait_for_stop_completion) (struct aws_event_loop *);
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *handle, int events,
                                    aws_event_loop_on_event on_event, void *user_data);
@@ -124,6 +125,7 @@ AWS_IO_API int aws_event_loop_run(struct aws_event_loop *event_loop);
 
 /**
  * Stops the event loop.
+ * This function may be called from outside or inside the event loop thread.
  * This function is called from destroy(), so, in that context, when the stop completes,
  * the memory for the loop will be freed.
  *
@@ -132,14 +134,22 @@ AWS_IO_API int aws_event_loop_run(struct aws_event_loop *event_loop);
  * This function is not safe to call multiple times while a stop is in progress. Users should take care of how the ownership
  * of their event loops is managed.
  */
-AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped, void *user_data);
+AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_stopped, void *user_data);
+
 
 /**
- * The event loop is responsible for queuing and executing scheduled tasks. If this function is invoked outside
- * of the event-loop's thread it is responsible for pushing the task into the correct thread before mutating state.
+ * Waits for the event loop to stop completely.
+ * You must call this if you want to call aws_event_loop_run() again after aws_event_loop_stop().
+ * It is not safe to call this function from inside the event loop thread.
+ */
+AWS_IO_API int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
+
+/**
+ * The event loop will schedule the task and run it on the event loop thread.
+ * Note that a cancelled task may execute outside the event loop thread.
+ * This function may be called from outside or inside the event loop thread.
+ *
  * Task is copied.
- * For example on edge triggered epoll, if this function is called outside of the event loop thread,
- * the task is written to a pipe. Epoll will notice the change on the pipe and then the loop will queue the task and execute it.
  */
 AWS_IO_API int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
 
@@ -147,12 +157,14 @@ AWS_IO_API int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, s
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were received.
  * The definition for these values can be found in aws_io_event_type. Currently, only AWS_IO_EVENT_TYPE_READABLE and
  * AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions and closure.
+ * This function may be called from outside or inside the event loop thread.
  */
 AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
                     aws_event_loop_on_event on_event, void *user_data);
 
 /**
  * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
+ * This function may be called from outside or inside the event loop thread.
  */
 AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 

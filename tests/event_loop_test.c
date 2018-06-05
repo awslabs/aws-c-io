@@ -126,8 +126,8 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
 
-    struct aws_io_handle read_handle = {0};
-    struct aws_io_handle write_handle = {0};
+    struct aws_io_handle read_handle = {{0}};
+    struct aws_io_handle write_handle = {{0}};
 
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle), "Pipe open failed");
 
@@ -139,7 +139,7 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
             .mutex = AWS_MUTEX_INIT
     };
 
-    struct pipe_data write_data = {0};
+    struct pipe_data write_data = {{0}};
 
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(event_loop, &read_handle,
                            AWS_IO_EVENT_TYPE_READABLE, on_pipe_readable, &read_data), "Event loop read subscription failed.");
@@ -241,6 +241,7 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     ASSERT_SUCCESS(aws_event_loop_stop(event_loop, on_loop_stopped, &stopped_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&stopped_args.condition_variable, &stopped_args.mutex, stopped_predicate, &stopped_args));
 
+    ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
