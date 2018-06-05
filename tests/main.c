@@ -18,10 +18,24 @@
 #endif
 
 #include <event_loop_test.c>
+#include <socket_test.c>
+#include <channel_test.c>
+#include <socket_handler_test.c>
+#include <tls_handler_test.c>
+#include <alpn_handler_test.c>
 
-int main (int argc, char *argv[]) {
+static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
-                       &stop_then_restart
-                      );
+                       &stop_then_restart,
+                       &channel_setup,
+                       &channel_single_slot_cleans_up,
+                       &channel_slots_clean_up,
+                       &channel_message_passing,
+    );
+}
+
+int main (int argc, char *argv[]) {
+    int ret_val = run_tests(argc, argv);
+    return ret_val;
 }

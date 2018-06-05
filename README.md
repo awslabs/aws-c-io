@@ -41,9 +41,8 @@ provides a API to move a cross-thread call into the event-loop thread if necessa
 ### Channels and Slots
 A channel is simply a container that drives the slots. It is responsible for providing an interface
 between slots and the underlying event-loop as well as invoking the slots to pass messages. As a channel 
-runs, it makes sure that all messages queues are empty before returning control to the caller. It also provides
-utilities for making sure slots and their handlers run in the correct thread and moving execution to that thread
-if necessary.
+runs. It also provides utilities for making sure slots and their handlers run in the correct thread and moving execution 
+to that thread if necessary.
 
 ![Channels and Slots Diagram](docs/images/channels_slots.png)
 
@@ -57,17 +56,14 @@ on the last slot in the channel. When all slots have successfully shutdown, the 
 ### Slots
 ![Slots Diagram](docs/images/slots.png)
 
-Slots contain 2 queues, one for the write (to the io) direction, and one for the read (from the io) direction. Each slot
-owns the lifetime of its queues. In addition, they maintain their links to adjacent slots in the channel. So as the channel
-is processed, each slot will read from its left-adjacent slot's read queue, send those messages to the handler, and queue
-messages to the read queue for that slot. Conversely, each slot will read from its right-adjacent slot's write queue,
-send those messages to the handler, and send messages to the write queue for that slot. Most importantly, slots contain a 
-reference to a handler. Handlers are responsible for doing most of the work (see below). Finally, slots have an 
-API that manages invoking the handler, from the channel's perspective, as well as utilities for manipulating the connections 
-of the slots themselves.
+Slots maintain their links to adjacent slots in the channel. So as the channel
+is processed, each slot will read from its left-adjacent slot, send those messages to the handler, and call their right-adjacent
+slot when it needs to send a message. Conversely, each slot will read from its right-adjacent slot,
+send those messages to the handler, and send messages to the left-adjacent slot in the channel. Most importantly, slots contain a 
+reference to a handler. Handlers are responsible for doing most of the work (see below). Finally, slots have
+utilities for manipulating the connections of the slots themselves.
 
-Slots can also be added and removed dynamically from a channel. When a slot is removed it will make sure its queues are drained
-and its messages moved to the appropriate new siblings. 
+Slots can also be added, removed, or replaced dynamically from a channel. 
 
 ### Channel Handlers
 The channel handler is the fundamental unit that protocol developers will implement. It contains all of your
@@ -245,10 +241,10 @@ only via its API.
     struct aws_event_loop_vtable {
         void (*destroy)(struct aws_event_loop *);
         int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+        int (*stop) (struct aws_event_loop *, void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
         int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
         int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *ctx);
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
         int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
         BOOL (*is_on_callers_thread) (struct aws_event_loop *);
     };
@@ -266,11 +262,11 @@ recieve events in a back channel API. For example, you could have an epoll loop 
 loop such as glib, or libevent etc... and then publish events to your event loop implementation. 
 
     int (*stop) (struct aws_event_loop *,
-     void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_ctx);
+     void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
 
 The stop function signals the event loop to shutdown. This function should not block but it should remove active io handles from the
 currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
-Once the event loop has shutdown to a safe state, it should invoke the stopped_promise function.
+Once the event loop has shutdown to a safe state, it should invoke the on_stopped function.
 
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 
@@ -285,7 +281,7 @@ and schedule the task.
 `run_at` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
 
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *ctx);
+            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *user_data);
 
 A subscriber will call this function to register an io_handle for event monitoring. This function is thread-safe.
 
@@ -324,19 +320,19 @@ Allocates and initializes the default event loop implementation for the current 
 
 Cleans up internal state of the event loop implementation, and then calls the v-table `destroy` function.
 
-    int aws_event_loop_fetch_local_item ( struct aws_event_loop *, void *key, void **item);
+    int aws_event_loop_fetch_local_object ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for fetching one of those objects by key. The key for this
 store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
 the caller must first schedule a task on the event loop to enter the correct thread. 
 
-    int aws_event_loop_put_local_item ( struct aws_event_loop *, void *key, void *item);
+    int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for putting one of those objects by key. The key for this
 store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
 the caller must first schedule a task on the event loopn to enter the correct thread. 
 
-    int aws_event_loop_remove_local_item ( struct aws_event_loop *, void *key, void **item);
+    int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
 
 All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
 store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case, 
@@ -356,76 +352,60 @@ The remaining exported functions on event loop simply invoke the v-table functio
     struct aws_channel {
         struct aws_allocator *alloc;
         struct aws_event_loop *loop;
-        struct aws_channel_slot_ref *first;
+        struct aws_channel_slot *first;
     };
 
     struct aws_channel_slot {
         struct aws_allocator *alloc;
         struct aws_channel *channel;
-        struct aws_linked_list_node write_queue;
-        struct aws_linked_list_node read_queue;
         struct aws_channel_slot_ref adj_left;
         struct aws_channel_slot_ref adj_right;
         struct aws_channel_handler *handler;    
     };
-    
-    struct aws_channel_slot_ref {
-        struct aws_channel_slot *slot;
-        struct aws_allocator *alloc;
-        uint16_t ref_count;
-        struct aws_mutex count_guard;
-    }
-    
+        
 #### API (Channel/Slot interaction)
 
     struct aws_channel_slot_ref *aws_channel_slot_new (struct aws_channel *channel);
     
-Creates a new slot and slot reference using the channel's allocator, increments the reference count, and returns
-the new slot reference.
+Creates a new slot using the channel's allocator, if it is the first slot in the channel, it will be added as the first
+slot in the channel. Otherwise, you'll need to use the insert or replace apis for slots.
         
     int aws_channel_slot_set_handler ( struct aws_channel_slot *, struct aws_channel_handler *handler );
     
 Sets the handler on the slot. This should only be called once per slot.
-    
-    int aws_channel_slot_ref_decrement (struct aws_channel_slot_ref *ref);
-    
-Thread-safe. Decrements the slot reference count. When the slot reference hits zero, it will be de-allocated.
+      
+    int aws_channel_slot_remove (struct aws_channel_slot *slot); 
 
-    int aws_channel_slot_ref_increment (struct aws_channel_slot_ref *ref);
+Removes a slot from its channel. The slot and it's handler will be cleaned up and deallocated.
     
-Thread-safe. Increments the slot reference count.
-    
-    int aws_channel_remove_slot_ref (struct aws_channel *channel, struct aws_channel_slot_ref *ref);    
-    
-Removes a slot reference from the channel. Decrements the reference count.
+    int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channel_slot *new);
+   
+Replaces `remove` in the channel with `new` and cleans up and deallocates `remove` and its handler.    
     
     int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot_ref *right);
     
-Adds a slot reference to the right of slot. Increments the reference count.
+Adds a slot to the right of slot.
   
     int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot_ref *left);
     
-Adds a slot reference to the left of slot. Increments the reference count.
-    
-    int aws_channel_slot_invoke (struct aws_channel_slot *slot, enum aws_channel_direction dir);
-    
-Invokes the handler on the slot if it is non-null.
-    
+Adds a slot to the left of slot.
+     
     int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_message *message, enum aws_channel_direction dir);
  
-Usually called by a handler, this function queues a message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by a handler, this calls the adjacent slot in the channel based on the `dir` argument. You may want to return
+any unneeded messages to the channel pool to avoid unnecessary allocations. 
 
     int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
  
-Usually called by a handler, this function queues a window update message on the write queue of the slot.  
+Usually called by a handler, this function calls the left-adjacent slot.  
     
     int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code);
     
-Usually called by a handler, this function queues a shutdown notify message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by a handler, this function calls the adjacent slot on shutdown notify based on the `dir` argument.  
 
     int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, enum aws_channel_direction dir);
     
-Usually called by a handler, this function queues a shutdown message on the read or write queue of the slot, based on the `dir` argument.  
+Usually called by an operation on the channel, this function calls shutdown() for the current slot.  
     
 ### API (Channel specific)
 
@@ -438,7 +418,7 @@ Initializes a channel for operation. The event loop will be used for driving the
 Cleans up resources for the channel.
 
     int aws_channel_shutdown (struct aws_channel *channel, 
-        void (*on_shutdown_completed)(struct aws_channel *channel, void *ctx), void *ctx);
+        void (*on_shutdown_completed)(struct aws_channel *channel, void *user_data), void *user_data);
         
 Starts the shutdown process, invokes on_shutdown_completed once each handler has shutdown.
         
@@ -446,11 +426,11 @@ Starts the shutdown process, invokes on_shutdown_completed once each handler has
     
 Gets the current ticks from the event loop's clock.
     
-    int aws_channel_fetch_local_item ( struct aws_channel *, void *key, void **item);    
+    int aws_channel_fetch_local_object ( struct aws_channel *, void *key, void **item);    
     
 Fetches data from the event loop's data store. This data is shared by each channel using that event loop.
     
-    int aws_channel_put_local_item ( struct aws_channel *, void *key, void *item);
+    int aws_channel_put_local_object ( struct aws_channel *, void *key, void *item);
    
 Puts data into the event loop's data store. This data is shared by each channel using that event loop.
    
@@ -539,4 +519,128 @@ Clean up any memory or resources owned by this handler, and then deallocate the 
 
 #### API
 
-All exported functions, simply shim into the v-table and return.         
+All exported functions, simply shim into the v-table and return. 
+
+### Sockets
+
+We include a cross-platform API for sockets. We support TCP and UDP using IPv4 and IPv6, and Unix Domain sockets. On Windows,
+we use Named Pipes to support the functionality of Unix Domain sockets. On Windows, this is implemented with winsock2, and on
+all unix platforms we use the posix API.
+
+Upon a connection being established, the new socket (either as the result of a `connect()` or `start_accept()` call)
+will not be attached to any event loops. It is your responsibility to register it with an event loop to begin receiving
+notifications.
+
+#### API
+    typedef enum aws_socket_domain {
+        AWS_SOCKET_IPV4,
+        AWS_SOCKET_IPV6,
+        AWS_SOCKET_LOCAL,
+    } aws_socket_domain;
+
+`AWS_SOCKET_IPV4` means an IPv4 address will be used.
+
+`AWS_SOCKET_IPV6` means an IPv6 address will be used.
+
+`AWS_SOCKET_LOCAL` means a socket path will be used for either a Unix Domain Socket or a Named Pipe on Windows.
+
+    typedef enum aws_socket_type {
+        AWS_SOCKET_STREAM,
+        AWS_SOCKET_DGRAM
+    } aws_socket_type;
+    
+    
+`AWS_SOCKET_STREAM` is TCP or a connection oriented socket.
+
+`AWS_SOCKET_DGRAM` is UDP
+
+    struct aws_socket_creation_args {
+        void(*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data);
+        void(*on_connection_established)(struct aws_socket *socket, void *user_data);
+        void(*on_error)(struct aws_socket *socket, int err_code, void *user_data);
+        void *user_data;
+    };
+
+`on_incoming_connection()` will be invoked on a listening socket when new connections arrive. `socket` is the listening
+socket. `new_socket` is the newly created socket. It is the connection to the remote endpoint. 
+
+NOTE: You are responsible for calling `aws_socket_clean_up()` and `aws_mem_release()` on `new_socket` when you are finished
+with it.
+
+`on_connection_established()` will be invoked after a connect call, upon a successful connection to the remote endpoint.
+
+`on_error()` will be invoked on both listening and connecting sockets to indicate any error conditions.
+
+    struct aws_socket_endpoint {
+        char address[48];
+        char socket_name[108];
+        char port[10];
+    };
+    
+`address` can be either and IPv4 or IPv6 address. This can be used for UDP or TCP.
+`socket_name` is only used in LOCAL mode.
+`port` can be used for TCP or UDP.    
+
+    int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
+                                        struct aws_socket_options *options,
+                                        struct aws_event_loop *connection_loop,
+                                        struct aws_socket_creation_args *creation_args);
+                                        
+Initializes a socket object with socket options, an event loop to use for non-blocking operations, and callbacks to invoke
+upon completion of asynchronous operations. If you are using UDP or LOCAL, `connection_loop` may be `NULL`.                                        
+
+    void aws_socket_clean_up(struct aws_socket *socket);
+
+Shuts down any pending operations on the socket, and cleans up state. The socket object can be re initialized after this operation.
+
+    int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint);
+    
+Connects to a remote endpoint. In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`,
+and if the operation is successful, the socket can immediately be used for write operations.
+
+In TCP, this will function will not block. If the return value is successful, then you must wait on the `on_connection_established()` 
+callback to be invoked before using the socket.
+
+For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful return. 
+
+    int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
+    
+Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented
+modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the socket.
+   
+    int aws_socket_listen(struct aws_socket *socket, int backlog_size);
+    
+TCP and LOCAL only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
+    
+    int aws_socket_start_accept(struct aws_socket *socket);
+    
+TCP and LOCAL only. The socket will begin accepting new connections. This is an asynchronous operation. New connections will
+arrive via the `on_incoming_connection()` callback.
+    
+    int aws_socket_stop_accept(struct aws_socket *socket);
+    
+TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after this 
+operation.
+    
+    int aws_socket_shutdown(struct aws_socket *socket);
+    
+Calls `close()` on the socket and unregisters all io operations from the event loop.
+    
+    struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *socket);
+    
+Fetches the underlying io handle for use in event loop registrations and channel handlers.
+    
+    int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
+    
+Sets new socket options on the underlying socket. This is mainly useful in context of accepting a new connection via:    
+`on_incoming_connection()`.
+
+    int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *read);
+
+Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is available.
+`read` is the amount of data read into `buffer`.
+    
+    int aws_socket_write(struct aws_socket *socket, const struct aws_byte_buf *buffer, size_t *written);
+    
+Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be written.
+`written` is the amount of data read from `buffer` and successfully written to `socket`.  
