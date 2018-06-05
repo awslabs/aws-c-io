@@ -23,8 +23,6 @@ static struct aws_error_info errors[] = {
                               "Channel unknown message type", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
                               "A channel handler attempted to propagate a read larger than the upstream window", LIB_NAME),
-        AWS_DEFINE_ERROR_INFO(AWS_IO_EVENT_LOOP_SHUTDOWN_IN_PROGRESS,
-                                "event loop shutdown is already in progress", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_SYS_CALL_FAILURE,
                               "System call failure", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
