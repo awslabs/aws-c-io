@@ -265,7 +265,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
         }
 
         ssize_t read = s2n_recv(s2n_handler->connection, outgoing_read_message->message_data.buffer,
-                                outgoing_read_message->message_data.size, &blocked);
+                                outgoing_read_message->message_data.capacity, &blocked);
 
         if (read <= 0) {
             aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);

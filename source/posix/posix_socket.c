@@ -606,7 +606,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t read_val = read(socket->io_handle.data, buffer->buffer, buffer->size);
+    ssize_t read_val = read(socket->io_handle.data, buffer->buffer, buffer->capacity);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;

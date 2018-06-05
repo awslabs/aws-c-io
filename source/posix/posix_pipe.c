@@ -104,7 +104,7 @@ int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *
 }
 
 int aws_pipe_read (struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read) {
-    ssize_t read_val = read(handle->data, buf->buffer, buf->size);
+    ssize_t read_val = read(handle->data, buf->buffer, buf->capacity);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
