@@ -214,10 +214,9 @@ static bool epoll_loop_stopped_predicate(void *arg) {
 static void destroy(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
-    bool should_continue_cpy = false;
-    AWS_ATOMIC_LOAD(epoll_loop->should_continue, should_continue_cpy);
     /* if event loop is still running, it needs to be shut down in line */
-    if (should_continue_cpy) {
+    /* TODO another PR is fixing this. For merge tidyness we're leaving it as is. */
+    if (epoll_loop->should_continue) {
         struct epoll_loop_stopped_args stop_args = {
                 .mutex = AWS_MUTEX_INIT,
                 .condition_variable = AWS_CONDITION_VARIABLE_INIT,
@@ -225,15 +224,10 @@ static void destroy(struct aws_event_loop *event_loop) {
         };
 
         aws_mutex_lock(&stop_args.mutex);
-        if (!aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args)) {
-            /* waiting on this will make sure all pending events are at least scheduled unless someone schedules during destroy (which would
-             * be undefined behavior anyways. */
-            aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex,
-                                             epoll_loop_stopped_predicate, &stop_args);
-        }
-        else {
-            aws_mutex_unlock(&stop_args.mutex);
-        }
+        aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args);
+        /* waiting on this will make sure all pending events are at least scheduled unless someone schedules during destroy (which would
+         * be undefined behavior anyways. */
+        aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex, epoll_loop_stopped_predicate, &stop_args);
     }
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
@@ -270,25 +264,18 @@ static void stop_task (void *args, aws_task_status status) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)stop_task->event_loop->impl_data;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        epoll_loop->on_stopped = stop_task->on_stopped;
-        epoll_loop->stop_user_data = stop_task->stop_user_data;
-
         /*
          * this allows the event loop to invoke the callback once the event loop has completed.
          */
-        AWS_ATOMIC_STORE(epoll_loop->should_continue, false);
+        epoll_loop->should_continue = false;
+
+        epoll_loop->on_stopped = stop_task->on_stopped;
+        epoll_loop->stop_user_data = stop_task->stop_user_data;
     }
 }
 
 static int stop (struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_stopped, void *user_data) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
-
-    bool should_continue_cpy = false;
-    AWS_ATOMIC_LOAD(epoll_loop->should_continue, should_continue_cpy);
-
-    if(!should_continue_cpy) {
-        return aws_raise_error(AWS_IO_EVENT_LOOP_SHUTDOWN_IN_PROGRESS);
-    }
 
     epoll_loop->stop_task_args.event_loop = event_loop;
     epoll_loop->stop_task_args.stop_user_data = user_data;
@@ -505,10 +492,7 @@ static void main_loop (void *args) {
      *
      * process queued subscription cleanups.
      */
-    bool should_continue_cpy = false;
-    AWS_ATOMIC_LOAD(epoll_loop->should_continue, should_continue_cpy);
-
-    while ( should_continue_cpy ) {
+    while ( epoll_loop->should_continue ) {
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
 
         for (int i = 0; i < event_count; ++i) {
@@ -563,8 +547,6 @@ static void main_loop (void *args) {
         else {
             timeout = DEFAULT_TIMEOUT;
         }
-
-        AWS_ATOMIC_LOAD(epoll_loop->should_continue, should_continue_cpy);
     }
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
