@@ -225,10 +225,15 @@ static void destroy(struct aws_event_loop *event_loop) {
         };
 
         aws_mutex_lock(&stop_args.mutex);
-        aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args);
-        /* waiting on this will make sure all pending events are at least scheduled unless someone schedules during destroy (which would
-         * be undefined behavior anyways. */
-        aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex, epoll_loop_stopped_predicate, &stop_args);
+        if (!aws_event_loop_stop(event_loop, on_epoll_loop_stopped, &stop_args)) {
+            /* waiting on this will make sure all pending events are at least scheduled unless someone schedules during destroy (which would
+             * be undefined behavior anyways. */
+            aws_condition_variable_wait_pred(&stop_args.condition_variable, &stop_args.mutex,
+                                             epoll_loop_stopped_predicate, &stop_args);
+        }
+        else {
+            aws_mutex_unlock(&stop_args.mutex);
+        }
     }
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
