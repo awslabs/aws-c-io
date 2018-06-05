@@ -197,6 +197,7 @@ static void destroy(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     /* if event loop is still running, it needs to be shut down in line */
+    /* TODO another PR is fixing this. For merge tidyness we're leaving it as is. */
     if (epoll_loop->should_continue) {
         aws_event_loop_stop(event_loop, NULL, NULL);
         wait_for_stop_completion(event_loop);
@@ -240,6 +241,7 @@ static void stop_task (void *args, aws_task_status status) {
          * this allows the event loop to invoke the callback once the event loop has completed.
          */
         epoll_loop->should_continue = false;
+
         epoll_loop->on_stopped = stop_task->on_stopped;
         epoll_loop->stop_user_data = stop_task->stop_user_data;
     }
@@ -506,13 +508,19 @@ static void main_loop (void *args) {
         if (next_run_time) {
             uint64_t offset = 0;
             event_loop->clock(&offset);
-            next_run_time -= offset;
-            int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
-            /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
-             * but not quite ready. so just sleep one ms*/
-            timeout = scheduler_timeout > 0 ?
-                                              scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout :DEFAULT_TIMEOUT
-                      : 1;
+
+            if (offset >= next_run_time) {
+                timeout = 0;
+            }
+            else {
+                next_run_time -= offset;
+                int scheduler_timeout = (int) (next_run_time / NANO_TO_MILLIS);
+                /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
+                 * but not quite ready. so just sleep one ms*/
+                timeout = scheduler_timeout > 0 ?
+                          scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout : DEFAULT_TIMEOUT
+                                                : 1;
+            }
         }
         else {
             timeout = DEFAULT_TIMEOUT;
