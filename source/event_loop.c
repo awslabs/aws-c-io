@@ -98,9 +98,9 @@ int aws_event_loop_run(struct aws_event_loop *event_loop) {
     return event_loop->vtable.run(event_loop);
 }
 
-int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data) {
+int aws_event_loop_stop(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.stop);
-    return event_loop->vtable.stop(event_loop, stopped_promise, promise_user_data);
+    return event_loop->vtable.stop(event_loop);
 }
 
 int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {

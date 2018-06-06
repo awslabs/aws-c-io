@@ -20,12 +20,11 @@
 #include <aws/io/pipe.h>
 #include <sys/event.h>
 #include <assert.h>
-#include <errno.h>
 #include <unistd.h>
 
 static void destroy(struct aws_event_loop *);
 static int run(struct aws_event_loop *);
-static int stop(struct aws_event_loop *, aws_event_loop_on_stopped, void *user_data);
+static int stop(struct aws_event_loop *);
 static int wait_for_stop_completion(struct aws_event_loop *);
 static int schedule_task(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 static int subscribe_to_io_events(struct aws_event_loop *, struct aws_io_handle *handle, int events,
@@ -34,8 +33,6 @@ static int unsubscribe_from_io_events(struct aws_event_loop *, struct aws_io_han
 static bool is_event_thread(struct aws_event_loop *);
 
 static void event_thread_main(void *user_data);
-
-// TODO: capitalize comments
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -59,8 +56,6 @@ struct kqueue_loop {
         bool thread_signaled; /* whether thread has been signaled about changes to cross_thread_data */
         struct aws_array_list tasks_to_schedule;
         event_thread_state state;
-        aws_event_loop_on_stopped on_stopped; /* function to run when thread stops */
-        void *on_stopped_user_data;
     } cross_thread_data;
 
     /* thread_data holds things which, when the event-thread is running, may only be touched by the thread */
@@ -70,8 +65,6 @@ struct kqueue_loop {
         /* These variables duplicate ones in cross_thread_data. We move values out while holding the mutex and operate on them later */
         struct aws_array_list tasks_to_schedule;
         event_thread_state state;
-        aws_event_loop_on_stopped on_stopped; /* run when thread shuts down */
-        void *on_stopped_user_data;
     } thread_data;
 };
 
@@ -172,8 +165,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     clean_up_cross_thread_array = true;
 
     impl->cross_thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
-    impl->cross_thread_data.on_stopped = NULL;
-    impl->cross_thread_data.on_stopped_user_data = NULL;
 
     if (aws_task_scheduler_init(&impl->thread_data.scheduler, alloc, clock)) {
         goto clean_up;
@@ -185,8 +176,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     }
 
     impl->thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
-    impl->thread_data.on_stopped = NULL;
-    impl->thread_data.on_stopped_user_data = NULL;
 
     event_loop->impl_data = impl;
 
@@ -240,9 +229,10 @@ clean_up:
 static void destroy(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    stop(event_loop, NULL, NULL);
+    /* Stop the event-thread. This might have already happened. It's safe to call multiple times. */
+    stop(event_loop);
     if (wait_for_stop_completion(event_loop)) {
-        assert("Failed to destroy event-thread, resources have been leaked." == NULL); // TODO: good approach? this means thread_join failed.
+        assert("Failed to destroy event-thread, resources have been leaked." == NULL);
         return;
     }
 
@@ -288,13 +278,9 @@ static int run(struct aws_event_loop *event_loop) {
      * 2) run() function must not block */
     assert(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN); /* to re-run, call stop() and wait_for_stop_completion() */
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
-    impl->cross_thread_data.on_stopped = NULL;
-    impl->cross_thread_data.on_stopped_user_data = NULL;
 
     /* OK to touch thread_data because thready isn't launched yet */
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
-    impl->thread_data.on_stopped = NULL;
-    impl->thread_data.on_stopped_user_data = NULL;
 
     if (aws_thread_launch(&impl->thread, event_thread_main, (void *)event_loop, NULL)) {
         goto clean_up;
@@ -318,12 +304,8 @@ void signal_cross_thread_data_changed(struct aws_event_loop *event_loop) {
     write(impl->cross_thread_signal_pipe_write.data, &write_whatever, sizeof(write_whatever));
 }
 
-static int stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_stopped, void *user_data) {
+static int stop(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
-
-    // TODO: should I return error code if stop already called?
-    // on_stopped is never going to be called, they should know, so they're not expecting it
-    // what error would I raise in that case
 
     bool signal_thread = false;
 
@@ -331,8 +313,6 @@ static int stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_
         aws_mutex_lock(&impl->cross_thread_data.mutex);
         if (impl->cross_thread_data.state == EVENT_THREAD_STATE_RUNNING) {
             impl->cross_thread_data.state = EVENT_THREAD_STATE_STOPPING;
-            impl->cross_thread_data.on_stopped = on_stopped;
-            impl->cross_thread_data.on_stopped_user_data = user_data;
             signal_thread = !impl->cross_thread_data.thread_signaled;
             impl->cross_thread_data.thread_signaled = true;
         }
@@ -525,7 +505,6 @@ static void unsubscribe_task(void *user_data, aws_task_status status) {
                        handle_data);
             }
 
-            // TODO: oh god what if this fails :| I can't rollback, we already told user unsubscribe was successful
             kevent(impl->kq_fd, changelist, changelist_size, NULL, 0, NULL);
         }
     }
@@ -584,18 +563,7 @@ static bool is_event_thread(struct aws_event_loop *event_loop) {
 
     if (task_i < num_tasks) {
         /* Not all tasks were scheduled, modify list so only unprocessed tasks remain */
-        // TODO: make this an array-list fn. _pop_front_n() ? resize? shift?
-        void *array_start;
-        aws_array_list_get_at_ptr(&impl->thread_data.tasks_to_schedule, &array_start, 0);
-
-        void *copy_start;
-        aws_array_list_get_at_ptr(&impl->thread_data.tasks_to_schedule, &copy_start, task_i);
-
-        size_t num_unprocessed_tasks = num_tasks - task_i;
-
-        memmove(array_start, copy_start, num_unprocessed_tasks * sizeof(struct task_to_schedule));
-
-        impl->thread_data.tasks_to_schedule.length = num_unprocessed_tasks;
+        aws_array_list_pop_front_n(&impl->thread_data.tasks_to_schedule, task_i);
         return AWS_OP_ERR;
     }
     else {
@@ -603,6 +571,76 @@ static bool is_event_thread(struct aws_event_loop *event_loop) {
         aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
         return AWS_OP_SUCCESS;
     }
+}
+
+static void process_cross_thread_data(struct aws_event_loop *event_loop) {
+    struct kqueue_loop *impl = event_loop->impl_data;
+
+    bool should_resignal_cross_thread_data = false;
+
+    { /* Begin critical section */
+        aws_mutex_lock(&impl->cross_thread_data.mutex);
+        impl->cross_thread_data.thread_signaled = false;
+
+        bool initiate_stop = (impl->cross_thread_data.state == EVENT_THREAD_STATE_STOPPING) &&
+                             (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING);
+        if (AWS_UNLIKELY(initiate_stop)) {
+            impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
+        }
+
+        /* If there are tasks to schedule, move them from cross_thread_data to thread_data.
+         * We'll process them later, so that we minimize time spent holding the mutex. */
+        bool tasks_to_schedule = aws_array_list_length(&impl->cross_thread_data.tasks_to_schedule) > 0;
+        if (AWS_LIKELY(tasks_to_schedule)) {
+            /* Swapping the contents of the two lists is the fastest and safest way to move this data,
+             * but requires the other list to be empty. */
+            bool swap_possible = aws_array_list_length(&impl->thread_data.tasks_to_schedule) == 0;
+            if (AWS_LIKELY(swap_possible)) {
+                aws_array_list_swap_contents(&impl->cross_thread_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
+            }
+            else {
+                /* If swap not possible, signal the thread to try again next loop */
+                should_resignal_cross_thread_data = true;
+                impl->cross_thread_data.thread_signaled = true;
+            }
+        }
+
+        aws_mutex_unlock(&impl->cross_thread_data.mutex);
+    } /* End critical section */
+
+    process_tasks_to_schedule(event_loop);
+
+    if (should_resignal_cross_thread_data) {
+        signal_cross_thread_data_changed(event_loop);
+    }
+}
+
+static int aws_event_flags_from_kevent(struct kevent *kevent) {
+    int event_flags = 0;
+
+    if (kevent->flags & EV_ERROR) {
+        event_flags |= AWS_IO_EVENT_TYPE_ERROR;
+    }
+    else if (kevent->filter == EVFILT_READ) {
+        if (kevent->data != 0) {
+            event_flags |= AWS_IO_EVENT_TYPE_READABLE;
+        }
+
+        if (kevent->flags & EV_EOF) {
+            event_flags |= AWS_IO_EVENT_TYPE_CLOSED;
+        }
+    }
+    else if (kevent->filter == EVFILT_WRITE) {
+        if (kevent->data != 0) {
+            event_flags |= AWS_IO_EVENT_TYPE_WRITABLE;
+        }
+
+        if (kevent->flags & EV_EOF) {
+            event_flags |= AWS_IO_EVENT_TYPE_CLOSED;
+        }
+    }
+
+    return event_flags;
 }
 
 static void event_thread_main(void *user_data) {
@@ -614,7 +652,7 @@ static void event_thread_main(void *user_data) {
     /* A single aws_io_handle could have two separate kevents if subscribed for both read and write.
      * If both the read and write kevents fire in the same loop of the event-thread,
      * combine the event-flags and deliver them in a single callback.
-     * This makes the kqueue_event_loop behave more like the other implementations. */
+     * This makes the kqueue_event_loop behave more like the other platform implementations. */
     struct handle_data *io_handle_events[MAX_EVENTS];
 
     struct timespec timeout = {
@@ -624,13 +662,15 @@ static void event_thread_main(void *user_data) {
 
     while (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING) {
         int num_io_handle_events = 0;
-        bool process_cross_thread_data = false;
+        bool should_process_cross_thread_data = false;
 
         /* Process kqueue events */
         int num_kevents = kevent(impl->kq_fd, NULL, 0, kevents, MAX_EVENTS, &timeout);
 
         if (num_kevents == -1) {
-            continue; // TODO: how to handle this?
+            /* Raise an error, in case this is interesting to anyone monitoring, but keep looping */
+            aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+            continue;
         }
 
         for (int i = 0; i < num_kevents; ++i) {
@@ -638,7 +678,7 @@ static void event_thread_main(void *user_data) {
 
             /* Was this event to signal that cross_thread_data has changed? */
             if (kevent->ident == impl->cross_thread_signal_pipe_read.data) {
-                process_cross_thread_data = true;
+                should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */
                 uint32_t read_whatever;
@@ -648,32 +688,8 @@ static void event_thread_main(void *user_data) {
                 continue;
             }
 
-            // TODO: flag analysis could be a function
-            /* Normal event. Figure out which event flags to report */
-            int event_flags = 0;
-            if (kevent->flags & EV_ERROR) {
-                event_flags |= AWS_IO_EVENT_TYPE_ERROR;
-            }
-            else if (kevent->filter == EVFILT_READ) {
-                if (kevent->data != 0) {
-                    event_flags |= AWS_IO_EVENT_TYPE_READABLE; // TODO: only readable if data!=0? data may be negative if read past end of VNODE???
-                }
-
-                if (kevent->flags & EV_EOF) {
-                    event_flags |= AWS_IO_EVENT_TYPE_CLOSED;
-                }
-            }
-            else if (kevent->filter == EVFILT_WRITE) {
-                if (kevent->data != 0) {
-                    event_flags |= AWS_IO_EVENT_TYPE_WRITABLE;
-                }
-
-                if (kevent->flags & EV_EOF) {
-                    event_flags |= AWS_IO_EVENT_TYPE_CLOSED;
-                }
-            }
-
-            /* If nothing to report */
+            /* Otherwise this was a normal event on a subscribed handle. Figure out which flags to report. */
+            int event_flags = aws_event_flags_from_kevent(kevent);
             if (event_flags == 0) {
                 continue;
             }
@@ -696,56 +712,14 @@ static void event_thread_main(void *user_data) {
         /* Just in case anything in thread_data.tasks_to_schedule failed to process in the past, try again. */
         process_tasks_to_schedule(event_loop);
 
-        /* Process cross_thread data */
-        if (process_cross_thread_data) {
-            bool should_resignal_cross_thread_data = false;
-
-            { /* Begin critical section */
-                aws_mutex_lock(&impl->cross_thread_data.mutex);
-                impl->cross_thread_data.thread_signaled = false;
-
-                bool initiate_stop = (impl->cross_thread_data.state == EVENT_THREAD_STATE_STOPPING) &&
-                                     (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING);
-                if (AWS_UNLIKELY(initiate_stop)) {
-                    impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
-                    impl->thread_data.on_stopped = impl->cross_thread_data.on_stopped;
-                    impl->thread_data.on_stopped_user_data = impl->cross_thread_data.on_stopped_user_data;
-                }
-
-                /* If there are tasks to schedule, move them from cross_thread_data to thread_data.
-                 * We'll process them later, so that we minimize time spent holding the mutex. */
-                bool tasks_to_schedule = aws_array_list_length(&impl->cross_thread_data.tasks_to_schedule) > 0;
-                if (AWS_LIKELY(tasks_to_schedule)) {
-                    /* Swapping the contents of the two lists is the fastest and safest way to move this data,
-                     * but requires the other list to be empty. */
-                    bool swap_possible = aws_array_list_length(&impl->thread_data.tasks_to_schedule) == 0;
-                    if (AWS_LIKELY(swap_possible)) {
-                        struct aws_array_list tmp = impl->thread_data.tasks_to_schedule; // TODO: add aws_array_list_swap_contents() ?
-                        impl->thread_data.tasks_to_schedule = impl->cross_thread_data.tasks_to_schedule;
-                        impl->cross_thread_data.tasks_to_schedule = tmp;
-                    }
-                    else {
-                        /* If swap not possible, signal the thread to try again next loop */
-                        should_resignal_cross_thread_data = true;
-                        impl->cross_thread_data.thread_signaled = true;
-                    }
-                }
-
-                aws_mutex_unlock(&impl->cross_thread_data.mutex);
-            } /* End critical section */
-
-            process_tasks_to_schedule(event_loop);
-
-            if (should_resignal_cross_thread_data) {
-                signal_cross_thread_data_changed(event_loop);
-            }
-        } /* Done processing cross_thread_data */
+        /* Process cross_thread_data */
+        if (should_process_cross_thread_data) {
+            process_cross_thread_data(event_loop);
+        }
 
         /* Run scheduled tasks */
         uint64_t next_run_time_ns = 0;
-        if (aws_task_scheduler_run_all(&impl->thread_data.scheduler, &next_run_time_ns)) {
-            // TODO: should I do anything?
-        }
+        aws_task_scheduler_run_all(&impl->thread_data.scheduler, &next_run_time_ns);
 
         /* Set timeout for next kevent() call */
         uint64_t now_ns;
@@ -759,10 +733,5 @@ static void event_thread_main(void *user_data) {
             timeout.tv_sec = DEFAULT_TIMOUT_SEC;
             timeout.tv_nsec = 0;
         }
-    } /* End of while(runnning) loop */
-
-    /* The thread's final act is to invoke the on_stopped callback, if any */
-    if (impl->thread_data.on_stopped) {
-        impl->thread_data.on_stopped(event_loop, impl->thread_data.on_stopped_user_data);
     }
 }

@@ -37,7 +37,7 @@
 
 static void destroy(struct aws_event_loop *);
 static int run (struct aws_event_loop *);
-static int stop (struct aws_event_loop *, aws_event_loop_on_stopped promise, void *);
+static int stop (struct aws_event_loop *);
 static int wait_for_stop_completion (struct aws_event_loop *);
 static int schedule_task (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 static int subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle *handle, int events,
@@ -58,22 +58,13 @@ static struct aws_event_loop_vtable vtable = {
         .is_on_callers_thread = is_on_callers_thread,
 };
 
-struct stop_task_args {
-    struct aws_event_loop *event_loop;
-    aws_event_loop_on_stopped on_stopped;
-    void *stop_user_data;
-};
-
 struct epoll_loop {
     struct aws_task_scheduler scheduler;
     struct aws_thread thread;
     struct aws_io_handle read_task_handle;
     struct aws_io_handle write_task_handle;
-    aws_event_loop_on_stopped on_stopped;
-    void *stop_user_data;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
-    struct stop_task_args stop_task_args;
     struct aws_linked_list cleanup_list;
     int epoll_fd;
     bool should_continue;
@@ -155,9 +146,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     }
 
     epoll_loop->should_continue = false;
-    epoll_loop->on_stopped = NULL;
-    epoll_loop->stop_user_data = NULL;
-    epoll_loop->stop_task_args = (struct stop_task_args){0};
     aws_linked_list_init(&epoll_loop->cleanup_list);
 
     loop->impl_data = epoll_loop;
@@ -196,12 +184,10 @@ clean_up_loop:
 static void destroy(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
-    /* if event loop is still running, it needs to be shut down in line */
-    /* TODO another PR is fixing this. For merge tidyness we're leaving it as is. */
-    if (epoll_loop->should_continue) {
-        aws_event_loop_stop(event_loop, NULL, NULL);
-        wait_for_stop_completion(event_loop);
-    }
+    /* we don't know if stop() has been called by someone else,
+     * just call stop() again and wait for event-loop to finish. */
+    aws_event_loop_stop(event_loop);
+    wait_for_stop_completion(event_loop);
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
     aws_thread_clean_up(&epoll_loop->thread);
@@ -233,29 +219,24 @@ static int run (struct aws_event_loop *event_loop) {
 
 static void stop_task (void *args, aws_task_status status) {
 
-    struct stop_task_args *stop_task = (struct stop_task_args *)args;
-    struct epoll_loop *epoll_loop = (struct epoll_loop *)stop_task->event_loop->impl_data;
+    struct aws_event_loop *event_loop = (struct aws_event_loop *)args;
+    struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         /*
          * this allows the event loop to invoke the callback once the event loop has completed.
          */
         epoll_loop->should_continue = false;
-
-        epoll_loop->on_stopped = stop_task->on_stopped;
-        epoll_loop->stop_user_data = stop_task->stop_user_data;
     }
 }
 
-static int stop (struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_stopped, void *user_data) {
+static int stop (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     epoll_loop->stop_task_args.event_loop = event_loop;
-    epoll_loop->stop_task_args.stop_user_data = user_data;
-    epoll_loop->stop_task_args.on_stopped = on_stopped;
 
     struct aws_task task = {
-            .arg = &epoll_loop->stop_task_args,
+            .arg = event_loop,
             .fn = stop_task,
     };
 
@@ -529,12 +510,5 @@ static void main_loop (void *args) {
 
     unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
     process_unsubscribe_cleanup_list(epoll_loop);
-
-    /*
-     * If the user passed a promise to stop, execute it now.
-     */
-    if (epoll_loop->on_stopped) {
-        epoll_loop->on_stopped(event_loop, epoll_loop->stop_user_data);
-    }
 }
 

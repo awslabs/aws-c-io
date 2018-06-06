@@ -186,26 +186,6 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
 
 AWS_TEST_CASE(read_write_notifications, test_read_write_notifications)
 
-struct stopped_args {
-    struct aws_mutex mutex;
-    struct aws_condition_variable condition_variable;
-    bool stopped;
-};
-
-static void on_loop_stopped(struct aws_event_loop *event_loop, void *user_data) {
-    struct stopped_args *args = (struct stopped_args *)user_data;
-
-    aws_mutex_lock(&args->mutex);
-    args->stopped = true;
-    aws_condition_variable_notify_one(&args->condition_variable);
-    aws_mutex_unlock((&args->mutex));
-}
-
-static bool stopped_predicate(void *args) {
-    struct stopped_args *stopped_args = (struct stopped_args *)args;
-    return stopped_args->stopped;
-}
-
 static int test_stop_then_restart (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
@@ -233,17 +213,7 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, task_ran_predicate, &task_args));
     ASSERT_INT_EQUALS(1, task_args.invoked);
 
-    struct stopped_args stopped_args = {
-            .mutex = AWS_MUTEX_INIT,
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-            .stopped = false
-    };
-
-    ASSERT_SUCCESS(aws_mutex_lock(&stopped_args.mutex));
-
-    ASSERT_SUCCESS(aws_event_loop_stop(event_loop, on_loop_stopped, &stopped_args));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&stopped_args.condition_variable, &stopped_args.mutex, stopped_predicate, &stopped_args));
-
+    ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
     ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 

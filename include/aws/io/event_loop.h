@@ -32,13 +32,12 @@ typedef enum aws_io_event_type {
 struct aws_event_loop;
 struct aws_task;
 
-typedef void (*aws_event_loop_on_stopped) (struct aws_event_loop *, void *user_data);
 typedef void (*aws_event_loop_on_event)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *user_data);
 
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *);
     int (*run) (struct aws_event_loop *);
-    int (*stop) (struct aws_event_loop *, aws_event_loop_on_stopped on_stopped, void *user_data);
+    int (*stop) (struct aws_event_loop *);
     int (*wait_for_stop_completion) (struct aws_event_loop *);
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *handle, int events,
@@ -69,31 +68,28 @@ extern "C" {
 #endif
 
 /**
- * Initializes common event-loop data structures, called by *new() functions for implementations.
- */
-AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
-
-/**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
 AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock clock);
 
 /**
- * Common cleanup code for all implementations, called by aws_event_loop_destroy()
- */
-AWS_IO_API void aws_event_loop_base_clean_up(struct aws_event_loop *);
-
-/**
  * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
- *
- * This function does not detect that a stop is in progress, it is up to the user to determine the best strategy for
- * when to call shutdown and if/when to manually call stop().
- *
- * Implementations must call aws_event_loop_base_clean_up before freeing up the event_loop memory.
  */
 AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
+
+/**
+ * Initializes common event-loop data structures.
+ * This is only called from the *new() function of event loop implementations.
+ */
+AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
+
+/**
+ * Common cleanup code for all implementations.
+ * This is only called from the *destroy() function of event loop implementations.
+ */
+AWS_IO_API void aws_event_loop_base_clean_up(struct aws_event_loop *);
 
 /**
  * Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
@@ -119,34 +115,31 @@ AWS_IO_API int aws_event_loop_remove_local_object(struct aws_event_loop *, void 
 
 /**
  * Triggers the running of the event loop. This function must not block. The event loop is not active until this function
- * is invoked. This function can be called again on an event loop after stop has completed.
+ * is invoked. This function can be called again on an event loop after calling aws_event_loop_stop() and
+ * aws_event_loop_wait_for_stop_completion().
  */
 AWS_IO_API int aws_event_loop_run(struct aws_event_loop *event_loop);
 
 /**
- * Stops the event loop.
- * This function may be called from outside or inside the event loop thread.
- * This function is called from destroy(), so, in that context, when the stop completes,
- * the memory for the loop will be freed.
+ * Triggers the event loop to stop, but does not wait for the loop to stop completely.
+ * This function may be called from outside or inside the event loop thread. It is safe to call multiple times.
+ * This function is called from destroy().
  *
- * However, if you do not call destroy, it is safe to call aws_event_loop_run() again.
- *
- * This function is not safe to call multiple times while a stop is in progress. Users should take care of how the ownership
- * of their event loops is managed.
+ * If you do not call destroy(), an event loop can be run again by calling stop(), wait_for_stop_completion(), run().
  */
-AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop, aws_event_loop_on_stopped on_stopped, void *user_data);
+AWS_IO_API int aws_event_loop_stop(struct aws_event_loop *event_loop);
 
 
 /**
- * Waits for the event loop to stop completely.
- * You must call this if you want to call aws_event_loop_run() again after aws_event_loop_stop().
+ * Blocks until the event loop stops completely.
+ * If you want to call aws_event_loop_run() again, you must call this after aws_event_loop_stop().
  * It is not safe to call this function from inside the event loop thread.
  */
 AWS_IO_API int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
 
 /**
  * The event loop will schedule the task and run it on the event loop thread.
- * Note that a cancelled task may execute outside the event loop thread.
+ * Note that cancelled tasks will execute outside the event loop thread.
  * This function may be called from outside or inside the event loop thread.
  *
  * Task is copied.
@@ -169,8 +162,7 @@ AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *even
 AWS_IO_API int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
 /**
- * Utility fn to hint to a caller if it should schedule a task instead of mutating state directly. returns true if the event loop's
- * thread is the same thread that called this function, otherwise false.
+ * Returns true if the event loop's thread is the same thread that called this function, otherwise false.
  */
 AWS_IO_API bool aws_event_loop_thread_is_callers_thread (struct aws_event_loop *event_loop);
 
