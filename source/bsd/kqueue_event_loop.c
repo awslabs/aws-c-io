@@ -87,7 +87,7 @@ struct handle_data {
     bool kevent_added_successfully;
 };
 
-static const uint64_t DEFAULT_TIMOUT_SEC = 100; /* Max kevent() timeout per loop of the event-thread */
+static const uint64_t DEFAULT_TIMEOUT_SEC = 100; /* Max kevent() timeout per loop of the event-thread */
 static const uint64_t NANOSEC_PER_SEC = 1000000000;
 static const int MAX_EVENTS = 100; /* Max kevents to process per loop of the event-thread */
 static const size_t DEFAULT_ARRAY_LIST_RESERVE = 32;
@@ -273,14 +273,11 @@ static void destroy(struct aws_event_loop *event_loop) {
 static int run(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    /* Not locking mutex to touch cross_thread_data because:
-     * 1) Thread isn't launched yet
-     * 2) run() function must not block */
+    /* Since thread isn't running it's ok to touch thread_data,
+     * and it's ok to touch cross_thread_data without locking the mutex */
     assert(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN); /* to re-run, call stop() and wait_for_stop_completion() */
+    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
-
-    /* OK to touch thread_data because thready isn't launched yet */
-    impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
     if (aws_thread_launch(&impl->thread, event_thread_main, (void *)event_loop, NULL)) {
         goto clean_up;
@@ -290,7 +287,6 @@ static int run(struct aws_event_loop *event_loop) {
 
 clean_up:
     impl->cross_thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
-    impl->thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
     return AWS_OP_ERR;
 }
 
@@ -329,12 +325,21 @@ static int stop(struct aws_event_loop *event_loop) {
 static int wait_for_stop_completion(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
+#ifdef DEBUG_BUILD
+    aws_mutex_lock(&impl->cross_thread_data.mutex);
+    assert(impl->cross_thread_data.state != EVENT_THREAD_STATE_RUNNING); /* call stop() before wait_for_stop_completion() or you'll wait forever */
+    aws_mutex_unlock(&impl->cross_thread_data.mutex);
+#endif
+
     if (aws_thread_join(&impl->thread)) {
         return AWS_OP_ERR;
     }
 
-    /* Not locking mutex to touch cross_thread_data because thread is no longer running */
+    /* Since thread is no longer running it's ok to touch thread_data,
+     * and it's ok to touch cross_thread_data without locking the mutex */
     impl->cross_thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
+    impl->thread_data.state = EVENT_THREAD_STATE_READY_TO_RUN;
+
     return AWS_OP_SUCCESS;
 }
 
@@ -409,34 +414,37 @@ static void subscribe_task(void *user_data, aws_task_status status) {
     }
 
     int num_events = kevent(impl->kq_fd, changelist, changelist_size, changelist, changelist_size, NULL);
-    assert(num_events == changelist_size);
+    if (num_events == -1) {
+        goto subscribe_failed;
+    }
 
     /* Look through results to see if any failed */
-    bool error_found = false;
     for (int i = 0; i < num_events; ++i) {
         assert(changelist[i].flags & EV_ERROR); /* Every result should be flagged as error, that's just how EV_RECEIPT works */
 
         if (changelist[i].data != 0) { /* If a real error occurred, .data contains the error code */
-            error_found = true;
-            break;
+            goto subscribe_failed;
         }
     }
 
-    /* If any kevents failed, remove related kevents that succeeded */
-    if (error_found) {
-        for (int i = 0; i < num_events; ++i) {
-            if (changelist[i].data == 0) {
-                changelist[i].flags = EV_DELETE;
-                kevent(impl->kq_fd, &changelist[i], 1, NULL, 0, NULL);
-            }
-        }
+    /* Success */
+    handle_data->kevent_added_successfully = true;
+    return;
 
-        /* Notify the user of the failed subscription by passing AWS_IO_EVENT_TYPE_ERROR to the callback. */
-        handle_data->on_event(handle_data->event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
+subscribe_failed:
+    /* Remove any related kevents that succeeded */
+    for (int i = 0; i < num_events; ++i) {
+        if (changelist[i].data == 0) {
+            changelist[i].flags = EV_DELETE;
+            kevent(impl->kq_fd, &changelist[i], 1, NULL, 0, NULL);
+        }
     }
-    else {
-        handle_data->kevent_added_successfully = true;
-    }
+
+    /* We can't return an error code because this was a scheduled task.
+     * Notify the user of the failed subscription by passing AWS_IO_EVENT_TYPE_ERROR to the callback.
+     * Also raise AWS_IO_SYS_CALL_FAILURE, which might be helpful to anyone monitoring */
+    aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    handle_data->on_event(handle_data->event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
 }
 
 static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
@@ -647,6 +655,9 @@ static void event_thread_main(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
     struct kqueue_loop *impl = event_loop->impl_data;
 
+    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
+
     struct kevent kevents[MAX_EVENTS];
 
     /* A single aws_io_handle could have two separate kevents if subscribed for both read and write.
@@ -656,7 +667,7 @@ static void event_thread_main(void *user_data) {
     struct handle_data *io_handle_events[MAX_EVENTS];
 
     struct timespec timeout = {
-        .tv_sec = DEFAULT_TIMOUT_SEC,
+        .tv_sec = DEFAULT_TIMEOUT_SEC,
         .tv_nsec = 0,
     };
 
@@ -668,9 +679,15 @@ static void event_thread_main(void *user_data) {
         int num_kevents = kevent(impl->kq_fd, NULL, 0, kevents, MAX_EVENTS, &timeout);
 
         if (num_kevents == -1) {
-            /* Raise an error, in case this is interesting to anyone monitoring, but keep looping */
+            /* Raise an error, in case this is interesting to anyone monitoring,
+             * and continue on with this loop. We can't process events,
+             * but we can still process scheduled tasks */
             aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-            continue;
+
+            /* Force the cross_thread_data to be processed.
+             * There might be valuable info in there, like the message to stop the thread.
+             * It's fine to do this even if nothing has changed, it just costs a mutex lock/unlock. */
+            should_process_cross_thread_data = true;
         }
 
         for (int i = 0; i < num_kevents; ++i) {
@@ -726,11 +743,11 @@ static void event_thread_main(void *user_data) {
         if ((next_run_time_ns != 0) && (event_loop->clock(&now_ns) == AWS_OP_SUCCESS)) {
             uint64_t timeout_ns = next_run_time_ns > now_ns ? next_run_time_ns - now_ns : 0;
 
-            timeout.tv_sec = (__darwin_time_t)(timeout_ns / NANOSEC_PER_SEC);
+            timeout.tv_sec = (time_t)(timeout_ns / NANOSEC_PER_SEC);
             timeout.tv_nsec = (long)(timeout_ns % NANOSEC_PER_SEC);
         }
         else {
-            timeout.tv_sec = DEFAULT_TIMOUT_SEC;
+            timeout.tv_sec = DEFAULT_TIMEOUT_SEC;
             timeout.tv_nsec = 0;
         }
     }
