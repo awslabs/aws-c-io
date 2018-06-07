@@ -87,7 +87,7 @@ struct aws_channel_handler_vtable {
     int (*process_write_message) ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                       struct aws_io_message *message );
     /**
-     * Called by the channel when an upstream handler has issued a window update. You'll want to update your internal
+     * Called by the channel when an downstream handler has issued a window update. You'll want to update your internal
      * state and likely propogate a window update message of your own.
      */
     int (*on_window_update) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
