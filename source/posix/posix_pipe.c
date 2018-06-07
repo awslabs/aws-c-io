@@ -82,9 +82,9 @@ int aws_pipe_half_close(struct aws_io_handle *handle) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_buf *buf, size_t *written) {
+int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *cursor, size_t *written) {
 
-    ssize_t write_val = write(handle->data, buf->buffer, buf->len);
+    ssize_t write_val = write(handle->data, cursor->ptr, cursor->len);
 
     if (write_val > 0) {
         *written = (size_t)write_val;

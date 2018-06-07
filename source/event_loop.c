@@ -47,6 +47,8 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
 
 int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *key,
                                       struct aws_event_loop_local_object *obj) {
+    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+
     struct aws_hash_element *object = NULL;
     if (!aws_hash_table_find(&event_loop->local_data, key, &object) && object) {
         *obj = *(struct aws_event_loop_local_object *)object->value;
@@ -57,6 +59,8 @@ int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *k
 }
 
 int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj) {
+    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+
     struct aws_hash_element *object = NULL;
     int was_created = 0;
 
@@ -71,6 +75,8 @@ int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aw
 
 int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *key,
                                        struct aws_event_loop_local_object *removed_obj) {
+    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+
     struct aws_hash_element existing_object = {0};
     int was_present = 0;
 
@@ -92,9 +98,15 @@ int aws_event_loop_run(struct aws_event_loop *event_loop) {
     return event_loop->vtable.run(event_loop);
 }
 
-int aws_event_loop_stop(struct aws_event_loop *event_loop, void (*stopped_promise) (struct aws_event_loop *, void *), void *promise_user_data) {
+int aws_event_loop_stop(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.stop);
-    return event_loop->vtable.stop(event_loop, stopped_promise, promise_user_data);
+    return event_loop->vtable.stop(event_loop);
+}
+
+int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
+    assert(!aws_event_loop_thread_is_callers_thread(event_loop));
+    assert(event_loop->vtable.wait_for_stop_completion);
+    return event_loop->vtable.wait_for_stop_completion(event_loop);
 }
 
 int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
