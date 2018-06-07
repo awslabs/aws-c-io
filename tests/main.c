@@ -19,9 +19,16 @@
 
 #include <event_loop_test.c>
 
-int main (int argc, char *argv[]) {
+static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
-                       &stop_then_restart
-                      );
+                       &stop_then_restart,
+                       &event_loop_group_setup_and_shutdown,
+                       &event_loop_group_counter_overflow,
+    );
+}
+
+int main (int argc, char *argv[]) {
+    int ret_val = run_tests(argc, argv);
+    return ret_val;
 }

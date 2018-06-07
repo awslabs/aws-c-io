@@ -18,6 +18,7 @@
 #include <aws/io/pipe.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/system_info.h>
 
 struct task_args {
     int8_t invoked;
@@ -230,3 +231,59 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
 }
 
 AWS_TEST_CASE(stop_then_restart, test_stop_then_restart)
+
+static int test_event_loop_group_setup_and_shutdown (struct aws_allocator *allocator, void *user_data) {
+
+    struct aws_event_loop_group event_loop_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+
+    size_t cpu_count = aws_system_info_processor_count();
+    size_t el_count = 1;
+
+    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *first_loop = event_loop;
+
+    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+        ASSERT_NOT_NULL(event_loop);
+        el_count++;
+    }
+
+    ASSERT_INT_EQUALS(cpu_count, el_count);
+    el_count = 1;
+    /* now do it again to make sure the counter turns over. */
+    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+        ASSERT_NOT_NULL(event_loop);
+        el_count++;
+    }
+    ASSERT_INT_EQUALS(cpu_count, el_count);
+
+    aws_event_loop_group_clean_up(&event_loop_group);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
+
+static int test_event_loop_group_counter_overflow (struct aws_allocator *allocator, void *user_data) {
+
+    struct aws_event_loop_group event_loop_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+
+    struct aws_event_loop *first_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    ASSERT_NOT_NULL(first_loop);
+
+    /*this hurts my feelings to modify the internals of a struct to write a test, but it takes too long to
+     * increment UINT32_MAX times. */
+    event_loop_group.current_index = UINT32_MAX;
+    struct aws_event_loop *event_loop  = aws_event_loop_get_next_loop(&event_loop_group);
+    ASSERT_NOT_NULL(event_loop);
+    event_loop  = aws_event_loop_get_next_loop(&event_loop_group);
+    ASSERT_NOT_NULL(event_loop);
+    ASSERT_INT_EQUALS(first_loop, event_loop);
+
+    aws_event_loop_group_clean_up(&event_loop_group);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_counter_overflow, test_event_loop_group_counter_overflow)
