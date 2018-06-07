@@ -26,6 +26,8 @@ add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
 add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_tasks_execute)
 add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
 add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
+add_test(event_loop_group_setup_and_shutdown ${TEST_BINARY_NAME} event_loop_group_setup_and_shutdown)
+add_test(event_loop_group_counter_overflow ${TEST_BINARY_NAME} event_loop_group_counter_overflow)
 
 add_test(local_socket_communication ${TEST_BINARY_NAME} local_socket_communication)
 add_test(tcp_socket_communication ${TEST_BINARY_NAME} tcp_socket_communication)

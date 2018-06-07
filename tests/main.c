@@ -28,6 +28,8 @@ static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
                        &stop_then_restart,
+                       &event_loop_group_setup_and_shutdown,
+                       &event_loop_group_counter_overflow,
                        &local_socket_communication,
                        &tcp_socket_communication,
                        &udp_socket_communication,

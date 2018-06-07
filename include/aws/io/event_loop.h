@@ -75,14 +75,28 @@ struct aws_event_loop_group {
 extern "C" {
 #endif
 
+/**
+ * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
+ * event loop.
+ */
 AWS_IO_API int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc,
                                          aws_io_clock clock, uint16_t el_count,
                                          aws_new_event_loop new_loop_fn, void *new_loop_user_data);
 
+/**
+ * Initializes an event loop group with platform defaults. loop count will be the number of available processors on the machine.
+ */
 AWS_IO_API int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc);
 
+/**
+ * Destroys each event loop in the event loop group and then cleans up resources.
+ */
 AWS_IO_API void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
 
+/**
+ * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how this
+ * load balancing is done as it is subject to change in the future. Currently it just returns them round-robin style.
+ */
 AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**

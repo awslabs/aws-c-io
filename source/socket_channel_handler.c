@@ -131,9 +131,9 @@ static int socket_process_write_message( struct aws_channel_handler *handler, st
 static void read_task(void *arg, aws_task_status status);
 
 static void do_read(struct socket_handler *socket_handler) {
-    size_t upstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
+    size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
-            upstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : upstream_window;
+            downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
 
     if (max_to_read) {
 

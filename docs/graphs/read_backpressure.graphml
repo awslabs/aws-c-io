@@ -21,7 +21,7 @@
           <y:Fill color="#E8EEF7" color2="#B7C9E3" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
           <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="183.712890625" x="0.1435546875" y="10.972900390624986">Socket has 20kb read window
-due to upstream handler.
+due to downstream handler.
 
 It reads 16kb from the fd<y:LabelModel>
               <y:SmartNodeLabelModel distance="4.0"/>
@@ -72,8 +72,8 @@ Data Queued<y:LabelModel>
           <y:Geometry height="81.82080078124999" width="184.0" x="-48.19001600000024" y="133.9425801640624"/>
           <y:Fill color="#E8EEF7" color2="#B7C9E3" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="157.28125" x="13.359375" y="10.972900390625">Socket has 4kb window 
-due to upstream handler.
+          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="174.4375" x="4.78125" y="10.972900390625">Socket has 4kb window 
+due to downstream handler.
 
 It reads 4kb<y:LabelModel>
               <y:SmartNodeLabelModel distance="4.0"/>
@@ -229,8 +229,8 @@ schedules read task<y:LabelModel>
           <y:Geometry height="81.82080078124999" width="184.0" x="-31.31293266666688" y="700.39445596875"/>
           <y:Fill color="#E8EEF7" color2="#B7C9E3" transparent="false"/>
           <y:BorderStyle color="#000000" type="line" width="1.0"/>
-          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="157.28125" x="13.359375" y="10.972900390625">Socket has 20kb window 
-due to upstream handler.
+          <y:NodeLabel alignment="center" autoSizePolicy="content" fontFamily="Dialog" fontSize="12" fontStyle="plain" hasBackgroundColor="false" hasLineColor="false" height="59.875" horizontalTextPosition="center" iconTextGap="4" modelName="custom" textColor="#000000" verticalTextPosition="bottom" visible="true" width="174.4375" x="4.78125" y="10.972900390625">Socket has 20kb window 
+due to downstream handler.
 
 read returns EAGAIN.<y:LabelModel>
               <y:SmartNodeLabelModel distance="4.0"/>
@@ -407,7 +407,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e8" source="n0" target="n1">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>
@@ -426,7 +425,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e9" source="n1" target="n2">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>
@@ -445,7 +443,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e10" source="n3" target="n4">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>
@@ -464,7 +461,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e11" source="n4" target="n5">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>
@@ -483,7 +479,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e12" source="n8" target="n9">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>
@@ -502,7 +497,6 @@ fd state change.<y:LabelModel>
       </data>
     </edge>
     <edge id="e13" source="n9" target="n10">
-      <data key="d9"/>
       <data key="d10">
         <y:PolyLineEdge>
           <y:Path sx="0.0" sy="0.0" tx="0.0" ty="0.0"/>

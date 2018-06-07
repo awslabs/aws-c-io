@@ -14,6 +14,7 @@
 */
 
 #include <aws/io/event_loop.h>
+#include <aws/common/system_info.h>
 #include <assert.h>
 
 
@@ -50,9 +51,11 @@ static struct aws_event_loop *default_new_event_loop(struct aws_allocator *alloc
 }
 
 AWS_IO_API int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
-    uint16_t cpu_count = 16; /* TODO hit the OS to find out */
+    /* note, it's common practice these days to use cpu_count * 2, but on most architectures, hyper-threading is built into
+     * the cpu count, so just use the actual cpu count. */
+    uint16_t cpu_count = (uint16_t)aws_system_info_processor_count();
 
-    return aws_event_loop_group_init(el_group, alloc, aws_high_res_clock_get_ticks, (uint16_t)(cpu_count * 2),
+    return aws_event_loop_group_init(el_group, alloc, aws_high_res_clock_get_ticks, cpu_count,
                                      default_new_event_loop, NULL);
 }
 

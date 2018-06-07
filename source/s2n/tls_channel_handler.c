@@ -157,8 +157,8 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             s2n_handler->negotiation_finished = true;
 
             /*now lets match the downstream window now that negotiation is finished. */
-            size_t upstream_window = aws_channel_slot_downstream_read_window(s2n_handler->slot);
-            s2n_handler->slot->window_size = upstream_window + EST_TLS_RECORD_OVERHEAD;
+            size_t downstream_window = aws_channel_slot_downstream_read_window(s2n_handler->slot);
+            s2n_handler->slot->window_size = downstream_window + EST_TLS_RECORD_OVERHEAD;
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
             if (protocol) {
@@ -253,13 +253,13 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
     }
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
-    size_t upstream_window = aws_channel_slot_downstream_read_window(slot);
+    size_t downstream_window = aws_channel_slot_downstream_read_window(slot);
     size_t processed = 0;
 
-    while (processed < upstream_window && blocked == S2N_NOT_BLOCKED) {
+    while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                                                            upstream_window);
+                                                                                            downstream_window);
         if (!outgoing_read_message) {
             return aws_raise_error(AWS_ERROR_OOM);
         }
@@ -375,9 +375,9 @@ static int s2n_handler_on_window_update (struct aws_channel_handler *handler, st
 }
 
 static size_t s2n_handler_get_current_window_size (struct aws_channel_handler *handler) {
-    /* This is going to end up getting reset as soon as an upstream handler is added to the channel, but
-     * we don't actually care about our window, we just want to honor the upstream handler's window. Start off
-     * with it large, and then take the upstream window when it notifies us.*/
+    /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
+     * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
+     * with it large, and then take the downstream window when it notifies us.*/
     return SIZE_MAX;
 }
 
