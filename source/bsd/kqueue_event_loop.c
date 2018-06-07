@@ -145,8 +145,10 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     /* Set up kevent to handle activity on the cross_thread_signal_pipe */
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data, EVFILT_READ, EV_ADD, 0, 0, NULL);
-    if (kevent(impl->kq_fd, &thread_signal_kevent, 1, NULL, 0, NULL) == -1) {
+    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data,
+           EVFILT_READ/*filter*/, EV_ADD/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
+    int res = kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+    if (res == -1) {
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -203,7 +205,7 @@ clean_up:
     }
     if (clean_up_signal_kevent) {
         thread_signal_kevent.flags = EV_DELETE;
-        kevent(impl->kq_fd, &thread_signal_kevent, 1, NULL, 0, NULL);
+        kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
     }
     if (clean_up_signal_pipe) {
         aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
@@ -259,8 +261,9 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_mutex_clean_up(&impl->cross_thread_data.mutex);
 
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data, EVFILT_READ, EV_DELETE, 0, 0, NULL);
-    kevent(impl->kq_fd, &thread_signal_kevent, 1, NULL, 0, NULL);
+    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data,
+           EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
+    kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
 
     aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
     close(impl->kq_fd);
@@ -407,13 +410,17 @@ static void subscribe_task(void *user_data, aws_task_status status) {
     int changelist_size = 0;
 
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data, EVFILT_READ, EV_ADD|EV_RECEIPT, 0, 0, handle_data);
+        EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+               EVFILT_READ/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data, EVFILT_WRITE, EV_ADD|EV_RECEIPT, 0, 0, handle_data);
+        EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+               EVFILT_WRITE/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
 
-    int num_events = kevent(impl->kq_fd, changelist, changelist_size, changelist, changelist_size, NULL);
+    /* It's OK to re-use the same memory for changelist input and eventlist output */
+    int num_events = kevent(impl->kq_fd, changelist/*changelist*/, changelist_size/*nchanges*/,
+            changelist/*eventlist*/, changelist_size/*nevents*/, NULL/*timeout*/);
     if (num_events == -1) {
         goto subscribe_failed;
     }
@@ -432,11 +439,13 @@ static void subscribe_task(void *user_data, aws_task_status status) {
     return;
 
 subscribe_failed:
+    handle_data->kevent_added_successfully = false;
+
     /* Remove any related kevents that succeeded */
     for (int i = 0; i < num_events; ++i) {
         if (changelist[i].data == 0) {
             changelist[i].flags = EV_DELETE;
-            kevent(impl->kq_fd, &changelist[i], 1, NULL, 0, NULL);
+            kevent(impl->kq_fd, &changelist[i]/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
         }
     }
 
@@ -505,15 +514,15 @@ static void unsubscribe_task(void *user_data, aws_task_status status) {
             int changelist_size = 0;
 
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data, EVFILT_READ, EV_DELETE, 0, 0,
-                       handle_data);
+                EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+                       EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
             }
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data, EVFILT_WRITE, EV_DELETE, 0, 0,
-                       handle_data);
+                EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+                       EVFILT_WRITE/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
             }
 
-            kevent(impl->kq_fd, changelist, changelist_size, NULL, 0, NULL);
+            kevent(impl->kq_fd, changelist, changelist_size, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
         }
     }
 
@@ -676,7 +685,7 @@ static void event_thread_main(void *user_data) {
         bool should_process_cross_thread_data = false;
 
         /* Process kqueue events */
-        int num_kevents = kevent(impl->kq_fd, NULL, 0, kevents, MAX_EVENTS, &timeout);
+        int num_kevents = kevent(impl->kq_fd, NULL/*changelist*/, 0/*nchanges*/, kevents/*eventlist*/, MAX_EVENTS/*nevents*/, &timeout);
 
         if (num_kevents == -1) {
             /* Raise an error, in case this is interesting to anyone monitoring,
