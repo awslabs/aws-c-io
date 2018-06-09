@@ -100,11 +100,6 @@ AWS_IO_API void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_gr
 AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**
- * Initializes common event-loop data structures, called by *new() functions for implementations.
- */
-AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
-
-/**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
 AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock clock);
