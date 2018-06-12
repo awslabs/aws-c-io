@@ -13,6 +13,12 @@
 * permissions and limitations under the License.
 */
 
+#ifdef _MSC_VER
+/* disables warning non const declared initializers for Microsoft compilers */
+#pragma warning(disable:4204)
+#pragma warning(disable:4221)
+#endif
+
 #include <aws/testing/aws_test_harness.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
