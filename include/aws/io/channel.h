@@ -17,13 +17,11 @@
 
 #include <aws/io/io.h>
 #include <aws/common/linked_list.h>
-#include <aws/common/mutex.h>
-#include <aws/common/byte_buf.h>
 #include <stdbool.h>
 
 typedef enum aws_channel_direction {
-    AWS_CHANNEL_DIR_READ = 0x01,
-    AWS_CHANNEL_DIR_WRITE = 0x02
+    AWS_CHANNEL_DIR_READ,
+    AWS_CHANNEL_DIR_WRITE
 } aws_channel_direction;
 
 struct aws_event_loop;
@@ -61,8 +59,6 @@ struct aws_channel_creation_callbacks {
 
 struct aws_channel_handler;
 
-struct aws_channel_slot_ref;
-
 struct aws_channel_slot {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -94,8 +90,8 @@ struct aws_channel_handler_vtable {
 
     /**
      * Called by the channel when an adjacent handler (based on dir), has completed it's shutdown in that direction.
-     * This is your notification to shutdown to a safe state. You need to issue a shutdown notification when you are finished
-     * shutting down.
+     * This is your notification to shutdown to a safe state. You must call aws_channel_slot_shutdown_notify() when you are finished
+     * shutting down in that direction.
      */
     int (*on_shutdown_notify) (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                enum aws_channel_direction dir, int error_code);
@@ -112,7 +108,8 @@ struct aws_channel_handler_vtable {
     size_t (*get_current_window_size) (struct aws_channel_handler *handler);
 
     /**
-     * Clean up any resources and deallocate yourself.
+     * Clean up any resources and deallocate yourself. The shutdown process will already be completed before this function
+     * is called.
      */
     void (*destroy)(struct aws_channel_handler *handler);
 };
@@ -128,19 +125,21 @@ extern "C" {
 #endif
 
 /**
- * Initializes the channel, with event loop to use for IO and tasks. on_completed will be invoked when the setup process is finished
- * It will be executed in the event loop's thread.
+ * Initializes the channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when the setup process is finished
+ * It will be executed in the event loop's thread. callbacks is copied. Unless otherwise specified all functions for channels
+ * and channel slots must be executed within that channel's event-loop's thread.
  */
 AWS_IO_API int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
                                 struct aws_event_loop *event_loop, struct aws_channel_creation_callbacks *callbacks);
 
 /**
- * Shuts down the channel if it hasn't been already, cleans up all slots and handlers.
+ * Cleans up all slots and handlers. Must be called after shutdown has completed. Can be called from any thread assuming
+ * 'aws_channel_shutdown()' has completed.
  */
 AWS_IO_API void aws_channel_clean_up(struct aws_channel *channel);
 
 /**
- * Shuts down the channel in the dir direction. on_completed will be executed in the event loops thread upon completion.
+ * Shuts down the channel. 'callbacks->on_shutdown_completed' will be executed in the event loops thread upon completion.
  */
 AWS_IO_API int aws_channel_shutdown(struct aws_channel *channel, int error_code);
 
@@ -157,32 +156,30 @@ AWS_IO_API struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *cha
 AWS_IO_API int aws_channel_current_clock_time(struct aws_channel *, uint64_t *ticks);
 
 /**
- * Retrieves an object by key from the event loop's local storage. This function must be executed in the context of the event loop's
- * thread.
+ * Retrieves an object by key from the event loop's local storage.
  */
 AWS_IO_API int aws_channel_fetch_local_object(struct aws_channel *, const void *key,
                                               struct aws_event_loop_local_object *obj);
 
 /**
- * Stores an object by key in the event loop's local storage. This function must be executed in the context of the event loop's
- * thread.
+ * Stores an object by key in the event loop's local storage.
  */
 AWS_IO_API int aws_channel_put_local_object(struct aws_channel *, const void *key,
                                             const struct aws_event_loop_local_object *obj);
 
 /**
- * Removes an object by key from the event loop's local storage. This function must be executed in the context of the event loop's
- * thread.
+ * Removes an object by key from the event loop's local storage.
  */
 AWS_IO_API int aws_channel_remove_local_object(struct aws_channel *, const void *key,
                                                struct aws_event_loop_local_object *removed_obj);
 
 /**
- * Acquires a message from the event loop's message pool. data_size is merely a hint, it may be smaller than you requested and you
+ * Acquires a message from the event loop's message pool. size_hint is merely a hint, it may be smaller than you requested and you
  * are responsible for checking the bounds of it. If the returned message is not large enough, you must send multiple messages.
  */
-AWS_IO_API struct aws_io_message *aws_channel_aquire_message_from_pool(struct aws_channel *,
-                                                                             aws_io_message_type message_type, size_t data_size);
+AWS_IO_API struct aws_io_message *aws_channel_acquire_message_from_pool(struct aws_channel *,
+                                                                        aws_io_message_type message_type,
+                                                                        size_t size_hint);
 
 /**
  * Returns a message back to the event loop's message pool for reuse.
@@ -191,14 +188,14 @@ AWS_IO_API void aws_channel_release_message_to_pool ( struct aws_channel *, stru
 
 /**
  * Schedules a task to run on the event loop. This is the ideal way to move a task into the correct thread. It's also handy for
- * context switches.
+ * context switches. task is copied.
  */
 AWS_IO_API int aws_channel_schedule_task(struct aws_channel *, struct aws_task *task, uint64_t run_at);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use aws_channel_schedule_task().
  */
-AWS_IO_API bool aws_channel_is_on_callers_thread (struct aws_channel *);
+AWS_IO_API bool aws_channel_thread_is_callers_thread(struct aws_channel *);
 
 /**
  * Sets the handler for a slot, the slot will also call get_current_window_size() and propagate a window update upstream.
@@ -216,14 +213,22 @@ AWS_IO_API int aws_channel_slot_remove (struct aws_channel_slot *slot);
 AWS_IO_API int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channel_slot *new);
 
 /**
- * inserts 'right' to the position immediately to the right of slot.
+ * inserts 'to_add' to the position immediately to the right of slot. Note that the first call to
+ * aws_channel_slot_new() adds it to the channel implicitly.
  */
-AWS_IO_API int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot *right);
+AWS_IO_API int aws_channel_slot_insert_right (struct aws_channel_slot *slot, struct aws_channel_slot *to_add);
 
 /**
- * inserts 'left' to the position immediately to the left of slot.
+ * Inserts to 'to_add' the end of the channel. Note that the first call to
+ * aws_channel_slot_new() adds it to the channel implicitly.
  */
-AWS_IO_API int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot *left);
+AWS_IO_API int aws_channel_slot_insert_end (struct aws_channel *channel, struct aws_channel_slot *to_add);
+
+/**
+ * inserts 'to_add' to the position immediately to the left of slot. Note that the first call to
+ * aws_channel_slot_new() adds it to the channel implicitly.
+ */
+AWS_IO_API int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_channel_slot *to_add);
 
 /**
  * Sends a message to the adjacent slot in the channel based on dir. Also does window size checking.
@@ -241,7 +246,8 @@ AWS_IO_API int aws_channel_slot_update_window (struct aws_channel_slot *slot, si
 AWS_IO_API int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, aws_channel_direction dir, int error_code);
 
 /**
- * Initiates shutdown on slot. The first slot in the channel will be called.
+ * Initiates shutdown on slot. The first slot in the channel will be called. callbacks->on_shutdown_completed will be called
+ * once the shutdown process is completed.
  */
 AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, int err_code, bool abort_immediately);
 

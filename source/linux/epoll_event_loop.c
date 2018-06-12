@@ -267,8 +267,8 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
 
     task_data->task = *task;
     task_data->timestamp = run_at;
-
     aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+
     uint64_t counter = 1;
 
     /* if the list is not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
@@ -384,8 +384,6 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
 
     handle->additional_data = NULL;
 
-
-
     if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data, &compat_event))) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -403,7 +401,6 @@ static bool is_on_callers_thread (struct aws_event_loop * event_loop) {
  * This is the event handler for events on that pipe.*/
 static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
-
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         uint64_t count_we_dont_care_about = 0;
 

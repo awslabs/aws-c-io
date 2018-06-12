@@ -20,6 +20,7 @@
 struct alpn_channel_setup_test_args {
     struct aws_condition_variable condition_variable;
     int error_code;
+    bool shutdown_finished;
 };
 
 static void alpn_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
@@ -73,6 +74,18 @@ struct aws_channel_handler *alpn_tls_successful_negotiation(struct aws_channel_s
     return handler;
 }
 
+static bool alpn_test_shutdown_predicate(void *arg) {
+    struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)arg;
+    return test_args->shutdown_finished;
+}
+
+static void on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+    struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)user_data;
+
+    test_args->shutdown_finished = true;
+    aws_condition_variable_notify_one(&test_args->condition_variable);
+}
+
 static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, void *ctx) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
@@ -83,14 +96,15 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
 
     struct alpn_channel_setup_test_args test_args = {
             .error_code = 0,
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .shutdown_finished = false
     };
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = NULL,
-            .shutdown_user_data = NULL,
+            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .shutdown_user_data = &test_args,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -134,6 +148,8 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
     ASSERT_BIN_ARRAYS_EQUALS(protocol_message.protocol.buffer, protocol_message.protocol.len,
                              on_negotiation_args.protocol.buffer, on_negotiation_args.protocol.len);
 
+    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 
@@ -152,14 +168,15 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
 
     struct alpn_channel_setup_test_args test_args = {
             .error_code = 0,
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .shutdown_finished = false
     };
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = NULL,
-            .shutdown_user_data = NULL,
+            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .shutdown_user_data = &test_args,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -196,6 +213,8 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
 
     ASSERT_ERROR(AWS_IO_MISSING_ALPN_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
+    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 
@@ -220,14 +239,15 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
 
     struct alpn_channel_setup_test_args test_args = {
             .error_code = 0,
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .shutdown_finished = false
     };
 
     struct aws_channel_creation_callbacks callbacks = {
             .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = NULL,
-            .shutdown_user_data = NULL,
+            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .shutdown_user_data = &test_args,
     };
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -269,6 +289,8 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
 
     ASSERT_ERROR(AWS_ERROR_OOM, aws_channel_handler_process_read_message(handler, slot, &message));
 
+    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 

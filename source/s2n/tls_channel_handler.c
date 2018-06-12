@@ -99,9 +99,9 @@ static int s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
 static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
     int processed = 0;
     while (processed < buf->len) {
-        struct aws_io_message *message = aws_channel_aquire_message_from_pool(handler->slot->channel,
-                                                                              AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                                              buf->len - processed);
+        struct aws_io_message *message = aws_channel_acquire_message_from_pool(handler->slot->channel,
+                                                                               AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                                               buf->len - processed);
 
         if (!message) {
             errno = ENOMEM;
@@ -172,9 +172,9 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             if (s2n_handler->slot->adj_right && s2n_handler->options.advertise_alpn_message && protocol) {
-                struct aws_io_message *message = aws_channel_aquire_message_from_pool(s2n_handler->slot->channel,
-                                                                                      AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                                                      sizeof(struct aws_tls_negotiated_protocol_message));
+                struct aws_io_message *message = aws_channel_acquire_message_from_pool(s2n_handler->slot->channel,
+                                                                                       AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                                                       sizeof(struct aws_tls_negotiated_protocol_message));
                 message->message_tag = AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE;
                 struct aws_tls_negotiated_protocol_message *protocol_message =
                     (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
@@ -197,7 +197,6 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-            aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
             if (s2n_handler->options.on_negotiation_result) {
                 s2n_handler->options.on_negotiation_result(handler, s2n_handler->slot,
@@ -222,7 +221,7 @@ static void negotiation_task(void *arg, aws_task_status status) {
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
-    if (aws_channel_is_on_callers_thread(s2n_handler->slot->channel)) {
+    if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
         return drive_negotiation(handler);
     }
 
@@ -246,8 +245,12 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
 
         if (!s2n_handler->negotiation_finished) {
             size_t message_len = message->message_data.len;
-            drive_negotiation(handler);
-            aws_channel_slot_update_window(slot, message_len);
+            if (!drive_negotiation(handler)) {
+                aws_channel_slot_update_window(slot, message_len);
+            }
+            else {
+                aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+            }
             return AWS_OP_SUCCESS;
         }
     }
@@ -258,8 +261,9 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
 
     while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
 
-        struct aws_io_message *outgoing_read_message = aws_channel_aquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                                                            downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(slot->channel,
+                                                                                             AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                                                             downstream_window);
         if (!outgoing_read_message) {
             return aws_raise_error(AWS_ERROR_OOM);
         }
@@ -324,7 +328,7 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
                            enum aws_channel_direction dir, int error_code) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_WRITE) {
+    if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
         s2n_blocked_status blocked;
         /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
         s2n_shutdown(s2n_handler->connection, &blocked);

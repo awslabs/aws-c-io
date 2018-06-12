@@ -438,7 +438,7 @@ Puts data into the event loop's data store. This data is shared by each channel 
     
 Schedules a task to run on the event loop. This function is thread-safe.
     
-    BOOL aws_channel_is_on_callers_thread (struct aws_channel *);
+    BOOL aws_channel_thread_is_callers_thread (struct aws_channel *);
     
 Checks if the caller is on the event loop's thread. This function is thread-safe.    
     

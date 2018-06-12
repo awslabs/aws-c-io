@@ -101,7 +101,7 @@ void aws_message_pool_clean_up(struct aws_message_pool *msg_pool) {
 }
 
 struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_pool, aws_io_message_type message_type,
-                                                  size_t data_size) {
+                                                  size_t size_hint) {
     struct aws_io_message *message = NULL;
     size_t max_size = 0;
     switch(message_type) {
@@ -128,7 +128,7 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
     /* the buffer shares the allocation with the message. It's the bit at the end. */
     message->message_data.buffer = (uint8_t *)message + sizeof(struct aws_io_message);
     message->message_data.len = 0;
-    message->message_data.capacity = data_size <= max_size ? data_size : max_size;
+    message->message_data.capacity = size_hint <= max_size ? size_hint : max_size;
 
     return message;
 }

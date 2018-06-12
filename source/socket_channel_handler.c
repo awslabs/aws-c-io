@@ -26,6 +26,7 @@ struct socket_handler {
     struct aws_channel_slot *slot;
     struct aws_linked_list write_queue;
     size_t max_rw_size;
+    bool shutdown_in_progress;
 };
 
 static int socket_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -140,8 +141,9 @@ static void do_read(struct socket_handler *socket_handler) {
         size_t total_read = 0, read = 0;
         while (total_read < max_to_read) {
             struct aws_io_message *message =
-                    aws_channel_aquire_message_from_pool(socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA,
-                                                         max_to_read);
+                    aws_channel_acquire_message_from_pool(socket_handler->slot->channel,
+                                                          AWS_IO_MESSAGE_APPLICATION_DATA,
+                                                          max_to_read);
 
             if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
@@ -162,7 +164,7 @@ static void do_read(struct socket_handler *socket_handler) {
             return;
         }
         /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read again. */
-        else if (total_read == socket_handler->max_rw_size) {
+        else if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size) {
             struct aws_task task = {
                     .fn = read_task,
                     .arg = socket_handler,
@@ -211,17 +213,21 @@ static void on_socket_event(struct aws_event_loop *event_loop, struct aws_io_han
 int socket_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    struct aws_task task = {
-            .fn = read_task,
-            .arg = socket_handler,
-    };
+    if (!socket_handler->shutdown_in_progress) {
+        struct aws_task task = {
+                .fn = read_task,
+                .arg = socket_handler,
+        };
 
-    uint64_t now = 0;
-    if (!aws_channel_current_clock_time(slot->channel, &now)) {
-        return aws_channel_schedule_task(slot->channel, &task, now);
+        uint64_t now = 0;
+        if (!aws_channel_current_clock_time(slot->channel, &now)) {
+            return aws_channel_schedule_task(slot->channel, &task, now);
+        }
+
+        return AWS_OP_ERR;
     }
 
-    return AWS_OP_ERR;
+    return AWS_OP_SUCCESS;
 }
 
 struct shutdown_args {
@@ -271,7 +277,8 @@ static int do_shutdown(struct aws_channel_handler *handler, struct aws_channel_s
         return AWS_OP_ERR;
     }
 
-    aws_channel_schedule_task(slot->channel, &task, now);
+    socket_handler->shutdown_in_progress = true;
+    return aws_channel_schedule_task(slot->channel, &task, now);
 }
 
 int socket_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
@@ -341,6 +348,7 @@ struct aws_channel_handler *aws_socket_handler_new(struct aws_allocator *allocat
     impl->slot = slot;
     impl->max_rw_size = max_rw_size;
     impl->event_loop = event_loop;
+    impl->shutdown_in_progress = false;
     aws_linked_list_init(&impl->write_queue);
 
     handler->alloc = allocator;

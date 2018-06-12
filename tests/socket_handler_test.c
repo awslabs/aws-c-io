@@ -16,17 +16,17 @@
 #include <aws/testing/aws_test_harness.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/socket.h>
+#include <aws/io/channel_bootstrap.h>
 #include <read_write_test_handler.c>
 
 struct socket_test_args {
     struct aws_allocator *allocator;
-    struct aws_event_loop *event_loop;
-    struct aws_socket *socket;
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
-    struct aws_channel channel;
+    struct aws_channel *channel;
     struct aws_channel_handler *rw_handler;
     struct aws_channel_slot *rw_slot;
+    bool shutdown_invoked;
     bool error_invoked;
 };
 
@@ -35,55 +35,61 @@ static bool channel_setup_predicate(void *user_data) {
     return setup_test_args->rw_slot != NULL;
 }
 
-static void socket_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+static bool channel_shutdown_predicate(void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    return setup_test_args->shutdown_invoked;
+}
+
+static int socket_handler_test_client_setup_callback (struct aws_client_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
-    struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
-    struct aws_channel_handler *socket_handler =
-            aws_socket_handler_new(setup_test_args->allocator, setup_test_args->socket, socket_slot, setup_test_args->event_loop,
-                                   AWS_SOCKET_HANDLER_DEFAULT_MAX_RW);
-    aws_channel_slot_set_handler(socket_slot, socket_handler);
+    setup_test_args->channel = channel;
 
     struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+    aws_channel_slot_insert_end(channel, rw_slot);
+
     aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
-    aws_channel_slot_insert_right(socket_slot, rw_slot);
     setup_test_args->rw_slot = rw_slot;
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    return 0;
 }
 
-static void socket_test_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
-    struct socket_test_args *listener_args = (struct socket_test_args *)user_data;
-    listener_args->socket = new_socket;
+static int socket_handler_test_server_setup_callback (struct aws_server_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
-    struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = socket_channel_setup_test_on_setup_completed,
-            .setup_user_data = listener_args,
-            .on_shutdown_completed = NULL,
-            .shutdown_user_data = NULL
-    };
+    setup_test_args->channel = channel;
 
-    aws_channel_init(&listener_args->channel, listener_args->allocator,
-                     listener_args->event_loop, &callbacks);
+    struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+    aws_channel_slot_insert_end(channel, rw_slot);
+
+    aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+    setup_test_args->rw_slot = rw_slot;
+
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    return 0;
 }
 
-static void socket_test_listener_on_error(struct aws_socket *socket, int err_code, void *user_data) {
-    struct socket_test_args *listener_args = (struct socket_test_args *)user_data;
-    listener_args->error_invoked = true;
+static int socket_handler_test_client_shutdown_callback(struct aws_client_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->shutdown_invoked = true;
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
+
+    return 0;
 }
 
-static void socket_test_connection_handler(struct aws_socket *socket, void *user_data) {
-    struct socket_test_args *connection_args = (struct socket_test_args *)user_data;
-    connection_args->socket = socket;
+static int socket_handler_test_server_shutdown_callback(struct aws_server_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
-    struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = socket_channel_setup_test_on_setup_completed,
-            .setup_user_data = connection_args,
-            .on_shutdown_completed = NULL,
-            .shutdown_user_data = NULL
-    };
-    aws_channel_init(&connection_args->channel, connection_args->allocator,
-                     connection_args->event_loop, &callbacks);
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->shutdown_invoked = true;
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
+
+    return 0;
 }
 
 struct socket_test_rw_args {
@@ -121,10 +127,8 @@ struct aws_byte_buf socket_test_handle_write(struct aws_channel_handler *handler
 }
 
 static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, void *user_data) {
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -162,21 +166,19 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
 
     struct socket_test_args incoming_args = {
             .mutex = &mutex,
-            .event_loop = event_loop,
             .allocator = allocator,
             .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .socket = NULL,
+            .error_invoked = false,
+            .shutdown_invoked = false,
             .rw_handler = incoming_rw_handler,
     };
 
     struct socket_test_args outgoing_args = {
             .mutex = &mutex,
-            .event_loop = event_loop,
             .allocator = allocator,
             .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .socket = NULL,
+            .error_invoked = false,
+            .shutdown_invoked = false,
             .rw_handler = outgoing_rw_handler,
     };
 
@@ -192,31 +194,18 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
 
     sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
 
-    struct aws_socket_creation_args listener_creation_args = {
-            .on_incoming_connection = socket_test_listener_incoming,
-            .on_error = socket_test_listener_on_error,
-            .on_connection_established = NULL,
-            .user_data = &incoming_args,
-    };
+    struct aws_server_bootstrap server_bootstrap;
+    ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
+    struct aws_socket *listener = aws_server_bootstrap_add_socket_listener(&server_bootstrap, &endpoint, &options,
+                                                                                    socket_handler_test_server_setup_callback, socket_handler_test_server_shutdown_callback, &incoming_args);
+    ASSERT_NOT_NULL(listener);
 
-    struct aws_socket listener;
-    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options, event_loop, &listener_creation_args));
-
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
-    ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener));
-
-    struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = socket_test_connection_handler,
-            .on_error = NULL,
-            .user_data = &outgoing_args
-    };
+    struct aws_client_bootstrap client_bootstrap;
+    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
-    struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_bootstrap, &endpoint, &options,
+                                                           socket_handler_test_client_setup_callback, socket_handler_test_client_shutdown_callback, &outgoing_args));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &incoming_args));
@@ -247,13 +236,15 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     ASSERT_BIN_ARRAYS_EQUALS(read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer,
                              outgoing_rw_args.received_message.len);
 
-    aws_channel_clean_up(&incoming_args.channel);
-    aws_channel_clean_up(&outgoing_args.channel);
+    ASSERT_SUCCESS(aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS));
+    ASSERT_SUCCESS(aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS));
 
-    aws_mem_release(allocator, incoming_args.socket);
-    aws_socket_clean_up(&listener);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_shutdown_predicate, &outgoing_args));
 
-    aws_event_loop_destroy(event_loop);
+    aws_mutex_unlock(&mutex);
+    ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
+    aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;
 }
@@ -261,10 +252,8 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
 AWS_TEST_CASE(socket_handler_echo_and_backpressure, socket_echo_and_backpressure_test)
 
 static int socket_close_test (struct aws_allocator *allocator, void *user_data) {
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -294,22 +283,20 @@ static int socket_close_test (struct aws_allocator *allocator, void *user_data) 
 
     struct socket_test_args incoming_args = {
             .mutex = &mutex,
-            .event_loop = event_loop,
             .allocator = allocator,
             .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .socket = NULL,
+            .error_invoked = false,
+            .shutdown_invoked = false,
             .rw_handler = incoming_rw_handler,
             .rw_slot = NULL
     };
 
     struct socket_test_args outgoing_args = {
             .mutex = &mutex,
-            .event_loop = event_loop,
             .allocator = allocator,
             .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .socket = NULL,
+            .error_invoked = false,
+            .shutdown_invoked = false,
             .rw_handler = outgoing_rw_handler,
             .rw_slot = NULL
     };
@@ -326,48 +313,31 @@ static int socket_close_test (struct aws_allocator *allocator, void *user_data) 
 
     sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
 
-    struct aws_socket_creation_args listener_creation_args = {
-            .on_incoming_connection = socket_test_listener_incoming,
-            .on_error = socket_test_listener_on_error,
-            .on_connection_established = NULL,
-            .user_data = &incoming_args,
-    };
+    struct aws_server_bootstrap server_bootstrap;
+    ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
+    struct aws_socket *listener = aws_server_bootstrap_add_socket_listener(&server_bootstrap, &endpoint, &options,
+                                                                                    socket_handler_test_server_setup_callback, socket_handler_test_server_shutdown_callback, &incoming_args);
+    ASSERT_NOT_NULL(listener);
 
-    struct aws_socket listener;
-    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options, event_loop, &listener_creation_args));
-
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
-    ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener));
-
-    struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = socket_test_connection_handler,
-            .on_error = NULL,
-            .user_data = &outgoing_args
-    };
+    struct aws_client_bootstrap client_bootstrap;
+    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
-    struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_bootstrap, &endpoint, &options,
+                                                           socket_handler_test_client_setup_callback, socket_handler_test_client_shutdown_callback, &outgoing_args));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, channel_setup_predicate, &outgoing_args));
 
-    aws_socket_shutdown(incoming_args.socket);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+    aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
 
     ASSERT_SUCCESS(rw_handler_wait_on_shutdown(outgoing_args.rw_handler));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, rw_handler_last_error_code(outgoing_args.rw_handler));
 
-    aws_channel_clean_up(&incoming_args.channel);
-    aws_channel_clean_up(&outgoing_args.channel);
-
-    aws_mem_release(allocator, incoming_args.socket);
-    aws_socket_clean_up(&listener);
-
-    aws_event_loop_destroy(event_loop);
+    ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
+    aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;
 }
