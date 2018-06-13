@@ -156,10 +156,6 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
 
-            /*now lets match the downstream window now that negotiation is finished. */
-            size_t downstream_window = aws_channel_slot_downstream_read_window(s2n_handler->slot);
-            s2n_handler->slot->window_size = downstream_window + EST_TLS_RECORD_OVERHEAD;
-
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
             if (protocol) {
                 s2n_handler->protocol = aws_byte_buf_from_literal(protocol);

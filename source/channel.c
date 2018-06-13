@@ -393,7 +393,7 @@ int aws_channel_slot_insert_left (struct aws_channel_slot *slot, struct aws_chan
     if (slot == slot->channel->first) {
         slot->channel->first = to_add;
     }
-    
+
     return AWS_OP_SUCCESS;
 }
 

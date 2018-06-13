@@ -38,7 +38,7 @@ struct aws_tls_ctx {
 typedef bool(*aws_tls_verify_host_fn)(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data);
 typedef void(*aws_tls_on_negotiation_result)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *user_data);
 typedef void(*aws_tls_on_data_read)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer, void *user_data);
-typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err, const char *message);
+typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err, const char *message, void *user_data);
 
 struct aws_tls_connection_options {
     const char *alpn_list;

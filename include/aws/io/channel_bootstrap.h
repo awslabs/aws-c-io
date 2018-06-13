@@ -17,28 +17,33 @@
 */
 #include <aws/io/channel.h>
 #include <aws/io/socket.h>
-#include <aws/common/hash_table.h>
 
 struct aws_client_bootstrap;
 typedef int (*aws_channel_client_setup_callback)(struct aws_client_bootstrap *bootstrap, int error_code, struct aws_channel *, void *user_data);
 typedef int (*aws_channel_client_shutdown_callback)(struct aws_client_bootstrap *bootstrap, int error_code, struct aws_channel *, void *user_data);
 
+typedef struct aws_channel_handler *(*aws_channel_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol, void *user_data);
+
+struct aws_tls_ctx;
+struct aws_tls_connection_options;
 
 struct aws_event_loop_group;
 struct aws_client_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
+    struct aws_tls_ctx *tls_ctx;
+    aws_channel_on_protocol_negotiated on_protocol_negotiated;
 };
 
 struct aws_server_bootstrap;
 typedef int (*aws_channel_server_incoming_channel_callback)(struct aws_server_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data);
 typedef int (*aws_channel_server_channel_shutdown_callback)(struct aws_server_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data);
 
-
-
 struct aws_server_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
+    struct aws_tls_ctx *tls_ctx;
+    aws_channel_on_protocol_negotiated on_protocol_negotiated;
 };
 
 #ifdef __cplusplus
@@ -47,15 +52,27 @@ extern "C" {
 
 AWS_IO_API int aws_client_bootstrap_init (struct aws_client_bootstrap *bootstrap, struct aws_allocator *allocator, struct aws_event_loop_group *el_group);
 AWS_IO_API void aws_client_bootstrap_clean_up (struct aws_client_bootstrap *bootstrap);
+AWS_IO_API int aws_client_bootstrap_set_tls_ctx (struct aws_client_bootstrap *bootstrap, struct aws_tls_ctx *ctx);
+AWS_IO_API int aws_client_bootstrap_set_alpn_callback (struct aws_client_bootstrap *bootstrap, aws_channel_on_protocol_negotiated on_protocol_negotiated);
+
 AWS_IO_API int aws_client_bootstrap_new_socket_channel (struct aws_client_bootstrap *bootstrap,
                                                          struct aws_socket_endpoint *endpoint,
                                                          struct aws_socket_options *options,
                                                          aws_channel_client_setup_callback setup_callback,
                                                          aws_channel_client_shutdown_callback shutdown_callback,
                                                          void *user_data);
+AWS_IO_API int aws_client_bootstrap_new_tls_socket_channel (struct aws_client_bootstrap *bootstrap,
+                                                            struct aws_socket_endpoint *endpoint,
+                                                            struct aws_socket_options *options,
+                                                            struct aws_tls_connection_options *connection_options,
+                                                            aws_channel_client_setup_callback setup_callback,
+                                                            aws_channel_client_shutdown_callback shutdown_callback,
+                                                            void *user_data);
 
 AWS_IO_API int aws_server_bootstrap_init (struct aws_server_bootstrap *bootstrap, struct aws_allocator *allocator, struct aws_event_loop_group *el_group);
 AWS_IO_API void aws_server_bootstrap_clean_up (struct aws_server_bootstrap *bootstrap);
+AWS_IO_API int aws_server_bootstrap_set_tls_ctx (struct aws_server_bootstrap *bootstrap, struct aws_tls_ctx *ctx);
+AWS_IO_API int aws_server_bootstrap_set_alpn_callback (struct aws_server_bootstrap *bootstrap, aws_channel_on_protocol_negotiated on_protocol_negotiated);
 
 AWS_IO_API struct aws_socket *aws_server_bootstrap_add_socket_listener (struct aws_server_bootstrap *bootstrap,
                                                          struct aws_socket_endpoint *endpoint,
@@ -63,6 +80,14 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_add_socket_listener (struct a
                                                          aws_channel_server_incoming_channel_callback incoming_callback,
                                                          aws_channel_server_channel_shutdown_callback shutdown_callback,
                                                          void *user_data);
+
+AWS_IO_API struct aws_socket *aws_server_bootstrap_add_tls_socket_listener (struct aws_server_bootstrap *bootstrap,
+                                                                            struct aws_socket_endpoint *endpoint,
+                                                                            struct aws_socket_options *options,
+                                                                            struct aws_tls_connection_options *connection_options,
+                                                                            aws_channel_server_incoming_channel_callback incoming_callback,
+                                                                            aws_channel_server_channel_shutdown_callback shutdown_callback,
+                                                                            void *user_data);
 
 AWS_IO_API int aws_server_bootstrap_remove_socket_listener (struct aws_server_bootstrap *bootstrap,
                                                             struct aws_socket *listener);
