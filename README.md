@@ -14,6 +14,97 @@ embedded, server, client, and mobile.
 
 This library is licensed under the Apache 2.0 License. 
 
+## Recommended Usage
+
+This library contains many primitive building blocks that can be configured in a myriad of ways. However, most likely
+you simply need to use the `aws_event_loop_group` and `aws_channel_bootstrap` APIs.
+
+Typical Client API Usage Pattern:
+        
+        /* setup */
+        aws_tls_init_static_state();
+        
+        struct aws_event_loop_group el_group;
+        
+        if (aws_event_loop_group_default_init(&el_group, allocator)) {
+            goto cleanup;
+        }
+        
+        struct aws_tls_ctx_options tls_options = { ... };
+        struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(allocator, &tls_options);
+        
+        struct aws_tls_connection_options tls_client_conn_options = { ... };      
+        
+        struct aws_client_bootstrap client_bootstrap;
+        
+        if (aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group) {
+            goto cleanup;
+        }
+        
+        aws_client_bootstrap_set_tls_ctx(&client_bootstrap, tls_ctx);
+        aws_client_bootstrap_set_alpn_callback(&client_bootstrap, your_alpn_callback);
+        
+        /* throughout your application's lifetime */
+        struct aws_socket_options sock_options = { ... };
+        struct aws_socket_endpoint endpoint = { ... };
+                
+        if (aws_client_bootstrap_new_tls_socket_channel(&client_bootrap, &endpoint, &sock_options, &tls_options, 
+                your_channel_setup_callback, your_channel_shutdown_callback, your_context_data) {
+            goto cleanup;
+        } 
+        
+        /* shutdown */
+        aws_client_bootstrap_clean_up(&client_bootstrap);
+        aws_tls_client_ctx_destroy(tls_ctx);
+        aws_event_loop_group_clean_up(&el_group);
+        aws_tls_clean_up_static_state();
+        
+Typical Server API Usage Pattern:                        
+        
+        /* setup */
+        aws_tls_init_static_state();
+            
+        struct aws_event_loop_group el_group;
+        
+        if (aws_event_loop_group_default_init(&el_group, allocator)) {
+            goto cleanup;
+        }
+        
+        struct aws_tls_ctx_options tls_options = { ... };
+        struct aws_tls_ctx *tls_ctx = aws_tls_server_ctx_new(allocator, &tls_options);
+        
+        struct aws_tls_connection_options tls_server_conn_options = { ... };
+        
+        struct aws_socket_options sock_options = { ... };
+        struct aws_socket_endpoint endpoint = { ... };
+        
+        struct aws_server_bootstrap server_bootstrap;
+        
+        if (aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group) {
+            goto cleanup;
+        }
+        
+        aws_server_bootstrap_set_tls_ctx(&server_bootstrap, tls_ctx);
+        aws_server_bootstrap_set_alpn_callback(&server_bootstrap, your_alpn_callback);
+        
+        struct aws_socket *listener = aws_server_bootstrap_add_tls_socket_listener(&server_bootstrap, &endpoint, &sock_options, &tls_options, 
+                                                      your_incoming_channel_callback, your_channel_shutdown_callback, your_context_data);
+                                                      
+        if (!listener) {
+            goto cleanup;
+        } 
+
+
+        /* shutdown */
+        aws_server_bootstrap_remove_socket_listener(listener);
+        aws_server_bootstrap_clean_up(&server_bootstrap);
+        aws_tls_server_ctx_destroy(tls_ctx);
+        awS_event_loop_group_clean_up(&el_group);
+        aws_tls_clean_up_static_state();
+        
+If you are building a protocol on top of sockets without the use of TLS, you can still use this pattern as your starting point.
+Simply call the `aws_client_bootstrap_new_socket_channel` `aws_server_bootstrap_add_socket_listener` respectively: instead of the TLS variants.
+      
 ## Concepts
 
 ### Event Loop
