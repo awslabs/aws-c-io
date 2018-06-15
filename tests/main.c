@@ -19,11 +19,20 @@
 #pragma warning(disable:4221) /* initialization using address of automatic variable */
 #endif
 
+#include <pipe_test.c>
 #include <event_loop_test.c>
 
 int main (int argc, char *argv[]) {
+#if 0
     AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
                        &read_write_notifications,
                        &stop_then_restart
                       );
+#endif
+    AWS_RUN_TEST_CASES(&pipe_open_close,
+                       &pipe_read_write,
+                       &pipe_read_write_large_buffer,
+                      );
+
+
 }
