@@ -13,6 +13,7 @@
 * permissions and limitations under the License.
 */
 #include <aws/common/byte_buf.h>
+#include <aws/io/io.h.>
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 
@@ -30,8 +31,8 @@ AWS_TEST_CASE(pipe_open_close, test_pipe_open_close);
  * Assert that both buffers are identical when the work is done. */
 static int copy_buffers_via_pipe(
         struct aws_io_handle *read_handle,
-        struct aws_io_handle *write_handle, 
-        struct aws_byte_buf *buf_src, 
+        struct aws_io_handle *write_handle,
+        struct aws_byte_buf *buf_src,
         struct aws_byte_buf *buf_dst) {
 
     const size_t total_bytes = buf_src->len;
@@ -41,7 +42,8 @@ static int copy_buffers_via_pipe(
     struct aws_byte_cursor src_cursor = aws_byte_cursor_from_buf(buf_src);
 
     /* In a loop, write as much as possible and read as much as possible.
-     * AWS_IO_WRITE_***_BLOCK errors are expected when writing to a full pipe or reading from an empty pipe */
+     * AWS_IO_***_WOULD_BLOCK errors are expected when writing to a
+     * full pipe or reading from an empty pipe */
     while (total_bytes_read < total_bytes) {
         while (total_bytes_written < total_bytes) {
             size_t bytes_written;
@@ -100,6 +102,8 @@ static int test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *
     struct aws_byte_buf src_buf;
     ASSERT_SUCCESS(aws_byte_buf_init(alloc, &src_buf, buffer_size));
     src_buf.len = src_buf.capacity;
+
+    /* Fill buffer with random bytes */
     struct aws_byte_cursor src_cursor = aws_byte_cursor_from_buf(&src_buf);
     for (size_t i = 0; i < buffer_size; ++i) {
         aws_byte_cursor_write_u8(&src_cursor, (uint8_t)(rand() % 256));

@@ -12,13 +12,13 @@
 * express or implied. See the License for the specific language governing
 * permissions and limitations under the License.
 */
+
+#include <aws/io/io.h>
 #include <aws/io/pipe.h>
 
-#define PIPE_BUFFER_BYTES 4096
+#define SUGGESTED_BUFFER_SIZE 4096
 
-#define PIPE_PARTIAL_WRITE_RETRY_RSHIFT 2
-#define PIPE_PARTIAL_WRITE_RETRY_MIN 128
-
+/* Translate Windows errors into aws_pipe errors */
 static int raise_last_windows_error() {
     const DWORD err = GetLastError();
     switch (err) {
@@ -37,62 +37,45 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
     read_handle->additional_data = NULL;
     write_handle->additional_data = NULL;
 
-#if 0 // named pipes
-    /* Using named pipes, instead of anonymous pipes, because only named pipes support non-blocking IO.
-     * Named pipes require that we specify a unique name. */
-    char pipe_name[64];
-    _snprintf_s(pipe_name, sizeof(pipe_name), _TRUNCATE, "\\\\.\\pipe\\%d", rand());// uuid_string); TODO: better random
+    bool success = CreatePipe(
+            &read_handle->handle.dataptr, /*read handle*/
+            &write_handle->handle.dataptr, /*write handle*/
+            NULL, /*NULL means default security attributes*/
+            SUGGESTED_BUFFER_SIZE); /*suggested size, in bytes, for the pipe's buffer*/
+    if (!success) {
+        return raise_last_windows_error();
+    }
 
-    write_handle->handle.dataptr = CreateNamedPipe(
-        pipe_name, /*lpName*/
-        PIPE_ACCESS_OUTBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE, /*dwOpenMode*/
-        PIPE_NOWAIT | PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_REJECT_REMOTE_CLIENTS, /*dwPipeMode*/
-        1, /*nMaxInstances*/
-        PIPE_BUFFER_BYTES, /*nOutBufferSize*/
-        PIPE_BUFFER_BYTES, /*nInBufferSize*/
-        0, /*nDefaultTimeout: 0 means default*/
-        NULL); /*lpSecurityAttributes: NULL results in default security and handle cannot be inerited*/
-
-    if (write_handle->handle.dataptr == INVALID_HANDLE_VALUE) {
+    /* We use anonymous pipes (rather than named pipes) because they "require less overhead".
+     * It's possible to set non-blocking IO on an anonymous pipe via SetNamedPipeHandleState() */
+    DWORD read_mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
+    success = SetNamedPipeHandleState(
+            read_handle->handle.dataptr, /*pipe handle*/
+            &read_mode, /*mode to set*/
+            NULL, /*NULL if the collection count is not being set*/
+            NULL); /*NULL if the collection count is not being set*/
+    if (!success) {
+        raise_last_windows_error();
         goto clean_up;
     }
 
-    read_handle->handle.dataptr = CreateFile(
-        pipe_name, /*lpFileName*/
-        GENERIC_READ, /*dwDesiredAccess*/
-        0, /*dwShareMode*/
-        NULL, /*lpSecurityAttributes: 0 means default*/
-        OPEN_EXISTING, /*dwCreationDisposition*/
-        0, /*dwFlagsAndAttributes: 0 means default*/
-        NULL); /*hTemplateFile: ignored when opening existing file*/
-
-    if (read_handle->handle.dataptr == INVALID_HANDLE_VALUE) {
+    DWORD write_mode = PIPE_NOWAIT | PIPE_TYPE_BYTE;
+    success = SetNamedPipeHandleState(
+            write_handle->handle.dataptr, /*pipe handle*/
+            &write_mode, /*mode to set*/
+            NULL, /*NULL if the collection count is not being set*/
+            NULL); /*NULL if the collection count is not being set*/
+    if (!success) {
+        raise_last_windows_error();
         goto clean_up;
     }
 
     return AWS_OP_SUCCESS;
 
 clean_up:
-    if (write_handle->handle.dataptr != INVALID_HANDLE_VALUE) {
-        CloseHandle(write_handle->handle.dataptr);
-        write_handle->handle.dataptr = INVALID_HANDLE_VALUE;
-    }
-
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-#else // anonymous pipes
-    bool success = CreatePipe(&read_handle->handle.dataptr, &write_handle->handle.dataptr, NULL, PIPE_BUFFER_BYTES);
-    assert(success);
-
-    DWORD read_mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
-    success = SetNamedPipeHandleState(read_handle->handle.dataptr, &read_mode, NULL, NULL);
-    assert(success);
-
-    DWORD write_mode = PIPE_NOWAIT | PIPE_TYPE_BYTE;
-    success = SetNamedPipeHandleState(write_handle->handle.dataptr, &write_mode, NULL, NULL);
-    assert(success);
-
+    CloseHandle(read_handle->handle.dataptr);
+    CloseHandle(write_handle->handle.dataptr);
     return AWS_OP_SUCCESS;
-#endif
 }
 
 int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
@@ -137,17 +120,26 @@ int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor,
         return AWS_OP_SUCCESS;
     }
 
-#if 1 // partial write retry
-    DWORD bytes_to_write = cursor->len > PIPE_BUFFER_BYTES ? PIPE_BUFFER_BYTES : (DWORD)cursor->len;
+    /* HACK:
+     * Despite what the documentation says:
+     * https://msdn.microsoft.com/en-us/library/aa365605(v=vs.85).aspx
+     *      When there is insufficient space in the pipe's buffer...
+     *      with a nonblocking-wait handle, the write operation returns a nonzero value immediately...
+     *      after writing as many bytes as the buffer holds.
+     *
+     * We want the behavior described above, but observed that WriteFile()
+     * would not write ANY bytes unless it could write all the requested bytes.
+     * We tried using named pipes and got the same results.
+     *
+     * Therefore, in a loop, attempt to write less and less bytes until we
+     * write SOMETHING, or we give up.
+     */
+    const DWORD PARTIAL_WRITE_RETRY_MIN = 128; /*If we can't write this many bytes, give up*/
+    const DWORD PARTIAL_WRITE_RETRY_RSHIFT = 2; /*If we can't write, decrease bytes_to_write by rshifting this much*/
+    DWORD bytes_to_write = cursor->len > SUGGESTED_BUFFER_SIZE ? SUGGESTED_BUFFER_SIZE : (DWORD)cursor->len;
     DWORD bytes_written;
-
-    /* https://msdn.microsoft.com/en-us/library/aa365605(v=vs.85).aspx
-     * When there is insufficient space in the pipe's buffer...
-     * with a nonblocking-wait handle, the write operation returns a nonzero value immediately
-     * ... after writing as many bytes as the buffer holds. */
     while (true) {
-        bool success = WriteFile(handle->handle.dataptr, cursor->ptr, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/);
-        if (!success) {
+        if (!WriteFile(handle->handle.dataptr, cursor->ptr, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/)) {
             return raise_last_windows_error();
         }
 
@@ -155,25 +147,12 @@ int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor,
             break;
         }
 
-        if (bytes_to_write < PIPE_PARTIAL_WRITE_RETRY_MIN) {
+        if (bytes_to_write < PARTIAL_WRITE_RETRY_MIN) {
             return aws_raise_error(AWS_IO_WRITE_WOULD_BLOCK);
         }
 
-        bytes_to_write = bytes_to_write >> PIPE_PARTIAL_WRITE_RETRY_RSHIFT;
+        bytes_to_write = bytes_to_write >> PARTIAL_WRITE_RETRY_RSHIFT;
     }
-#else
-    DWORD bytes_to_write = cursor->len > MAXDWORD ? MAXDWORD : (DWORD)cursor->len;
-    DWORD bytes_written;
-
-    bool success = WriteFile(handle->handle.dataptr, cursor->ptr, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/);
-    if (!success) {
-        return raise_last_windows_error();
-    }
-
-    if (bytes_written == 0) {
-        return aws_raise_error(AWS_IO_WRITE_WOULD_BLOCK);
-    }
-#endif
 
     aws_byte_cursor_advance(cursor, (size_t)bytes_written);
 
@@ -203,8 +182,9 @@ int aws_pipe_read(struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t
     DWORD bytes_read;
 
     /* https://msdn.microsoft.com/en-us/library/aa365605(v=vs.85).aspx
-     * When the pipe is empty... using a nonblocking-wait handle,
-     * the function returns zero immediately, and the GetLastError function returns ERROR_NO_DATA.
+     *     When the pipe is empty...
+     *     using a nonblocking-wait handle, the function returns zero immediately,
+     *     and the GetLastError function returns ERROR_NO_DATA.
      */
     bool success = ReadFile(handle->handle.dataptr, buf->buffer + buf->len, bytes_to_read, &bytes_read, NULL/*lpOverlapped*/);
 

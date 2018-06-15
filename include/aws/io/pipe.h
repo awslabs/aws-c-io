@@ -16,10 +16,11 @@
 * permissions and limitations under the License.
 */
 
-#include <aws/io/io.h>
+#include <aws/io/exports.h>
 
 struct aws_byte_cursor;
 struct aws_byte_buf;
+struct aws_io_handle;
 
 #ifdef __cplusplus
 extern "C" {
