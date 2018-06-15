@@ -12,13 +12,6 @@
 * express or implied. See the License for the specific language governing
 * permissions and limitations under the License.
 */
-#if 0
-
-#ifdef _MSC_VER
-/* disables warning non const declared initializers for Microsoft compilers */
-#pragma warning(disable:4204)
-#pragma warning(disable:4221)
-#endif
 
 #include <aws/testing/aws_test_harness.h>
 #include <aws/io/event_loop.h>
@@ -45,7 +38,6 @@ static bool task_ran_predicate(void *args){
     struct task_args *task_args = (struct task_args *)args;
     return task_args->invoked;
 }
-
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
@@ -238,5 +230,3 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
 }
 
 AWS_TEST_CASE(stop_then_restart, test_stop_then_restart)
-#endif
-extern int a = 1;

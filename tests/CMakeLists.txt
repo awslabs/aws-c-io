@@ -23,6 +23,9 @@ add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
 
+add_test(pipe_open_close ${TEST_BINARY_NAME} pipe_open_close)
+add_test(pipe_read_write ${TEST_BINARY_NAME} pipe_read_write)
+add_test(pipe_read_write_large_buffer ${TEST_BINARY_NAME} pipe_read_write_large_buffer)
 add_test(xthread_scheduled_tasks_execute ${TEST_BINARY_NAME} xthread_scheduled_tasks_execute)
 add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
 add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
