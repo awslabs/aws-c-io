@@ -62,7 +62,7 @@ elseif (APPLE)
             message(FATAL_ERROR "Security framework not found")
         endif ()
 
-        #No choice on TLS for apple, darwinssl will always be used.
+        #No choice on TLS for darwin, darwinssl will always be used.
         set(PLATFORM_LIBS ${SECURITY_LIB})
         set(TLS_STACK_DETERMINED ON)
 
