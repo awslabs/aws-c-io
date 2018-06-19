@@ -89,7 +89,7 @@ struct handle_data {
 
 static const uint64_t DEFAULT_TIMEOUT_SEC = 100; /* Max kevent() timeout per loop of the event-thread */
 static const uint64_t NANOSEC_PER_SEC = 1000000000;
-static const int MAX_EVENTS = 100; /* Max kevents to process per loop of the event-thread */
+enum { MAX_EVENTS = 100 }; /* Max kevents to process per loop of the event-thread */
 static const size_t DEFAULT_ARRAY_LIST_RESERVE = 32;
 
 struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock clock) {
@@ -145,7 +145,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     /* Set up kevent to handle activity on the cross_thread_signal_pipe */
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data,
+    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data.fd,
            EVFILT_READ/*filter*/, EV_ADD/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
     int res = kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
     if (res == -1) {
@@ -226,7 +226,7 @@ clean_up:
         aws_mem_release(alloc, event_loop);
     }
     return NULL;
-};
+}
 
 static void destroy(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
@@ -261,7 +261,7 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_mutex_clean_up(&impl->cross_thread_data.mutex);
 
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data,
+    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data.fd,
            EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
     kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
 
@@ -300,7 +300,7 @@ void signal_cross_thread_data_changed(struct aws_event_loop *event_loop) {
     /* Doesn't actually matter what we write, any activity on pipe signals that cross_thread_data has changed,
      * If the pipe is full and the write fails, that's fine, the event-thread will get the signal from some previous write */
     uint32_t write_whatever = 0xC0FFEE;
-    write(impl->cross_thread_signal_pipe_write.data, &write_whatever, sizeof(write_whatever));
+    write(impl->cross_thread_signal_pipe_write.data.fd, &write_whatever, sizeof(write_whatever));
 }
 
 static int stop(struct aws_event_loop *event_loop) {
@@ -410,11 +410,11 @@ static void subscribe_task(void *user_data, aws_task_status status) {
     int changelist_size = 0;
 
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+        EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
                EVFILT_READ/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+        EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
                EVFILT_WRITE/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
 
@@ -459,7 +459,7 @@ subscribe_failed:
 static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
                                   aws_event_loop_on_event on_event, void *user_data) {
     assert(event_loop);
-    assert(handle->data != -1);
+    assert(handle->data.fd != -1);
     assert(handle->additional_data == NULL);
     assert(on_event);
     assert(events & (AWS_IO_EVENT_TYPE_READABLE|AWS_IO_EVENT_TYPE_WRITABLE)); /* Must subscribe for read, write, or both */
@@ -514,11 +514,11 @@ static void unsubscribe_task(void *user_data, aws_task_status status) {
             int changelist_size = 0;
 
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+                EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
                        EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
             }
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data,
+                EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
                        EVFILT_WRITE/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
             }
 
@@ -703,7 +703,7 @@ static void event_thread_main(void *user_data) {
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
-            if (kevent->ident == impl->cross_thread_signal_pipe_read.data) {
+            if (kevent->ident == impl->cross_thread_signal_pipe_read.data.fd) {
                 should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */
