@@ -89,7 +89,7 @@ struct handle_data {
 
 static const uint64_t DEFAULT_TIMEOUT_SEC = 100; /* Max kevent() timeout per loop of the event-thread */
 static const uint64_t NANOSEC_PER_SEC = 1000000000;
-#define MAX_EVENTS 100 /* Max kevents to process per loop of the event-thread */
+enum { MAX_EVENTS = 100 }; /* Max kevents to process per loop of the event-thread */
 static const size_t DEFAULT_ARRAY_LIST_RESERVE = 32;
 
 struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock clock) {
