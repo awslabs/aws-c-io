@@ -46,7 +46,7 @@ int aws_client_bootstrap_set_alpn_callback (struct aws_client_bootstrap *bootstr
 }
 
 void aws_client_bootstrap_clean_up (struct aws_client_bootstrap *bootstrap) {
-    (void *)bootstrap;
+    (void)bootstrap;
 }
 
 struct client_channel_data {

@@ -75,7 +75,7 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
     int fd = socket(convert_domain(options->domain), convert_type(options->type),  0);
     int flags = fcntl(fd, F_GETFL, 0);
     flags |= O_NONBLOCK;
-    flags |= SOCK_CLOEXEC;
+    flags |= O_CLOEXEC;
     fcntl(fd, F_SETFL, flags);
 
     if(fd != -1) {
@@ -200,6 +200,8 @@ static int on_connection_success(struct aws_socket *socket) {
     if (socket->creation_args.on_connection_established && socket->options.type == AWS_SOCKET_STREAM) {
         socket->creation_args.on_connection_established(socket, socket->creation_args.user_data);
     }
+
+    return AWS_OP_SUCCESS;
 }
 
 static int determine_socket_error(int error) {
@@ -627,12 +629,18 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
+#if defined(__MACH__)
+#define NO_SIGNAL SO_NOSIGPIPE
+#else
+#define NO_SIGNAL MSG_NO_SIGNAL
+#endif
+
 int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cursor, size_t *written) {
     if (!(socket->state & CONNECTED_WRITE)) {
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t write_val = send(socket->io_handle.data, cursor->ptr, cursor->len, MSG_NOSIGNAL);
+    ssize_t write_val = send(socket->io_handle.data, cursor->ptr, cursor->len, NO_SIGNAL);
 
     if (write_val > 0) {
         *written = (size_t)write_val;
