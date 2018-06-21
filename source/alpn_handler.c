@@ -52,9 +52,9 @@ int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_
     return AWS_OP_SUCCESS;
 }
 
-int alpn_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code) {
-    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
+static int alpn_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                           enum aws_channel_direction dir, int error_code, bool abort_immediately) {
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 size_t alpn_get_current_window_size (struct aws_channel_handler *handler) {
@@ -91,9 +91,9 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *alloc
 
     channel_handler->vtable = (struct aws_channel_handler_vtable){
             .shutdown = NULL,
-            .get_current_window_size = alpn_get_current_window_size,
-            .on_window_update = NULL,
-            .on_shutdown_notify = alpn_on_shutdown_notify,
+            .initial_window_size = alpn_get_current_window_size,
+            .increment_read_window = NULL,
+            .shutdown = alpn_shutdown,
             .process_write_message = NULL,
             .process_read_message = alpn_process_read_message,
             .destroy = alpn_destroy

@@ -37,16 +37,11 @@ struct alpn_test_on_negotiation_args {
     struct aws_byte_buf protocol;
 };
 
-int alpn_test_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort_immediately) {
-    return aws_channel_slot_shutdown_notify(slot, AWS_CHANNEL_DIR_READ, error_code);
+int alpn_test_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code, bool abort_immediately) {
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-int alpn_test_on_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code) {
-    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
-}
-
-size_t alpn_test_get_current_window_size (struct aws_channel_handler *handler) {
+size_t alpn_test_initial_window_size(struct aws_channel_handler *handler) {
     return SIZE_MAX;
 }
 
@@ -66,9 +61,8 @@ struct aws_channel_handler *alpn_tls_successful_negotiation(struct aws_channel_s
     negotiation_args->new_slot = new_slot;
 
     handler->vtable.destroy = alpn_test_destroy;
-    handler->vtable.on_shutdown_notify = alpn_test_on_shutdown;
     handler->vtable.shutdown = alpn_test_shutdown;
-    handler->vtable.get_current_window_size = alpn_test_get_current_window_size;
+    handler->vtable.initial_window_size = alpn_test_initial_window_size;
     handler->alloc = negotiation_args->allocator;
 
     return handler;
@@ -128,7 +122,7 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     struct aws_tls_negotiated_protocol_message protocol_message = {
-        .protocol = aws_byte_buf_from_literal("h2")
+        .protocol = aws_byte_buf_from_c_str("h2")
     };
 
     struct aws_io_message message = {
@@ -260,7 +254,7 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
     ASSERT_NOT_NULL(slot);
 
     struct aws_tls_negotiated_protocol_message protocol_message = {
-            .protocol = aws_byte_buf_from_literal("h2")
+            .protocol = aws_byte_buf_from_c_str("h2")
     };
 
     struct aws_io_message message = {

@@ -69,6 +69,7 @@ static int tls_handler_test_client_setup_callback (struct aws_client_bootstrap *
 static int tls_handler_test_server_setup_callback (struct aws_server_bootstrap *bootstrap, int error_code, struct aws_channel *channel, void *user_data) {
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
+    aws_mutex_lock(setup_test_args->mutex);
     if (!error_code) {
         setup_test_args->channel = channel;
 
@@ -85,7 +86,7 @@ static int tls_handler_test_server_setup_callback (struct aws_server_bootstrap *
     }
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-
+    aws_mutex_unlock(setup_test_args->mutex);
 
     return AWS_OP_SUCCESS;
 }
@@ -169,8 +170,8 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-    struct aws_byte_buf read_tag = aws_byte_buf_from_literal("I'm a little teapot");
-    struct aws_byte_buf write_tag = aws_byte_buf_from_literal("I'm a big teapot");
+    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot");
+    struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("I'm a big teapot");
 
     uint8_t incoming_received_message[128] = {0};
     uint8_t outgoing_received_message[128] = {0};
@@ -314,11 +315,11 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     ASSERT_FALSE(incoming_args.error_invoked);
 
     /* check ALPN and SNI was properly negotiated */
-    struct aws_byte_buf expected_protocol = aws_byte_buf_from_literal("h2");
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
     ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
                              incoming_args.negotiated_protocol.buffer, incoming_args.negotiated_protocol.len);
 
-    struct aws_byte_buf server_name = aws_byte_buf_from_literal("localhost");
+    struct aws_byte_buf server_name = aws_byte_buf_from_c_str("localhost");
     ASSERT_BIN_ARRAYS_EQUALS(server_name.buffer, server_name.len,
                              incoming_args.server_name.buffer, incoming_args.server_name.len);
 
@@ -335,10 +336,10 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
     /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &incoming_rw_args));
-
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &incoming_rw_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &outgoing_rw_args));
+
     incoming_rw_args.invocation_happened = false;
     outgoing_rw_args.invocation_happened = false;
 
@@ -346,9 +347,10 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     ASSERT_INT_EQUALS(1, incoming_rw_args.read_invocations);
 
     /* Go ahead and verify back-pressure works*/
-    rw_handler_update_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &incoming_rw_args));
-    rw_handler_update_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, tls_test_read_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(2, outgoing_rw_args.read_invocations);

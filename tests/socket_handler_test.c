@@ -103,7 +103,6 @@ struct socket_test_rw_args {
 
 static bool socket_test_read_predicate(void *user_data) {
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
-
     return rw_args->invocation_happened;
 }
 
@@ -111,11 +110,13 @@ struct aws_byte_buf socket_test_handle_read(struct aws_channel_handler *handler,
                                              struct aws_byte_buf *data_read, void *user_data) {
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
 
+    aws_mutex_lock(rw_args->mutex);
     memcpy(rw_args->received_message.buffer + rw_args->received_message.len, data_read->buffer, data_read->len);
     rw_args->received_message.len += data_read->len;
     rw_args->read_invocations += 1;
     rw_args->invocation_happened = true;
     aws_condition_variable_notify_one(rw_args->condition_variable);
+    aws_mutex_unlock(rw_args->mutex);
 
     return rw_args->received_message;
 }
@@ -133,8 +134,8 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-    struct aws_byte_buf read_tag = aws_byte_buf_from_literal("I'm a little teapot");
-    struct aws_byte_buf write_tag = aws_byte_buf_from_literal("I'm a big teapot");
+    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot");
+    struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("I'm a big teapot");
 
     uint8_t incoming_received_message[128] = {0};
     uint8_t outgoing_received_message[128] = {0};
@@ -142,10 +143,11 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     struct socket_test_rw_args incoming_rw_args = {
             .mutex = &mutex,
             .condition_variable = &condition_variable,
-            .received_message = aws_byte_buf_from_array(incoming_received_message, 0),
+            .received_message = aws_byte_buf_from_array(incoming_received_message, sizeof(incoming_received_message)),
             .invocation_happened = false,
             .shutdown_finished = false,
     };
+    incoming_rw_args.received_message.len = 0;
 
     struct socket_test_rw_args outgoing_rw_args = {
             .mutex = &mutex,
@@ -154,6 +156,8 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
             .invocation_happened = false,
             .shutdown_finished = false,
     };
+    outgoing_rw_args.received_message.len = 0;
+
 
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_test_handler_new(allocator, socket_test_handle_read,
@@ -223,9 +227,9 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
     ASSERT_INT_EQUALS(1, incoming_rw_args.read_invocations);
 
     /* Go ahead and verify back-pressure works*/
-    rw_handler_update_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &incoming_rw_args));
-    rw_handler_update_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, socket_test_read_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(2, outgoing_rw_args.read_invocations);

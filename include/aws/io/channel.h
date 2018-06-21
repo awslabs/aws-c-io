@@ -86,26 +86,18 @@ struct aws_channel_handler_vtable {
      * Called by the channel when an downstream handler has issued a window update. You'll want to update your internal
      * state and likely propogate a window update message of your own.
      */
-    int (*on_window_update) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
-
-    /**
-     * Called by the channel when an adjacent handler (based on dir), has completed it's shutdown in that direction.
-     * This is your notification to shutdown to a safe state. You must call aws_channel_slot_shutdown_notify() when you are finished
-     * shutting down in that direction.
-     */
-    int (*on_shutdown_notify) (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                               enum aws_channel_direction dir, int error_code);
+    int (*increment_read_window) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
 
     /**
      * Called by the channel for handlers on the edge (beginning or end) of the channel to begin initiating a shutdown.
      * if abort_immediately is true, the must be done in the call (not a scheduled task).
      */
-    int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code, bool abort_immediately);
+    int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code, bool abort_immediately);
 
     /**
      * Called by the channel when the handler is added to a slot, to get the initial window size.
      */
-    size_t (*get_current_window_size) (struct aws_channel_handler *handler);
+    size_t (*initial_window_size) (struct aws_channel_handler *handler);
 
     /**
      * Clean up any resources and deallocate yourself. The shutdown process will already be completed before this function
@@ -238,18 +230,19 @@ AWS_IO_API int aws_channel_slot_send_message (struct aws_channel_slot *slot, str
 /**
  * Issues a window update notification upstream.
  */
-AWS_IO_API int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
+AWS_IO_API int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window);
 
 /**
  * Issues a shutdown notification to adjacent slots in the channel based on dir.
  */
-AWS_IO_API int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, aws_channel_direction dir, int error_code);
+AWS_IO_API int aws_channel_slot_on_handler_shutdown_complete(struct aws_channel_slot *slot, enum aws_channel_direction dir,
+                                                              int err_code, bool abort_immediately);
 
 /**
  * Initiates shutdown on slot. The first slot in the channel will be called. callbacks->on_shutdown_completed will be called
  * once the shutdown process is completed.
  */
-AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, int err_code, bool abort_immediately);
+AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, enum aws_channel_direction dir, int err_code, bool abort_immediately);
 
 /**
  * Fetches the downstream read window. This gives you the information necessary to honor the read window. If you call send_message()
@@ -277,24 +270,19 @@ AWS_IO_API int aws_channel_handler_process_write_message(struct aws_channel_hand
 /**
  * Calls on_window_update on handler's vtable.
  */
-AWS_IO_API int aws_channel_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
-
-/**
- * calls on_shutdown_notify on handler's vtable.
- */
-AWS_IO_API int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code);
+AWS_IO_API int aws_channel_handler_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
 
 /**
  * calls shutdown_direction on handler's vtable.
  */
-AWS_IO_API int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code,
+AWS_IO_API int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                            enum aws_channel_direction dir, int error_code,
                                             bool abort_immediately);
 
 /**
  * Calls get_current_window_size on handler's vtable.
  */
-AWS_IO_API size_t aws_channel_handler_get_current_window_size(struct aws_channel_handler *handler);
+AWS_IO_API size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler);
 
 #ifdef __cplusplus
 }

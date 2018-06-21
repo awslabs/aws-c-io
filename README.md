@@ -486,7 +486,7 @@ Adds a slot to the left of slot.
 Usually called by a handler, this calls the adjacent slot in the channel based on the `dir` argument. You may want to return
 any unneeded messages to the channel pool to avoid unnecessary allocations. 
 
-    int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window);
+    int aws_channel_slot_increment_read_window (struct aws_channel_slot *slot, size_t window);
  
 Usually called by a handler, this function calls the left-adjacent slot.  
     
@@ -554,7 +554,7 @@ Channel Handlers are runtime polymorphic. Here's some details on the virtual tab
             enum aws_channel_direction dir, int error_code);
         int (*shutdown_direction) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
                     enum aws_channel_direction dir);  
-        size_t (*get_current_window_size) (struct aws_channel_handler *handler);
+        size_t (*initial_window_size) (struct aws_channel_handler *handler);
         void (*destroy)(struct aws_channel_handler *handler);                             
     };     
 
@@ -599,7 +599,7 @@ This is a notification to begin the process. For example, in TLS, there is a shu
 so it may take a few ticks of the event loop for this process to finish. A handler will invoke shutdown_notify when it has
 completed this process.
 
-`size_t get_current_window_size (struct aws_channel_handler *handler)`
+`size_t initial_window_size (struct aws_channel_handler *handler)`
 
 When a handler is added to a slot, the slot will call this function to determine the initial window size and will propogate
 a window_update message down the channel.

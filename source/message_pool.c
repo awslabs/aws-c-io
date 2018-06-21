@@ -22,8 +22,13 @@ int aws_memory_pool_init(struct aws_memory_pool *mempool, struct aws_allocator *
     mempool->alloc = alloc;
     mempool->ideal_segment_count = ideal_segment_count;
     mempool->segment_size = segment_size;
+    mempool->data_ptr = aws_mem_acquire(alloc, ideal_segment_count * sizeof(void *));
 
-    aws_array_list_init_dynamic(&mempool->stack, alloc, ideal_segment_count, sizeof(void *));
+    if (!mempool->data_ptr) {
+        return AWS_OP_ERR;
+    }
+
+    aws_array_list_init_static(&mempool->stack, mempool->data_ptr, ideal_segment_count, sizeof(void *));
 
     for(uint16_t i = 0; i < ideal_segment_count; ++i) {
         void *memory = aws_mem_acquire(alloc, segment_size);
@@ -52,12 +57,15 @@ void aws_memory_pool_clean_up(struct aws_memory_pool *mempool) {
     }
 
     aws_array_list_clean_up(&mempool->stack);
+    aws_mem_release(mempool->alloc, mempool->data_ptr);
 }
 
 void *aws_memory_pool_acquire(struct aws_memory_pool *mempool) {
     void *back = NULL;
-    if(!aws_array_list_back(&mempool->stack, &back)) {
+    if (aws_array_list_length(&mempool->stack) > 0) {
+        aws_array_list_back(&mempool->stack, &back);
         aws_array_list_pop_back(&mempool->stack);
+
         return back;
     }
 

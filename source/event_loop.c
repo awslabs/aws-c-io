@@ -88,8 +88,8 @@ AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_
 }
 
 
-static void object_removed(struct aws_hash_element element) {
-    struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)element.value;
+static void object_removed(void  *element) {
+    struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)element;
     if(object->on_object_removed) {
         object->on_object_removed(object);
     }
@@ -101,7 +101,7 @@ int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_alloc
     event_loop->clock = clock;
 
     if (aws_hash_table_init(&event_loop->local_data, alloc, 20, aws_hash_ptr,
-                                        aws_ptr_eq, object_removed)) {
+                                        aws_ptr_eq, NULL, object_removed)) {
         return AWS_OP_ERR;
     }
 

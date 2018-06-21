@@ -22,6 +22,7 @@ struct aws_memory_pool {
     struct aws_array_list stack;
     uint16_t ideal_segment_count;
     size_t segment_size;
+    void *data_ptr;
 };
 
 struct aws_message_pool {

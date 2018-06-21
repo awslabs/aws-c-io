@@ -22,8 +22,8 @@ typedef struct aws_byte_buf(*rw_test_handler_driver)(struct aws_channel_handler 
                                                      struct aws_byte_buf *data_read, void *ctx);
 
 struct rw_test_handler_impl {
-    bool shutdown_notify_called;
-    bool window_update_called;
+    bool shutdown_called;
+    bool increment_read_window_called;
     rw_test_handler_driver on_read;
     rw_test_handler_driver on_write;
     bool event_loop_driven;
@@ -75,25 +75,21 @@ static int rw_handler_process_write_message ( struct aws_channel_handler *handle
     return AWS_OP_SUCCESS;
 }
 
-static int rw_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+static int rw_handler_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                            size_t size) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    handler_impl->window_update_called = true;
-    aws_channel_slot_update_window(slot, size);
+    handler_impl->increment_read_window_called = true;
+    aws_channel_slot_increment_read_window(slot, size);
     return AWS_OP_SUCCESS;
 }
 
-static int rw_handler_on_shutdown_notify(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code) {
+static int rw_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                           enum aws_channel_direction dir, int error_code, bool abort_immediately) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    handler_impl->shutdown_notify_called = true;
+    handler_impl->shutdown_called = true;
     handler_impl->shutdown_error = error_code;
     aws_condition_variable_notify_one(&handler_impl->condition_variable);
-    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
-}
-
-static int rw_handler_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                int error_code, bool abort_immediately) {
-    return aws_channel_slot_shutdown_notify(slot, AWS_CHANNEL_DIR_READ, error_code);
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 static size_t rw_handler_get_current_window_size (struct aws_channel_handler *handler) {
@@ -113,17 +109,16 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
     handler->alloc = allocator;
     handler->vtable = (struct aws_channel_handler_vtable){
             .shutdown = rw_handler_shutdown,
-            .on_shutdown_notify = rw_handler_on_shutdown_notify,
-            .on_window_update = rw_handler_on_window_update,
-            .get_current_window_size = rw_handler_get_current_window_size,
+            .increment_read_window = rw_handler_increment_read_window,
+            .initial_window_size = rw_handler_get_current_window_size,
             .process_read_message = rw_handler_process_read,
             .process_write_message = rw_handler_process_write_message,
             .destroy = rw_handler_destroy
     };
 
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)aws_mem_acquire(allocator, sizeof(struct rw_test_handler_impl));
-    handler_impl->shutdown_notify_called = false;
-    handler_impl->window_update_called = false;
+    handler_impl->shutdown_called = false;
+    handler_impl->increment_read_window_called = false;
     handler_impl->on_read = on_read;
     handler_impl->on_write = on_write;
     handler_impl->ctx = ctx;
@@ -205,40 +200,41 @@ static void rw_handler_write(struct aws_channel_handler *handler, struct aws_cha
     }
 }
 
-struct window_update_task_args {
+struct increment_read_window_task_args {
     size_t window_update;
     struct aws_channel_handler *handler;
     struct aws_channel_slot *slot;
 };
 
-static void window_update_task(void *arg, aws_task_status task_status) {
-    struct window_update_task_args *window_update_task_args = (struct window_update_task_args *)arg;
-    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)window_update_task_args->handler->impl;
+static void increment_read_window_task(void *arg, aws_task_status task_status) {
+    struct increment_read_window_task_args *increment_read_window_task_args = (struct increment_read_window_task_args *)arg;
+    struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)increment_read_window_task_args->handler->impl;
 
-    handler_impl->window += window_update_task_args->window_update;
-    aws_channel_slot_update_window(window_update_task_args->slot, window_update_task_args->window_update);
+    handler_impl->window += increment_read_window_task_args->window_update;
+    aws_channel_slot_increment_read_window(increment_read_window_task_args->slot, increment_read_window_task_args->window_update);
 
-    aws_mem_release(window_update_task_args->handler->alloc, window_update_task_args);
+    aws_mem_release(increment_read_window_task_args->handler->alloc, increment_read_window_task_args);
 }
 
-static void rw_handler_update_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t window_update) {
+static void rw_handler_trigger_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                 size_t window_update) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
     if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
         handler_impl->window += window_update;
-        aws_channel_slot_update_window(slot, window_update);
+        aws_channel_slot_increment_read_window(slot, window_update);
     }
     else {
-        struct window_update_task_args *window_update_task_args = (struct window_update_task_args *) aws_mem_acquire(
+        struct increment_read_window_task_args *increment_read_window_task_args = (struct increment_read_window_task_args *) aws_mem_acquire(
                 handler->alloc,
-                sizeof(struct window_update_task_args));
-        window_update_task_args->handler = handler;
-        window_update_task_args->window_update = window_update;
-        window_update_task_args->slot = slot;
+                sizeof(struct increment_read_window_task_args));
+        increment_read_window_task_args->handler = handler;
+        increment_read_window_task_args->window_update = window_update;
+        increment_read_window_task_args->slot = slot;
 
         struct aws_task task = {
-                .fn = window_update_task,
-                .arg = window_update_task_args
+                .fn = increment_read_window_task,
+                .arg = increment_read_window_task_args
         };
 
         uint64_t now = 0;
@@ -247,14 +243,14 @@ static void rw_handler_update_window(struct aws_channel_handler *handler, struct
     }
 }
 
-static bool rw_handler_shutdown_notify_called(struct aws_channel_handler *handler) {
+static bool rw_handler_shutdown_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    return handler_impl->shutdown_notify_called;
+    return handler_impl->shutdown_called;
 }
 
-static bool rw_handler_window_update_called(struct aws_channel_handler *handler) {
+static bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
-    return handler_impl->window_update_called;
+    return handler_impl->increment_read_window_called;
 }
 
 static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
@@ -264,7 +260,7 @@ static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
 
 static bool rw_test_handler_shutdown_predicate(void *arg) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)arg;
-    return handler_impl->shutdown_notify_called;
+    return handler_impl->shutdown_called;
 
 }
 static int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {

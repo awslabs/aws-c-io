@@ -158,13 +158,13 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
             if (protocol) {
-                s2n_handler->protocol = aws_byte_buf_from_literal(protocol);
+                s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
             if (server_name) {
-                s2n_handler->server_name = aws_byte_buf_from_literal(server_name);
+                s2n_handler->server_name = aws_byte_buf_from_c_str(server_name);
             }
 
             if (s2n_handler->slot->adj_right && s2n_handler->options.advertise_alpn_message && protocol) {
@@ -190,6 +190,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
 
             break;
         } else if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
+            fprintf(stderr, "%s\n", s2n_strerror(s2n_error, NULL));
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -242,7 +243,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
         if (!s2n_handler->negotiation_finished) {
             size_t message_len = message->message_data.len;
             if (!drive_negotiation(handler)) {
-                aws_channel_slot_update_window(slot, message_len);
+                aws_channel_slot_increment_read_window(slot, message_len);
             }
             else {
                 aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -314,14 +315,8 @@ static int s2n_handler_process_write_message(struct aws_channel_handler *handler
     return AWS_OP_SUCCESS;
 }
 
-static int s2n_handler_handle_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                       int error_code, bool abort_immediately) {
-    /*this should never occur since this couldn't possibly be the first handler in the channel */
-    assert(0);
-}
-
-static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           enum aws_channel_direction dir, int error_code) {
+static int s2n_handler_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                           enum aws_channel_direction dir, int error_code, bool abort_immediately) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
@@ -337,7 +332,7 @@ static int s2n_handler_on_shutdown_notify (struct aws_channel_handler *handler, 
         }
     }
 
-    return aws_channel_slot_shutdown_notify(slot, dir, error_code);
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 static void run_read(void *arg, aws_task_status status) {
@@ -348,8 +343,9 @@ static void run_read(void *arg, aws_task_status status) {
     }
 }
 
-static int s2n_handler_on_window_update (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
-    aws_channel_slot_update_window(slot, size + EST_TLS_RECORD_OVERHEAD);
+static int s2n_handler_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                             size_t size) {
+    aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
@@ -395,10 +391,9 @@ static struct aws_channel_handler_vtable handler_vtable = {
         .destroy = s2n_handler_destroy,
         .process_read_message = s2n_handler_process_read_message,
         .process_write_message = s2n_handler_process_write_message,
-        .shutdown = s2n_handler_handle_shutdown,
-        .on_shutdown_notify = s2n_handler_on_shutdown_notify,
-        .on_window_update = s2n_handler_on_window_update,
-        .get_current_window_size = s2n_handler_get_current_window_size,
+        .shutdown = s2n_handler_shutdown,
+        .increment_read_window = s2n_handler_increment_read_window,
+        .initial_window_size = s2n_handler_get_current_window_size,
 };
 
 static uint8_t s2n_handler_verify_host_callback(const char *host_name, size_t host_name_len, void *data) {
@@ -454,7 +449,7 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     s2n_handler->protocol = aws_byte_buf_from_array(NULL, 0);
 
     if (options->server_name) {
-        s2n_handler->server_name = aws_byte_buf_from_c_str(options->server_name, strlen(options->server_name));
+        s2n_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
         if (s2n_set_server_name(s2n_handler->connection, options->server_name)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
@@ -637,10 +632,11 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     if (options->alpn_list) {
         struct aws_byte_cursor alpn_list_buffer[4] = {0};
         struct aws_array_list alpn_list;
-        struct aws_byte_buf user_alpn_str = aws_byte_buf_from_c_str(options->alpn_list, strlen(options->alpn_list));
+        struct aws_byte_buf user_alpn_str = aws_byte_buf_from_c_str(options->alpn_list);
 
-        if (aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor)) ||
-            aws_string_split_on_char(&user_alpn_str, ';', &alpn_list)) {
+        aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
+
+        if (aws_byte_buf_split_on_char(&user_alpn_str, ';', &alpn_list)) {
             goto cleanup_s2n_config;
         }
 

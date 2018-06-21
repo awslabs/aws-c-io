@@ -198,6 +198,7 @@ void aws_channel_clean_up(struct aws_channel *channel) {
 
 struct channel_shutdown_task_args {
     struct aws_channel *channel;
+    struct aws_allocator *alloc;
     int error_code;
 };
 
@@ -208,7 +209,7 @@ static void shutdown_task(void *arg, aws_task_status status) {
         aws_channel_shutdown(task_args->channel, task_args->error_code);
     }
 
-    aws_mem_release(task_args->channel->alloc, (void *)task_args);
+    aws_mem_release(task_args->alloc, (void *)task_args);
 }
 
 int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
@@ -218,7 +219,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
             channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
 
             if (slot) {
-                return aws_channel_slot_shutdown(slot, error_code, error_code != AWS_OP_SUCCESS);
+                return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, error_code != AWS_OP_SUCCESS);
             }
         }
     }
@@ -232,6 +233,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
 
         task_args->channel = channel;
         task_args->error_code = error_code;
+        task_args->alloc = channel->alloc;
 
         uint64_t now;
         if (aws_channel_current_clock_time(channel, &now)) {
@@ -243,7 +245,10 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
             .arg = task_args,
         };
 
-        return aws_channel_schedule_task(channel, &task, now);
+        if (aws_channel_schedule_task(channel, &task, now)) {
+            aws_mem_release(channel->alloc, (void *)task_args);
+            return AWS_OP_ERR;
+        }
     }
 
     return AWS_OP_SUCCESS;
@@ -309,7 +314,7 @@ bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
 
 int aws_channel_slot_set_handler ( struct aws_channel_slot *slot, struct aws_channel_handler *handler ) {
     slot->handler = handler;
-    return aws_channel_slot_update_window(slot, slot->handler->vtable.get_current_window_size(handler));
+    return aws_channel_slot_increment_read_window(slot, slot->handler->vtable.initial_window_size(handler));
 }
 
 int aws_channel_slot_remove (struct aws_channel_slot *slot) {
@@ -403,6 +408,7 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
         assert(slot->adj_right->handler);
 
         if (slot->adj_right->window_size >= message->message_data.len) {
+            slot->window_size -= message->message_data.len;
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
@@ -414,37 +420,41 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
     }
 }
 
-int aws_channel_slot_update_window (struct aws_channel_slot *slot, size_t window) {
+int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
     if (slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
         slot->window_size += window;
         if (slot->adj_left && slot->adj_left->handler) {
-            return aws_channel_handler_on_window_update(slot->adj_left->handler, slot->adj_left, window);
+            return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, window);
         }
     }
 
     return AWS_OP_SUCCESS;
 }
 
-int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code) {
+int aws_channel_slot_shutdown (struct aws_channel_slot *slot, enum aws_channel_direction dir, int err_code, bool abort_immediately) {
+    assert(slot->handler);
+    return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, abort_immediately);
+}
+
+int aws_channel_slot_on_handler_shutdown_complete(struct aws_channel_slot *slot, enum aws_channel_direction dir,
+                                                   int err_code, bool abort_immediately) {
     if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         return AWS_OP_SUCCESS;
     }
 
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (slot->adj_right && slot->adj_right->handler) {
-            return aws_channel_handler_on_shutdown_notify(slot->adj_right->handler, slot->adj_right, dir, error_code);
+            return aws_channel_handler_shutdown(slot->adj_right->handler, slot->adj_right, dir, err_code, abort_immediately);
         }
         else {
-            return aws_channel_handler_on_shutdown_notify(slot->handler, slot, AWS_CHANNEL_DIR_WRITE, error_code);
+            return aws_channel_handler_shutdown(slot->handler, slot, AWS_CHANNEL_DIR_WRITE, err_code, abort_immediately);
         }
-
-        return AWS_OP_SUCCESS;
     }
     else {
         if (slot->adj_left && slot->adj_left->handler) {
-            return aws_channel_handler_on_shutdown_notify(slot->adj_left->handler, slot->adj_left, dir,
-                                                          error_code);
+            return aws_channel_handler_shutdown(slot->adj_left->handler, slot->adj_left, dir,
+                                                err_code, abort_immediately);
         }
 
         if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
@@ -454,18 +464,11 @@ int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_ch
 
         return AWS_OP_SUCCESS;
     }
-
-    return AWS_OP_ERR;
 }
 
 size_t aws_channel_slot_downstream_read_window (struct aws_channel_slot *slot) {
     assert(slot->adj_right);
     return slot->adj_right->window_size;
-}
-
-int aws_channel_slot_shutdown (struct aws_channel_slot *slot, int err_code, bool abort_immediately) {
-    assert(slot->handler);
-    return aws_channel_handler_shutdown(slot->handler, slot, err_code, abort_immediately);
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
@@ -476,7 +479,6 @@ void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
 int aws_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                                         struct aws_io_message *message) {
     assert(handler->vtable.process_read_message);
-    slot->window_size -= message->message_data.len;
     return handler->vtable.process_read_message(handler, slot, message);
 }
 
@@ -486,24 +488,18 @@ int aws_channel_handler_process_write_message(struct aws_channel_handler *handle
     return handler->vtable.process_write_message(handler, slot, message);
 }
 
-int aws_channel_handler_on_window_update(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
-    assert(handler->vtable.on_window_update);
-    return handler->vtable.on_window_update(handler, slot, size);
+int aws_channel_handler_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+    assert(handler->vtable.increment_read_window);
+    return handler->vtable.increment_read_window(handler, slot, size);
 }
 
-int aws_channel_handler_on_shutdown_notify(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                      enum aws_channel_direction dir, int error_code) {
-    assert(handler->vtable.on_shutdown_notify);
-    return handler->vtable.on_shutdown_notify(handler, slot, dir, error_code);
-}
-
-int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int error_code,
-                                 bool abort_immediately) {
+int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir,
+                                 int error_code, bool abort_immediately) {
     assert(handler->vtable.shutdown);
-    return handler->vtable.shutdown(handler, slot, error_code, abort_immediately);
+    return handler->vtable.shutdown(handler, slot, dir, error_code, abort_immediately);
 }
 
-size_t aws_channel_handler_get_current_window_size(struct aws_channel_handler *handler) {
-    assert(handler->vtable.get_current_window_size);
-    return handler->vtable.get_current_window_size(handler);
+size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
+    assert(handler->vtable.initial_window_size);
+    return handler->vtable.initial_window_size(handler);
 }
