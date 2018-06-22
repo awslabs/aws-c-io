@@ -151,6 +151,7 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
 
     struct aws_byte_buf read_buffer = aws_byte_buf_from_array((const uint8_t *)read_data, sizeof(read_data));
     struct aws_byte_buf write_buffer = aws_byte_buf_from_array((const uint8_t *)write_data, sizeof(write_data));
+    write_buffer.len = 0;
 
     struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
 
@@ -163,6 +164,7 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
 
     memset((void *)write_data, 0, sizeof(write_data));
+    write_buffer.len = 0;
 
     if (options->type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, &data_len));

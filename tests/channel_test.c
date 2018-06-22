@@ -67,7 +67,7 @@ static int test_channel_setup (struct aws_allocator *allocator, void *user_data)
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
     /* the msg pool should have been setup and the same msg pool should be used*/
-    ASSERT_INT_EQUALS(channel_1.msg_pool, channel_2.msg_pool);
+    ASSERT_PTR_EQUALS(channel_1.msg_pool, channel_2.msg_pool);
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
     aws_channel_clean_up(&channel_1);
@@ -156,31 +156,31 @@ static int test_channel_slots_clean_up (struct aws_allocator *allocator, void *u
     ASSERT_NOT_NULL(slot_4);
     ASSERT_NOT_NULL(slot_5);
 
-    ASSERT_INT_EQUALS(channel.first, slot_1);
+    ASSERT_PTR_EQUALS(channel.first, slot_1);
 
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
     ASSERT_SUCCESS(aws_channel_slot_insert_left(slot_3, slot_4));
     ASSERT_SUCCESS(aws_channel_slot_remove(slot_2));
 
-    ASSERT_INT_EQUALS(slot_1, slot_4->adj_left);
-    ASSERT_INT_EQUALS(slot_1->adj_right, slot_4);
-    ASSERT_INT_EQUALS(slot_4->adj_left, slot_1);
+    ASSERT_PTR_EQUALS(slot_1, slot_4->adj_left);
+    ASSERT_PTR_EQUALS(slot_1->adj_right, slot_4);
+    ASSERT_PTR_EQUALS(slot_4->adj_left, slot_1);
     ASSERT_NULL(slot_1->adj_left);
 
-    ASSERT_INT_EQUALS(slot_4, slot_3->adj_left);
-    ASSERT_INT_EQUALS(slot_4->adj_right, slot_3);
-    ASSERT_INT_EQUALS(slot_3->adj_left, slot_4);
+    ASSERT_PTR_EQUALS(slot_4, slot_3->adj_left);
+    ASSERT_PTR_EQUALS(slot_4->adj_right, slot_3);
+    ASSERT_PTR_EQUALS(slot_3->adj_left, slot_4);
     ASSERT_NULL(slot_3->adj_right);
 
     ASSERT_SUCCESS(aws_channel_slot_replace(slot_4, slot_5));
-    ASSERT_INT_EQUALS(slot_1, slot_5->adj_left);
-    ASSERT_INT_EQUALS(slot_1->adj_right, slot_5);
-    ASSERT_INT_EQUALS(slot_5->adj_left, slot_1);
+    ASSERT_PTR_EQUALS(slot_1, slot_5->adj_left);
+    ASSERT_PTR_EQUALS(slot_1->adj_right, slot_5);
+    ASSERT_PTR_EQUALS(slot_5->adj_left, slot_1);
 
-    ASSERT_INT_EQUALS(slot_5, slot_3->adj_left);
-    ASSERT_INT_EQUALS(slot_5->adj_right, slot_3);
-    ASSERT_INT_EQUALS(slot_3->adj_left, slot_5);
+    ASSERT_PTR_EQUALS(slot_5, slot_3->adj_left);
+    ASSERT_PTR_EQUALS(slot_5->adj_right, slot_3);
+    ASSERT_PTR_EQUALS(slot_3->adj_left, slot_5);
 
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);

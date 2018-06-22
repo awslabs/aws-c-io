@@ -423,7 +423,14 @@ int aws_channel_slot_send_message (struct aws_channel_slot *slot, struct aws_io_
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
     if (slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
-        slot->window_size += window;
+        size_t temp = slot->window_size + window;
+        if (temp < slot->window_size) {
+            slot->window_size = SIZE_MAX;
+        }
+        else {
+            slot->window_size = temp;
+        }
+
         if (slot->adj_left && slot->adj_left->handler) {
             return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, window);
         }

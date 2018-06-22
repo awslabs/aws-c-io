@@ -28,10 +28,10 @@
 #include <string.h>
 #include <netdb.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <sys/un.h>
 #include <zconf.h>
 #include <signal.h>
+#include <stdio.h>
 
 enum socket_state {
     INIT = 0x01,
@@ -608,11 +608,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t read_val = read(socket->io_handle.data, buffer->buffer, buffer->capacity);
+    ssize_t read_val = read(socket->io_handle.data, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
-        buffer->len = *amount_read;
+        buffer->len += *amount_read;
         return AWS_OP_SUCCESS;
     }
 
@@ -632,7 +632,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
 #if defined(__MACH__)
 #define NO_SIGNAL SO_NOSIGPIPE
 #else
-#define NO_SIGNAL MSG_NO_SIGNAL
+#define NO_SIGNAL MSG_NOSIGNAL
 #endif
 
 int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cursor, size_t *written) {

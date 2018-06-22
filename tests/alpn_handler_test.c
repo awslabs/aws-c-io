@@ -136,8 +136,8 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
     };
 
     ASSERT_SUCCESS(aws_channel_handler_process_read_message(handler, slot, &message));
-    ASSERT_INT_EQUALS(on_negotiation_args.new_slot, channel.first);
-    ASSERT_INT_EQUALS(on_negotiation_args.new_handler, channel.first->handler);
+    ASSERT_PTR_EQUALS(on_negotiation_args.new_slot, channel.first);
+    ASSERT_PTR_EQUALS(on_negotiation_args.new_handler, channel.first->handler);
     ASSERT_NULL(channel.first->adj_right);
     ASSERT_BIN_ARRAYS_EQUALS(protocol_message.protocol.buffer, protocol_message.protocol.len,
                              on_negotiation_args.protocol.buffer, on_negotiation_args.protocol.len);

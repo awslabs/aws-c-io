@@ -150,12 +150,10 @@ static void do_read(struct socket_handler *socket_handler) {
             }
 
             total_read += read;
-
             if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 return;
             }
-
         }
 
         /* do nothing, this is how async io works! */

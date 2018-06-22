@@ -279,7 +279,7 @@ static int test_event_loop_group_counter_overflow (struct aws_allocator *allocat
     ASSERT_NOT_NULL(event_loop);
     event_loop  = aws_event_loop_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
-    ASSERT_INT_EQUALS(first_loop, event_loop);
+    ASSERT_PTR_EQUALS(first_loop, event_loop);
 
     aws_event_loop_group_clean_up(&event_loop_group);
 

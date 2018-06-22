@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <stdio.h>
 
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
@@ -152,6 +153,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
+
         int s2n_error = s2n_errno;
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
@@ -190,7 +192,6 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
 
             break;
         } else if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
-            fprintf(stderr, "%s\n", s2n_strerror(s2n_error, NULL));
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -598,7 +599,6 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
 
         if (err_code != S2N_ERR_T_OK) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-            fprintf(stderr, "error code %d\n", s2n_errno);
             goto cleanup_s2n_config;
         }
     }
