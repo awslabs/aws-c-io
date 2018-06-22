@@ -75,7 +75,7 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
 clean_up:
     CloseHandle(read_handle->data.handle);
     CloseHandle(write_handle->data.handle);
-    return AWS_OP_SUCCESS;
+    return AWS_OP_ERR;
 }
 
 int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {

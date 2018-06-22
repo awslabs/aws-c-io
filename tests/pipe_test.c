@@ -70,7 +70,7 @@ static int copy_buffers_via_pipe(
         }
     }
 
-    ASSERT_SIZE_T_EQUALS(buf_src->len, buf_dst->len);
+    ASSERT_UINT_EQUALS(buf_src->len, buf_dst->len);
     ASSERT_INT_EQUALS(0, memcmp(buf_src->buffer, buf_dst->buffer, buf_src->len));
     return AWS_OP_SUCCESS;
 }
