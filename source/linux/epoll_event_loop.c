@@ -130,8 +130,8 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
         goto clean_up_thread;
     }
 
-    epoll_loop->write_task_handle = (struct aws_io_handle){ .data = fd, .additional_data = NULL };
-    epoll_loop->read_task_handle = (struct aws_io_handle){ .data = fd, .additional_data = NULL };
+    epoll_loop->write_task_handle = (struct aws_io_handle){ .data.fd = fd, .additional_data = NULL };
+    epoll_loop->read_task_handle = (struct aws_io_handle){ .data.fd = fd, .additional_data = NULL };
 #else
     /* this pipe is for task scheduling. */
     if (aws_pipe_open(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle)) {
@@ -153,9 +153,9 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
 clean_up_pipe:
 #if USE_EFD
-    close(epoll_loop->write_task_handle.data);
-    epoll_loop->write_task_handle.data = -1;
-    epoll_loop->read_task_handle.data = -1;
+    close(epoll_loop->write_task_handle.data.fd);
+    epoll_loop->write_task_handle.data.fd = -1;
+    epoll_loop->read_task_handle.data.fd = -1;
 #else
     aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
 #endif
@@ -190,9 +190,9 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
     aws_thread_clean_up(&epoll_loop->thread);
 #if USE_EFD
-    close(epoll_loop->write_task_handle.data);
-    epoll_loop->write_task_handle.data = -1;
-    epoll_loop->read_task_handle.data = -1;
+    close(epoll_loop->write_task_handle.data.fd);
+    epoll_loop->write_task_handle.data.fd = -1;
+    epoll_loop->read_task_handle.data.fd = -1;
 #else
     aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
 #endif
@@ -246,7 +246,7 @@ static int stop (struct aws_event_loop *event_loop) {
 
 static int wait_for_stop_completion (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
-    aws_thread_join(&epoll_loop->thread);
+    return aws_thread_join(&epoll_loop->thread);
 }
 
 static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
@@ -274,7 +274,7 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
         /* If the write fails because the buffer is full, we don't actually care because that means there's a pending
          * read on the pipe/eventfd and thus the event loop will end up checking to see if something has been queued.*/
         if (AWS_UNLIKELY(
-                write(epoll_loop->write_task_handle.data, (void *) &counter, sizeof(counter)) != sizeof(counter) &&
+                write(epoll_loop->write_task_handle.data.fd, (void *) &counter, sizeof(counter)) != sizeof(counter) &&
                 errno != EAGAIN)) {
             aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
             return AWS_OP_ERR;
@@ -326,7 +326,7 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     };
 
 
-    if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data, &epoll_event)) {
+    if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data.fd, &epoll_event)) {
         aws_mem_release(event_loop->alloc, epoll_event_data);
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -382,7 +382,7 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
 
     handle->additional_data = NULL;
 
-    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data, &compat_event))) {
+    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &compat_event))) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
@@ -405,7 +405,7 @@ static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_i
         aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
 
         /* several tasks could theoretically have been written (though this should never happen), make sure we drain the eventfd/pipe. */
-        while (read(epoll_loop->read_task_handle.data, &count_we_dont_care_about, sizeof(count_we_dont_care_about)) > -1) continue;
+        while (read(epoll_loop->read_task_handle.data.fd, &count_we_dont_care_about, sizeof(count_we_dont_care_about)) > -1) continue;
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);

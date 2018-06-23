@@ -53,10 +53,10 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
     flags |= O_NONBLOCK | O_CLOEXEC;
     fcntl(pipe_fds[1], F_SETFL, flags);
 #endif
-    read_handle->data = pipe_fds[0];
+    read_handle->data.fd = pipe_fds[0];
     read_handle->additional_data = NULL;
 
-    write_handle->data = pipe_fds[1];
+    write_handle->data.fd = pipe_fds[1];
     write_handle->additional_data = NULL;
 
     return AWS_OP_SUCCESS;
@@ -66,25 +66,25 @@ int aws_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *writ
     assert(read_handle);
     assert(write_handle);
 
-    close(read_handle->data);
-    read_handle->data = -1;
-    close(write_handle->data);
-    write_handle->data = -1;
+    close(read_handle->data.fd);
+    read_handle->data.fd = -1;
+    close(write_handle->data.fd);
+    write_handle->data.fd = -1;
 
     return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_half_close(struct aws_io_handle *handle) {
     assert(handle);
-    close(handle->data);
-    handle->data = -1;
+    close(handle->data.fd);
+    handle->data.fd = -1;
 
     return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *cursor, size_t *written) {
 
-    ssize_t write_val = write(handle->data, cursor->ptr, cursor->len);
+    ssize_t write_val = write(handle->data.fd, cursor->ptr, cursor->len);
 
     if (write_val > 0) {
         *written = (size_t)write_val;
@@ -104,7 +104,7 @@ int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *
 }
 
 int aws_pipe_read (struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read) {
-    ssize_t read_val = read(handle->data, buf->buffer, buf->len);
+    ssize_t read_val = read(handle->data.fd, buf->buffer, buf->len);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
