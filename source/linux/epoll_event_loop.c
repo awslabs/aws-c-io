@@ -95,7 +95,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
 
     if (!loop) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
@@ -106,7 +105,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     struct epoll_loop *epoll_loop = aws_mem_acquire(alloc, sizeof(struct epoll_loop));
 
     if (!epoll_loop) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto clean_up_loop;
     }
 
@@ -262,7 +260,7 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
     struct task_data *task_data = (struct task_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct task_data));
 
     if (!task_data) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     task_data->task = *task;
@@ -296,7 +294,7 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     handle->additional_data = NULL;
 
     if (!epoll_event_data) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;

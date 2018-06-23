@@ -36,7 +36,7 @@ int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_
     struct alpn_handler *alpn_handler = (struct alpn_handler *)handler->impl;
 
     if (!new_slot) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     struct aws_channel_handler *new_handler = alpn_handler->on_protocol_negotiated(new_slot,
@@ -44,7 +44,7 @@ int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_
 
     if (!new_handler) {
         aws_mem_release(handler->alloc, (void *)new_slot);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE);
     }
 
     aws_channel_slot_replace(slot, new_slot);
@@ -72,7 +72,6 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *alloc
     struct aws_channel_handler *channel_handler = (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
     if (!channel_handler) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
@@ -80,7 +79,6 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *alloc
 
     if (!alpn_handler) {
         aws_mem_release(allocator, (void *)channel_handler);
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 

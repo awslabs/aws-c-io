@@ -87,7 +87,7 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
     int error_code = errno;
 
     if(error_code == ENOBUFS || error_code == ENOMEM) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     if(error_code == EMFILE  || error_code == ENFILE ) {
@@ -326,7 +326,7 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
 
             if (!sock_args) {
                 close(socket->io_handle.data);
-                return aws_raise_error(AWS_ERROR_OOM);
+                return AWS_OP_ERR;
             }
 
             sock_args->socket = socket;
@@ -417,7 +417,7 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
     }
 
     if(error_code == ENOMEM) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
@@ -473,7 +473,6 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
             struct aws_socket *new_sock = (struct aws_socket *)aws_mem_acquire(socket->allocator, sizeof (struct aws_socket));
 
             if (!new_sock) {
-                aws_raise_error(AWS_ERROR_OOM);
                 break;
             }
 

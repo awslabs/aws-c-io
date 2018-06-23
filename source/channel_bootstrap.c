@@ -271,7 +271,7 @@ static inline int new_client_channel(struct aws_client_bootstrap *bootstrap,
 
     if (!client_connection_args) {
         aws_mem_release(bootstrap->allocator, (void *)socket);
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     memset((void *)client_connection_args, 0, sizeof(struct client_connection_args));
@@ -562,7 +562,6 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
             (struct server_channel_data *)aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
 
     if (!channel_data) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto error_cleanup;
     }
 
@@ -615,7 +614,6 @@ static inline struct aws_socket *server_add_socket_listener(struct aws_server_bo
             (struct server_connection_args *)aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
 
     if (!server_connection_args) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto cleanup_server_connection_args;
     }
 

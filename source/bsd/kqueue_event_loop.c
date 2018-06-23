@@ -109,7 +109,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     struct aws_event_loop *event_loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
     if (!event_loop) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
     clean_up_event_loop_mem = true;
@@ -121,7 +120,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     struct kqueue_loop *impl = aws_mem_acquire(alloc, sizeof(struct kqueue_loop));
     if (!impl) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto clean_up;
     }
     clean_up_impl_mem = true;
@@ -466,7 +464,7 @@ static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_
 
     struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
     if (!handle_data) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     handle_data->owner = handle;

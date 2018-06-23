@@ -92,7 +92,6 @@ static OSStatus aws_tls_write_cb(SSLConnectionRef conn, const void *data, size_t
                                                                                buf.len - processed);
 
         if (!message) {
-            aws_raise_error(AWS_ERROR_OOM);
             return errSecMemoryError;
         }
 
@@ -314,7 +313,7 @@ static int secure_transport_handler_process_read_message(struct aws_channel_hand
                                                                                              AWS_IO_MESSAGE_APPLICATION_DATA,
                                                                                              downstream_window);
         if (!outgoing_read_message) {
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         size_t read = 0;
@@ -549,7 +548,7 @@ static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, 
 
         if(!*blob) {
             fclose(fp);
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         memset(*blob, 0, *len + 1);
@@ -573,14 +572,12 @@ struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct a
     struct aws_tls_ctx *ctx = (struct aws_tls_ctx *) aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
 
     if (!ctx) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
     struct secure_transport_ctx *secure_transport_ctx = (struct secure_transport_ctx *) aws_mem_acquire(alloc, sizeof(struct secure_transport_ctx));
 
     if (!secure_transport_ctx) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto cleanup_ctx;
     }
 

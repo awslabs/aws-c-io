@@ -219,7 +219,6 @@ AWS_TEST_CASE(alpn_no_protocol_message, test_alpn_no_protocol_message)
 
 struct aws_channel_handler *alpn_tls_failed_negotiation(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol,
                                                             void *ctx) {
-    aws_raise_error(AWS_ERROR_OOM);
     return NULL;
 }
 
@@ -281,7 +280,7 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
     /*this is just for the test since it's the only slot in the channel */
     handler->vtable.shutdown = alpn_test_shutdown;
 
-    ASSERT_ERROR(AWS_ERROR_OOM, aws_channel_handler_process_read_message(handler, slot, &message));
+    ASSERT_ERROR(AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
     aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));

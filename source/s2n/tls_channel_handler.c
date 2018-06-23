@@ -106,7 +106,7 @@ static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
         if (!message) {
             errno = ENOMEM;
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
@@ -263,7 +263,7 @@ static int s2n_handler_process_read_message(struct aws_channel_handler *handler,
                                                                                              AWS_IO_MESSAGE_APPLICATION_DATA,
                                                                                              downstream_window);
         if (!outgoing_read_message) {
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         ssize_t read = s2n_recv(s2n_handler->connection, outgoing_read_message->message_data.buffer,
@@ -418,14 +418,12 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     struct aws_channel_handler *handler = (struct aws_channel_handler *) aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
     if (!handler) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *) aws_mem_acquire(allocator, sizeof(struct s2n_handler));
 
     if (!s2n_handler) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto cleanup_handler;
     }
 
@@ -531,7 +529,7 @@ static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, 
 
         if(!*blob) {
             fclose(fp);
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         memset(*blob, 0, *len + 1);
@@ -555,14 +553,12 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     struct aws_tls_ctx *ctx = (struct aws_tls_ctx *) aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
 
     if (!ctx) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
     struct s2n_ctx *s2n_ctx = (struct s2n_ctx *) aws_mem_acquire(alloc, sizeof(struct s2n_ctx));
 
     if (!s2n_ctx) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto cleanup_ctx;
     }
 

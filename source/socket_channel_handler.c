@@ -313,13 +313,11 @@ struct aws_channel_handler *aws_socket_handler_new(struct aws_allocator *allocat
     struct aws_channel_handler *handler = (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
     if (!handler) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
     struct socket_handler *impl = (struct socket_handler *)aws_mem_acquire(allocator, sizeof(struct socket_handler));
     if (!impl) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto cleanup_handler;
     }
 

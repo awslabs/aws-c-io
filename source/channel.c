@@ -50,11 +50,15 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
 
         if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &MESSAGE_POOL_KEY, local_object) ) {
             local_object = (struct aws_event_loop_local_object *)aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
+
+            if (!local_object) {
+                goto cleanup_setup_args;
+            }
+
             message_pool = (struct aws_message_pool *)aws_mem_acquire(setup_args->alloc, sizeof(struct aws_message_pool));
 
             if (!message_pool) {
-                aws_raise_error(AWS_ERROR_OOM);
-                goto cleanup_setup_args;
+                goto cleanup_local_obj;
             }
             struct aws_message_pool_creation_args creation_args = {
                     .application_data_msg_data_size = KB_16,
@@ -91,12 +95,13 @@ cleanup_msg_pool:
 
 cleanup_msg_pool_mem:
     aws_mem_release(setup_args->alloc, message_pool);
+
+cleanup_local_obj:
     aws_mem_release(setup_args->alloc, local_object);
 
 cleanup_setup_args:
     setup_args->on_setup_completed(setup_args->channel, AWS_OP_ERR, setup_args->user_data);
     aws_mem_release(setup_args->alloc, setup_args);
-
 }
 
 int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
@@ -111,7 +116,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     struct channel_setup_args *setup_args = (struct channel_setup_args *)aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
 
     if (!setup_args) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
@@ -228,7 +233,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
                 (struct channel_shutdown_task_args *)aws_mem_acquire(channel->alloc, sizeof(struct channel_shutdown_task_args));
 
         if (!task_args) {
-            return aws_raise_error(AWS_ERROR_OOM);
+            return AWS_OP_ERR;
         }
 
         task_args->channel = channel;
@@ -268,7 +273,6 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
             (struct aws_channel_slot *)aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot));
 
     if (!new_slot) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
@@ -328,6 +332,10 @@ int aws_channel_slot_remove (struct aws_channel_slot *slot) {
 
     if (slot->adj_left) {
         slot->adj_left->adj_right = slot->adj_right;
+    }
+
+    if (slot == slot->channel->first) {
+        slot->channel->first = NULL;
     }
 
     cleanup_slot(slot);

@@ -449,8 +449,8 @@ The remaining exported functions on event loop simply invoke the v-table functio
     struct aws_channel_slot {
         struct aws_allocator *alloc;
         struct aws_channel *channel;
-        struct aws_channel_slot_ref adj_left;
-        struct aws_channel_slot_ref adj_right;
+        struct aws_channel_slot *adj_left;
+        struct aws_channel_slot *adj_right;
         struct aws_channel_handler *handler;    
     };
         
@@ -490,13 +490,11 @@ any unneeded messages to the channel pool to avoid unnecessary allocations.
  
 Usually called by a handler, this function calls the left-adjacent slot.  
     
-    int aws_channel_slot_shutdown_notify (struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code);
+    int aws_channel_slot_on_handler_shutdown_complete(struct aws_channel_slot *slot, enum aws_channel_direction dir,
+                                                                  int err_code, bool abort_immediately);
+                                                                  
+Usually called by a handler, this function calls the adjacent slot's shutdown based on the `dir` argument.  
     
-Usually called by a handler, this function calls the adjacent slot on shutdown notify based on the `dir` argument.  
-
-    int aws_channel_slot_shutdown_direction (struct aws_channel_slot *slot, enum aws_channel_direction dir);
-    
-Usually called by an operation on the channel, this function calls shutdown() for the current slot.  
     
 ### API (Channel specific)
 
@@ -573,31 +571,23 @@ Data Out is invoked by the slot when an application level message is received in
 The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
 write queue.
 
-`int on_window_update (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size)`
+`int increment_window (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size)`
 
-Update Window is invoked by the slot when a framework level message is received from a downstream handler.
+Increment Window is invoked by the slot when a framework level message is received from a downstream handler.
 It only applies in the read direction. This gives the handler a chance to make a programmatic decision about 
 what its read window should be. Upon receiving an update_window message, a handler decides what its window should be and 
-likely issues a window update message to its slot. Shrinking a window has no effect. If a handler makes its window larger
+likely issues an increment window message to its slot. Shrinking a window has no effect. If a handler makes its window larger
 than a downstream window, it is responsible for honoring the downstream window and buffering any data it produces that is 
 greater than that window.
 
-`int on_shutdown_notify (struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
-                                  enum aws_channel_direction dir, int error_code)`
+`int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir, 
+     int error_code, bool abort_immediately);`
 
-Shutdown notify is invoked by the slot when a framework level message is received from an adjacent handler.
+Shutdown is invoked by the slot when a framework level message is received from an adjacent handler.
 This notifies the handler that the previous handler in the chain has shutdown and will no longer be sending or
 receiving messages. The handler should make a decision about what it wants to do in response, and likely begins
-its shutdown process (if any). Once the handler has safely reached a safe state, if should issue a shutdown_notification
-to the slot.
-
-`int shutdown_direction ( struct aws_channel_handler *handler, struct aws_channel_slot *slot, 
-                                              enum aws_channel_direction dir)`
-
-Shutdown direction is invoked by the slot to close the message processing in a given direction (either read, write, or both).
-This is a notification to begin the process. For example, in TLS, there is a shutdown sequence that happens between client and server,
-so it may take a few ticks of the event loop for this process to finish. A handler will invoke shutdown_notify when it has
-completed this process.
+its shutdown process (if any). Once the handler has safely reached a safe state, if should call
+'aws_channel_slot_on_handler_shutdown_complete'
 
 `size_t initial_window_size (struct aws_channel_handler *handler)`
 
