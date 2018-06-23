@@ -22,8 +22,13 @@ int aws_memory_pool_init(struct aws_memory_pool *mempool, struct aws_allocator *
     mempool->alloc = alloc;
     mempool->ideal_segment_count = ideal_segment_count;
     mempool->segment_size = segment_size;
+    mempool->data_ptr = aws_mem_acquire(alloc, ideal_segment_count * sizeof(void *));
 
-    aws_array_list_init_dynamic(&mempool->stack, alloc, ideal_segment_count, sizeof(void *));
+    if (!mempool->data_ptr) {
+        return AWS_OP_ERR;
+    }
+
+    aws_array_list_init_static(&mempool->stack, mempool->data_ptr, ideal_segment_count, sizeof(void *));
 
     for(uint16_t i = 0; i < ideal_segment_count; ++i) {
         void *memory = aws_mem_acquire(alloc, segment_size);
@@ -31,7 +36,6 @@ int aws_memory_pool_init(struct aws_memory_pool *mempool, struct aws_allocator *
             aws_array_list_push_back(&mempool->stack, &memory);
         }
         else {
-            aws_raise_error(AWS_ERROR_OOM);
             goto clean_up;
         }
     }
@@ -46,18 +50,23 @@ clean_up:
 void aws_memory_pool_clean_up(struct aws_memory_pool *mempool) {
     void *cur = NULL;
 
-    while(!aws_array_list_back(&mempool->stack, &cur)) {
+    while(aws_array_list_length(&mempool->stack) > 0) {
+        /* the only way this fails is not possible since I already checked the length. */
+        aws_array_list_back(&mempool->stack, &cur);
         aws_array_list_pop_back(&mempool->stack);
         aws_mem_release(mempool->alloc, cur);
     }
 
     aws_array_list_clean_up(&mempool->stack);
+    aws_mem_release(mempool->alloc, mempool->data_ptr);
 }
 
 void *aws_memory_pool_acquire(struct aws_memory_pool *mempool) {
     void *back = NULL;
-    if(!aws_array_list_back(&mempool->stack, &back)) {
+    if (aws_array_list_length(&mempool->stack) > 0) {
+        aws_array_list_back(&mempool->stack, &back);
         aws_array_list_pop_back(&mempool->stack);
+
         return back;
     }
 
@@ -83,15 +92,10 @@ int aws_message_pool_init(struct aws_message_pool *msg_pool, struct aws_allocato
     size_t msg_data_size = args->application_data_msg_data_size + sizeof(struct aws_io_message);
 
     if (aws_memory_pool_init(&msg_pool->application_data_pool, alloc, args->application_data_msg_count, msg_data_size)) {
-        goto cleanup_app_pool;
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
-
-cleanup_app_pool:
-    aws_memory_pool_clean_up(&msg_pool->application_data_pool);
-
-    return AWS_OP_ERR;
 }
 
 void aws_message_pool_clean_up(struct aws_message_pool *msg_pool) {
@@ -107,7 +111,7 @@ struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_p
     switch(message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
             message = aws_memory_pool_acquire(&msg_pool->application_data_pool);
-            max_size = msg_pool->application_data_pool.segment_size;
+            max_size = msg_pool->application_data_pool.segment_size - sizeof(struct aws_io_message);
             break;
         default:
             assert(0);
