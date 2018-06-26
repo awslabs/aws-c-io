@@ -107,16 +107,16 @@ int aws_pipe_half_close(struct aws_io_handle *handle) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor, size_t *written) {
+int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size, size_t *written) {
     assert(handle);
-    assert(cursor);
+    assert(src);
 
     if (written) {
         *written = 0;
     }
 
     /* Return early if there's no work */
-    if (cursor->len == 0) {
+    if (src_size == 0) {
         return AWS_OP_SUCCESS;
     }
 
@@ -136,10 +136,10 @@ int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor,
      */
     const DWORD PARTIAL_WRITE_RETRY_MIN = 128; /*If we can't write this many bytes, give up*/
     const DWORD PARTIAL_WRITE_RETRY_RSHIFT = 2; /*If we can't write, decrease bytes_to_write by rshifting this much*/
-    DWORD bytes_to_write = cursor->len > SUGGESTED_BUFFER_SIZE ? SUGGESTED_BUFFER_SIZE : (DWORD)cursor->len;
+    DWORD bytes_to_write = src_size > SUGGESTED_BUFFER_SIZE ? SUGGESTED_BUFFER_SIZE : (DWORD)src_size;
     DWORD bytes_written;
     while (true) {
-        if (!WriteFile(handle->data.handle, cursor->ptr, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/)) {
+        if (!WriteFile(handle->data.handle, src, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/)) {
             return raise_last_windows_error();
         }
 
@@ -154,8 +154,6 @@ int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor,
         bytes_to_write = bytes_to_write >> PARTIAL_WRITE_RETRY_RSHIFT;
     }
 
-    aws_byte_cursor_advance(cursor, (size_t)bytes_written);
-
     if (written) {
         *written = bytes_written;
     }
@@ -163,22 +161,20 @@ int aws_pipe_write(struct aws_io_handle *handle, struct aws_byte_cursor *cursor,
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_read(struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read) {
+int aws_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, size_t *amount_read) {
     assert(handle);
-    assert(buf);
+    assert(dst);
 
     if (amount_read) {
         *amount_read = 0;
     }
 
-    size_t remaining_capacity = buf->capacity - buf->len;
-
     /* Return early if there's no work */
-    if (remaining_capacity == 0) {
+    if (dst_size == 0) {
         return AWS_OP_SUCCESS;
     }
 
-    DWORD bytes_to_read = remaining_capacity > MAXDWORD ? MAXDWORD : (DWORD)remaining_capacity;
+    DWORD bytes_to_read = dst_size > MAXDWORD ? MAXDWORD : (DWORD)dst_size;
     DWORD bytes_read;
 
     /* https://msdn.microsoft.com/en-us/library/aa365605(v=vs.85).aspx
@@ -186,7 +182,7 @@ int aws_pipe_read(struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t
      *     using a nonblocking-wait handle, the function returns zero immediately,
      *     and the GetLastError function returns ERROR_NO_DATA.
      */
-    bool success = ReadFile(handle->data.handle, buf->buffer + buf->len, bytes_to_read, &bytes_read, NULL/*lpOverlapped*/);
+    bool success = ReadFile(handle->data.handle, dst, bytes_to_read, &bytes_read, NULL/*lpOverlapped*/);
 
     if (!success) {
         if (GetLastError() == ERROR_NO_DATA) {
@@ -195,8 +191,6 @@ int aws_pipe_read(struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t
 
         return raise_last_windows_error();
     }
-
-    buf->len += bytes_read;
 
     if (amount_read) {
         *amount_read = bytes_read;
