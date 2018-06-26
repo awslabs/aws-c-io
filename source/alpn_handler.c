@@ -90,7 +90,6 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(struct aws_allocator *alloc
     channel_handler->alloc = allocator;
 
     channel_handler->vtable = (struct aws_channel_handler_vtable){
-            .shutdown = NULL,
             .initial_window_size = alpn_get_current_window_size,
             .increment_read_window = NULL,
             .shutdown = alpn_shutdown,

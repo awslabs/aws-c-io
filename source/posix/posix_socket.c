@@ -32,6 +32,7 @@
 #include <zconf.h>
 #include <signal.h>
 #include <stdio.h>
+#include <aws/io/io.h>
 
 enum socket_state {
     INIT = 0x01,
@@ -79,7 +80,7 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
     fcntl(fd, F_SETFL, flags);
 
     if(fd != -1) {
-        sock->io_handle.data = fd;
+        sock->io_handle.data.fd = fd;
         sock->io_handle.additional_data = NULL;
         return aws_socket_set_options(sock, options);
     }
@@ -116,10 +117,16 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
+    socket->connection_loop = NULL;
+
+    if (options->type == AWS_SOCKET_STREAM) {
+        socket->connection_loop = connection_loop;
+    }
+
     socket->creation_args = *creation_args;
     socket->allocator = alloc;
-    socket->io_handle = (struct aws_io_handle){-1};
-    socket->connection_loop = connection_loop;
+    socket->io_handle.data.fd = -1;
+    socket->io_handle.additional_data = NULL;
     socket->state = INIT;
 
     return create_socket(socket, options);
@@ -128,7 +135,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
 void aws_socket_clean_up(struct aws_socket *socket) {
     aws_socket_shutdown(socket);
     *socket = (struct aws_socket){0};
-    socket->io_handle.data = -1;
+    socket->io_handle.data.fd = -1;
 }
 
 static void on_connection_error(struct aws_socket *socket, int error);
@@ -153,7 +160,7 @@ static int on_connection_success(struct aws_socket *socket) {
     int connect_result;
     socklen_t result_length = sizeof(connect_result);
 
-    if (getsockopt(socket->io_handle.data, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
+    if (getsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
         on_connection_error(socket, errno);
         return AWS_OP_ERR;
     }
@@ -165,7 +172,7 @@ static int on_connection_success(struct aws_socket *socket) {
     else {
         struct sockaddr_storage address = {0};
         socklen_t address_size = sizeof(address);
-        if (!getsockname(socket->io_handle.data, (struct sockaddr *)&address, &address_size)) {
+        if (!getsockname(socket->io_handle.data.fd, (struct sockaddr *)&address, &address_size)) {
             uint16_t port = 0;
 
             if (address.ss_family == AF_INET)
@@ -222,6 +229,8 @@ static int determine_socket_error(int error) {
         case EMFILE:
         case ENFILE:
             return AWS_IO_MAX_FDS_EXCEEDED;
+        case ENOENT:
+            return AWS_IO_FILE_NOT_FOUND;
         case 0:
             return AWS_IO_SOCKET_NOT_CONNECTED;
         default:
@@ -267,7 +276,8 @@ static void handle_socket_timeout (void *args, aws_task_status status) {
         if (socket_args->socket) {
             socket_args->socket->state = TIMEDOUT;
             aws_event_loop_unsubscribe_from_io_events(socket_args->socket->connection_loop, &socket_args->socket->io_handle);
-            close(socket_args->socket->io_handle.data);
+            socket_args->socket->connection_loop = NULL;
+            close(socket_args->socket->io_handle.data.fd);
 
             if (socket_args->socket->creation_args.on_error) {
                 socket_args->socket->creation_args.on_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT,
@@ -293,20 +303,20 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
             inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
             addr_in.sin_port = htons((uint16_t)atoi(remote_endpoint->port));
             addr_in.sin_family = AF_INET;
-            error_code = connect(socket->io_handle.data, (struct sockaddr *)&addr_in, sizeof(addr_in));
+            error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
         }
         else if (socket->options.domain == AWS_SOCKET_IPV6) {
             struct sockaddr_in6 addr_in;
             inet_pton(AF_INET6, remote_endpoint->address, &(addr_in.sin6_addr));
             addr_in.sin6_port = htons((uint16_t)atoi(remote_endpoint->port));
             addr_in.sin6_family = AF_INET6;
-            error_code = connect(socket->io_handle.data, (struct sockaddr *)&addr_in, sizeof(addr_in));
+            error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
         }
         else if (socket->options.domain == AWS_SOCKET_LOCAL) {
             struct sockaddr_un addr = {0};
             addr.sun_family = AF_UNIX;
             strncpy(addr.sun_path, remote_endpoint->socket_name, sizeof(addr.sun_path) - 1);
-            error_code = connect (socket->io_handle.data, (const struct sockaddr *) &addr,
+            error_code = connect (socket->io_handle.data.fd, (const struct sockaddr *) &addr,
                            sizeof(struct sockaddr_un));
         }
         else {
@@ -315,6 +325,7 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
         }
 
         if(!error_code) {
+            socket->connection_loop = NULL;
             on_connection_success(socket);
             return AWS_OP_SUCCESS;
         }
@@ -325,7 +336,7 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
                                                                                                     sizeof(struct socket_connect_args));
 
             if (!sock_args) {
-                close(socket->io_handle.data);
+                close(socket->io_handle.data.fd);
                 return AWS_OP_ERR;
             }
 
@@ -351,10 +362,12 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
             return AWS_OP_ERR;
         }
 
+        socket->connection_loop = NULL;
         on_connection_error(socket, error_code);
         return AWS_OP_ERR;
     }
 
+    socket->connection_loop = NULL;
     return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
 }
 
@@ -375,20 +388,20 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
         inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
         addr_in.sin_port = htons((uint16_t)atoi(local_endpoint->port));
         addr_in.sin_family = AF_INET;
-        error_code = bind(socket->io_handle.data, (struct sockaddr *)&addr_in, sizeof(addr_in));
+        error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
     }
     else if (socket->options.domain == AWS_SOCKET_IPV6) {
         struct sockaddr_in6 addr_in;
         inet_pton(AF_INET6, local_endpoint->address, &(addr_in.sin6_addr));
         addr_in.sin6_port = htons((uint16_t)atoi(local_endpoint->port));
         addr_in.sin6_family = AF_INET6;
-        error_code = bind(socket->io_handle.data, (struct sockaddr *)&addr_in, sizeof(addr_in));
+        error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
     }
     else if (socket->options.domain == AWS_SOCKET_LOCAL) {
         struct sockaddr_un name = {0};
         name.sun_family = AF_UNIX;
         strncpy(name.sun_path, local_endpoint->socket_name , sizeof(name.sun_path) - 1);
-        error_code = bind(socket->io_handle.data, (const struct sockaddr *) &name, sizeof(struct sockaddr_un));
+        error_code = bind(socket->io_handle.data.fd, (const struct sockaddr *) &name, sizeof(struct sockaddr_un));
     }
 
     if(!error_code) {
@@ -402,9 +415,10 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
         return AWS_OP_SUCCESS;
     }
 
+    socket->connection_loop = NULL;
     socket->state = ERROR;
     error_code = errno;
-    if(error_code == EACCES) {
+    if(error_code == EACCES || error_code == EPERM) {
         return aws_raise_error(AWS_IO_NO_PERMISSION);
     }
 
@@ -432,7 +446,7 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    int error_code = listen(socket->io_handle.data, backlog_size);
+    int error_code = listen(socket->io_handle.data.fd, backlog_size);
 
     if(!error_code) {
         socket->state = LISTENING;
@@ -458,7 +472,7 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
             struct sockaddr_storage in_addr;
             socklen_t in_len = sizeof(struct sockaddr_storage);
 
-            in_fd = accept(handle->data, (struct sockaddr *) &in_addr, &in_len);
+            in_fd = accept(handle->data.fd, (struct sockaddr *) &in_addr, &in_len);
             if (in_fd == -1) {
                 int error = errno;
 
@@ -477,14 +491,14 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
             }
 
             new_sock->allocator = socket->allocator;
-            new_sock->io_handle = (struct aws_io_handle){.data = in_fd, .additional_data = NULL};
+            new_sock->io_handle = (struct aws_io_handle){.data = {.fd = in_fd}, .additional_data = NULL};
             new_sock->creation_args = (struct aws_socket_creation_args){0};
             new_sock->connection_loop = NULL;
             new_sock->options = (struct aws_socket_options){0};
             new_sock->options.type = AWS_SOCKET_STREAM;
             new_sock->state = CONNECTED_WRITE | CONNECTED_READ;
             memcpy(&new_sock->local_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
-            new_sock->remote_endpoint = (struct aws_socket_endpoint){0};
+            memset(&new_sock->remote_endpoint, 0, sizeof(struct aws_socket_endpoint));
 
             uint16_t port = 0;
 
@@ -539,35 +553,37 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
     }
 
-    return aws_event_loop_unsubscribe_from_io_events(socket->connection_loop, &socket->io_handle);
+    int ret_val = aws_event_loop_unsubscribe_from_io_events(socket->connection_loop, &socket->io_handle);
+    socket->connection_loop = NULL;
+    return ret_val;
 }
 
 int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options) {
     socket->options = *options;
 
     int reuse = 1;
-    setsockopt(socket->io_handle.data, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
+    setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
 
     if (socket->options.send_timeout) {
         int send_timeout = (int) socket->options.send_timeout;
-        setsockopt(socket->io_handle.data, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(int));
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(int));
     }
 
     if (socket->options.read_timeout) {
         int read_timeout = (int) socket->options.read_timeout;
-        setsockopt(socket->io_handle.data, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof(int));
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof(int));
     }
 
     if (socket->options.keepalive) {
         int keep_alive = 1;
-        setsockopt(socket->io_handle.data, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int));
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int));
     }
 
     if (socket->options.linger_time) {
         struct linger linger;
         linger.l_onoff = 1;
         linger.l_linger = (int) socket->options.linger_time;
-        setsockopt(socket->io_handle.data, SOL_SOCKET, SO_LINGER, &linger, sizeof(struct linger));
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(struct linger));
     }
 
     return AWS_OP_SUCCESS;
@@ -583,9 +599,9 @@ int aws_socket_shutdown(struct aws_socket *socket) {
         socket->connection_loop = NULL;
     }
 
-    if (socket->io_handle.data >= 0) {
-        close(socket->io_handle.data);
-        socket->io_handle.data = -1;
+    if (socket->io_handle.data.fd >= 0) {
+        close(socket->io_handle.data.fd);
+        socket->io_handle.data.fd = -1;
     }
 
     return AWS_OP_SUCCESS;
@@ -594,7 +610,7 @@ int aws_socket_shutdown(struct aws_socket *socket) {
 int aws_socket_half_close(struct aws_socket *socket, aws_channel_direction dir) {
     int how = dir == AWS_CHANNEL_DIR_READ ? 0 : 1;
 
-    if (shutdown(socket->io_handle.data, how)) {
+    if (shutdown(socket->io_handle.data.fd, how)) {
         on_connection_error(socket, errno);
         return AWS_OP_ERR;
     }
@@ -607,7 +623,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t read_val = read(socket->io_handle.data, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
+    ssize_t read_val = read(socket->io_handle.data.fd, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
@@ -639,7 +655,7 @@ int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cu
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    ssize_t write_val = send(socket->io_handle.data, cursor->ptr, cursor->len, NO_SIGNAL);
+    ssize_t write_val = send(socket->io_handle.data.fd, cursor->ptr, cursor->len, NO_SIGNAL);
 
     if (write_val > 0) {
         *written = (size_t)write_val;
@@ -662,7 +678,7 @@ int aws_socket_get_error(struct aws_socket *socket) {
     int connect_result;
     socklen_t result_length = sizeof(connect_result);
 
-    if (getsockopt(socket->io_handle.data, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
+    if (getsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
         return AWS_OP_ERR;
     }
 
@@ -674,5 +690,5 @@ int aws_socket_get_error(struct aws_socket *socket) {
 }
 
 bool aws_socket_is_open(struct aws_socket *socket) {
-    return socket->io_handle.data >= 0;
+    return socket->io_handle.data.fd >= 0;
 }

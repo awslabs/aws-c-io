@@ -205,11 +205,14 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .alpn_list = "h2;http/1.1",
             .server_name = "localhost",
             .verify_peer = false,
-            .server_name = NULL,
             .ca_path = NULL,
             .ca_file = NULL,
+#ifdef __APPLE__
+            .pkcs12_path = "./unittests.p12",
+#else
             .private_key_path = "./unittests.key",
             .certificate_path = "./unittests.crt",
+#endif
             .version_blacklist = 0,
     };
 
@@ -232,8 +235,12 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .server_name = NULL,
             .ca_path = NULL,
             .ca_file = "./unittests.crt",
+#ifdef __APPLE__
+            .pkcs12_path = NULL,
+#else
             .private_key_path = NULL,
             .certificate_path = NULL,
+#endif
             .version_blacklist = 0
     };
 
@@ -263,7 +270,6 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     };
 
     struct aws_tls_connection_options tls_client_conn_options = {
-            .server_name = NULL,
             .verify_peer = true,
             .alpn_list = NULL,
             .verify_host_fn = tls_verify_host_trust_all,
@@ -400,7 +406,6 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
     };
 
     struct aws_tls_connection_options tls_client_conn_options = {
-            .server_name = NULL,
             .verify_peer = true,
             .alpn_list = NULL,
             .verify_host_fn = tls_verify_host_trust_none,
@@ -415,11 +420,14 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .alpn_list = "h2;http/1.1",
             .server_name = "localhost",
             .verify_peer = false,
-            .server_name = NULL,
             .ca_path = NULL,
             .ca_file = NULL,
+#ifdef __APPLE__
+            .pkcs12_path = "./unittests.p12",
+#else
             .private_key_path = "./unittests.key",
             .certificate_path = "./unittests.crt",
+#endif
             .version_blacklist = 0,
     };
 
@@ -442,8 +450,12 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .server_name = NULL,
             .ca_path = NULL,
             .ca_file = "./unittests.crt",
-            .private_key_path = NULL,
+#ifdef __APPLE__
+            .pkcs12_path = NULL,
+#else
+    .private_key_path = NULL,
             .certificate_path = NULL,
+#endif
             .version_blacklist = 0
     };
 

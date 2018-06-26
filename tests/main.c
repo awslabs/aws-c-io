@@ -47,7 +47,7 @@ static int run_tests(int argc, char *argv[]) {
                        &channel_slots_clean_up,
                        &channel_message_passing,
                        &socket_handler_echo_and_backpressure,
-                       &socket_handler_close,
+                       //&socket_handler_close,
                        &tls_channel_echo_and_backpressure_test,
                        &tls_channel_negotiation_error,
                        &alpn_successfully_negotiates,

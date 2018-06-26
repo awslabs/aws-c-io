@@ -378,7 +378,7 @@ int aws_server_bootstrap_init (struct aws_server_bootstrap *bootstrap, struct aw
 }
 
 void aws_server_bootstrap_clean_up (struct aws_server_bootstrap *bootstrap) {
-    (void *)bootstrap;
+    (void)bootstrap;
 }
 
 struct server_connection_args {

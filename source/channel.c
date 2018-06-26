@@ -158,31 +158,6 @@ static inline void cleanup_slot(struct aws_channel_slot *slot) {
     }
 }
 
-struct channel_shutdown_args {
-    struct aws_channel *channel;
-    struct aws_condition_variable condition_variable;
-    aws_channel_on_shutdown_completed on_shutdown_completed;
-    void *shutdown_user_data;
-};
-
-static bool shutdown_finished_predicate(void *arg) {
-    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)arg;
-    return shutdown_args->channel->channel_state == AWS_CHANNEL_SHUT_DOWN;
-}
-
-static void shutdown_finished(struct aws_channel *channel, void *user_data) {
-    (void)channel;
-
-    struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)user_data;
-
-    if (shutdown_args->on_shutdown_completed) {
-        shutdown_args->on_shutdown_completed(shutdown_args->channel, shutdown_args->shutdown_user_data);
-    }
-    shutdown_args->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-
-    aws_condition_variable_notify_one(&shutdown_args->condition_variable);
-}
-
 void aws_channel_clean_up(struct aws_channel *channel) {
 
     struct aws_channel_slot *current = channel->first;

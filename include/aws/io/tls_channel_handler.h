@@ -58,8 +58,12 @@ struct aws_tls_ctx_options {
     const char *ca_path;
     const char *alpn_list;
     const char *server_name;
+#ifndef __APPLE__
     const char *certificate_path;
     const char *private_key_path;
+#else
+    const char *pkcs12_path;
+#endif
     bool verify_peer;
 };
 

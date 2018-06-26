@@ -147,7 +147,7 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
 
     /* now test the read and write across the connection. */
     const char read_data[] = "I'm a little teapot";
-    const char write_data[sizeof(read_data)] = {0};
+    char write_data[sizeof(read_data)] = {0};
 
     struct aws_byte_buf read_buffer = aws_byte_buf_from_array((const uint8_t *)read_data, sizeof(read_data));
     struct aws_byte_buf write_buffer = aws_byte_buf_from_array((const uint8_t *)write_data, sizeof(write_data));
@@ -158,8 +158,17 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     size_t data_len = 0;
     ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_cursor, &data_len));
     ASSERT_INT_EQUALS(read_cursor.len, data_len);
-    ASSERT_SUCCESS(aws_socket_read(server_sock, &write_buffer, &data_len));
-    ASSERT_INT_EQUALS(write_buffer.len, data_len);
+
+    size_t read = 0;
+    while (read < read_buffer.len)
+    {
+        data_len = 0;
+        if (aws_socket_read(server_sock, &write_buffer, &data_len))
+        {
+            ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
+        }
+        read += data_len;
+    }
 
     ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
 
@@ -169,7 +178,15 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     if (options->type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, &data_len));
         ASSERT_INT_EQUALS(read_buffer.len, data_len);
-        ASSERT_SUCCESS(aws_socket_read(&outgoing, &write_buffer, &data_len));
+        read = 0;
+        write_buffer.len = 0;
+        while (read < read_buffer.len) {
+            data_len = 0;
+            if (aws_socket_read(&outgoing, &write_buffer, &data_len)) {
+                ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
+            }
+            read += data_len;
+        }
         ASSERT_INT_EQUALS(read_buffer.len, data_len);
 
         ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
@@ -343,8 +360,10 @@ static int test_outgoing_local_sock_errors (struct aws_allocator *allocator, voi
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
-    ASSERT_ERROR(AWS_IO_SOCKET_CONNECTION_REFUSED, aws_socket_connect(&outgoing, &endpoint));
-    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+
+    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_TRUE(aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_IO_FILE_NOT_FOUND);
+    ASSERT_TRUE(args.error_code == AWS_IO_SOCKET_CONNECTION_REFUSED || args.error_code == AWS_IO_FILE_NOT_FOUND);
 
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);

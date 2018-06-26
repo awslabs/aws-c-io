@@ -62,8 +62,13 @@ elseif (APPLE)
             message(FATAL_ERROR "Security framework not found")
         endif ()
 
+        find_library(CORE_FOUNDATION_LIB CoreFoundation)
+        if (NOT CORE_FOUNDATION_LIB)
+            message(FATAL_ERROR "Core Foundation not founc")
+        endif ()
+
         #No choice on TLS for darwin, darwinssl will always be used.
-        set(PLATFORM_LIBS ${SECURITY_LIB})
+        set(PLATFORM_LIBS ${SECURITY_LIB} ${CORE_FOUNDATION_LIB})
         set(TLS_STACK_DETERMINED ON)
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")

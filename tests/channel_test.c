@@ -281,6 +281,7 @@ static int test_channel_message_passing (struct aws_allocator *allocator, void *
             .condition_variable = &shutdown_condition,
     };
 
+
     struct channel_rw_test_args handler_3_args = {
             .shutdown_completed = false,
             .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_1_latest_message)),
