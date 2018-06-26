@@ -21,6 +21,10 @@
 
 #include <assert.h>
 
+#if _MSC_VER
+#pragma warning(disable:4204) /* non-constant aggregate initializer */
+#endif
+
 static size_t MESSAGE_POOL_KEY = 0;
 static size_t KB_16 = 16 * 1024;
 
@@ -167,6 +171,8 @@ static bool shutdown_finished_predicate(void *arg) {
 }
 
 static void shutdown_finished(struct aws_channel *channel, void *user_data) {
+    (void)channel;
+
     struct channel_shutdown_args *shutdown_args = (struct channel_shutdown_args *)user_data;
 
     if (shutdown_args->on_shutdown_completed) {
@@ -300,6 +306,7 @@ int aws_channel_fetch_local_object(struct aws_channel *channel, const void *key,
 }
 int aws_channel_put_local_object(struct aws_channel *channel, const void *key,
                                  const struct aws_event_loop_local_object *obj) {
+    (void)key;
     return aws_event_loop_put_local_object(channel->loop, (struct aws_event_loop_local_object *) obj);
 }
 

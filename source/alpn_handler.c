@@ -54,10 +54,12 @@ int alpn_process_read_message ( struct aws_channel_handler *handler, struct aws_
 
 static int alpn_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir, int error_code, bool abort_immediately) {
+    (void)handler;
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 size_t alpn_get_current_window_size (struct aws_channel_handler *handler) {
+    (void)handler;
     return SIZE_MAX;
 }
 

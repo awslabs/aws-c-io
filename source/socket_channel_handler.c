@@ -19,6 +19,9 @@
 
 #include <assert.h>
 
+#if _MSC_VER
+#pragma warning(disable:4204) /* non-constant aggregate initializer */
+#endif
 
 struct socket_handler {
     struct aws_socket *socket;
@@ -33,6 +36,10 @@ struct socket_handler {
 
 static int socket_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                         struct aws_io_message *message) {
+    (void)handler;
+    (void)slot;
+    (void)message;
+
     /*this should NEVER happen, if it does it's a programmer error.*/
     assert(0);
     return aws_raise_error(AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT);
@@ -119,6 +126,7 @@ static int do_write(struct socket_handler *socket_handler) {
 
 static int socket_process_write_message( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                struct aws_io_message *message ) {
+    (void)slot;
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
     if (message) {
@@ -183,6 +191,9 @@ static void read_task(void *arg, aws_task_status status) {
 }
 
 static void on_socket_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *arg) {
+    (void)event_loop;
+    (void)handle;
+
     struct aws_channel_handler *channel_handler = (struct aws_channel_handler *)arg;
     struct socket_handler *socket_handler = (struct socket_handler *)channel_handler->impl;
 
@@ -208,6 +219,7 @@ static void on_socket_event(struct aws_event_loop *event_loop, struct aws_io_han
 }
 
 int socket_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+    (void)size;
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
     if (!socket_handler->shutdown_in_progress) {
@@ -228,6 +240,7 @@ int socket_increment_read_window(struct aws_channel_handler *handler, struct aws
 }
 
 static void shutdown_task(void *arg, aws_task_status status) {
+    (void)status;
     struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
     struct socket_handler *socket_handler = (struct socket_handler *) handler->impl;
 
@@ -288,6 +301,7 @@ static int socket_shutdown(struct aws_channel_handler *handler, struct aws_chann
 }
 
 size_t socket_get_current_window_size (struct aws_channel_handler *handler) {
+    (void)handler;
     return SIZE_MAX;
 }
 

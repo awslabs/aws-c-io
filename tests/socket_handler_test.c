@@ -196,7 +196,7 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
 
     struct aws_socket_endpoint endpoint;
 
-    sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -315,7 +315,7 @@ static int socket_close_test (struct aws_allocator *allocator, void *user_data) 
 
     struct aws_socket_endpoint endpoint;
 
-    sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));

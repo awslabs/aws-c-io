@@ -198,7 +198,7 @@ static int test_local_socket_communication (struct aws_allocator *allocator, voi
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
 
-    sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
 
     return test_socket(allocator, &options, &endpoint);
 }

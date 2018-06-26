@@ -19,6 +19,10 @@
 #include <assert.h>
 
 
+#if _MSC_VER
+#pragma warning(disable:4204) /* non-constant aggregate initializer */
+#endif
+
 int aws_client_bootstrap_init (struct aws_client_bootstrap *bootstrap, struct aws_allocator *allocator, struct aws_event_loop_group *el_group) {
     assert(allocator);
     assert(el_group);
@@ -249,6 +253,7 @@ error:
 }
 
 static void on_client_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
+    (void)socket;
     struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
 
     connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
@@ -270,7 +275,6 @@ static inline int new_client_channel(struct aws_client_bootstrap *bootstrap,
             (struct client_connection_args *)aws_mem_acquire(bootstrap->allocator, sizeof(struct client_connection_args));
 
     if (!client_connection_args) {
-        aws_mem_release(bootstrap->allocator, (void *)socket);
         return AWS_OP_ERR;
     }
 
@@ -556,6 +560,7 @@ static void on_server_channel_on_shutdown(struct aws_channel *channel, void *use
 }
 
 void on_server_connection_established(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
+    (void)socket;
     struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
 
     struct server_channel_data *channel_data =
@@ -594,6 +599,7 @@ error_cleanup:
 }
 
 void on_server_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
+    (void)socket;
     struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
 
     connection_args->incoming_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);

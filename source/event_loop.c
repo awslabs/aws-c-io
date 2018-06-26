@@ -46,6 +46,7 @@ cleanup_error:
 }
 
 static struct aws_event_loop *default_new_event_loop(struct aws_allocator *allocator, aws_io_clock clock, void *user_data) {
+    (void)user_data;
     return aws_event_loop_default_new(allocator, clock);
 }
 
