@@ -13,7 +13,7 @@
 * permissions and limitations under the License.
 */
 #include <aws/common/byte_buf.h>
-#include <aws/io/io.h.>
+#include <aws/io/io.h>
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 

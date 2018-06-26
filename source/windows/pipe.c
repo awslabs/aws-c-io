@@ -115,11 +115,6 @@ int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_
         *written = 0;
     }
 
-    /* Return early if there's no work */
-    if (src_size == 0) {
-        return AWS_OP_SUCCESS;
-    }
-
     /* HACK:
      * Despite what the documentation says:
      * https://msdn.microsoft.com/en-us/library/aa365605(v=vs.85).aspx
@@ -143,15 +138,14 @@ int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_
             return raise_last_windows_error();
         }
 
-        if (bytes_written > 0) {
+        if (bytes_written > 0 || bytes_to_write == 0) {
             break;
         }
 
+        bytes_to_write = bytes_to_write >> PARTIAL_WRITE_RETRY_RSHIFT;
         if (bytes_to_write < PARTIAL_WRITE_RETRY_MIN) {
             return aws_raise_error(AWS_IO_WRITE_WOULD_BLOCK);
         }
-
-        bytes_to_write = bytes_to_write >> PARTIAL_WRITE_RETRY_RSHIFT;
     }
 
     if (written) {
@@ -167,11 +161,6 @@ int aws_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, s
 
     if (amount_read) {
         *amount_read = 0;
-    }
-
-    /* Return early if there's no work */
-    if (dst_size == 0) {
-        return AWS_OP_SUCCESS;
     }
 
     DWORD bytes_to_read = dst_size > MAXDWORD ? MAXDWORD : (DWORD)dst_size;
