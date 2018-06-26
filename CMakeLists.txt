@@ -114,6 +114,13 @@ set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES LINKER_LANGUAGE C)
 set(CMAKE_C_FLAGS_DEBUGOPT "")
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY C_STANDARD 99)
 
+#set warnings
+if (MSVC)
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4 /WX)
+else ()
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wno-long-long -pedantic -Werror)
+endif ()
+
 if (BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_IO_EXPORTS")
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DUSE_IMPORT_EXPORT")

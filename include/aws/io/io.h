@@ -23,9 +23,9 @@
 
 struct aws_io_handle {
     union {
-        int data;
-        void *dataptr;
-    };
+        int fd;
+        void *handle;
+    } data;
     void *additional_data;
 };
 

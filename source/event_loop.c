@@ -88,8 +88,8 @@ AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_
 }
 
 
-static void object_removed(void *val) {
-    struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)val;
+static void object_removed(void *value) {
+    struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)value;
     if(object->on_object_removed) {
         object->on_object_removed(object);
     }
