@@ -186,7 +186,8 @@ static int socket_echo_and_backpressure_test (struct aws_allocator *allocator, v
             .rw_handler = outgoing_rw_handler,
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
@@ -305,7 +306,8 @@ static int socket_close_test (struct aws_allocator *allocator, void *user_data) 
             .rw_slot = NULL
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;

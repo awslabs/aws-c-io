@@ -282,7 +282,8 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .user_data = &outgoing_args
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
@@ -473,7 +474,8 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .shutdown_finished = false,
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
