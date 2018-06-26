@@ -87,7 +87,7 @@ struct epoll_event_data {
 
 /* default timeout is 100 seconds */
 static const int DEFAULT_TIMEOUT = 100 * 1000;
-static const int MAX_EVENTS = 100;
+#define MAX_EVENTS 100
 static const int NANO_TO_MILLIS = 1000000;
 
 /* Setup edge triggered epoll with a scheduler. */
