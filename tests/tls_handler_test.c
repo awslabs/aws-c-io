@@ -217,6 +217,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     };
 
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
+    ASSERT_NOT_NULL(server_ctx);
 
     struct tls_test_args incoming_args = {
             .mutex = &mutex,
