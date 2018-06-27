@@ -278,7 +278,7 @@ static inline int new_client_channel(struct aws_client_bootstrap *bootstrap,
         return AWS_OP_ERR;
     }
 
-    memset((void *)client_connection_args, 0, sizeof(struct client_connection_args));
+    AWS_ZERO_STRUCT(*client_connection_args);
     client_connection_args->user_data = user_data;
     client_connection_args->bootstrap = bootstrap;
     client_connection_args->setup_callback = setup_callback;
@@ -570,7 +570,7 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
         goto error_cleanup;
     }
 
-    memset((void *)channel_data, 0, sizeof(struct server_channel_data));
+    AWS_ZERO_STRUCT(*channel_data);
     channel_data->socket = new_socket;
     channel_data->server_connection_args = connection_args;
 
@@ -623,7 +623,7 @@ static inline struct aws_socket *server_add_socket_listener(struct aws_server_bo
         goto cleanup_server_connection_args;
     }
 
-    memset((void *)server_connection_args, 0, sizeof(struct server_connection_args));
+    AWS_ZERO_STRUCT(*server_connection_args);
     server_connection_args->user_data = user_data;
     server_connection_args->bootstrap = bootstrap;
     server_connection_args->shutdown_callback = shutdown_callback;

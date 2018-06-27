@@ -150,7 +150,8 @@ int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *
                                        struct aws_event_loop_local_object *removed_obj) {
     assert(aws_event_loop_thread_is_callers_thread(event_loop));
 
-    struct aws_hash_element existing_object = {0};
+    struct aws_hash_element existing_object;
+    AWS_ZERO_STRUCT(existing_object);
     int was_present = 0;
 
     struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;

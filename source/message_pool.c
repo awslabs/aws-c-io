@@ -101,7 +101,7 @@ int aws_message_pool_init(struct aws_message_pool *msg_pool, struct aws_allocato
 void aws_message_pool_clean_up(struct aws_message_pool *msg_pool) {
     aws_memory_pool_clean_up(&msg_pool->application_data_pool);
 
-    *msg_pool = (struct aws_message_pool){0};
+    AWS_ZERO_STRUCT(*msg_pool);
 }
 
 struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool* msg_pool, aws_io_message_type message_type,

@@ -49,7 +49,8 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
     struct aws_event_loop_local_object *local_object = NULL;
 
     if (task_status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_event_loop_local_object stack_obj = (struct aws_event_loop_local_object){0};
+        struct aws_event_loop_local_object stack_obj;
+        AWS_ZERO_STRUCT(stack_obj);
         local_object = &stack_obj;
 
         if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &MESSAGE_POOL_KEY, local_object) ) {
@@ -179,7 +180,7 @@ void aws_channel_clean_up(struct aws_channel *channel) {
         current = tmp;
     }
 
-    *channel = (struct aws_channel){0};
+    AWS_ZERO_STRUCT(*channel);
 }
 
 struct channel_shutdown_task_args {
