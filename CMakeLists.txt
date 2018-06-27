@@ -29,7 +29,7 @@ if (WIN32)
         source_group("Header Files\\aws\\io" FILES ${AWS_IO_HEADERS})
         source_group("Header Files\\aws\\io\\private" FILES ${AWS_IO_PRIV_HEADERS})
         source_group("Source Files" FILES ${AWS_IO_SRC})
-        source_group("Source Files\\windows" FILES ${AWS_OS_SRC})
+        source_group("Source Files\\windows" FILES ${AWS_IO_OS_SRC})
     endif ()
     #platform libs come from aws-c-common transitively, so we don't specify them here, but for documentation purposes,
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
@@ -113,6 +113,13 @@ set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES LINKER_LANGUAGE C)
 
 set(CMAKE_C_FLAGS_DEBUGOPT "")
 set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY C_STANDARD 99)
+
+#set warnings
+if (MSVC)
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4 /WX)
+else ()
+    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wno-long-long -pedantic -Werror)
+endif ()
 
 if (BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_IO_EXPORTS")
