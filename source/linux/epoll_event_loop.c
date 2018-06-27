@@ -95,7 +95,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
 
     if (!loop) {
-        aws_raise_error(AWS_ERROR_OOM);
         return NULL;
     }
 
@@ -106,7 +105,6 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     struct epoll_loop *epoll_loop = aws_mem_acquire(alloc, sizeof(struct epoll_loop));
 
     if (!epoll_loop) {
-        aws_raise_error(AWS_ERROR_OOM);
         goto clean_up_loop;
     }
 
@@ -262,13 +260,13 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
     struct task_data *task_data = (struct task_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct task_data));
 
     if (!task_data) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     task_data->task = *task;
     task_data->timestamp = run_at;
-
     aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+
     uint64_t counter = 1;
 
     /* if the list is not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
@@ -296,7 +294,7 @@ static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws
     handle->additional_data = NULL;
 
     if (!epoll_event_data) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
@@ -384,8 +382,6 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
 
     handle->additional_data = NULL;
 
-
-
     if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &compat_event))) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -403,7 +399,6 @@ static bool is_on_callers_thread (struct aws_event_loop * event_loop) {
  * This is the event handler for events on that pipe.*/
 static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
-
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         uint64_t count_we_dont_care_about = 0;
 

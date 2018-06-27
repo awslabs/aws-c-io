@@ -35,6 +35,8 @@ static struct aws_error_info errors[] = {
                               "Failed to create tls context", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_MISSING_ALPN_MESSAGE,
                               "An ALPN message was expected but not received", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE,
+                              "An ALPN message was received but a handler was not created by the user", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_FILE_NOT_FOUND,
                               "Unable to open file", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_FILE_VALIDATION_FAILURE,
