@@ -33,6 +33,7 @@ int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_
         if (!loop ||
                 aws_array_list_push_back(&el_group->event_loops, (const void *)&loop) ||
                 aws_event_loop_run(loop)) {
+            aws_event_loop_destroy(loop);
             goto cleanup_error;
         }
     }
@@ -49,16 +50,14 @@ static struct aws_event_loop *default_new_event_loop(struct aws_allocator *alloc
     return aws_event_loop_default_new(allocator, clock);
 }
 
-AWS_IO_API int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
-    /* note, it's common practice these days to use cpu_count * 2, but on most architectures, hyper-threading is built into
-     * the cpu count, so just use the actual cpu count. */
+int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
     uint16_t cpu_count = (uint16_t)aws_system_info_processor_count();
 
     return aws_event_loop_group_init(el_group, alloc, aws_high_res_clock_get_ticks, cpu_count,
                                      default_new_event_loop, NULL);
 }
 
-AWS_IO_API void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
+void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 
@@ -72,7 +71,7 @@ AWS_IO_API void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_gr
     aws_array_list_clean_up(&el_group->event_loops);
 }
 
-AWS_IO_API struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group) {
+struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group) {
     size_t loop_count = aws_array_list_length(&el_group->event_loops);
 
     /* thread safety: we don't really care. It's always incrementing and it doesn't have to be perfect, this
@@ -149,7 +148,8 @@ int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *
                                        struct aws_event_loop_local_object *removed_obj) {
     assert(aws_event_loop_thread_is_callers_thread(event_loop));
 
-    struct aws_hash_element existing_object = {0};
+    struct aws_hash_element existing_object;
+    AWS_ZERO_STRUCT(existing_object);
     int was_present = 0;
 
     struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;
