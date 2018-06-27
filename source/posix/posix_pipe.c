@@ -14,7 +14,6 @@
 */
 
 #include <aws/io/io.h>
-#include <aws/common/byte_buf.h>
 
 #ifdef __GLIBC__
 #define __USE_GNU
@@ -31,10 +30,13 @@
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
-#include <stdlib.h>
-
 
 int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    read_handle->data.fd = -1;
+    read_handle->additional_data = NULL;
+    write_handle->data.fd = -1;
+    write_handle->additional_data = NULL;
+
     int pipe_fds[2] = {0};
 
 #if HAVE_PIPE2
@@ -53,11 +55,9 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
     flags |= O_NONBLOCK | O_CLOEXEC;
     fcntl(pipe_fds[1], F_SETFL, flags);
 #endif
-    read_handle->data.fd = pipe_fds[0];
-    read_handle->additional_data = NULL;
 
+    read_handle->data.fd = pipe_fds[0];
     write_handle->data.fd = pipe_fds[1];
-    write_handle->additional_data = NULL;
 
     return AWS_OP_SUCCESS;
 }
@@ -82,12 +82,20 @@ int aws_pipe_half_close(struct aws_io_handle *handle) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *cursor, size_t *written) {
+int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size, size_t *written) {
+    assert(handle);
+    assert(src);
 
-    ssize_t write_val = write(handle->data.fd, cursor->ptr, cursor->len);
+    if (written) {
+        *written = 0;
+    }
 
-    if (write_val > 0) {
-        *written = (size_t)write_val;
+    ssize_t write_val = write(handle->data.fd, src, src_size);
+
+    if (write_val >= 0) {
+        if (written) {
+            *written = (size_t) write_val;
+        }
         return AWS_OP_SUCCESS;
     }
 
@@ -103,11 +111,20 @@ int aws_pipe_write (struct aws_io_handle *handle, const struct aws_byte_cursor *
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
-int aws_pipe_read (struct aws_io_handle *handle, struct aws_byte_buf *buf, size_t *amount_read) {
-    ssize_t read_val = read(handle->data.fd, buf->buffer, buf->len);
+int aws_pipe_read (struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, size_t *amount_read) {
+    assert(handle);
+    assert(dst);
 
-    if (read_val > 0) {
-        *amount_read = (size_t)read_val;
+    if(amount_read) {
+        *amount_read = 0;
+    }
+
+    ssize_t read_val = read(handle->data.fd, dst, dst_size);
+
+    if (read_val >= 0) {
+        if (amount_read) {
+            *amount_read = (size_t)read_val;
+        }
         return AWS_OP_SUCCESS;
     }
 

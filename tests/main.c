@@ -19,6 +19,7 @@
 #pragma warning(disable:4221) /* initialization using address of automatic variable */
 #endif
 
+#include <pipe_test.c>
 #include <event_loop_test.c>
 #include <socket_test.c>
 #include <channel_test.c>
@@ -27,7 +28,10 @@
 #include <alpn_handler_test.c>
 
 static int run_tests(int argc, char *argv[]) {
-    AWS_RUN_TEST_CASES(&xthread_scheduled_tasks_execute,
+    AWS_RUN_TEST_CASES(&pipe_open_close,
+                       &pipe_read_write,
+                       &pipe_read_write_large_buffer,
+                       &xthread_scheduled_tasks_execute,
                        &read_write_notifications,
                        &stop_then_restart,
                        &channel_setup,
