@@ -21,11 +21,7 @@
 
 #include <pipe_test.c>
 #include <event_loop_test.c>
-#include <socket_test.c>
 #include <channel_test.c>
-#include <socket_handler_test.c>
-#include <tls_handler_test.c>
-#include <alpn_handler_test.c>
 
 static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&pipe_open_close,
@@ -45,3 +41,4 @@ int main (int argc, char *argv[]) {
     int ret_val = run_tests(argc, argv);
     return ret_val;
 }
+
