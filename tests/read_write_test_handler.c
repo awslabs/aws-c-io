@@ -119,6 +119,7 @@ struct aws_channel_handler *rw_test_handler_new(struct aws_allocator *allocator,
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)aws_mem_acquire(allocator, sizeof(struct rw_test_handler_impl));
     handler_impl->shutdown_called = false;
     handler_impl->increment_read_window_called = false;
+
     handler_impl->on_read = on_read;
     handler_impl->on_write = on_write;
     handler_impl->ctx = ctx;
@@ -218,6 +219,7 @@ static void increment_read_window_task(void *arg, aws_task_status task_status) {
 
 static void rw_handler_trigger_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                  size_t window_update) {
+
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
 
     if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
@@ -251,6 +253,7 @@ static bool rw_handler_shutdown_called(struct aws_channel_handler *handler) {
 static bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     return handler_impl->increment_read_window_called;
+
 }
 
 static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
@@ -261,8 +264,8 @@ static int rw_handler_last_error_code(struct aws_channel_handler *handler) {
 static bool rw_test_handler_shutdown_predicate(void *arg) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)arg;
     return handler_impl->shutdown_called;
-
 }
+
 static int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     return aws_condition_variable_wait_pred(&handler_impl->condition_variable, &handler_impl->mutex,

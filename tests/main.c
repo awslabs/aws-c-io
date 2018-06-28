@@ -23,6 +23,7 @@
 #include <event_loop_test.c>
 #include <channel_test.c>
 
+
 static int run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&pipe_open_close,
                        &pipe_read_write,
