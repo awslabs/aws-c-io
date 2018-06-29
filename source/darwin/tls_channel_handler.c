@@ -13,19 +13,34 @@
 * permissions and limitations under the License.
 */
 #include <aws/io/tls_channel_handler.h>
+#include <aws/io/channel.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/encoding.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
 #include <Security/SecureTransport.h>
 #include <Security/SecCertificate.h>
-#include <aws/io/channel.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/encoding.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wunused-function"
+
+
+/* I'm tired of trying to make SSLSetALPNFunc work, upgrade your operating system if you want ALPN support. */
+#if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) || \
+    (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) || \
+    (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) || \
+    (TARGET_OS_WATCH && __WATCH_OS_VERSION_MAX_ALLOWED >= 40000)
+#define ALPN_AVAILABLE true
+#else
+#define ALPN_AVAILABLE false
+#endif
+
+bool aws_tls_is_alpn_available(void) {
+    return ALPN_AVAILABLE;
+}
 
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
@@ -37,8 +52,9 @@ struct secure_transport_handler {
     CFAllocatorRef wrapped_allocator;
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
-    struct aws_byte_buf protocol;
-    struct aws_byte_buf server_name;
+    CFStringRef protocol;
+    /*per spec the max length for a server name is 255 bytes. */
+    char server_name[255];
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed latest_message_on_completion;
     void *latest_message_completion_user_data;
@@ -112,7 +128,9 @@ static OSStatus aws_tls_write_cb(SSLConnectionRef conn, const void *data, size_t
             handler->latest_message_completion_user_data = NULL;
         }
 
-        aws_channel_slot_send_message(handler->parent_slot, message, AWS_CHANNEL_DIR_WRITE);
+        if (aws_channel_slot_send_message(handler->parent_slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+        }
     }
 
     if (*len == processed) {
@@ -127,35 +145,81 @@ static void secure_transport_handler_destroy(struct aws_channel_handler *handler
     if (handler) {
         struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *) handler->impl;
         CFRelease(secure_transport_handler->ctx);
+
+        if (secure_transport_handler->protocol) {
+            CFRelease(secure_transport_handler->protocol);
+        }
+
         aws_mem_release(handler->alloc, (void *) secure_transport_handler);
         aws_mem_release(handler->alloc, (void *) handler);
     }
 }
 
+static CFStringRef get_protocol(struct secure_transport_handler *handler) {
+#if ALPN_AVAILABLE
+    CFArrayRef protocols = NULL;
 
-/* NOT SUPPORTING H2 Isn't an option, and I dumped out the dylibs and saw the function is indeed there, AND safari supports it, so there's no way it doesn't work.
- * In fact I don't even feel bad about this. How do you ship safari with support for this and not make H2 available for other applications to use? */
-#if (MAC_OS_X_VERSION_MAX_ALLOWED >= 101100 && MAC_OS_X_VERSION_MAX_ALLOWED < 101300)
-#define ALPN_SUPPORTED 1
-typedef void(*SSLALPNFunc)(SSLContextRef ctx, void *info, const void *alpn_data, size_t alpn_data_length);
+    SSLCopyALPNProtocols(handler->ctx, &protocols);
 
-extern OSStatus SSLSetALPNFunc(SSLContextRef context, SSLALPNFunc alpnFunc, void *info);
-extern OSStatus SSLSetALPNData(SSLContextRef context, const void *data, size_t length);
-extern const void *SSLGetALPNData(SSLContextRef context, size_t *length);
+    if (!protocols) {
+        return NULL;
+    }
 
-static void client_alpn_fn(SSLContextRef context, void *info, const void *alpn_data, size_t alpn_data_length) {
+    CFIndex count = CFArrayGetCount(protocols);
 
-}
+    if (count <= 0) {
+        return NULL;
+    }
 
-static void server_alpn_fn(SSLContextRef context, void *info, const void *alpn_data, size_t alpn_data_length) {
+    CFStringRef alpn_value = CFArrayGetValueAtIndex(protocols, 0);
+    CFRelease(protocols);
 
-}
-
-#elif MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
-#define ALPN_SUPPORTED 1
+    return alpn_value;
 #else
-#define ALPN_NOT_SUPPORTED 0
+    return NULL;
 #endif
+}
+
+static void set_protocols(struct secure_transport_handler *handler, struct aws_allocator *alloc, const char *alpn_list) {
+#if ALPN_AVAILABLE
+    struct aws_byte_buf alpn_data = aws_byte_buf_from_c_str(alpn_list);
+    struct aws_array_list alpn_list_array;
+    if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
+        return;
+    }
+
+    if (aws_byte_buf_split_on_char(&alpn_data, ',', &alpn_list_array)) {
+        return;
+    }
+
+    CFArrayRef alpn_array = CFArrayCreateMutable(handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallbacks);
+
+    if (!alpn_array) {
+        return;
+    }
+
+    for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
+        struct aws_byte_cursor protocol_cursor;
+        aws_array_list_get_at(&alpn_list_array, &protocol, i);
+        CFStringRef protocol = CFStringCreateWithBytes(handler->wrapped_allocator, protocol_cursor->ptr, protocol_cursor->len, kCFStringEncodingUTF8, false);
+
+        if (!protocol) {
+            CFRelease(alpn_array);
+            alpn_array = NULL;
+            break;
+        }
+
+        CFArrayAppendValue(alpn_array, protocol);
+        CFRelease(protocol);
+    }
+
+    if (alpn_array) {
+        SSLSetALPNProtocols(handler->ctx, alpn_array);
+    }
+
+    aws_array_list_clean_up(&alpn_list_array);
+#endif
+}
 
 static int drive_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
@@ -165,19 +229,18 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     if (status == noErr) {
         secure_transport_handler->negotiation_finished = true;
         size_t name_len = 0;
-        const char *protocol = SSLGetALPNData(secure_transport_handler->ctx, &name_len);
+        CFStringRef protocol = get_protocol(secure_transport_handler);
 
         if (protocol) {
-            secure_transport_handler->protocol = aws_byte_buf_from_array((uint8_t *)protocol, name_len);
+            secure_transport_handler->protocol = protocol;
         }
 
         name_len = 0;
         status = SSLGetPeerDomainNameLength(secure_transport_handler->ctx, &name_len);
 
         if (status == noErr && name_len) {
-            char server_name[name_len];
-            status = SSLGetPeerDomainName(secure_transport_handler->ctx, server_name, &name_len);
-            secure_transport_handler->server_name = aws_byte_buf_from_array((uint8_t *)server_name, name_len);
+            size_t max_len = name_len > sizeof(secure_transport_handler->server_name) ? sizeof(secure_transport_handler->server_name) : name_len;
+            SSLGetPeerDomainName(secure_transport_handler->ctx, secure_transport_handler->server_name, &max_len);
         }
 
         if (secure_transport_handler->parent_slot->adj_right && secure_transport_handler->options.advertise_alpn_message && protocol) {
@@ -188,7 +251,9 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             struct aws_tls_negotiated_protocol_message *protocol_message =
                     (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
 
-            protocol_message->protocol = secure_transport_handler->protocol;
+            protocol_message->protocol = aws_byte_buf_from_array((uint8_t *)CFStringGetCStringPtr(secure_transport_handler->protocol, kCFStringEncodingUTF8),
+                                                                 (size_t)CFStringGetLength(secure_transport_handler->protocol));
+
             message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
             if (aws_channel_slot_send_message(secure_transport_handler->parent_slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(secure_transport_handler->parent_slot->channel, message);
@@ -385,12 +450,13 @@ static size_t secure_transport_handler_get_current_window_size (struct aws_chann
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *) handler->impl;
-    return secure_transport_handler->protocol;
+    return aws_byte_buf_from_array((uint8_t *)CFStringGetCStringPtr(secure_transport_handler->protocol, kCFStringEncodingUTF8),
+                                   (size_t)CFStringGetLength(secure_transport_handler->protocol));
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *) handler->impl;
-    return secure_transport_handler->server_name;
+    return aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name, strlen(secure_transport_handler->server_name));
 }
 
 static struct aws_channel_handler_vtable handler_vtable = {
@@ -406,7 +472,7 @@ struct secure_transport_ctx {
     struct aws_allocator *allocator;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
-    CFArrayRef ca_cert;
+    SecCertificateRef ca_cert;
     const char *server_name;
     const char *alpn_list;
 };
@@ -431,7 +497,10 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
     }
 
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
-    secure_transport_handler->ctx = SSLCreateContext(NULL, protocol_side, kSSLStreamType);
+    secure_transport_handler->protocol = NULL;
+    AWS_ZERO_ARRAY(&secure_transport_handler->server_name);
+    secure_transport_handler->ctx = SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
+
     if (!secure_transport_handler->ctx) {
         /* TODO raise error here. */
         goto cleanup_st_handler;
@@ -445,9 +514,7 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
     }
 
     OSStatus status = noErr;
-
-    status = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
-
+    SSLSetAllowsAnyRoot(secure_transport_handler->ctx, true);
     if (!options->verify_peer) {
         status = SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnClientAuth, true);
     }
@@ -456,16 +523,15 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
         status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
     }
 
-    if (secure_transport_ctx->ca_cert) {
-        status = SSLSetTrustedRoots(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
-        //status = SSLSetCertificateAuthorities(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
+    if (secure_transport_ctx->ca_cert && protocol_side == kSSLServerSide) {
+        //status = SSLSetTrustedRoots(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
+        status = SSLSetCertificateAuthorities(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
     }
 
     aws_linked_list_init(&secure_transport_handler->input_queue);
     secure_transport_handler->parent_slot = slot;
     secure_transport_handler->latest_message_completion_user_data = NULL;
     secure_transport_handler->negotiation_finished = false;
-    secure_transport_handler->protocol = (struct aws_byte_buf){.allocator = NULL, .len = 0, .capacity = 0, .buffer = NULL };
     secure_transport_handler->latest_message_on_completion = NULL;
 
     const char *server_name = NULL;
@@ -477,11 +543,8 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
     }
 
     if (server_name) {
-        secure_transport_handler->server_name = aws_byte_buf_from_c_str(server_name);
-        SSLSetPeerDomainName(secure_transport_handler->ctx, server_name, secure_transport_handler->server_name.len);
-    }
-    else {
-        secure_transport_handler->server_name = (struct aws_byte_buf){.allocator = NULL, .len = 0, .capacity = 0, .buffer = NULL};
+        size_t server_name_len = strlen(server_name);
+        SSLSetPeerDomainName(secure_transport_handler->ctx, server_name, server_name_len);
     }
 
     const char *alpn_list = NULL;
@@ -493,10 +556,8 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
     }
 
     if (alpn_list) {
-       status = SSLSetALPNFunc(secure_transport_handler->ctx, server_alpn_fn, secure_transport_handler);
-       status = SSLSetALPNData(secure_transport_handler->ctx, alpn_list, strlen(alpn_list));
+        set_protocols(secure_transport_handler, allocator, alpn_list);
     }
-
 
     secure_transport_handler->options = *options;
 
@@ -526,7 +587,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(struct aws_allocator *all
 struct aws_channel_handler *aws_tls_server_handler_new(struct aws_allocator *allocator, struct aws_tls_ctx *ctx,
                                                        struct aws_tls_connection_options *options,
                                                        struct aws_channel_slot *slot) {
-    return tls_handler_new(allocator, ctx, options, slot, kSSLClientSide);
+    return tls_handler_new(allocator, ctx, options, slot, kSSLServerSide);
 }
 
 static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **blob, size_t *len) {
@@ -682,8 +743,8 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
 
         CFDataRef cert_data_ref =  CFDataCreate(secure_transport_ctx->wrapped_allocator, decoded.buffer, decoded.len);
         SecCertificateRef cert = SecCertificateCreateWithData(secure_transport_ctx->wrapped_allocator, cert_data_ref);
-        CFTypeRef certs[] = {cert};
-        secure_transport_ctx->ca_cert = CFArrayCreate(secure_transport_ctx->wrapped_allocator, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
+        //CFTypeRef certs[] = {cert};
+        secure_transport_ctx->ca_cert = cert;//CFArrayCreate(secure_transport_ctx->wrapped_allocator, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
     }
 
     ctx->alloc = alloc;

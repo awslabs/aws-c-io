@@ -83,6 +83,8 @@ extern "C" {
 AWS_IO_API void aws_tls_init_static_state(struct aws_allocator *alloc);
 AWS_IO_API void aws_tls_clean_up_static_state(struct aws_allocator *alloc);
 
+AWS_IO_API bool aws_tls_is_alpn_available(void);
+
 AWS_IO_API struct aws_channel_handler *aws_tls_client_handler_new(struct aws_allocator *allocator,
                                                                   struct aws_tls_ctx *ctx,
                                                                   struct aws_tls_connection_options *options,

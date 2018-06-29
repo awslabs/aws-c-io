@@ -117,7 +117,9 @@ static void tls_on_negotiated(struct aws_channel_handler *handler, struct aws_ch
     if (!err_code) {
         struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
-        setup_test_args->negotiated_protocol = aws_tls_handler_protocol(handler);
+        if (aws_tls_is_alpn_available()) {
+            setup_test_args->negotiated_protocol = aws_tls_handler_protocol(handler);
+        }
         setup_test_args->server_name = aws_tls_handler_server_name(handler);
     }
 }
@@ -284,14 +286,15 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     struct aws_socket_options options = (struct aws_socket_options){0};
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
-    options.domain = AWS_SOCKET_LOCAL;
+    options.domain = AWS_SOCKET_IPV4;
 
     uint64_t timestamp = 0;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.address, sizeof(endpoint.address), "127.0.0.1");
+    snprintf(endpoint.port, sizeof(endpoint.port), "8444");
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -320,10 +323,13 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
     ASSERT_FALSE(incoming_args.error_invoked);
 
-    /* check ALPN and SNI was properly negotiated */
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
-    ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
-                             incoming_args.negotiated_protocol.buffer, incoming_args.negotiated_protocol.len);
+    /* check ALPN and SNI was properly negotiated */
+
+    if (aws_tls_is_alpn_available()) {
+        ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
+                                 incoming_args.negotiated_protocol.buffer, incoming_args.negotiated_protocol.len);
+    }
 
     struct aws_byte_buf server_name = aws_byte_buf_from_c_str("localhost");
     ASSERT_BIN_ARRAYS_EQUALS(server_name.buffer, server_name.len,
@@ -333,8 +339,11 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
 
     ASSERT_FALSE(outgoing_args.error_invoked);
 
-    ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
-                             outgoing_args.negotiated_protocol.buffer, outgoing_args.negotiated_protocol.len);
+    if (aws_tls_is_alpn_available()) {
+        ASSERT_BIN_ARRAYS_EQUALS(expected_protocol.buffer, expected_protocol.len,
+                                 outgoing_args.negotiated_protocol.buffer, outgoing_args.negotiated_protocol.len);
+    }
+
     ASSERT_BIN_ARRAYS_EQUALS(server_name.buffer, server_name.len,
                              outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 

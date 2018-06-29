@@ -53,6 +53,11 @@ void aws_tls_clean_up_static_state(struct aws_allocator *alloc) {
     s2n_cleanup();
 }
 
+bool aws_tls_is_alpn_available(void) {
+    return true;
+}
+
+
 static int generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
     size_t written = 0;
