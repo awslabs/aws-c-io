@@ -206,7 +206,8 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
 }
 
 static int test_local_socket_communication (struct aws_allocator *allocator, void *user_data) {
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
@@ -223,7 +224,8 @@ static int test_local_socket_communication (struct aws_allocator *allocator, voi
 AWS_TEST_CASE(local_socket_communication, test_local_socket_communication)
 
 static int test_tcp_socket_communication (struct aws_allocator *allocator, void *user_data) {
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -239,7 +241,8 @@ static int test_tcp_socket_communication (struct aws_allocator *allocator, void 
 AWS_TEST_CASE(tcp_socket_communication, test_tcp_socket_communication)
 
 static int test_udp_socket_communication (struct aws_allocator *allocator, void *user_data) {
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -271,7 +274,8 @@ static int test_connect_timeout (struct aws_allocator *allocator, void *user_dat
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -336,7 +340,8 @@ static int test_outgoing_local_sock_errors (struct aws_allocator *allocator, voi
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
@@ -380,7 +385,8 @@ static int test_incoming_local_sock_errors (struct aws_allocator *allocator, voi
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
@@ -427,7 +433,8 @@ static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 50000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -474,7 +481,8 @@ static int test_incoming_tcp_sock_errors (struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -516,7 +524,8 @@ static int test_incoming_udp_sock_errors (struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -558,7 +567,8 @@ static int test_non_connected_read_write_fails (struct aws_allocator *allocator,
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 1000;
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;

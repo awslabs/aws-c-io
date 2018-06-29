@@ -631,7 +631,8 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     }
 
     if (options->alpn_list) {
-        struct aws_byte_cursor alpn_list_buffer[4] = {0};
+        struct aws_byte_cursor alpn_list_buffer[4];
+        AWS_ZERO_ARRAY(alpn_list_buffer);
         struct aws_array_list alpn_list;
         struct aws_byte_buf user_alpn_str = aws_byte_buf_from_c_str(options->alpn_list);
 
@@ -647,10 +648,13 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
             goto cleanup_s2n_config;
         }
 
-        const char protocols_tmp[4][128] = {0};
-        const char *protocols[4] = {0};
+        const char protocols_tmp[4][128];
+        AWS_ZERO_ARRAY(protocols_tmp);
+        const char *protocols[4];
+        AWS_ZERO_ARRAY(protocols);
         for(int i = 0; i < protocols_list_len; ++i) {
-            struct aws_byte_cursor cursor = {0};
+            struct aws_byte_cursor cursor;
+            AWS_ZERO_STRUCT(cursor);
             if (aws_array_list_get_at(&alpn_list, (void *)&cursor, (size_t)i)) {
                 goto cleanup_s2n_config;
             }

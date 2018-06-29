@@ -134,7 +134,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc,
 
 void aws_socket_clean_up(struct aws_socket *socket) {
     aws_socket_shutdown(socket);
-    *socket = (struct aws_socket){0};
+    AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
 }
 
@@ -170,7 +170,8 @@ static int on_connection_success(struct aws_socket *socket) {
         return AWS_OP_ERR;
     }
     else {
-        struct sockaddr_storage address = {0};
+        struct sockaddr_storage address;
+        AWS_ZERO_STRUCT(address);
         socklen_t address_size = sizeof(address);
         if (!getsockname(socket->io_handle.data.fd, (struct sockaddr *)&address, &address_size)) {
             uint16_t port = 0;
@@ -313,7 +314,8 @@ int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *re
             error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
         }
         else if (socket->options.domain == AWS_SOCKET_LOCAL) {
-            struct sockaddr_un addr = {0};
+            struct sockaddr_un addr;
+            AWS_ZERO_STRUCT(addr);
             addr.sun_family = AF_UNIX;
             strncpy(addr.sun_path, remote_endpoint->socket_name, sizeof(addr.sun_path) - 1);
             error_code = connect (socket->io_handle.data.fd, (const struct sockaddr *) &addr,
@@ -398,7 +400,8 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
         error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
     }
     else if (socket->options.domain == AWS_SOCKET_LOCAL) {
-        struct sockaddr_un name = {0};
+        struct sockaddr_un name;
+        AWS_ZERO_STRUCT(name);
         name.sun_family = AF_UNIX;
         strncpy(name.sun_path, local_endpoint->socket_name , sizeof(name.sun_path) - 1);
         error_code = bind(socket->io_handle.data.fd, (const struct sockaddr *) &name, sizeof(struct sockaddr_un));
@@ -492,13 +495,13 @@ static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io
 
             new_sock->allocator = socket->allocator;
             new_sock->io_handle = (struct aws_io_handle){.data = {.fd = in_fd}, .additional_data = NULL};
-            new_sock->creation_args = (struct aws_socket_creation_args){0};
+            AWS_ZERO_STRUCT(new_sock->creation_args);
             new_sock->connection_loop = NULL;
-            new_sock->options = (struct aws_socket_options){0};
+            AWS_ZERO_STRUCT(new_sock->options);
             new_sock->options.type = AWS_SOCKET_STREAM;
             new_sock->state = CONNECTED_WRITE | CONNECTED_READ;
             memcpy(&new_sock->local_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
-            memset(&new_sock->remote_endpoint, 0, sizeof(struct aws_socket_endpoint));
+            AWS_ZERO_STRUCT(new_sock->remote_endpoint);
 
             uint16_t port = 0;
 

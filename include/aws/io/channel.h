@@ -16,7 +16,6 @@
 */
 
 #include <aws/io/io.h>
-#include <aws/common/linked_list.h>
 #include <stdbool.h>
 
 typedef enum aws_channel_direction {
@@ -87,17 +86,23 @@ struct aws_channel_handler_vtable {
                       struct aws_io_message *message );
     /**
      * Called by the channel when a downstream handler has issued a window increment. You'll want to update your internal
-     * state and likely propogate a window increment message of your own.
+     * state and likely propagate a window increment message of your own by calling 'aws_channel_slot_increment_read_window()'
      */
     int (*increment_read_window) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
 
     /**
-     * Called by the channel for handlers on the edge (beginning or end) of the channel to begin initiating a shutdown.
-     * if abort_immediately is true, this must be done in the call (not a scheduled task). You need not immediately,
-     * propogate your shutdown completion, but all DOSable resources (such as sockets and file handles) must be closed
-     * immediately.
+     * The channel calls shutdown on all handlers twice, once to shut down reading, and once to shut down writing.
+     * Shutdown always begins with the left-most handler, and proceeds to the right with dir set to AWS_CHANNEL_DIR_READ.
+     * Then shutdown is called on handlers from right to left with dir set to AWS_CHANNEL_DIR_WRITE.
+     *
+     * The shutdown process does not need to complete immediately and may rely on scheduled tasks.
+     * The handler must call aws_channel_slot_on_handler_shutdown_complete() when it is finished,
+     * which propagates shutdown to the next handler.  If 'free_scarce_resources_immediately' is true,
+     * then resources vulnerable to denial-of-service attacks (such as sockets and file handles)
+     * must be closed immediately before the shutdown() call returns.
      */
-    int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code, bool abort_immediately);
+    int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir,
+                     int error_code, bool free_scarce_resources_immediately);
 
     /**
      * Called by the channel when the handler is added to a slot, to get the initial window size.
@@ -136,7 +141,11 @@ AWS_IO_API int aws_channel_init(struct aws_channel *channel, struct aws_allocato
 AWS_IO_API void aws_channel_clean_up(struct aws_channel *channel);
 
 /**
- * Shuts down the channel. 'callbacks->on_shutdown_completed' will be executed in the event loops thread upon completion.
+ * Initiates shutdown of the channel. Shutdown will begin with the left-most slot. Each handler will invoke 'aws_channel_slot_on_handler_shutdown_complete'
+ * once they've finished their shutdown process for the read direction. Once the right-most slot has shutdown in the read direction,
+ * the process will start shutting down starting on the right-most slot. Once the left-most slot has shutdown in the write direction,
+ * 'callbacks->shutdown_completed' will be invoked in the event loop's thread.
+ *
  * This function can be called from any thread.
  */
 AWS_IO_API int aws_channel_shutdown(struct aws_channel *channel, int error_code);
@@ -244,13 +253,13 @@ AWS_IO_API int aws_channel_slot_increment_read_window(struct aws_channel_slot *s
  * to the next handler in the channel.
  */
 AWS_IO_API int aws_channel_slot_on_handler_shutdown_complete(struct aws_channel_slot *slot, enum aws_channel_direction dir,
-                                                              int err_code, bool abort_immediately);
+                                                              int err_code, bool free_scarce_resources_immediately);
 
 /**
  * Initiates shutdown on slot. callbacks->on_shutdown_completed will be called
  * once the shutdown process is completed.
  */
-AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, enum aws_channel_direction dir, int err_code, bool abort_immediately);
+AWS_IO_API int aws_channel_slot_shutdown (struct aws_channel_slot *slot, enum aws_channel_direction dir, int err_code, bool free_scarce_resources_immediately);
 
 /**
  * Fetches the downstream read window. This gives you the information necessary to honor the read window. If you call send_message()
@@ -285,7 +294,7 @@ AWS_IO_API int aws_channel_handler_increment_read_window(struct aws_channel_hand
  */
 AWS_IO_API int aws_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                                             enum aws_channel_direction dir, int error_code,
-                                            bool abort_immediately);
+                                            bool free_scarce_resources_immediately);
 
 /**
  * Calls initial_window_size on handler's vtable.

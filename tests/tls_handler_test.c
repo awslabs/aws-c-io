@@ -219,6 +219,7 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
     };
 
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
+    ASSERT_NOT_NULL(server_ctx);
 
     struct tls_test_args incoming_args = {
             .mutex = &mutex,
@@ -283,7 +284,8 @@ static int tls_channel_echo_and_backpressure_test_fn (struct aws_allocator *allo
             .user_data = &outgoing_args
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -481,7 +483,8 @@ static int tls_channel_negotiation_error_fn (struct aws_allocator *allocator, vo
             .shutdown_finished = false,
     };
 
-    struct aws_socket_options options = (struct aws_socket_options){0};
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
