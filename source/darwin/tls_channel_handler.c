@@ -34,8 +34,10 @@
     (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) || \
     (TARGET_OS_WATCH && __WATCH_OS_VERSION_MAX_ALLOWED >= 40000)
 #define ALPN_AVAILABLE true
+#define TLS13_AVAILABLE true
 #else
 #define ALPN_AVAILABLE false
+#define TLS13_AVAILABLE false
 #endif
 
 bool aws_tls_is_alpn_available(void) {
@@ -53,8 +55,9 @@ struct secure_transport_handler {
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
     CFStringRef protocol;
-    /*per spec the max length for a server name is 255 bytes. */
-    char server_name[255];
+    /*per spec the max length for a server name is 255 bytes (plus the null character). */
+    char server_name_array[256];
+    struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed latest_message_on_completion;
     void *latest_message_completion_user_data;
@@ -239,8 +242,11 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
         status = SSLGetPeerDomainNameLength(secure_transport_handler->ctx, &name_len);
 
         if (status == noErr && name_len) {
-            size_t max_len = name_len > sizeof(secure_transport_handler->server_name) ? sizeof(secure_transport_handler->server_name) : name_len;
-            SSLGetPeerDomainName(secure_transport_handler->ctx, secure_transport_handler->server_name, &max_len);
+            size_t max_len = name_len > sizeof(secure_transport_handler->server_name) - 1 ? sizeof(secure_transport_handler->server_name) - 1 : name_len;
+            SSLGetPeerDomainName(secure_transport_handler->ctx, secure_transport_handler->server_name_array, &max_len);
+            /* sometimes this api includes the NULL character, sometimes it doesn't, so unfortunately we have to actually call strlen.*/
+            size_t actual_length = strlen(secure_transport_handler->server_name_array);
+            secure_transport_handler->server_name = aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name_array, actual_length);
         }
 
         if (secure_transport_handler->parent_slot->adj_right && secure_transport_handler->options.advertise_alpn_message && protocol) {
@@ -456,7 +462,7 @@ struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *) handler->impl;
-    return aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name, strlen(secure_transport_handler->server_name));
+    return secure_transport_handler->server_name;
 }
 
 static struct aws_channel_handler_vtable handler_vtable = {
@@ -473,8 +479,10 @@ struct secure_transport_ctx {
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     SecCertificateRef ca_cert;
+    aws_tls_versions minimum_version;
     const char *server_name;
     const char *alpn_list;
+    bool veriify_peer;
 };
 
 static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocator, struct aws_tls_ctx *ctx,
@@ -496,9 +504,9 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
         goto cleanup_channel_handler;
     }
 
+    AWS_ZERO_STRUCT(*secure_transport_handler);
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
     secure_transport_handler->protocol = NULL;
-    AWS_ZERO_ARRAY(&secure_transport_handler->server_name);
     secure_transport_handler->ctx = SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
     if (!secure_transport_handler->ctx) {
@@ -506,7 +514,37 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
         goto cleanup_st_handler;
     }
 
-    /* we need to add sni and negotiation callbacks */
+
+    switch (secure_transport_ctx->minimum_version) {
+        case AWS_IO_SSLv3:
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocol3);
+            break;
+        case AWS_IO_TLSv1:
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol1);
+            break;
+        case AWS_IO_TLSv1_1:
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            break;
+        case AWS_IO_TLSv1_2:
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            break;
+        case AWS_IO_TLSv1_3:
+#if TLS13_AVAILABLE
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
+#else
+            /*
+             * "TLS 1.3 is not supported for your target platform,
+             * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be used.
+             */
+            assert(0);
+#endif
+            break;
+        default:
+            /* you have to make a decision on this! It's important!!!! */
+            assert(0);
+            break;
+    }
+
     if (SSLSetIOFuncs(secure_transport_handler->ctx, aws_tls_read_cb, aws_tls_write_cb) != noErr ||
         SSLSetConnection(secure_transport_handler->ctx, secure_transport_handler) != noErr) {
         /* TODO raise error here */
@@ -514,7 +552,11 @@ static struct aws_channel_handler *tls_handler_new(struct aws_allocator *allocat
     }
 
     OSStatus status = noErr;
-    SSLSetAllowsAnyRoot(secure_transport_handler->ctx, true);
+
+    if (!secure_transport_ctx->veriify_peer) {
+        SSLSetAllowsAnyRoot(secure_transport_handler->ctx, true);
+    }
+
     if (!options->verify_peer) {
         status = SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnClientAuth, true);
     }
@@ -683,7 +725,9 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         goto cleanup_ctx;
     }
 
+    AWS_ZERO_STRUCT(*secure_transport_ctx);
     secure_transport_ctx->wrapped_allocator = aws_wrapped_cf_allocator_new(alloc);
+    secure_transport_ctx->minimum_version = options->minimum_tls_version;
 
     if (!secure_transport_ctx->wrapped_allocator) {
         goto cleanup_secure_transport_ctx;
@@ -691,11 +735,14 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
 
     secure_transport_ctx->server_name = options->server_name;
     secure_transport_ctx->alpn_list = options->alpn_list;
+    secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->allocator = alloc;
 
     if (options->pkcs12_path) {
+        assert(options->pkcs12_password);
+
         uint8_t *cert_blob = NULL;
         size_t cert_len = 0;
 
@@ -704,15 +751,18 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         }
 
         CFDataRef pkcs12_data = CFDataCreate(secure_transport_ctx->wrapped_allocator, cert_blob, cert_len);
+        aws_mem_release(alloc, cert_blob);
         CFArrayRef items = NULL;
 
         CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(secure_transport_ctx->wrapped_allocator, 0, NULL, NULL);
-        CFStringRef password = CFStringCreateWithCString(secure_transport_ctx->wrapped_allocator, "Reformed", kCFStringEncodingUTF8);
+        CFStringRef password = CFStringCreateWithCString(secure_transport_ctx->wrapped_allocator, options->pkcs12_password, kCFStringEncodingUTF8);
         CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
 
         OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+        CFRelease(pkcs12_data);
+        CFRelease(password);
+        CFRelease(dictionary);
 
-        //SecIdentityRef identity = NULL;
         CFTypeRef item = (CFTypeRef)CFArrayGetValueAtIndex(items, 0);
         CFTypeID itemId = CFGetTypeID(item);
         CFTypeID certTypeId = SecCertificateGetTypeID();
@@ -742,9 +792,10 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         aws_base64_decode(&to_decode, &decoded);
 
         CFDataRef cert_data_ref =  CFDataCreate(secure_transport_ctx->wrapped_allocator, decoded.buffer, decoded.len);
+        aws_mem_release(alloc, cert_blob);
         SecCertificateRef cert = SecCertificateCreateWithData(secure_transport_ctx->wrapped_allocator, cert_data_ref);
-        //CFTypeRef certs[] = {cert};
-        secure_transport_ctx->ca_cert = cert;//CFArrayCreate(secure_transport_ctx->wrapped_allocator, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
+        CFRelease(cert_data_ref);
+        secure_transport_ctx->ca_cert = cert;
     }
 
     ctx->alloc = alloc;
@@ -775,7 +826,6 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc,
 
 void  aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     struct secure_transport_ctx *secure_transport_ctx = (struct secure_transport_ctx *) ctx->impl;
-    CFRelease(secure_transport_ctx->wrapped_allocator);
 
     if (secure_transport_ctx->certs) {
         CFRelease(secure_transport_ctx->certs);
@@ -785,6 +835,7 @@ void  aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
         CFRelease(secure_transport_ctx->ca_cert);
     }
 
+    CFRelease(secure_transport_ctx->wrapped_allocator);
     aws_mem_release(secure_transport_ctx->allocator, secure_transport_ctx);
     aws_mem_release(ctx->alloc, ctx);
 }

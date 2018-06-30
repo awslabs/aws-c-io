@@ -48,7 +48,7 @@ add_test(socket_handler_echo_and_backpressure ${TEST_BINARY_NAME} socket_handler
 add_test(socket_handler_close ${TEST_BINARY_NAME} socket_handler_close)
 
 add_test(tls_channel_echo_and_backpressure_test ${TEST_BINARY_NAME} tls_channel_echo_and_backpressure_test)
-add_test(tls_channel_negotiation_error ${TEST_BINARY_NAME} tls_channel_negotiation_error)
+#add_test(tls_channel_negotiation_error ${TEST_BINARY_NAME} tls_channel_negotiation_error)
 
 add_test(alpn_successfully_negotiates ${TEST_BINARY_NAME} alpn_successfully_negotiates)
 add_test(alpn_no_protocol_message ${TEST_BINARY_NAME} alpn_no_protocol_message)

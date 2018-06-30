@@ -402,20 +402,6 @@ static struct aws_channel_handler_vtable handler_vtable = {
         .initial_window_size = s2n_handler_get_current_window_size,
 };
 
-static uint8_t s2n_handler_verify_host_callback(const char *host_name, size_t host_name_len, void *data) {
-    if (data) {
-        struct aws_channel_handler *handler = (struct aws_channel_handler *) data;
-        struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
-        if (s2n_handler->options.verify_host_fn) {
-            struct aws_byte_buf host_buf = aws_byte_buf_from_array((const uint8_t *)host_name, host_name_len);
-            return (uint8_t)s2n_handler->options.verify_host_fn(handler, &host_buf, s2n_handler->options.user_data);
-        }
-    }
-
-    return 0;
-}
-
 struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
                                              struct aws_tls_ctx *ctx,
                                              struct aws_tls_connection_options *options,
@@ -467,13 +453,6 @@ struct aws_channel_handler *new_tls_handler (struct aws_allocator *allocator,
     s2n_connection_set_send_cb(s2n_handler->connection, s2n_handler_send);
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
-
-    if (options->verify_host_fn) {
-        if (s2n_connection_set_verify_host_callback(s2n_handler->connection, s2n_handler_verify_host_callback, handler)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-            goto cleanup_conn;
-        }
-    }
 
     /*TODO: update s2n to support connection level alpn*/
 

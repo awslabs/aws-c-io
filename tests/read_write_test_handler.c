@@ -86,9 +86,13 @@ static int rw_handler_increment_read_window(struct aws_channel_handler *handler,
 static int rw_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
                            enum aws_channel_direction dir, int error_code, bool abort_immediately) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
+
+    aws_mutex_lock(&handler_impl->mutex);
     handler_impl->shutdown_called = true;
     handler_impl->shutdown_error = error_code;
     aws_condition_variable_notify_one(&handler_impl->condition_variable);
+    aws_mutex_unlock(&handler_impl->mutex);
+
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
@@ -263,6 +267,7 @@ static bool rw_test_handler_shutdown_predicate(void *arg) {
     return handler_impl->shutdown_called;
 
 }
+
 static int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = (struct rw_test_handler_impl *)handler->impl;
     return aws_condition_variable_wait_pred(&handler_impl->condition_variable, &handler_impl->mutex,

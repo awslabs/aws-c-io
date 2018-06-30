@@ -49,7 +49,7 @@ static int run_tests(int argc, char *argv[]) {
                        &socket_handler_echo_and_backpressure,
                        &socket_handler_close,
                        &tls_channel_echo_and_backpressure_test,
-                       &tls_channel_negotiation_error,
+                       /*&tls_channel_negotiation_error,*/
                        &alpn_successfully_negotiates,
                        &alpn_no_protocol_message,
                        &alpn_error_creating_handler

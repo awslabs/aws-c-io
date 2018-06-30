@@ -61,7 +61,6 @@ struct client_channel_data {
     aws_tls_on_data_read user_on_data_read;
     aws_tls_on_negotiation_result  user_on_negotiation_result;
     aws_tls_on_error user_on_error;
-    aws_tls_verify_host_fn user_verify_host;
     void *tls_user_data;
     bool use_tls;
 };
@@ -91,18 +90,6 @@ static void tls_client_on_negotiation_result(struct aws_channel_handler *handler
         /* the tls handler is responsible for calling shutdown when this fails. */
         connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
     }
-}
-
-/* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to provide
- * a proxy for the user actually receiving their callbacks. */
-static bool tls_client_verify_host(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
-
-    if (connection_args->channel_data.user_verify_host) {
-        return connection_args->channel_data.user_verify_host(handler, buffer, connection_args->channel_data.tls_user_data);
-    }
-
-    return true;
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to provide
@@ -306,11 +293,6 @@ static inline int new_client_channel(struct aws_client_bootstrap *bootstrap,
             client_connection_args->channel_data.tls_options.on_error = tls_client_on_error;
         }
 
-        if (connection_options->verify_host_fn) {
-            client_connection_args->channel_data.user_verify_host = connection_options->verify_host_fn;
-            client_connection_args->channel_data.tls_options.verify_host_fn = tls_client_verify_host;
-        }
-
         if (connection_options->on_negotiation_result) {
             client_connection_args->channel_data.user_on_negotiation_result = connection_options->on_negotiation_result;
         }
@@ -391,7 +373,6 @@ struct server_connection_args {
     aws_tls_on_data_read user_on_data_read;
     aws_tls_on_negotiation_result  user_on_negotiation_result;
     aws_tls_on_error user_on_error;
-    aws_tls_verify_host_fn user_verify_host;
     void *tls_user_data;
     void *user_data;
     bool use_tls;
@@ -420,18 +401,6 @@ static void tls_server_on_negotiation_result(struct aws_channel_handler *handler
         /* the tls handler is responsible for calling shutdown when this fails. */
         connection_args->shutdown_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
     }
-}
-
-/* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to provide
- * a proxy for the user actually receiving their callbacks. */
-static bool tls_server_verify_host(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data) {
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
-
-    if (connection_args->user_verify_host) {
-        return connection_args->user_verify_host(handler, buffer, connection_args->tls_user_data);
-    }
-
-    return true;
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to provide
@@ -551,12 +520,16 @@ error:
 static void on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
     struct server_channel_data *channel_data = (struct server_channel_data *)user_data;
 
-    channel_data->server_connection_args->shutdown_callback(channel_data->server_connection_args->bootstrap,
-                                                            AWS_OP_SUCCESS, channel, channel_data->server_connection_args->user_data);
+    void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
+    struct aws_server_bootstrap *server_bootstrap = channel_data->server_connection_args->bootstrap;
+    struct aws_allocator *allocator = server_bootstrap->allocator;
+
+    channel_data->server_connection_args->shutdown_callback(server_bootstrap,
+                                                            AWS_OP_SUCCESS, channel, server_shutdown_user_data);
     aws_channel_clean_up(channel);
     aws_socket_clean_up(channel_data->socket);
-    aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, (void *)channel_data->socket);
-    aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
+    aws_mem_release(allocator, (void *)channel_data->socket);
+    aws_mem_release(allocator, channel_data);
 }
 
 void on_server_connection_established(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
@@ -650,11 +623,6 @@ static inline struct aws_socket *server_add_socket_listener(struct aws_server_bo
         if (connection_options->on_error) {
             server_connection_args->user_on_error = connection_options->on_error;
             server_connection_args->tls_options.on_error = tls_server_on_error;
-        }
-
-        if (connection_options->verify_host_fn) {
-            server_connection_args->user_verify_host = connection_options->verify_host_fn;
-            server_connection_args->tls_options.verify_host_fn = tls_server_verify_host;
         }
 
         if (connection_options->on_negotiation_result) {

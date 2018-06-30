@@ -22,12 +22,11 @@ struct aws_channel_slot;
 struct aws_channel_handler;
 
 typedef enum aws_tls_versions {
-    AWS_IO_SSLv2 = 0x01,
-    AWS_IO_SSLv3 = 0x02,
-    AWS_IO_TLSv1 = 0x04,
-    AWS_IO_TLSv1_1 = 0x08,
-    AWS_IO_TLSv1_2 = 0x10,
-    AWS_IO_TLSv1_3 = 0x20
+    AWS_IO_SSLv3,
+    AWS_IO_TLSv1 ,
+    AWS_IO_TLSv1_1,
+    AWS_IO_TLSv1_2,
+    AWS_IO_TLSv1_3
 } aws_tls_versions;
 
 struct aws_tls_ctx {
@@ -35,7 +34,6 @@ struct aws_tls_ctx {
     void *impl;
 };
 
-typedef bool(*aws_tls_verify_host_fn)(struct aws_channel_handler *handler, struct aws_byte_buf *buffer, void *user_data);
 typedef void(*aws_tls_on_negotiation_result)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err_code, void *user_data);
 typedef void(*aws_tls_on_data_read)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer, void *user_data);
 typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, int err, const char *message, void *user_data);
@@ -43,7 +41,6 @@ typedef void(*aws_tls_on_error)(struct aws_channel_handler *handler, struct aws_
 struct aws_tls_connection_options {
     const char *alpn_list;
     const char *server_name;
-    aws_tls_verify_host_fn verify_host_fn;
     aws_tls_on_negotiation_result on_negotiation_result;
     aws_tls_on_data_read on_data_read;
     aws_tls_on_error on_error;
@@ -53,7 +50,7 @@ struct aws_tls_connection_options {
 };
 
 struct aws_tls_ctx_options {
-    aws_tls_versions version_blacklist;
+    aws_tls_versions minimum_tls_version;
     const char *ca_file;
     const char *ca_path;
     const char *alpn_list;
@@ -63,6 +60,7 @@ struct aws_tls_ctx_options {
     const char *private_key_path;
 #else
     const char *pkcs12_path;
+    const char *pkcs12_password;
 #endif
     bool verify_peer;
 };

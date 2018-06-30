@@ -144,7 +144,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     /* Set up kevent to handle activity on the cross_thread_signal_pipe */
     struct kevent thread_signal_kevent;
     EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data.fd,
-           EVFILT_READ/*filter*/, EV_ADD/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
+           EVFILT_READ/*filter*/, EV_ADD | EV_CLEAR/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
     int res = kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
     if (res == -1) {
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
@@ -409,11 +409,11 @@ static void subscribe_task(void *user_data, aws_task_status status) {
 
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
         EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-               EVFILT_READ/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+               EVFILT_READ/*filter*/, EV_ADD| EV_CLEAR | EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
         EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-               EVFILT_WRITE/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+               EVFILT_WRITE/*filter*/, EV_ADD| EV_CLEAR | EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
     }
 
     /* It's OK to re-use the same memory for changelist input and eventlist output */
