@@ -78,7 +78,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
             host_address->use_count = 0;
             host_address->connection_failure_count = 0;
 
-            if (aws_array_list_push_back(output_addresses, host_address)) {
+            if (aws_array_list_push_back(output_addresses, &host_address)) {
                 aws_mem_release(allocator, host_address);
                 aws_string_destroy((void *)address);
                 goto clean_up;
