@@ -42,7 +42,7 @@ struct aws_host_address {
     uint8_t weight;
 };
 
-typedef void(*on_host_resolved_result)(const struct aws_string *host_name, int err_code, const struct aws_array_list *host_addresses, void *user_data);
+typedef struct aws_host_address*(*on_host_resolved_result)(struct aws_host_resolver *resolver, const struct aws_string *host_name, int err_code, const struct aws_array_list *host_addresses, void *user_data);
 
 struct aws_host_resolver;
 

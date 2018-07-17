@@ -68,14 +68,30 @@ struct background_resolve_data {
 };
 
 struct iteration_data {
-    struct aws_array_list output;
-    struct aws_hash_table *address_table;
-    struct background_resolve_data *resolve_data;
+    struct aws_array_list *good_addresses;
+    struct aws_array_list *ttl_removal_candidates;
+    struct aws_array_list *connect_failure_removal_candidates;
+    uint64_t current_clock_time;
 };
 
 static int iterate_address_table(void * user_data, struct aws_hash_element *element) {
     struct iteration_data *iteration_data = user_data;
+    struct aws_host_address *address = element->value;
 
+    if (address->expiry < iteration_data->current_clock_time) {
+        aws_array_list_push_back(iteration_data->ttl_removal_candidates, &address);
+    }
+    /* For now if connection failure count is more than 50% percent of the time, make it a candidate for removal.
+     * TODO: Where did this number come from? I pulled it out of my ass. We need to go back and do some research on what the
+     * best number is. */
+    else if (address->use_count > 0 && address->connection_failure_count > (address->use_count >> 1)) {
+        aws_array_list_push_back(iteration_data->connect_failure_removal_candidates, &address);
+    }
+    else {
+        aws_array_list_push_back(iteration_data->good_addresses, &element->value);
+    }
+
+    return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
 static void resolver_thread_fn(void *arg) {
@@ -97,10 +113,6 @@ static void resolver_thread_fn(void *arg) {
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
 
-    if (err_code) {
-        /*error do something about it*/
-    }
-
     aws_mutex_lock(&posix_host_resolver->cache_mutex);
     struct aws_hash_table *address_table = NULL;
 
@@ -119,68 +131,122 @@ static void resolver_thread_fn(void *arg) {
         aws_lru_cache_put(&posix_host_resolver->local_cache, resolve_data->host_name, address_table);
     }
 
-    struct addrinfo *iter = NULL;
-    /* max string length for ipv6. */
-    socklen_t max_len = 39;
-    char address_buffer[max_len];
+    if (!err_code) {
+        struct addrinfo *iter = NULL;
+        /* max string length for ipv6. */
+        socklen_t max_len = 39;
+        char address_buffer[max_len];
 
-    for (iter = result; iter != NULL; iter = iter->ai_next) {
-        struct aws_host_address *host_address = aws_mem_acquire(resolve_data->allocator, sizeof(struct aws_host_address));
+        for (iter = result; iter != NULL; iter = iter->ai_next) {
+            struct aws_host_address *host_address = aws_mem_acquire(resolve_data->allocator,
+                                                                    sizeof(struct aws_host_address));
 
-        if (!host_address) {
-            aws_mutex_unlock(&posix_host_resolver->cache_mutex);
-            goto cleanup;
-        }
-
-        AWS_ZERO_ARRAY(address_buffer);
-
-        if (iter->ai_family == AF_INET6) {
-            host_address->record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
-        }
-        else {
-            host_address->record_type = AWS_ADDRESS_RECORD_TYPE_A;
-        }
-
-        uint64_t current_time;
-        aws_sys_clock_get_ticks(&current_time);
-        host_address->expiry = current_time + (resolve_data->max_ttl_sec * 1000000000);
-
-        if (inet_ntop(iter->ai_family, iter->ai_addr, address_buffer, max_len)) {
-            const struct aws_string *address =
-                    aws_string_from_array_new(resolve_data->allocator, (const uint8_t *)address_buffer, strlen(address_buffer));
-            host_address->address = address;
-            host_address->weight = 0;
-
-            struct aws_hash_element *element = NULL;
-            int was_created = 0;
-            aws_hash_table_create(address_table, address, &element, &was_created);
-
-            if (was_created) {
-                host_address->use_count = 0;
-                host_address->connection_failure_count = 0;
-                element->value = host_address;
+            if (!host_address) {
+                aws_mutex_unlock(&posix_host_resolver->cache_mutex);
+                goto cleanup;
             }
-            else {
-                struct aws_host_address *old_value = element->value;
-                host_address->use_count = old_value->use_count;
-                host_address->connection_failure_count = old_value->connection_failure_count;
-                on_address_value_removed(element->value);
-                element->value = host_address;
+
+            AWS_ZERO_ARRAY(address_buffer);
+
+            if (iter->ai_family == AF_INET6) {
+                host_address->record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
+            } else {
+                host_address->record_type = AWS_ADDRESS_RECORD_TYPE_A;
             }
-        }
-        else {
-           aws_mem_release(resolve_data->allocator, host_address);
+
+            uint64_t current_time;
+            aws_sys_clock_get_ticks(&current_time);
+            host_address->expiry = current_time + (resolve_data->max_ttl_sec * 1000000000);
+
+            if (inet_ntop(iter->ai_family, iter->ai_addr, address_buffer, max_len)) {
+                const struct aws_string *address =
+                        aws_string_from_array_new(resolve_data->allocator, (const uint8_t *) address_buffer,
+                                                  strlen(address_buffer));
+                host_address->address = address;
+                host_address->weight = 0;
+
+                struct aws_hash_element *element = NULL;
+                int was_created = 0;
+                aws_hash_table_create(address_table, address, &element, &was_created);
+
+                if (was_created) {
+                    host_address->use_count = 0;
+                    host_address->connection_failure_count = 0;
+                    element->value = host_address;
+                } else {
+                    struct aws_host_address *old_value = element->value;
+                    host_address->use_count = old_value->use_count;
+                    host_address->connection_failure_count = old_value->connection_failure_count;
+                    on_address_value_removed(element->value);
+                    element->value = host_address;
+                }
+            } else {
+                aws_mem_release(resolve_data->allocator, host_address);
+            }
         }
     }
 
-    /* now iterate all records in the host address list, we can delete up to one AZ zone's worth of failed connection
-     * records (but never more), also if TTL is expired, AND the dns query failed, don't go deleting records. */
-    resolve_data->address_count = aws_hash_table_get_entry_count(address_table);
-    struct aws_host_address addresses[resolve_data->address_count];
-    struct aws_array_list address_list;
-    aws_array_list_init_static(&address_list, &addresses, resolve_data->address_count, sizeof(struct aws_host_address));
+    /* NOTE: fair warning: I know this is a lib for everyone to use everywhere, but the next section is optimized for
+     * AWS data center configurations, but it's most likely what you want anyways. */
+    size_t address_count = aws_hash_table_get_entry_count(address_table);
+    struct aws_host_address good_addresses[address_count];
+    struct aws_array_list good_address_list;
+    aws_array_list_init_static(&good_address_list, &good_addresses, address_count, sizeof(struct aws_host_address *));
+
+    struct aws_host_address ttl_removal_candidates[address_count];
+    struct aws_array_list ttl_removal_candidate_list;
+    aws_array_list_init_static(&ttl_removal_candidate_list, &ttl_removal_candidates, address_count, sizeof(struct aws_host_address *));
+
+    struct aws_host_address connection_failure_removal_candidates[address_count];
+    struct aws_array_list connection_failure_removal_candidate_list;
+    aws_array_list_init_static(&connection_failure_removal_candidate_list, &connection_failure_removal_candidates, address_count, sizeof(struct aws_host_address *));
+
+    uint64_t current_time = 0;
+    aws_sys_clock_get_ticks(&current_time);
+
+    struct iteration_data iter_data = {
+            .ttl_removal_candidates = &ttl_removal_candidate_list,
+            .current_clock_time = current_time,
+            .connect_failure_removal_candidates = &connection_failure_removal_candidate_list,
+            .good_addresses = &good_address_list
+    };
 
     aws_hash_table_foreach(address_table, iterate_address_table, resolve_data);
+
+    size_t connect_failure_candidate_count = aws_array_list_length(&connection_failure_removal_candidate_list);
+    size_t ttl_removal_candidate_count = aws_array_list_length(&ttl_removal_candidate_list);
+    size_t good_address_count =  aws_array_list_length(&good_address_list);
+
+    /* if we don't have any good addresses, the TTLs get ignored until we get some new ones. This is to prevent a DNS outage bringing
+     * the system down. */
+    if (good_address_count > 0) {
+        for (size_t i = 0; i < ttl_removal_candidate_count; ++i) {
+            struct aws_host_address *expired_address = NULL;
+            aws_array_list_get_at(&ttl_removal_candidate_list, &expired_address, i);
+            aws_array_list_push_back(&good_address_list, &expired_address);
+            good_address_count += 1;
+        }
+    }
+
+    size_t total_address_count = connect_failure_candidate_count + good_address_count;
+
+    /* only remove up to one availability zone's worth of addresses because of connection problems. There are many regions
+     * with 3 azs, but some only have 2. Since this is only to mitigate the impact of an az being down and the dns records
+     * not being updated yet, we'll just use a factor of 2 to figure out how many to purge. If we have a local connection issue,
+     * who cares? we'll have a ton of latency to resolve later anyways so no point optimizing that here. */
+    size_t to_keep = connect_failure_candidate_count > (total_address_count >> 1) ?
+                     total_address_count >> 1 : total_address_count >> 1;
+
+    for (size_t i = 0; i < to_remove; ++i) {
+
+    }
+
+    struct aws_host_address *used_address =
+            resolve_data->resolved_result(resolve_data->resolver, resolve_data->host_name, AWS_OP_SUCCESS, &address_list, resolve_data->user_data);
+
+    if (used_address) {
+        used_address->use_count += 1;
+    }
 
     aws_mutex_unlock(&posix_host_resolver->cache_mutex);
 
