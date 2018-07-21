@@ -45,21 +45,16 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     char address_buffer[max_len];
 
     for (iter = result; iter != NULL; iter = iter->ai_next) {
-        struct aws_host_address *host_address = aws_mem_acquire(allocator,
-                                                                sizeof(struct aws_host_address));
+        struct aws_host_address host_address;
 
-        if (!host_address) {
-            goto clean_up;
-        }
-
-        host_address->host = host_name;
+        host_address.host = host_name;
 
         AWS_ZERO_ARRAY(address_buffer);
 
         if (iter->ai_family == AF_INET6) {
-            host_address->record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
+            host_address.record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
         } else {
-            host_address->record_type = AWS_ADDRESS_RECORD_TYPE_A;
+            host_address.record_type = AWS_ADDRESS_RECORD_TYPE_A;
         }
 
         if (inet_ntop(iter->ai_family, iter->ai_addr, address_buffer, max_len)) {
@@ -68,25 +63,21 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
                                               strlen(address_buffer));
 
             if (!address) {
-                aws_mem_release(allocator, host_address);
                 goto clean_up;
             }
 
-            host_address->address = address;
-            host_address->weight = 0;
+            host_address.address = address;
+            host_address.weight = 0;
 
-            host_address->use_count = 0;
-            host_address->connection_failure_count = 0;
+            host_address.use_count = 0;
+            host_address.connection_failure_count = 0;
 
             if (aws_array_list_push_back(output_addresses, &host_address)) {
-                aws_mem_release(allocator, host_address);
+                aws_mem_release(allocator, &host_address);
                 aws_string_destroy((void *)address);
                 goto clean_up;
             }
 
-        }
-        else {
-            aws_mem_release(allocator, host_address);
         }
     }
 

@@ -18,6 +18,8 @@
 #include <aws/common/rw_lock.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/clock.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/common/lru_cache.h>
 
 int aws_host_address_copy(struct aws_host_address *from, struct aws_host_address *to) {
@@ -65,20 +67,24 @@ struct default_host_resolver {
 };
 
 struct host_entry {
+    struct aws_allocator *allocator;
     struct aws_thread resolver_thread;
     struct aws_rw_lock entry_lock;
     struct aws_lru_cache aaaa_records;
     struct aws_lru_cache a_records;
     struct aws_lru_cache failed_connection_aaaa_records;
     struct aws_lru_cache failed_connection_a_records;
-
+    struct aws_mutex semaphore_mutex;
+    struct aws_condition_variable condition_variable;
     const struct aws_string *host_name;
+    struct aws_host_resolution_config *resolution_config;
     uint64_t resolve_frequency_ns;
     /* this member will be a monotonic increasing value and not protected by a memory barrier. 
        Let it tear, we don't care, we just want to see a change. This at least assumes cache coherency for 
        the target architecture, which these days is a fairly safe assumption. Where it's not a safe assumption,
        we don't have multiple cores available anyways. */
     volatile uint64_t last_use;
+    volatile bool keep_active;
 };
 
 static void on_host_key_removed(void *key) {
@@ -119,7 +125,7 @@ struct background_resolve_data {
     uint64_t max_ttl_sec;
     on_host_resolved_result  resolved_result;
     struct aws_host_resolver *resolver;
-    struct aws_host_resolution_config *config,
+    struct aws_host_resolution_config *config;
     void *user_data;
 };
 
@@ -150,126 +156,96 @@ static int iterate_address_table(void * user_data, struct aws_hash_element *elem
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
+struct predicate_data {
+    uint64_t last_updated;
+    struct host_entry *host_entry;
+};
+
+static bool resolver_predicate(void *arg) {
+    struct predicate_data *predicate_data = arg;
+
+    /* wait for an update on this */
+    return !predicate_data->host_entry->keep_active || predicate_data->host_entry->last_use != predicate_data->last_updated;
+}
+
 static void resolver_thread_fn(void *arg) {
-    struct background_resolve_data *resolve_data = arg;
+    struct host_entry *host_entry = arg;
 
-    struct aws_array_list resolver_output;
-    aws_array_list_init_dynamic(&resolver_output, resolve_data->allocator, 4, sizeof(struct aws_host_address *));
-    int err_code = resolve_data->config->impl(resolve_data->allocator, resolve_data->host_name, &resolver_output,
-                                              resolve_data->config->impl_data);
+    uint64_t last_updated = 0;
+    size_t unsolicited_resolve_count = 0;
+    size_t unsolicited_resolve_max = host_entry->resolution_config->max_ttl;
+    struct aws_array_list address_list;
+    aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address));
 
-    aws_mutex_lock(&posix_host_resolver->cache_mutex);
-    struct aws_hash_table *address_table = NULL;
+    while (host_entry->keep_active) {
+        if (unsolicited_resolve_count < unsolicited_resolve_max || last_updated != host_entry->last_use) {
+            ++unsolicited_resolve_count;
+            last_updated = host_entry->last_use;
+            
+            if (!host_entry->resolution_config->impl(host_entry->allocator, host_entry->host_name,
+                                                     &address_list, host_entry->resolution_config->impl_data)) {
+                uint64_t timestamp = 0;
+                aws_sys_clock_get_ticks(&timestamp);
+                uint64_t new_expiry = timestamp + host_entry->resolution_config->max_ttl * 1000000000;
 
-    if (aws_lru_cache_find(&posix_host_resolver->local_cache, resolve_data->host_name, (void **) &address_table)) {
-        goto cleanup;
-    }
+                for (size_t i = 0; i < aws_array_list_length(&address_list); ++i) {
+                    struct aws_host_address *host_address = NULL;
+                    aws_array_list_get_at_ptr(&address_list, (void **)&host_address, i);
 
-    if (!address_table) {
-        address_table = aws_mem_acquire(resolve_data->allocator, sizeof(struct aws_hash_table));
-        if (aws_hash_table_init(address_table, resolve_data->allocator, 4, aws_hash_string, aws_string_eq, NULL,
-                                on_address_value_removed)) {
-            aws_mem_release(resolve_data->allocator, address_table);
-            aws_mutex_unlock(&posix_host_resolver->cache_mutex);
-            goto cleanup;
-        }
-
-        aws_lru_cache_put(&posix_host_resolver->local_cache, resolve_data->host_name, address_table);
-    }
-
-    if (!err_code) {
-        for (size_t i = 0; aws_array_list_length(&resolver_output), ++i;) {
-            struct aws_host_address *host_address = NULL;
-            aws_array_list_get_at(&resolver_output, &host_address, i);
-            uint64_t current_time;
-            aws_sys_clock_get_ticks(&current_time);
-            host_address->expiry = current_time + (resolve_data->max_ttl_sec * 1000000000);
+                    struct aws_lru_cache *address_table = host_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                                                          &host_entry->aaaa_records : &host_entry->a_records;
 
 
-            struct aws_hash_element *element = NULL;
-            int was_created = 0;
-            aws_hash_table_create(address_table, host_address->address, &element, &was_created);
+                    aws_rw_lock_wlock(&host_entry->entry_lock);
+                    struct aws_host_address *table_address = NULL;
+                    aws_lru_cache_find(address_table, host_address->host, (void **)&table_address);
+                    bool found = false;
 
-            if (was_created) {
-                host_address->use_count = 0;
-                host_address->connection_failure_count = 0;
-                element->value = host_address;
-            } else {
-                struct aws_host_address *old_value = element->value;
-                host_address->use_count = old_value->use_count;
-                host_address->connection_failure_count = old_value->connection_failure_count;
-                on_address_value_removed(element->value);
-                element->value = host_address;
+                    if (table_address) {
+                        table_address->expiry = new_expiry;
+                        found = true;
+                    }
+                    else {
+                        struct aws_lru_cache *failed_address_table = host_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                                        &host_entry->failed_connection_aaaa_records : &host_entry->failed_connection_a_records;
+                        aws_lru_cache_find(failed_address_table, host_address->host, (void **)&table_address);
+
+                        if (table_address) {
+                            table_address->expiry = new_expiry;
+                            found = true;
+                        }
+                    }
+
+                    if (!found) {
+                        table_address = aws_mem_acquire(host_entry->allocator, sizeof(struct aws_host_address));
+
+                        if (table_address) {
+                            aws_host_address_copy(host_address, table_address);
+                            table_address->expiry = new_expiry;
+                            aws_lru_cache_put(address_table, table_address->address, table_address);
+                        }
+                    }
+                    aws_rw_lock_wunlock(&host_entry->entry_lock);
+
+                    aws_host_address_clean_up(host_address);
+                }
+
+                aws_array_list_clear(&address_list);
             }
         }
-    }
+        else {
+            aws_mutex_lock(&host_entry->semaphore_mutex);
 
-    /* NOTE: fair warning: I know this is a lib for everyone to use everywhere, but the next section is optimized for
-     * AWS data center configurations, but it's most likely what you want anyways. */
-    size_t address_count = aws_hash_table_get_entry_count(address_table);
-    struct aws_host_address good_addresses[address_count];
-    struct aws_array_list good_address_list;
-    aws_array_list_init_static(&good_address_list, &good_addresses, address_count, sizeof(struct aws_host_address *));
+            struct predicate_data predicate_data = {
+                    .last_updated = last_updated,
+                    .host_entry = host_entry,
+            };
 
-    struct aws_host_address ttl_removal_candidates[address_count];
-    struct aws_array_list ttl_removal_candidate_list;
-    aws_array_list_init_static(&ttl_removal_candidate_list, &ttl_removal_candidates, address_count,
-                               sizeof(struct aws_host_address *));
-
-    struct aws_host_address connection_failure_removal_candidates[address_count];
-    struct aws_array_list connection_failure_removal_candidate_list;
-    aws_array_list_init_static(&connection_failure_removal_candidate_list, &connection_failure_removal_candidates,
-                               address_count, sizeof(struct aws_host_address *));
-
-    uint64_t current_time = 0;
-    aws_sys_clock_get_ticks(&current_time);
-
-    struct iteration_data iter_data = {
-            .ttl_removal_candidates = &ttl_removal_candidate_list,
-            .current_clock_time = current_time,
-            .connect_failure_removal_candidates = &connection_failure_removal_candidate_list,
-            .good_addresses = &good_address_list
-    };
-
-    aws_hash_table_foreach(address_table, iterate_address_table, resolve_data);
-
-    size_t connect_failure_candidate_count = aws_array_list_length(&connection_failure_removal_candidate_list);
-    size_t ttl_removal_candidate_count = aws_array_list_length(&ttl_removal_candidate_list);
-    size_t good_address_count = aws_array_list_length(&good_address_list);
-
-    /* if we don't have any good addresses, the TTLs get ignored until we get some new ones. This is to prevent a DNS outage bringing
-     * the system down. */
-    if (good_address_count > 0) {
-        for (size_t i = 0; i < ttl_removal_candidate_count; ++i) {
-            struct aws_host_address *expired_address = NULL;
-            aws_array_list_get_at(&ttl_removal_candidate_list, &expired_address, i);
-            aws_array_list_push_back(&good_address_list, &expired_address);
-            good_address_count += 1;
+            aws_condition_variable_wait_for_pred(&host_entry->condition_variable, &host_entry->semaphore_mutex,
+                                                 1000000000, resolver_predicate, &predicate_data);
+            unsolicited_resolve_count = 0;
         }
     }
-
-    size_t total_address_count = connect_failure_candidate_count + good_address_count;
-
-    /* only remove up to one availability zone's worth of addresses because of connection problems. There are many regions
-     * with 3 azs, but some only have 2. Since this is only to mitigate the impact of an az being down and the dns records
-     * not being updated yet, we'll just use a factor of 2 to figure out how many to purge. If we have a local connection issue,
-     * who cares? we'll have a ton of latency to resolve later anyways so no point optimizing that here. */
-    size_t to_keep = connect_failure_candidate_count > (total_address_count >> 1) ?
-                     total_address_count >> 1 : total_address_count >> 1;
-
-    for (size_t i = 0; i < to_remove; ++i) {
-
-    }
-
-    struct aws_host_address *used_address =
-            resolve_data->resolved_result(resolve_data->resolver, resolve_data->host_name, AWS_OP_SUCCESS,
-                                          &address_list, resolve_data->user_data);
-
-    if (used_address) {
-        used_address->use_count += 1;
-    }
-
-    aws_mutex_unlock(&posix_host_resolver->cache_mutex);
 }
 
 static int resolver_resolve_host(struct aws_host_resolver *resolver, const struct aws_string *host_name,
