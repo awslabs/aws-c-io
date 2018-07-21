@@ -14,7 +14,8 @@
 */
 
 #include <aws/io/host_resolver.h>
-#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
+#include <aws/common/rw_lock.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/clock.h>
 #include <aws/common/lru_cache.h>
@@ -57,6 +58,29 @@ AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver)
     return resolver->vtable.purge_cache(resolver);
 }
 
+struct default_host_resolver {
+    struct aws_allocator *allocator;
+    struct aws_lru_cache host_table;
+    struct aws_rw_lock host_lock;
+};
+
+struct host_entry {
+    struct aws_thread resolver_thread;
+    struct aws_rw_lock entry_lock;
+    struct aws_lru_cache aaaa_records;
+    struct aws_lru_cache a_records;
+    struct aws_lru_cache failed_connection_aaaa_records;
+    struct aws_lru_cache failed_connection_a_records;
+
+    const struct aws_string *host_name;
+    uint64_t resolve_frequency_ns;
+    /* this member will be a monotonic increasing value and not protected by a memory barrier. 
+       Let it tear, we don't care, we just want to see a change. This at least assumes cache coherency for 
+       the target architecture, which these days is a fairly safe assumption. Where it's not a safe assumption,
+       we don't have multiple cores available anyways. */
+    volatile uint64_t last_use;
+};
+
 static void on_host_key_removed(void *key) {
 
 }
@@ -74,18 +98,18 @@ static void on_address_value_removed(void *value) {
 }
 
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
-    struct posix_host_resolver *posix_resolver = resolver->impl;
-    aws_mutex_lock(&posix_resolver->cache_mutex);
-    aws_lru_cache_clear(&posix_resolver->local_cache);
-    aws_mutex_unlock(&posix_resolver->cache_mutex);
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+    aws_rw_lock_wlock(&default_host_resolver->host_lock);
+    aws_lru_cache_clear(&default_host_resolver->host_table);
+    aws_rw_lock_wunlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
 }
 
 static void resolver_destroy(struct aws_host_resolver *resolver) {
-    struct posix_host_resolver *posix_host_resolver = resolver->impl;
-    aws_lru_cache_clean_up(&posix_host_resolver->local_cache);
-    aws_mem_release(resolver->allocator, posix_host_resolver);
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+    aws_lru_cache_clean_up(&default_host_resolver->host_table);
+    aws_mem_release(resolver->allocator, default_host_resolver);
     AWS_ZERO_STRUCT(*resolver);
 }
 
