@@ -36,7 +36,10 @@ static int run_tests(int argc, char *argv[]) {
                        &channel_single_slot_cleans_up,
                        &channel_slots_clean_up,
                        &channel_message_passing,
-                       &test_default_with_ipv6_lookup
+                       &test_default_with_ipv6_lookup,
+                       &test_default_with_ipv4_only_lookup,
+                       &test_default_with_multiple_lookups,
+                       &test_resolver_ttls,
     );
 }
 

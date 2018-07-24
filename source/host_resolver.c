@@ -21,8 +21,6 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/lru_cache.h>
-#include <stdio.h>
-#include <inttypes.h>
 
 const int64_t NS_PER_SEC = 1000000000;
 
@@ -64,6 +62,12 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable.purge_cache(resolver);
 }
 
+int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+    assert(resolver->vtable.record_connection_failure);
+    return resolver->vtable.record_connection_failure(resolver, address);
+}
+
+
 struct default_host_resolver {
     struct aws_allocator *allocator;
     struct aws_lru_cache host_table;
@@ -93,8 +97,6 @@ struct host_entry {
     volatile bool keep_active;
 };
 
-
-
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_rw_lock_wlock(&default_host_resolver->host_lock);
@@ -109,6 +111,145 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
     aws_lru_cache_clean_up(&default_host_resolver->host_table);
     aws_mem_release(resolver->allocator, default_host_resolver);
     AWS_ZERO_STRUCT(*resolver);
+}
+
+/* this only ever gets called after resolution has already run. */
+static inline void process_host_entry (struct host_entry *entry) {
+    size_t timestamp = 0;
+    aws_sys_clock_get_ticks(&timestamp);
+
+    size_t aaaa_record_count = aws_lru_cache_get_element_count(&entry->aaaa_records);
+    size_t expired_records = 0;
+
+    /* since this only ever gets called after resolution has already run, we're in a dns outage
+     * if everything is expired. Leave an element so we can keep trying. */
+    struct aws_host_address *lru_element = aws_lru_cache_use_lru_element(&entry->aaaa_records);
+    while (lru_element && expired_records < aaaa_record_count - 1) {
+        if (lru_element->expiry < timestamp) {
+            expired_records++;
+            aws_lru_cache_remove(&entry->aaaa_records, lru_element->address);
+        }
+
+        lru_element = aws_lru_cache_use_lru_element(&entry->aaaa_records);
+    }
+
+    size_t a_record_count = aws_lru_cache_get_element_count(&entry->a_records);
+
+    expired_records = 0;
+    lru_element = aws_lru_cache_use_lru_element(&entry->a_records);
+    while (lru_element && expired_records < a_record_count - 1) {
+        if (lru_element->expiry < timestamp) {
+            expired_records++;
+            aws_lru_cache_remove(&entry->a_records, lru_element->address);
+        }
+
+        lru_element = aws_lru_cache_use_lru_element(&entry->a_records);
+    }
+
+    /* if we don't have any known good addresses, take the least recently used, but not expired address with a history of
+     * spotty behavior and upgrade it for reuse. If it's expired, leave it and let the resolve fail.
+     * Better to fail than accidentally give a kids' app an IP address to somebody's adult website when the
+     * IP address gets rebound to a different endpoint. The moral of the story
+     * here is to not disable SSL verification! */
+    if (!aaaa_record_count) {
+        lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_aaaa_records);
+        while (lru_element) {
+            if (timestamp > lru_element->expiry) {
+                struct aws_host_address *to_add = aws_mem_acquire(entry->allocator, sizeof(struct aws_host_address));
+
+                if (to_add && !aws_host_address_copy(lru_element, to_add)) {
+                    aws_lru_cache_put(&entry->aaaa_records, to_add->address, to_add);
+                    aws_lru_cache_remove(&entry->failed_connection_aaaa_records, lru_element->address);
+                    break;
+                }
+            }
+            lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_aaaa_records);
+        }
+    }
+
+    if (!a_record_count) {
+        lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_a_records);
+        while (lru_element) {
+            if (timestamp > lru_element->expiry) {
+                struct aws_host_address *to_add = aws_mem_acquire(entry->allocator, sizeof(struct aws_host_address));
+
+                if (to_add && !aws_host_address_copy(lru_element, to_add)) {
+                    aws_lru_cache_put(&entry->a_records, to_add->address, to_add);
+                    aws_lru_cache_remove(&entry->failed_connection_a_records, lru_element->address);
+                    break;
+                }
+            }
+            lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_a_records);
+        }
+    }
+}
+
+static int resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+
+    aws_rw_lock_rlock(&default_host_resolver->host_lock);
+
+    struct host_entry *host_entry = NULL;
+    if (aws_lru_cache_find(&default_host_resolver->host_table, address->host, (void **)&host_entry)) {
+        goto error_host_table_cleanup;
+    }
+
+    if (host_entry) {
+        struct aws_host_address *cached_address = NULL;
+
+        aws_rw_lock_wlock(&host_entry->entry_lock);
+        struct aws_lru_cache *address_table = address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                                              &host_entry->aaaa_records : &host_entry->a_records;
+
+        struct aws_lru_cache *failed_table = address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                        &host_entry->failed_connection_aaaa_records : &host_entry->failed_connection_a_records;
+
+        aws_lru_cache_find(address_table, address->address, (void **)&cached_address);
+
+        struct aws_host_address *address_cpy = NULL;
+        if (cached_address) {
+            address_cpy = aws_mem_acquire(resolver->allocator, sizeof(struct aws_host_address));
+
+            if (!address_cpy || aws_host_address_copy(address, address_cpy)) {
+                goto error_host_entry_cleanup;
+            }
+
+            if (aws_lru_cache_remove(address_table, address->address)) {
+                goto error_host_entry_cleanup;
+            }
+
+            address_cpy->connection_failure_count += 1;
+
+            if (aws_lru_cache_put(failed_table, address_cpy->host, address_cpy)) {
+                goto error_host_entry_cleanup;
+            }
+        }
+        else {
+            if (aws_lru_cache_find(failed_table, address->address, (void **)&cached_address)) {
+                goto error_host_entry_cleanup;
+            }
+
+            if (cached_address) {
+                cached_address->connection_failure_count += 1;
+            }
+        }
+        aws_rw_lock_wunlock(&host_entry->entry_lock);
+        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+        return AWS_OP_SUCCESS;
+
+    error_host_entry_cleanup:
+        if (address_cpy) {
+            aws_host_address_clean_up(address_cpy);
+            aws_mem_release(resolver->allocator, address_cpy);
+        }
+        aws_rw_lock_wunlock(&host_entry->entry_lock);
+        return AWS_OP_ERR;
+
+    }
+
+error_host_table_cleanup:
+    aws_rw_lock_runlock(&default_host_resolver->host_lock);
+    return AWS_OP_ERR;
 }
 
 struct pending_callback {
@@ -189,26 +330,31 @@ static void resolver_thread_fn(void *arg) {
 
         /* process and clean_up records in the entry. occasionally, failed connect records will be upgraded
          * for retry. */
+        aws_rw_lock_wlock(&host_entry->entry_lock);
+        process_host_entry(host_entry);
+        aws_rw_lock_wunlock(&host_entry->entry_lock);
 
         /* now notify any subscribers that are waiting on resolutions. */
         aws_rw_lock_rlock(&host_entry->entry_lock);
         while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
             struct aws_linked_list_node *resolution_callback_node = aws_linked_list_front(&host_entry->pending_resolution_callbacks);
             struct pending_callback *pending_callback = aws_container_of(resolution_callback_node,  struct pending_callback, node);
-            struct aws_host_address *aaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
+            struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
             struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
 
-            if (aaa_address || a_address) {
+            if (aaaa_address || a_address) {
                 struct aws_host_address *address_array[2];
                 AWS_ZERO_ARRAY(address_array);
                 struct aws_array_list callback_address_list;
                 aws_array_list_init_static(&callback_address_list, address_array, 2,
                                            sizeof(struct aws_host_address *));
 
-                if (aaa_address) {
-                    aws_array_list_push_back(&callback_address_list, &aaa_address);
+                if (aaaa_address) {
+                    aaaa_address->use_count += 1;
+                    aws_array_list_push_back(&callback_address_list, &aaaa_address);
                 }
                 if (a_address) {
+                    a_address->use_count += 1;
                     aws_array_list_push_back(&callback_address_list, &a_address);
                 }
 
@@ -341,6 +487,18 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
 
     host_entry->last_use = timestamp;
     aws_rw_lock_wlock(&host_entry->entry_lock);
+
+    /* if we don't have any good addresses, give the system a chance to upgrade some of the failed connection addresses. */
+    size_t aaaa_count = aws_lru_cache_get_element_count(&host_entry->aaaa_records);
+    size_t a_count = aws_lru_cache_get_element_count(&host_entry->a_records);
+
+    size_t aaaa_failed_count = aws_lru_cache_get_element_count(&host_entry->failed_connection_aaaa_records);
+    size_t a_failed_count = aws_lru_cache_get_element_count(&host_entry->failed_connection_a_records);
+
+    if ((!aaaa_count && aaaa_failed_count) || (!a_count && a_failed_count)) {
+        process_host_entry(host_entry);
+    }
+
     struct aws_host_address *aaaa_record = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
     struct aws_host_address *a_record = aws_lru_cache_use_lru_element(&host_entry->a_records);
 
@@ -384,6 +542,7 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
 static struct aws_host_resolver_vtable vtable = {
         .purge_cache = resolver_purge_cache,
         .resolve_host = default_resolve_host,
+        .record_connection_failure = resolver_record_connection_failure,
         .destroy = resolver_destroy,
 };
 
@@ -409,5 +568,3 @@ int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aw
 
     return AWS_OP_SUCCESS;
 }
-
-

@@ -53,6 +53,7 @@ struct aws_host_resolver_vtable {
     void(*destroy)(struct aws_host_resolver *resolver);
     int(*resolve_host)(struct aws_host_resolver * resolver, const struct aws_string *host_name,
                        aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data);
+    int(*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
     int(*purge_cache)(struct aws_host_resolver * resolver);
 };
 
