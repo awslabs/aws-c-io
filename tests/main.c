@@ -22,6 +22,7 @@
 #include <pipe_test.c>
 #include <event_loop_test.c>
 #include <channel_test.c>
+#include <default_host_resolver_test.c>
 
 
 static int run_tests(int argc, char *argv[]) {
@@ -35,6 +36,7 @@ static int run_tests(int argc, char *argv[]) {
                        &channel_single_slot_cleans_up,
                        &channel_slots_clean_up,
                        &channel_message_passing,
+                       &test_default_with_ipv6_lookup
     );
 }
 

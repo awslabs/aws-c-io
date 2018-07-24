@@ -20,6 +20,10 @@
 int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_string *host_name,
                         struct aws_array_list *output_addresses, void *user_data) {
     struct addrinfo *result = NULL;
+    struct addrinfo *iter = NULL;
+    /* max string length for ipv6. */
+    socklen_t max_len = INET6_ADDRSTRLEN;
+    char address_buffer[max_len];
 
     size_t hostname_len = host_name->len;
     char hostname_cstr[hostname_len + 1];
@@ -30,7 +34,8 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = 0;
-    hints.ai_protocol = 0;
+    /* this one is confusing to me, but Amazon s3 sends UDP records back and I'd rather just ignore them for now. */
+    hints.ai_protocol = IPPROTO_TCP;
     hints.ai_flags = 0;
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
@@ -38,11 +43,6 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     if (err_code) {
         goto clean_up;
     }
-
-    struct addrinfo *iter = NULL;
-    /* max string length for ipv6. */
-    socklen_t max_len = 39;
-    char address_buffer[max_len];
 
     for (iter = result; iter != NULL; iter = iter->ai_next) {
         struct aws_host_address host_address;
@@ -53,14 +53,16 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
         if (iter->ai_family == AF_INET6) {
             host_address.record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
+            inet_ntop(iter->ai_family, &((struct sockaddr_in6 *)iter->ai_addr)->sin6_addr, address_buffer, max_len);
         } else {
             host_address.record_type = AWS_ADDRESS_RECORD_TYPE_A;
+            inet_ntop(iter->ai_family, &((struct sockaddr_in *)iter->ai_addr)->sin_addr, address_buffer, max_len);
         }
 
-        if (inet_ntop(iter->ai_family, iter->ai_addr, address_buffer, max_len)) {
+            size_t address_len = strlen(address_buffer);
             const struct aws_string *address =
                     aws_string_from_array_new(allocator, (const uint8_t *)address_buffer,
-                                              strlen(address_buffer));
+                                              address_len);
 
             if (!address) {
                 goto clean_up;
@@ -68,17 +70,16 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
             host_address.address = address;
             host_address.weight = 0;
-
+            host_address.allocator = allocator;
             host_address.use_count = 0;
             host_address.connection_failure_count = 0;
 
             if (aws_array_list_push_back(output_addresses, &host_address)) {
-                aws_mem_release(allocator, &host_address);
-                aws_string_destroy((void *)address);
+                aws_host_address_clean_up(&host_address);
                 goto clean_up;
             }
 
-        }
+
     }
 
     freeaddrinfo(result);

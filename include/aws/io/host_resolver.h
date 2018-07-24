@@ -38,8 +38,8 @@ struct aws_host_address {
     uint8_t weight;
 };
 
-
-typedef struct aws_host_address*(*on_host_resolved_result)(struct aws_host_resolver *resolver, const struct aws_string *host_name, int err_code, const struct aws_array_list *host_addresses, void *user_data);
+struct aws_host_resolver;
+typedef void(aws_on_host_resolved_result)(struct aws_host_resolver *resolver, const struct aws_string *host_name, int err_code, const struct aws_array_list *host_addresses, void *user_data);
 
 typedef int(*aws_resolve_host_implementation)(struct aws_allocator *allocator, const struct aws_string *host_name, struct aws_array_list *output_addresses, void *user_data);
 
@@ -52,7 +52,7 @@ struct aws_host_resolution_config {
 struct aws_host_resolver_vtable {
     void(*destroy)(struct aws_host_resolver *resolver);
     int(*resolve_host)(struct aws_host_resolver * resolver, const struct aws_string *host_name,
-                       on_host_resolved_result res, struct aws_host_resolution_config *config, void *user_data);
+                       aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data);
     int(*purge_cache)(struct aws_host_resolver * resolver);
 };
 
@@ -74,10 +74,10 @@ AWS_IO_API void aws_host_address_clean_up(struct aws_host_address *address);
 
 AWS_IO_API int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aws_allocator *allocator, size_t max_entries);
 
-AWS_IO_API void aws_host_resolver_destroy(struct aws_host_resolver *);
+AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *);
 
 AWS_IO_API int aws_host_resolver_resolve_host(struct aws_host_resolver *resolver, const struct aws_string *host_name,
-                                              on_host_resolved_result res, struct aws_host_resolution_config *config, void *user_data);
+                                              aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data);
 
 AWS_IO_API int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address);
 
