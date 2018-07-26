@@ -40,6 +40,7 @@ static int run_tests(int argc, char *argv[]) {
                        &test_default_with_ipv4_only_lookup,
                        &test_default_with_multiple_lookups,
                        &test_resolver_ttls,
+                       &test_resolver_connect_failure_recording,
     );
 }
 

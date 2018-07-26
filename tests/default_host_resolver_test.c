@@ -267,7 +267,7 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
     ASSERT_SUCCESS(mock_dns_resolver_init(&mock_resolver, 2, allocator));
 
     struct aws_host_resolution_config config = {
-            .max_ttl = 2,
+            .max_ttl = 1,
             .impl = mock_dns_resolve,
             .impl_data = &mock_resolver,
     };
@@ -347,9 +347,8 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
-
     /* sleep one second, as a result the next resolve should run.*/
-    aws_thread_current_sleep(1000000000);
+    aws_thread_current_sleep(1500000000);
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(
@@ -365,9 +364,9 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
     aws_host_address_clean_up(&callback_data.a_address);
 
     /* sleep one second, as a result the next resolve should run.*/
-    aws_thread_current_sleep(1000000000);
+    aws_thread_current_sleep(1500000000);
 
-    /* note that normally, the first address would come back, but the TTL is expired (we set it to two seconds).
+    /* note that normally, the first address would come back, but the TTL is expired (we set it to one second).
      * As a result, we should get the second one again.*/
 
     callback_data.invoked = false;
@@ -382,8 +381,8 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
-    /* sleep now everything is expired, but because the last thing we resolved was addr 2, it should still be there. */
-    aws_thread_current_sleep(1000000000);
+    /* sleep so entry two expires. Now everything is expired, but because the last thing we resolved was addr 2, it should still be there. */
+    aws_thread_current_sleep(1500000000);
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(
@@ -405,3 +404,171 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
 }
 
 AWS_TEST_CASE(test_resolver_ttls, test_resolver_ttls_fn)
+
+static int test_resolver_connect_failure_recording_fn (struct aws_allocator *allocator, void *user_data) {
+    struct aws_host_resolver resolver;
+
+    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+
+    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "host_address");
+
+    const struct aws_string *addr1_ipv4 = aws_string_from_c_str_new(allocator, "address1ipv4");
+    const struct aws_string *addr1_ipv6 = aws_string_from_c_str_new(allocator, "address1ipv6");
+
+    const struct aws_string *addr2_ipv4 = aws_string_from_c_str_new(allocator, "address2ipv4");
+    const struct aws_string *addr2_ipv6 = aws_string_from_c_str_new(allocator, "address2ipv6");
+
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(mock_dns_resolver_init(&mock_resolver, 1000, allocator));
+
+    struct aws_host_resolution_config config = {
+            .max_ttl = 30,
+            .impl = mock_dns_resolve,
+            .impl_data = &mock_resolver,
+    };
+
+    struct aws_host_address host_address_1_ipv4 = {
+            .address = addr1_ipv4,
+            .allocator = allocator,
+            .expiry = 0,
+            .host = host_name,
+            .connection_failure_count = 0,
+            .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+            .use_count = 0,
+            .weight = 0
+    };
+
+    struct aws_host_address host_address_1_ipv6 = {
+            .address = addr1_ipv6,
+            .allocator = allocator,
+            .expiry = 0,
+            .host = host_name,
+            .connection_failure_count = 0,
+            .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
+            .use_count = 0,
+            .weight = 0
+    };
+
+    struct aws_host_address host_address_2_ipv4 = {
+            .address = addr2_ipv4,
+            .allocator = allocator,
+            .expiry = 0,
+            .host = host_name,
+            .connection_failure_count = 0,
+            .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+            .use_count = 0,
+            .weight = 0
+    };
+
+    struct aws_host_address host_address_2_ipv6 = {
+            .address = addr2_ipv6,
+            .allocator = allocator,
+            .expiry = 0,
+            .host = host_name,
+            .connection_failure_count = 0,
+            .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
+            .use_count = 0,
+            .weight = 0
+    };
+
+    struct aws_array_list address_list_1;
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&address_list_1, allocator, 2, sizeof(struct aws_host_address)));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_2_ipv6));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_2_ipv4));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv4));
+
+    ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_resolver, &address_list_1));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .invoked = false,
+            .has_aaaa_address = false,
+            .has_a_address = false,
+    };
+
+    ASSERT_SUCCESS(
+            aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
+                                           &callback_data));
+
+    aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
+
+    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    callback_data.invoked = false;
+    ASSERT_SUCCESS(
+            aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
+                                           &callback_data));
+
+    aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
+
+    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_1_ipv4));
+
+    /* following the LRU policy, address 1 should be what gets returned here, however we marked it as failed, so it should
+     * be skipped and address 2 should be returned. */
+    callback_data.invoked = false;
+    ASSERT_SUCCESS(
+            aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
+                                           &callback_data));
+
+    aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
+    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_2_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_2_ipv4));
+
+    callback_data.invoked = false;
+    ASSERT_SUCCESS(
+            aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
+                                           &callback_data));
+
+    /* here address 1 should be returned since it is now the least recently used address and all of them have failed.. */
+    aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
+    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    /* let it re-resolve, and we should still have the other connections marked as connection failures. */
+    aws_thread_current_sleep(1500000000);
+
+    callback_data.invoked = false;
+    ASSERT_SUCCESS(
+            aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
+                                           &callback_data));
+
+    /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
+     * and we kept them as bad addresses. */
+    aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
+    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    mock_dns_resolver_clean_up(&mock_resolver);
+    aws_string_destroy((void *)host_name);
+    aws_host_resolver_clean_up(&resolver);
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_connect_failure_recording, test_resolver_connect_failure_recording_fn)
+
+

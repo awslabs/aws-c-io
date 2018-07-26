@@ -54,10 +54,7 @@ static int mock_dns_resolver_append_address_list(struct mock_dns_resolver *resol
 static int mock_dns_resolve(struct aws_allocator *allocator, const struct aws_string *host_name, struct aws_array_list *output_addresses, void *user_data) {
     struct mock_dns_resolver *mock_resolver = user_data;
 
-    fprintf(stderr, "%d\n", (int)mock_resolver->resolve_count);
     if (mock_resolver->resolve_count == mock_resolver->max_resolves) {
-        fprintf(stderr, "%s\n", "failing");
-
         return AWS_OP_ERR;
     }
 
@@ -73,8 +70,9 @@ static int mock_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     for (size_t i = 0; i < aws_array_list_length(iteration_list); ++i) {
         struct aws_host_address *temp_address = NULL;
         aws_array_list_get_at_ptr(iteration_list, (void **)&temp_address, i);
-        fprintf(stderr, "%s\n", aws_string_bytes(temp_address->address));
-        aws_array_list_push_back(output_addresses, temp_address);
+        struct aws_host_address address_cpy;
+        aws_host_address_copy(temp_address, &address_cpy);
+        aws_array_list_push_back(output_addresses, &address_cpy);
     }
 
     return AWS_OP_SUCCESS;

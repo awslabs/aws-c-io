@@ -22,7 +22,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/lru_cache.h>
 
-const int64_t NS_PER_SEC = 1000000000;
+const uint64_t NS_PER_SEC = 1000000000;
 
 int aws_host_address_copy(struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;
@@ -42,7 +42,7 @@ int aws_host_address_copy(struct aws_host_address *from, struct aws_host_address
 }
 
 void aws_host_address_clean_up(struct aws_host_address *address) {
-    aws_string_destroy((void *)address->address);
+    aws_string_destroy((void *) address->address);
     AWS_ZERO_STRUCT(*address);
 }
 
@@ -52,7 +52,8 @@ void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
 }
 
 int aws_host_resolver_resolve_host(struct aws_host_resolver *resolver, const struct aws_string *host_name,
-                                   aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data) {
+                                   aws_on_host_resolved_result *res, struct aws_host_resolution_config *config,
+                                   void *user_data) {
     assert(resolver->vtable.resolve_host);
     return resolver->vtable.resolve_host(resolver, host_name, res, config, user_data);
 }
@@ -114,8 +115,8 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
 }
 
 /* this only ever gets called after resolution has already run. */
-static inline void process_host_entry (struct host_entry *entry) {
-    size_t timestamp = 0;
+static inline void process_host_entry(struct host_entry *entry) {
+    uint64_t timestamp = 0;
     aws_sys_clock_get_ticks(&timestamp);
 
     size_t aaaa_record_count = aws_lru_cache_get_element_count(&entry->aaaa_records);
@@ -124,12 +125,12 @@ static inline void process_host_entry (struct host_entry *entry) {
     /* since this only ever gets called after resolution has already run, we're in a dns outage
      * if everything is expired. Leave an element so we can keep trying. */
     struct aws_host_address *lru_element = aws_lru_cache_use_lru_element(&entry->aaaa_records);
-    while (lru_element && expired_records < aaaa_record_count - 1) {
+    size_t index = 0;
+    while (index++ < aaaa_record_count && expired_records < aaaa_record_count - 1) {
         if (lru_element->expiry < timestamp) {
             expired_records++;
             aws_lru_cache_remove(&entry->aaaa_records, lru_element->address);
         }
-
         lru_element = aws_lru_cache_use_lru_element(&entry->aaaa_records);
     }
 
@@ -137,7 +138,8 @@ static inline void process_host_entry (struct host_entry *entry) {
 
     expired_records = 0;
     lru_element = aws_lru_cache_use_lru_element(&entry->a_records);
-    while (lru_element && expired_records < a_record_count - 1) {
+    index = 0;
+    while (index++ < a_record_count && expired_records < a_record_count - 1) {
         if (lru_element->expiry < timestamp) {
             expired_records++;
             aws_lru_cache_remove(&entry->a_records, lru_element->address);
@@ -153,8 +155,11 @@ static inline void process_host_entry (struct host_entry *entry) {
      * here is to not disable SSL verification! */
     if (!aaaa_record_count) {
         lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_aaaa_records);
-        while (lru_element) {
-            if (timestamp > lru_element->expiry) {
+        index = 0;
+        size_t failed_aaaa_count = aws_lru_cache_get_element_count(&entry->failed_connection_aaaa_records);
+        while (index++ < failed_aaaa_count) {
+
+            if (timestamp < lru_element->expiry) {
                 struct aws_host_address *to_add = aws_mem_acquire(entry->allocator, sizeof(struct aws_host_address));
 
                 if (to_add && !aws_host_address_copy(lru_element, to_add)) {
@@ -169,8 +174,10 @@ static inline void process_host_entry (struct host_entry *entry) {
 
     if (!a_record_count) {
         lru_element = aws_lru_cache_use_lru_element(&entry->failed_connection_a_records);
-        while (lru_element) {
-            if (timestamp > lru_element->expiry) {
+        index = 0;
+        size_t failed_a_count = aws_lru_cache_get_element_count(&entry->failed_connection_aaaa_records);
+        while (index++ < failed_a_count) {
+            if (timestamp < lru_element->expiry) {
                 struct aws_host_address *to_add = aws_mem_acquire(entry->allocator, sizeof(struct aws_host_address));
 
                 if (to_add && !aws_host_address_copy(lru_element, to_add)) {
@@ -190,7 +197,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
     aws_rw_lock_rlock(&default_host_resolver->host_lock);
 
     struct host_entry *host_entry = NULL;
-    if (aws_lru_cache_find(&default_host_resolver->host_table, address->host, (void **)&host_entry)) {
+    if (aws_lru_cache_find(&default_host_resolver->host_table, address->host, (void **) &host_entry)) {
         goto error_host_table_cleanup;
     }
 
@@ -202,9 +209,10 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
                                               &host_entry->aaaa_records : &host_entry->a_records;
 
         struct aws_lru_cache *failed_table = address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
-                        &host_entry->failed_connection_aaaa_records : &host_entry->failed_connection_a_records;
+                                             &host_entry->failed_connection_aaaa_records
+                                                                                                  : &host_entry->failed_connection_a_records;
 
-        aws_lru_cache_find(address_table, address->address, (void **)&cached_address);
+        aws_lru_cache_find(address_table, address->address, (void **) &cached_address);
 
         struct aws_host_address *address_cpy = NULL;
         if (cached_address) {
@@ -223,9 +231,8 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
             if (aws_lru_cache_put(failed_table, address_cpy->host, address_cpy)) {
                 goto error_host_entry_cleanup;
             }
-        }
-        else {
-            if (aws_lru_cache_find(failed_table, address->address, (void **)&cached_address)) {
+        } else {
+            if (aws_lru_cache_find(failed_table, address->address, (void **) &cached_address)) {
                 goto error_host_entry_cleanup;
             }
 
@@ -237,7 +244,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         aws_rw_lock_runlock(&default_host_resolver->host_lock);
         return AWS_OP_SUCCESS;
 
-    error_host_entry_cleanup:
+        error_host_entry_cleanup:
         if (address_cpy) {
             aws_host_address_clean_up(address_cpy);
             aws_mem_release(resolver->allocator, address_cpy);
@@ -247,7 +254,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
 
     }
 
-error_host_table_cleanup:
+    error_host_table_cleanup:
     aws_rw_lock_runlock(&default_host_resolver->host_lock);
     return AWS_OP_ERR;
 }
@@ -277,33 +284,35 @@ static void resolver_thread_fn(void *arg) {
 
         /* resolve and then process each record */
         int err_code = host_entry->resolution_config->impl(host_entry->allocator, host_entry->host_name,
-                                            &address_list, host_entry->resolution_config->impl_data);
+                                                           &address_list, host_entry->resolution_config->impl_data);
         uint64_t timestamp = 0;
         aws_sys_clock_get_ticks(&timestamp);
 
         if (!err_code) {
-            uint64_t new_expiry = timestamp + host_entry->resolution_config->max_ttl * NS_PER_SEC;
+            uint64_t new_expiry = timestamp + (host_entry->resolution_config->max_ttl * NS_PER_SEC);
 
             for (size_t i = 0; i < aws_array_list_length(&address_list); ++i) {
                 struct aws_host_address *fresh_resolved_address = NULL;
-                aws_array_list_get_at_ptr(&address_list, (void **)&fresh_resolved_address, i);
+                aws_array_list_get_at_ptr(&address_list, (void **) &fresh_resolved_address, i);
 
-                struct aws_lru_cache *address_table = fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
-                                                      &host_entry->aaaa_records : &host_entry->a_records;
+                struct aws_lru_cache *address_table =
+                        fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                        &host_entry->aaaa_records : &host_entry->a_records;
 
                 aws_rw_lock_wlock(&host_entry->entry_lock);
                 struct aws_host_address *address_to_cache = NULL;
-                aws_lru_cache_find(address_table, fresh_resolved_address->address, (void **)&address_to_cache);
+                aws_lru_cache_find(address_table, fresh_resolved_address->address, (void **) &address_to_cache);
                 bool found = false;
 
                 if (address_to_cache) {
                     address_to_cache->expiry = new_expiry;
                     found = true;
-                }
-                else {
-                    struct aws_lru_cache *failed_address_table = fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
-                                    &host_entry->failed_connection_aaaa_records : &host_entry->failed_connection_a_records;
-                    aws_lru_cache_find(failed_address_table, fresh_resolved_address->address, (void **)&address_to_cache);
+                } else {
+                    struct aws_lru_cache *failed_address_table =
+                            fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
+                            &host_entry->failed_connection_aaaa_records : &host_entry->failed_connection_a_records;
+                    aws_lru_cache_find(failed_address_table, fresh_resolved_address->address,
+                                       (void **) &address_to_cache);
 
                     if (address_to_cache) {
                         address_to_cache->expiry = new_expiry;
@@ -337,8 +346,10 @@ static void resolver_thread_fn(void *arg) {
         /* now notify any subscribers that are waiting on resolutions. */
         aws_rw_lock_rlock(&host_entry->entry_lock);
         while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
-            struct aws_linked_list_node *resolution_callback_node = aws_linked_list_front(&host_entry->pending_resolution_callbacks);
-            struct pending_callback *pending_callback = aws_container_of(resolution_callback_node,  struct pending_callback, node);
+            struct aws_linked_list_node *resolution_callback_node = aws_linked_list_front(
+                    &host_entry->pending_resolution_callbacks);
+            struct pending_callback *pending_callback = aws_container_of(resolution_callback_node,
+                                                                         struct pending_callback, node);
             struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
             struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
 
@@ -361,8 +372,7 @@ static void resolver_thread_fn(void *arg) {
                 pending_callback->callback(host_entry->resolver, host_entry->host_name, AWS_OP_SUCCESS,
                                            &callback_address_list, pending_callback->user_data);
                 aws_array_list_clean_up(&callback_address_list);
-            }
-            else {
+            } else {
                 pending_callback->callback(host_entry->resolver, host_entry->host_name, err_code,
                                            NULL, pending_callback->user_data);
             }
@@ -374,12 +384,13 @@ static void resolver_thread_fn(void *arg) {
 
         /* we don't actually care about spurious wakeups here. */
         aws_condition_variable_wait_for(&host_entry->condition_variable, &host_entry->semaphore_mutex,
-                                             host_entry->resolve_frequency_ns + timestamp);
+                                        host_entry->resolve_frequency_ns + timestamp);
 
         aws_mutex_unlock(&host_entry->semaphore_mutex);
     }
 
     aws_array_list_clean_up(&address_list);
+    host_entry->keep_active = false;
 }
 
 static void on_host_key_removed(void *key) {
@@ -411,7 +422,8 @@ static void on_address_value_removed(void *value) {
 }
 
 static int default_resolve_host(struct aws_host_resolver *resolver, const struct aws_string *host_name,
-                                aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data) {
+                                aws_on_host_resolved_result *res, struct aws_host_resolution_config *config,
+                                void *user_data) {
 
     uint64_t timestamp = 0;
     aws_sys_clock_get_ticks(&timestamp);
@@ -420,11 +432,12 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
     aws_rw_lock_rlock(&default_host_resolver->host_lock);
 
     struct host_entry *host_entry = NULL;
-    aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&host_entry);
+    aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **) &host_entry);
 
     if (!host_entry) {
         aws_rw_lock_runlock(&default_host_resolver->host_lock);
-        struct host_entry *new_host_entry = aws_mem_acquire(default_host_resolver->allocator, sizeof(struct host_entry));
+        struct host_entry *new_host_entry = aws_mem_acquire(default_host_resolver->allocator,
+                                                            sizeof(struct host_entry));
 
         if (!new_host_entry) {
             return AWS_OP_ERR;
@@ -439,50 +452,59 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
                            NULL, on_address_value_removed, config->max_ttl);
         aws_lru_cache_init(&new_host_entry->aaaa_records, new_host_entry->allocator, aws_hash_string, aws_string_eq,
                            NULL, on_address_value_removed, config->max_ttl);
-        aws_lru_cache_init(&new_host_entry->failed_connection_a_records, new_host_entry->allocator, aws_hash_string, aws_string_eq,
+        aws_lru_cache_init(&new_host_entry->failed_connection_a_records, new_host_entry->allocator, aws_hash_string,
+                           aws_string_eq,
                            NULL, on_address_value_removed, config->max_ttl);
-        aws_lru_cache_init(&new_host_entry->failed_connection_aaaa_records, new_host_entry->allocator, aws_hash_string, aws_string_eq,
+        aws_lru_cache_init(&new_host_entry->failed_connection_aaaa_records, new_host_entry->allocator, aws_hash_string,
+                           aws_string_eq,
                            NULL, on_address_value_removed, config->max_ttl);
         aws_linked_list_init(&new_host_entry->pending_resolution_callbacks);
 
-        struct pending_callback *pending_callback = aws_mem_acquire(default_host_resolver->allocator, sizeof(struct pending_callback));
+        struct pending_callback *pending_callback = aws_mem_acquire(default_host_resolver->allocator,
+                                                                    sizeof(struct pending_callback));
         pending_callback->user_data = user_data;
         pending_callback->callback = res;
         aws_linked_list_push_back(&new_host_entry->pending_resolution_callbacks, &pending_callback->node);
 
         /*add the current callback here */
         aws_rw_lock_init(&new_host_entry->entry_lock);
-        new_host_entry->keep_active = true;
+        new_host_entry->keep_active = false;
         new_host_entry->resolution_config = config;
         aws_mutex_init(&new_host_entry->semaphore_mutex);
         aws_condition_variable_init(&new_host_entry->condition_variable);
         aws_thread_init(&new_host_entry->resolver_thread, default_host_resolver->allocator);
 
         aws_rw_lock_wlock(&default_host_resolver->host_lock);
-
-        aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&host_entry);
+        aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **) &host_entry);
 
         if (host_entry) {
-            aws_rw_lock_wunlock(&default_host_resolver->host_lock);
-            aws_rw_lock_rlock(&default_host_resolver->host_lock);
-            aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&host_entry);
-
-            /* cleanup new_host_entry */
-
-            if (host_entry) {
-                return AWS_OP_ERR;
+            aws_rw_lock_wlock(&host_entry->entry_lock);
+            aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
+            if (!host_entry->keep_active) {
+                host_entry->keep_active = true;
+                aws_thread_clean_up(&host_entry->resolver_thread);
+                aws_thread_init(&host_entry->resolver_thread, resolver->allocator);
+                aws_thread_launch(&host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
             }
-        }
-        else {
+            host_entry->last_use = timestamp;
+
+            aws_rw_lock_wunlock(&host_entry->entry_lock);
+
+            aws_linked_list_remove(&pending_callback->node);
+            on_host_value_removed(new_host_entry);
+            aws_rw_lock_wunlock(&default_host_resolver->host_lock);
+            return AWS_OP_SUCCESS;
+        } else {
             host_entry = new_host_entry;
+            host_entry->keep_active = true;
             const struct aws_string *host_string_copy =
-                    aws_string_from_array_new(default_host_resolver->allocator, aws_string_bytes(host_name), host_name->len);
+                    aws_string_from_array_new(default_host_resolver->allocator, aws_string_bytes(host_name),
+                                              host_name->len);
             aws_lru_cache_put(&default_host_resolver->host_table, host_string_copy, host_entry);
             aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
             aws_rw_lock_wunlock(&default_host_resolver->host_lock);
             return AWS_OP_SUCCESS;
         }
-
     }
 
     host_entry->last_use = timestamp;
@@ -502,7 +524,7 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
     struct aws_host_address *aaaa_record = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
     struct aws_host_address *a_record = aws_lru_cache_use_lru_element(&host_entry->a_records);
 
-    if (aaaa_record || a_record) {
+    if ((aaaa_record || a_record) && host_entry->keep_active) {
         struct aws_host_address *address_array[2];
         AWS_ZERO_ARRAY(address_array);
         struct aws_array_list callback_address_list;
@@ -517,10 +539,10 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
         }
 
         res(host_entry->resolver, host_entry->host_name, AWS_OP_SUCCESS,
-                                   &callback_address_list, user_data);
-    }
-    else {
-        struct pending_callback *pending_callback = aws_mem_acquire(default_host_resolver->allocator, sizeof(struct pending_callback));
+            &callback_address_list, user_data);
+    } else {
+        struct pending_callback *pending_callback = aws_mem_acquire(default_host_resolver->allocator,
+                                                                    sizeof(struct pending_callback));
         pending_callback->user_data = user_data;
         pending_callback->callback = res;
         aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
@@ -533,7 +555,6 @@ static int default_resolve_host(struct aws_host_resolver *resolver, const struct
         aws_thread_launch(&host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
     }
     aws_rw_lock_wunlock(&host_entry->entry_lock);
-
     aws_rw_lock_runlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
@@ -546,9 +567,11 @@ static struct aws_host_resolver_vtable vtable = {
         .destroy = resolver_destroy,
 };
 
-int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aws_allocator *allocator, size_t max_entries) {
+int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aws_allocator *allocator,
+                                   size_t max_entries) {
 
-    struct default_host_resolver *default_host_resolver = aws_mem_acquire(allocator, sizeof(struct default_host_resolver));
+    struct default_host_resolver *default_host_resolver = aws_mem_acquire(allocator,
+                                                                          sizeof(struct default_host_resolver));
 
     if (!default_host_resolver) {
         return AWS_OP_ERR;
@@ -557,7 +580,7 @@ int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aw
     default_host_resolver->allocator = allocator;
     aws_rw_lock_init(&default_host_resolver->host_lock);
     if (aws_lru_cache_init(&default_host_resolver->host_table, allocator, aws_hash_string, aws_string_eq,
-                            on_host_key_removed, on_host_value_removed, max_entries)) {
+                           on_host_key_removed, on_host_value_removed, max_entries)) {
         aws_mem_release(allocator, default_host_resolver);
         return AWS_OP_ERR;
     }
