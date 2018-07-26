@@ -117,6 +117,7 @@ typedef enum aws_io_errors {
     AWS_IO_DNS_QUERY_FAILED,
     AWS_IO_DNS_INVALID_NAME,
     AWS_IO_DNS_NO_ADDRESS_FOR_HOST,
+    AWS_IO_DNS_HOST_REMOVED_FROM_CACHE,
 
     AWS_IO_ERROR_END_RANGE =  0x07FF
 } aws_io_errors;

@@ -14,6 +14,9 @@
 */
 
 #include <aws/io/host_resolver.h>
+
+#include <aws/common/string.h>
+
 #include <netdb.h>
 #include <arpa/inet.h>
 
@@ -47,8 +50,6 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     for (iter = result; iter != NULL; iter = iter->ai_next) {
         struct aws_host_address host_address;
 
-        host_address.host = host_name;
-
         AWS_ZERO_ARRAY(address_buffer);
 
         if (iter->ai_family == AF_INET6) {
@@ -68,18 +69,26 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
                 goto clean_up;
             }
 
+            const struct aws_string *host_cpy =
+                aws_string_from_array_new(allocator, (const uint8_t *)hostname_cstr,
+                                          hostname_len);
+
+            if (!host_cpy) {
+                aws_string_destroy((void *)address);
+                goto clean_up;
+            }
+
             host_address.address = address;
             host_address.weight = 0;
             host_address.allocator = allocator;
             host_address.use_count = 0;
             host_address.connection_failure_count = 0;
+            host_address.host = host_cpy;
 
             if (aws_array_list_push_back(output_addresses, &host_address)) {
                 aws_host_address_clean_up(&host_address);
                 goto clean_up;
             }
-
-
     }
 
     freeaddrinfo(result);

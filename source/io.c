@@ -77,7 +77,14 @@ static struct aws_error_info errors[] = {
                               "Illegal operation for socket state.", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_SOCKET_CONNECT_ABORTED,
                               "Incoming connection was aborted.", LIB_NAME),
-
+        AWS_DEFINE_ERROR_INFO(AWS_IO_DNS_QUERY_FAILED,
+                              "A query to dns failed to resolve.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(AWS_IO_DNS_INVALID_NAME,
+                              "Host name was invalid for dns resolution.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(AWS_IO_DNS_NO_ADDRESS_FOR_HOST,
+                              "No address was found for the supplied host name.", LIB_NAME),
+        AWS_DEFINE_ERROR_INFO(AWS_IO_DNS_HOST_REMOVED_FROM_CACHE,
+                              "The entries for host name were removed from the local dns cache.", LIB_NAME),
 };
 
 static struct aws_error_info_list list = {
