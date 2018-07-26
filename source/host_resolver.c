@@ -84,7 +84,7 @@ struct default_host_resolver {
     struct aws_rw_lock host_lock;
 };
 
-struct AWS_CACHE_ALIGN host_entry {
+struct host_entry {
     struct aws_allocator *allocator;
     struct aws_host_resolver *resolver;
     struct aws_thread resolver_thread;
@@ -412,8 +412,7 @@ static void resolver_thread_fn(void *arg) {
         aws_mutex_lock(&host_entry->semaphore_mutex);
 
         /* we don't actually care about spurious wakeups here. */
-        aws_condition_variable_wait_for(&host_entry->condition_variable, &host_entry->semaphore_mutex,
-                                        host_entry->resolve_frequency_ns + timestamp);
+        aws_condition_variable_wait_for(&host_entry->condition_variable, &host_entry->semaphore_mutex, host_entry->resolve_frequency_ns);
 
         aws_mutex_unlock(&host_entry->semaphore_mutex);
     }
@@ -579,7 +578,7 @@ setup_host_entry_error:
     }
 
     if (pending_callback) {
-        aws_mem_release(default_host_resolver->allocator, pending_callback);
+        aws_mem_release(resolver->allocator, pending_callback);
     }
 
     if (a_records_init) {
@@ -602,7 +601,7 @@ setup_host_entry_error:
         aws_thread_clean_up(&new_host_entry->resolver_thread);
     }
 
-    aws_mem_release(default_host_resolver->allocator, new_host_entry);
+    aws_mem_release(resolver->allocator, new_host_entry);
     return AWS_OP_ERR;
 }
 

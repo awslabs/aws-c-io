@@ -90,6 +90,7 @@ static int test_default_with_ipv6_lookup_fn (struct aws_allocator *allocator, vo
             .has_a_address = false,
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
                                            &callback_data));
@@ -141,6 +142,8 @@ static int test_default_with_ipv4_only_lookup_fn (struct aws_allocator *allocato
             .has_aaaa_address = false,
             .has_a_address = false,
     };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
@@ -196,6 +199,8 @@ static int test_default_with_multiple_lookups_fn (struct aws_allocator *allocato
             .has_aaaa_address = false,
             .has_a_address = false,
     };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name_1, default_host_resolved_test_callback, &config,
@@ -340,14 +345,16 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
             .has_a_address = false,
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -361,8 +368,8 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -379,8 +386,8 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -394,8 +401,8 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
@@ -492,14 +499,16 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
             .has_a_address = false,
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -511,8 +520,8 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -528,8 +537,8 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
@@ -544,8 +553,8 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
 
     /* here address 1 should be returned since it is now the least recently used address and all of them have failed.. */
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
@@ -560,8 +569,8 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
      * and we kept them as bad addresses. */
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
@@ -658,14 +667,16 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
             .has_a_address = false,
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
     ASSERT_SUCCESS(
             aws_host_resolver_resolve_host(&resolver, host_name, default_host_resolved_test_callback, &config,
                                            &callback_data));
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
     uint64_t address_1_expiry = callback_data.aaaa_address.expiry;
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
@@ -678,8 +689,8 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
 
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
     uint64_t address_2_expiry = callback_data.aaaa_address.expiry;
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
@@ -696,8 +707,8 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
     /* here address 1 should be returned since it is now the least recently used address.. */
 
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr1_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr1_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
     ASSERT_TRUE(address_1_expiry < callback_data.aaaa_address.expiry);
     ASSERT_TRUE(address_1_expiry < callback_data.a_address.expiry);
 
@@ -714,8 +725,8 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
      * and we kept them as bad addresses. */
     aws_condition_variable_wait_pred(&callback_data.condition_variable, &mutex, default_host_resolved_predicate, &callback_data);
-    ASSERT_TRUE(aws_string_eq(addr2_ipv6, callback_data.aaaa_address.address));
-    ASSERT_TRUE(aws_string_eq(addr2_ipv4, callback_data.a_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
     ASSERT_TRUE(address_2_expiry < callback_data.aaaa_address.expiry);
     ASSERT_TRUE(address_2_expiry < callback_data.a_address.expiry);
     aws_host_address_clean_up(&callback_data.aaaa_address);

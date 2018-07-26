@@ -13,19 +13,34 @@
 * permissions and limitations under the License.
 */
 
-#include <aws/io/host_resolver.h>
+/* don't move this below the Windows.h include!!!!*/
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <aws/io/host_resolver.h>
+
+#include <aws/common/string.h>
+
+
+static bool s_wsa_init = false;
+
 int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_string *host_name, struct aws_array_list *output_addresses, void *user_data) {
+    (void)user_data;
     ADDRINFOA *result = NULL;
+    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);  
 
-    size_t hostname_len = host_name->len;
-    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
-
+    if (!s_wsa_init) {
+        /* request latest, it will fallback if it doesn't have it.*/
+        WORD requested_version = MAKEWORD(2, 2);
+        WSADATA wsa_data;
+        WSAStartup(requested_version, &wsa_data);
+        s_wsa_init = true;
+    }
+    
     ADDRINFOA hints;
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
+    hints.ai_protocol = IPPROTO_TCP;
 
     int res_error = GetAddrInfoA(hostname_cstr, NULL, &hints, &result);
 
@@ -35,43 +50,46 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
     ADDRINFOA *iter = NULL;
     /* max string length for ipv6. */
-    char address_buffer[39];
-    socklen_t max_ip_addrlen = 39;
+    char address_buffer[INET6_ADDRSTRLEN];
+    socklen_t max_ip_addrlen = INET6_ADDRSTRLEN;
 
     for (iter = result; iter != NULL; iter = iter->ai_next) {
         struct aws_host_address host_address;
-
-        host_address.host = host_name;
-
         AWS_ZERO_ARRAY(address_buffer);
+        host_address.allocator = allocator;
 
         if (iter->ai_family == AF_INET6) {
             host_address.record_type = AWS_ADDRESS_RECORD_TYPE_AAAA;
+            InetNtopA(iter->ai_family, &((struct sockaddr_in6 *)iter->ai_addr)->sin6_addr, address_buffer, max_ip_addrlen);
         }
         else {
             host_address.record_type = AWS_ADDRESS_RECORD_TYPE_A;
+            InetNtopA(iter->ai_family, &((struct sockaddr_in *)iter->ai_addr)->sin_addr, address_buffer, max_ip_addrlen);
+        }        
+       
+        const struct aws_string *address =
+        aws_string_from_array_new(allocator, (const uint8_t *)address_buffer, strlen(address_buffer));
+
+        if (!address) {
+           goto clean_up;
         }
-        
-        if (InetNtopA(iter->ai_family, iter->ai_addr, address_buffer, max_ip_addrlen)) {
-            const struct aws_string *address =
-                aws_string_from_array_new(allocator, (const uint8_t *)address_buffer,
-                    strlen(address_buffer));
 
-            if (!address) {
-                goto clean_up;
-            }
-
-            host_address.address = address;
-            host_address.weight = 0;
-
-            host_address.use_count = 0;
-            host_address.connection_failure_count = 0;
-
-            if (aws_array_list_push_back(output_addresses, &host_address)) {
-                aws_string_destroy((void *)address);
-                goto clean_up;
-            }
+        host_address.host = aws_string_from_array_new(allocator, aws_string_bytes(host_name), host_name->len);
+        if (!host_address.host) {
+           aws_string_destroy((void *)host_address.host);
+           goto clean_up;
         }
+
+        host_address.address = address;
+        host_address.weight = 0;
+
+        host_address.use_count = 0;
+        host_address.connection_failure_count = 0;
+
+        if (aws_array_list_push_back(output_addresses, &host_address)) {
+            aws_host_address_clean_up(&host_address);
+            goto clean_up;
+        }        
     }
 
     FreeAddrInfoA(result);
