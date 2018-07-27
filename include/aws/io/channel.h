@@ -18,40 +18,40 @@
 #include <aws/io/io.h>
 #include <stdbool.h>
 
-typedef enum aws_channel_direction {
+enum aws_channel_direction {
     AWS_CHANNEL_DIR_READ,
     AWS_CHANNEL_DIR_WRITE
-} aws_channel_direction;
+};
 
 struct aws_event_loop;
 struct aws_event_loop_local_object;
 struct aws_task;
 struct aws_message_pool;
 
-typedef void(*aws_channel_on_setup_completed)(struct aws_channel *channel, int error_code, void *user_data);
+typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
-typedef void(*aws_channel_on_shutdown_completed)(struct aws_channel *channel, void *user_data);
+typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, void *user_data);
 
-typedef enum aws_channel_state {
+enum aws_channel_state {
     AWS_CHANNEL_SETTING_UP,
     AWS_CHANNEL_ACTIVE,
     AWS_CHANNEL_SHUTTING_DOWN,
     AWS_CHANNEL_SHUT_DOWN
-} aws_channel_state;
+};
 
 struct aws_channel {
     struct aws_allocator *alloc;
     struct aws_event_loop *loop;
     struct aws_channel_slot *first;
     struct aws_message_pool *msg_pool;
-    aws_channel_state channel_state;
-    aws_channel_on_shutdown_completed on_shutdown_completed;
+    enum aws_channel_state channel_state;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
 };
 
 struct aws_channel_creation_callbacks {
-    aws_channel_on_setup_completed on_setup_completed;
-    aws_channel_on_shutdown_completed on_shutdown_completed;
+    aws_channel_on_setup_completed_fn *on_setup_completed;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *setup_user_data;
     void *shutdown_user_data;
 };
@@ -185,7 +185,7 @@ AWS_IO_API int aws_channel_remove_local_object(struct aws_channel *, const void 
  * are responsible for checking the bounds of it. If the returned message is not large enough, you must send multiple messages.
  */
 AWS_IO_API struct aws_io_message *aws_channel_acquire_message_from_pool(struct aws_channel *,
-                                                                        aws_io_message_type message_type,
+                                                                        enum aws_io_message_type message_type,
                                                                         size_t size_hint);
 
 /**

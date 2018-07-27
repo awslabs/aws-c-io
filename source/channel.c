@@ -31,7 +31,7 @@ static size_t KB_16 = 16 * 1024;
 struct channel_setup_args {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
-    aws_channel_on_setup_completed on_setup_completed;
+    aws_channel_on_setup_completed_fn *on_setup_completed;
     void *user_data;
 };
 
@@ -242,7 +242,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
 }
 
 struct aws_io_message *aws_channel_acquire_message_from_pool(struct aws_channel *channel,
-                                                             aws_io_message_type message_type, size_t size_hint) {
+                                                             enum aws_io_message_type message_type, size_t size_hint) {
     return aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
 }
 

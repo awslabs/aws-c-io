@@ -29,14 +29,14 @@ struct aws_io_handle {
     void *additional_data;
 };
 
-typedef enum aws_io_message_type {
+enum aws_io_message_type {
     AWS_IO_MESSAGE_APPLICATION_DATA,
-} aws_io_message_type;
+};
 
 struct aws_io_message;
 struct aws_channel;
 
-typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *user_data);
+typedef void(aws_channel_on_message_write_completed_fn)(struct aws_channel *, struct aws_io_message *, int err_code, void *user_data);
 
 struct aws_io_message {
     /**
@@ -52,7 +52,7 @@ struct aws_io_message {
     /**
      * type of the message. This is used for framework control messages. Currently the only type is AWS_IO_MESSAGE_APPLICATION_DATA
      */
-    aws_io_message_type message_type;
+    enum aws_io_message_type message_type;
 
     /**
      * Conveys information about the contents of message_data (e.g. cast the ptr to some type). If 0, it's just opaque data.
@@ -68,10 +68,10 @@ struct aws_io_message {
     /**
      * Invoked by the channel once the entire message has been written to the data sink.
      */
-    aws_channel_on_message_write_completed on_completion;
+    aws_channel_on_message_write_completed_fn *on_completion;
 
     /**
-     * arbitrary user data for the on_completion callback     *
+     * arbitrary user data for the on_completion callback
      */
     void *user_data;
 
@@ -81,9 +81,9 @@ struct aws_io_message {
     struct aws_linked_list_node queueing_handle;
 };
 
-typedef int (*aws_io_clock)(uint64_t *timestamp);
+typedef int (aws_io_clock_fn)(uint64_t *timestamp);
 
-typedef enum aws_io_errors {
+enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
     AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
     AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
@@ -116,7 +116,7 @@ typedef enum aws_io_errors {
     AWS_IO_SOCKET_CONNECT_ABORTED,
 
     AWS_IO_ERROR_END_RANGE =  0x07FF
-} aws_io_errors;
+};
 
 #ifdef __cplusplus
 extern "C" {

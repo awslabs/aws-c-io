@@ -28,17 +28,17 @@ static int stop(struct aws_event_loop *);
 static int wait_for_stop_completion(struct aws_event_loop *);
 static int schedule_task(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 static int subscribe_to_io_events(struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                                aws_event_loop_on_event on_event, void *ctx);
+                                aws_event_loop_on_event_fn *on_event, void *ctx);
 static int unsubscribe_from_io_events(struct aws_event_loop *, struct aws_io_handle *handle);
 static bool is_event_thread(struct aws_event_loop *);
 
 static void event_thread_main(void *user_data);
 
-typedef enum event_thread_state {
+enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
     EVENT_THREAD_STATE_RUNNING,
     EVENT_THREAD_STATE_STOPPING,
-} event_thread_state;
+};
 
 struct kqueue_loop {
     struct aws_thread thread;
@@ -55,7 +55,7 @@ struct kqueue_loop {
         struct aws_mutex mutex;
         bool thread_signaled; /* whether thread has been signaled about changes to cross_thread_data */
         struct aws_array_list tasks_to_schedule;
-        event_thread_state state;
+        enum event_thread_state state;
     } cross_thread_data;
 
     /* thread_data holds things which, when the event-thread is running, may only be touched by the thread */
@@ -64,7 +64,7 @@ struct kqueue_loop {
 
         /* These variables duplicate ones in cross_thread_data. We move values out while holding the mutex and operate on them later */
         struct aws_array_list tasks_to_schedule;
-        event_thread_state state;
+        enum event_thread_state state;
     } thread_data;
 };
 
@@ -78,7 +78,7 @@ struct task_to_schedule {
 struct handle_data {
     struct aws_io_handle *owner;
     struct aws_event_loop *event_loop;
-    aws_event_loop_on_event on_event;
+    aws_event_loop_on_event_fn *on_event;
     void *on_event_user_data;
 
     int events_subscribed; /* aws_io_event_types this handle is subscribed to */
@@ -92,7 +92,7 @@ static const uint64_t NANOSEC_PER_SEC = 1000000000;
 #define MAX_EVENTS 100 /* Max kevents to process per loop of the event-thread */
 static const size_t DEFAULT_ARRAY_LIST_RESERVE = 32;
 
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock clock) {
+struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
 
@@ -455,7 +455,7 @@ subscribe_failed:
 }
 
 static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                                  aws_event_loop_on_event on_event, void *user_data) {
+                                  aws_event_loop_on_event_fn *on_event, void *user_data) {
     assert(event_loop);
     assert(handle->data.fd != -1);
     assert(handle->additional_data == NULL);

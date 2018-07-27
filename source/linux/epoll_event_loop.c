@@ -41,7 +41,7 @@ static int stop (struct aws_event_loop *);
 static int wait_for_stop_completion (struct aws_event_loop *);
 static int schedule_task (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
 static int subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                               aws_event_loop_on_event on_event, void *user_data);
+                               aws_event_loop_on_event_fn *on_event, void *user_data);
 static int unsubscribe_from_io_events (struct aws_event_loop *, struct aws_io_handle *handle);
 static bool is_on_callers_thread (struct aws_event_loop *);
 
@@ -80,7 +80,7 @@ struct task_data {
 struct epoll_event_data {
     struct aws_allocator *alloc;
     struct aws_io_handle *handle;
-    aws_event_loop_on_event on_event;
+    aws_event_loop_on_event_fn *on_event;
     void *user_data;
     struct aws_linked_list_node list_handle;
 };
@@ -91,7 +91,7 @@ static const int MAX_EVENTS = 100;
 static const int NANO_TO_MILLIS = 1000000;
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock clock) {
+struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
 
     if (!loop) {
@@ -288,7 +288,7 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
 }
 
 static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                                   aws_event_loop_on_event on_event, void *user_data) {
+                                   aws_event_loop_on_event_fn *on_event, void *user_data) {
 
     struct epoll_event_data *epoll_event_data = (struct epoll_event_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
     handle->additional_data = NULL;

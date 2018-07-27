@@ -21,18 +21,18 @@
 #include <aws/io/io.h>
 #include <stdbool.h>
 
-typedef enum aws_io_event_type {
+enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
     AWS_IO_EVENT_TYPE_REMOTE_HANG_UP = 4,
     AWS_IO_EVENT_TYPE_CLOSED = 8,
     AWS_IO_EVENT_TYPE_ERROR = 16
-} aws_io_event_type;
+};
 
 struct aws_event_loop;
 struct aws_task;
 
-typedef void (*aws_event_loop_on_event)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *user_data);
+typedef void (aws_event_loop_on_event_fn)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *user_data);
 
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *);
@@ -41,7 +41,7 @@ struct aws_event_loop_vtable {
     int (*wait_for_stop_completion) (struct aws_event_loop *);
     int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
     int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                                   aws_event_loop_on_event on_event, void *user_data);
+                                   aws_event_loop_on_event_fn *on_event, void *user_data);
     int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *handle);
     bool (*is_on_callers_thread) (struct aws_event_loop *);
 };
@@ -49,18 +49,18 @@ struct aws_event_loop_vtable {
 struct aws_event_loop {
     struct aws_event_loop_vtable vtable;
     struct aws_allocator *alloc;
-    aws_io_clock clock;
+    aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
     void *impl_data;
 };
 
 struct aws_event_loop_local_object;
-typedef void(*aws_event_loop_on_local_object_removed)(struct aws_event_loop_local_object *);
+typedef void(aws_event_loop_on_local_object_removed_fn)(struct aws_event_loop_local_object *);
 
 struct aws_event_loop_local_object {
     const void *key;
     void *object;
-    aws_event_loop_on_local_object_removed on_object_removed;
+    aws_event_loop_on_local_object_removed_fn *on_object_removed;
 };
 
 #ifdef __cplusplus
@@ -70,7 +70,7 @@ extern "C" {
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
-AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock clock);
+AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock_fn *clock);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -83,7 +83,7 @@ AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
  * Initializes common event-loop data structures.
  * This is only called from the *new() function of event loop implementations.
  */
-AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
+AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
  * Common cleanup code for all implementations.
@@ -153,7 +153,7 @@ AWS_IO_API int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, s
  * This function may be called from outside or inside the event loop thread.
  */
 AWS_IO_API int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                    aws_event_loop_on_event on_event, void *user_data);
+                    aws_event_loop_on_event_fn *on_event, void *user_data);
 
 /**
  * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.

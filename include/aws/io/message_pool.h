@@ -67,7 +67,7 @@ AWS_IO_API void aws_message_pool_clean_up(struct aws_message_pool *msg_pool);
  * note that size_hint is just a hint. the return value's capacity will be set to the actual buffer size.
  */
 AWS_IO_API struct aws_io_message *aws_message_pool_acquire ( struct aws_message_pool*,
-                                                                   aws_io_message_type message_type, size_t size_hint);
+                                                                   enum aws_io_message_type message_type, size_t size_hint);
 
 /**
  * Releases message to the pool if space is available, otherwise frees `message`
