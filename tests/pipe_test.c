@@ -17,7 +17,7 @@
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 
-static int test_pipe_open_close(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_open_close(struct aws_allocator *alloc, void *user_data) {
     struct aws_io_handle read, write;
     ASSERT_SUCCESS(aws_pipe_open(&read, &write));
 
@@ -25,11 +25,11 @@ static int test_pipe_open_close(struct aws_allocator *alloc, void *user_data) {
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_open_close, test_pipe_open_close);
+AWS_TEST_CASE(pipe_open_close, s_test_pipe_open_close);
 
 /* Copy from buf_src to buf_dst using the pipe.
  * Assert that both buffers are identical when the work is done. */
-static int copy_buffers_via_pipe(
+static int s_copy_buffers_via_pipe(
         struct aws_io_handle *read_handle,
         struct aws_io_handle *write_handle,
         const uint8_t *buf_src,
@@ -79,22 +79,22 @@ static int copy_buffers_via_pipe(
     return AWS_OP_SUCCESS;
 }
 
-static int test_pipe_read_write(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_read_write(struct aws_allocator *alloc, void *user_data) {
     struct aws_io_handle read_handle, write_handle;
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle));
 
     uint8_t src_array[4] = { 0x11, 0x22, 0x33, 0x44 };
     uint8_t dst_array[4] = { 0 };
 
-    ASSERT_SUCCESS(copy_buffers_via_pipe(&read_handle, &write_handle, src_array, dst_array, sizeof(src_array)));
+    ASSERT_SUCCESS(s_copy_buffers_via_pipe(&read_handle, &write_handle, src_array, dst_array, sizeof(src_array)));
 
     ASSERT_SUCCESS(aws_pipe_close(&read_handle, &write_handle));
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_read_write, test_pipe_read_write);
+AWS_TEST_CASE(pipe_read_write, s_test_pipe_read_write);
 
-static int test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *user_data) {
     struct aws_io_handle read_handle, write_handle;
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle));
 
@@ -111,7 +111,7 @@ static int test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *
     uint8_t *dst_buf = aws_mem_acquire(alloc, buffer_size);
     ASSERT_NOT_NULL(dst_buf);
 
-    ASSERT_SUCCESS(copy_buffers_via_pipe(&read_handle, &write_handle, src_buf, dst_buf, buffer_size));
+    ASSERT_SUCCESS(s_copy_buffers_via_pipe(&read_handle, &write_handle, src_buf, dst_buf, buffer_size));
 
     aws_mem_release(alloc, src_buf);
     aws_mem_release(alloc, dst_buf);
@@ -119,4 +119,4 @@ static int test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_read_write_large_buffer, test_pipe_read_write_large_buffer);
+AWS_TEST_CASE(pipe_read_write_large_buffer, s_test_pipe_read_write_large_buffer);

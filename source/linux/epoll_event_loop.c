@@ -47,7 +47,7 @@ static bool s_is_on_callers_thread (struct aws_event_loop *);
 
 static void s_main_loop (void *args);
 
-static struct aws_event_loop_vtable vtable = {
+static struct aws_event_loop_vtable s_vtable = {
         .destroy = s_destroy,
         .run = s_run,
         .stop = s_stop,
@@ -86,9 +86,11 @@ struct epoll_event_data {
 };
 
 /* default timeout is 100 seconds */
-static const int DEFAULT_TIMEOUT = 100 * 1000;
-static const int MAX_EVENTS = 100;
-static const int NANO_TO_MILLIS = 1000000;
+enum {
+    DEFAULT_TIMEOUT = 100 * 1000,
+    MAX_EVENTS = 100,
+    NANO_TO_MILLIS = 1000000,
+};
 
 /* Setup edge triggered epoll with a scheduler. */
 struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
@@ -147,7 +149,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     aws_linked_list_init(&epoll_loop->cleanup_list);
 
     loop->impl_data = epoll_loop;
-    loop->vtable = vtable;
+    loop->vtable = s_vtable;
 
     return loop;
 
@@ -215,7 +217,7 @@ static int s_run (struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-static void stop_task (void *args, aws_task_status status) {
+static void s_stop_task (void *args, aws_task_status status) {
 
     struct aws_event_loop *event_loop = (struct aws_event_loop *)args;
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
@@ -231,7 +233,7 @@ static void stop_task (void *args, aws_task_status status) {
 static int s_stop (struct aws_event_loop *event_loop) {
     struct aws_task task = {
             .arg = event_loop,
-            .fn = stop_task,
+            .fn = s_stop_task,
     };
 
     uint64_t timestamp = 0;
@@ -336,7 +338,7 @@ static int s_subscribe_to_io_events (struct aws_event_loop *event_loop, struct a
     return AWS_OP_SUCCESS;
 }
 
-static inline void process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
+static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
     while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
@@ -345,7 +347,7 @@ static inline void process_unsubscribe_cleanup_list(struct epoll_loop *event_loo
     }
 }
 
-static void unsubscribe_cleanup_task(void *arg, aws_task_status status) {
+static void s_unsubscribe_cleanup_task(void *arg, aws_task_status status) {
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
@@ -367,7 +369,7 @@ static int s_unsubscribe_from_io_events (struct aws_event_loop *event_loop, stru
     else if (handle->additional_data){
         struct aws_task task = {
                 .arg = handle->additional_data,
-                .fn = unsubscribe_cleanup_task
+                .fn = s_unsubscribe_cleanup_task
         };
 
         uint64_t timestamp = 0;
@@ -397,7 +399,7 @@ static bool s_is_on_callers_thread (struct aws_event_loop * event_loop) {
 
 /* We treat the pipe fd with a subscription to io events just like any other managed file descriptor.
  * This is the event handler for events on that pipe.*/
-static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+static void s_on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         uint64_t count_we_dont_care_about = 0;
@@ -423,7 +425,7 @@ static void s_main_loop (void *args) {
     struct aws_event_loop *event_loop = (struct aws_event_loop *)args;
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
-    if (s_subscribe_to_io_events(event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, on_tasks_to_schedule, NULL)) {
+    if (s_subscribe_to_io_events(event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_tasks_to_schedule, NULL)) {
         return;
     }
 
@@ -475,7 +477,7 @@ static void s_main_loop (void *args) {
         /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
         uint64_t next_run_time = 0;
         aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
-        process_unsubscribe_cleanup_list(epoll_loop);
+        s_process_unsubscribe_cleanup_list(epoll_loop);
 
         if (next_run_time) {
             uint64_t offset = 0;
@@ -500,6 +502,6 @@ static void s_main_loop (void *args) {
     }
 
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
-    process_unsubscribe_cleanup_list(epoll_loop);
+    s_process_unsubscribe_cleanup_list(epoll_loop);
 }
 

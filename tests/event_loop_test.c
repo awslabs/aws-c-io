@@ -25,7 +25,7 @@ struct task_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void test_task(void *user_data, aws_task_status status) {
+static void s_test_task(void *user_data, aws_task_status status) {
     struct task_args *args = (struct task_args *)user_data;
 
     aws_mutex_lock(&args->mutex);
@@ -34,14 +34,14 @@ static void test_task(void *user_data, aws_task_status status) {
     aws_mutex_unlock((&args->mutex));
 }
 
-static bool task_ran_predicate(void *args){
+static bool s_task_ran_predicate(void *args){
     struct task_args *task_args = (struct task_args *)args;
     return task_args->invoked;
 }
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
-static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator, void *user_data) {
+static int s_test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -55,7 +55,7 @@ static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator
     };
 
     struct aws_task task = {
-            .fn = test_task,
+            .fn = s_test_task,
             .arg = &task_args
     };
 
@@ -65,7 +65,7 @@ static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator
     ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
     ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, task_ran_predicate, &task_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_INT_EQUALS(1, task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
@@ -74,7 +74,7 @@ static int test_xthread_scheduled_tasks_execute (struct aws_allocator *allocator
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(xthread_scheduled_tasks_execute, test_xthread_scheduled_tasks_execute)
+AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_execute)
 
 struct pipe_data {
     struct aws_byte_buf buf;
@@ -85,7 +85,7 @@ struct pipe_data {
     uint8_t expected_invocations;
 };
 
-static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+static void s_on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         struct pipe_data *data = (struct pipe_data *)user_data;
 
@@ -99,7 +99,7 @@ static void on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_h
     }
 }
 
-static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+static void s_on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
         struct pipe_data *data = (struct pipe_data *)user_data;
         aws_mutex_lock(&data->mutex);
@@ -109,7 +109,7 @@ static void on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_h
     }
 }
 
-static bool invocation_predicate(void *args) {
+static bool s_invocation_predicate(void *args) {
     struct pipe_data *data = (struct pipe_data *)args;
     return data->invoked == data->expected_invocations;
 }
@@ -117,7 +117,7 @@ static bool invocation_predicate(void *args) {
 /*
  * Test that read/write subscriptions are functional.
  */
-static int test_read_write_notifications (struct aws_allocator *allocator, void *user_data) {
+static int s_test_read_write_notifications (struct aws_allocator *allocator, void *user_data) {
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -139,10 +139,10 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     struct pipe_data write_data = {{0}};
 
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(event_loop, &read_handle,
-                           AWS_IO_EVENT_TYPE_READABLE, on_pipe_readable, &read_data), "Event loop read subscription failed.");
+                           AWS_IO_EVENT_TYPE_READABLE, s_on_pipe_readable, &read_data), "Event loop read subscription failed.");
 
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(event_loop, &write_handle,
-                                                         AWS_IO_EVENT_TYPE_WRITABLE, on_pipe_writable,
+                                                         AWS_IO_EVENT_TYPE_WRITABLE, s_on_pipe_writable,
                                                          &write_data), "Event loop write subscription failed.");
 
     /* Perform 2 writes to pipe. First write takes 1st half of write_buffer, and second write takes 2nd half.*/
@@ -156,12 +156,12 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     ASSERT_UINT_EQUALS(512, written);
 
     read_data.expected_invocations = 1;
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, invocation_predicate, &read_data));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, s_invocation_predicate, &read_data));
     ASSERT_SUCCESS(aws_pipe_write(&write_handle, write_buffer + 512, 512, &written), "Pipe write failed");
     ASSERT_UINT_EQUALS(512, written);
 
     read_data.expected_invocations = 2;
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, invocation_predicate, &read_data));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&read_data.condition_variable, &read_data.mutex, s_invocation_predicate, &read_data));
 
     ASSERT_BIN_ARRAYS_EQUALS(write_buffer, 1024, read_data.buf.buffer, read_data.buf.len, "Read data didn't match written data");
     ASSERT_INT_EQUALS(2, read_data.invoked, "Read callback should have been invoked twice.");
@@ -178,9 +178,9 @@ static int test_read_write_notifications (struct aws_allocator *allocator, void 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(read_write_notifications, test_read_write_notifications)
+AWS_TEST_CASE(read_write_notifications, s_test_read_write_notifications)
 
-static int test_stop_then_restart (struct aws_allocator *allocator, void *user_data) {
+static int s_test_stop_then_restart (struct aws_allocator *allocator, void *user_data) {
 
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
@@ -194,7 +194,7 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     };
 
     struct aws_task task = {
-            .fn = test_task,
+            .fn = s_test_task,
             .arg = &task_args
     };
 
@@ -204,7 +204,7 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
     ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, task_ran_predicate, &task_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_INT_EQUALS(1, task_args.invoked);
 
     ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
@@ -215,7 +215,7 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
 
     task_args.invoked = 0;
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, task_ran_predicate, &task_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_INT_EQUALS(1, task_args.invoked);
 
     aws_event_loop_destroy(event_loop);
@@ -223,4 +223,4 @@ static int test_stop_then_restart (struct aws_allocator *allocator, void *user_d
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(stop_then_restart, test_stop_then_restart)
+AWS_TEST_CASE(stop_then_restart, s_test_stop_then_restart)

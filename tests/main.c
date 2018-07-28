@@ -24,7 +24,7 @@
 #include <channel_test.c>
 
 
-static int run_tests(int argc, char *argv[]) {
+static int s_run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(&pipe_open_close,
                        &pipe_read_write,
                        &pipe_read_write_large_buffer,
@@ -39,7 +39,7 @@ static int run_tests(int argc, char *argv[]) {
 }
 
 int main (int argc, char *argv[]) {
-    int ret_val = run_tests(argc, argv);
+    int ret_val = s_run_tests(argc, argv);
     return ret_val;
 }
 
