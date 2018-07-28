@@ -35,27 +35,27 @@
 #include <aws/io/pipe.h>
 #endif
 
-static void destroy(struct aws_event_loop *);
-static int run (struct aws_event_loop *);
-static int stop (struct aws_event_loop *);
-static int wait_for_stop_completion (struct aws_event_loop *);
-static int schedule_task (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
-static int subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle *handle, int events,
+static void s_destroy(struct aws_event_loop *);
+static int s_run (struct aws_event_loop *);
+static int s_stop (struct aws_event_loop *);
+static int s_wait_for_stop_completion (struct aws_event_loop *);
+static int s_schedule_task (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+static int s_subscribe_to_io_events (struct aws_event_loop *, struct aws_io_handle *handle, int events,
                                aws_event_loop_on_event_fn *on_event, void *user_data);
-static int unsubscribe_from_io_events (struct aws_event_loop *, struct aws_io_handle *handle);
-static bool is_on_callers_thread (struct aws_event_loop *);
+static int s_unsubscribe_from_io_events (struct aws_event_loop *, struct aws_io_handle *handle);
+static bool s_is_on_callers_thread (struct aws_event_loop *);
 
-static void main_loop (void *args);
+static void s_main_loop (void *args);
 
 static struct aws_event_loop_vtable vtable = {
-        .destroy = destroy,
-        .run = run,
-        .stop = stop,
-        .wait_for_stop_completion = wait_for_stop_completion,
-        .schedule_task = schedule_task,
-        .subscribe_to_io_events = subscribe_to_io_events,
-        .unsubscribe_from_io_events = unsubscribe_from_io_events,
-        .is_on_callers_thread = is_on_callers_thread,
+        .destroy = s_destroy,
+        .run = s_run,
+        .stop = s_stop,
+        .wait_for_stop_completion = s_wait_for_stop_completion,
+        .schedule_task = s_schedule_task,
+        .subscribe_to_io_events = s_subscribe_to_io_events,
+        .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+        .is_on_callers_thread = s_is_on_callers_thread,
 };
 
 struct epoll_loop {
@@ -179,13 +179,13 @@ clean_up_loop:
     return NULL;
 }
 
-static void destroy(struct aws_event_loop *event_loop) {
+static void s_destroy(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     /* we don't know if stop() has been called by someone else,
      * just call stop() again and wait for event-loop to finish. */
     aws_event_loop_stop(event_loop);
-    wait_for_stop_completion(event_loop);
+    s_wait_for_stop_completion(event_loop);
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
     aws_thread_clean_up(&epoll_loop->thread);
@@ -203,11 +203,11 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
-static int run (struct aws_event_loop *event_loop) {
+static int s_run (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     epoll_loop->should_continue = true;
-    if (aws_thread_launch(&epoll_loop->thread, &main_loop, event_loop, NULL)) {
+    if (aws_thread_launch(&epoll_loop->thread, &s_main_loop, event_loop, NULL)) {
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
     }
@@ -228,7 +228,7 @@ static void stop_task (void *args, aws_task_status status) {
     }
 }
 
-static int stop (struct aws_event_loop *event_loop) {
+static int s_stop (struct aws_event_loop *event_loop) {
     struct aws_task task = {
             .arg = event_loop,
             .fn = stop_task,
@@ -237,23 +237,23 @@ static int stop (struct aws_event_loop *event_loop) {
     uint64_t timestamp = 0;
     event_loop->clock(&timestamp);
 
-    if (schedule_task(event_loop, &task, timestamp)) {
+    if (s_schedule_task(event_loop, &task, timestamp)) {
         return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static int wait_for_stop_completion (struct aws_event_loop *event_loop) {
+static int s_wait_for_stop_completion (struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
     return aws_thread_join(&epoll_loop->thread);
 }
 
-static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
+static int s_schedule_task (struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     /* if event loop and the caller are the same thread, just schedule and be done with it. */
-    if (is_on_callers_thread(event_loop)) {
+    if (s_is_on_callers_thread(event_loop)) {
         return aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, run_at);
     }
 
@@ -287,7 +287,7 @@ static int schedule_task (struct aws_event_loop *event_loop, struct aws_task *ta
     return AWS_OP_SUCCESS;
 }
 
-static int subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
+static int s_subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
                                    aws_event_loop_on_event_fn *on_event, void *user_data) {
 
     struct epoll_event_data *epoll_event_data = (struct epoll_event_data *)aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
@@ -350,7 +350,7 @@ static void unsubscribe_cleanup_task(void *arg, aws_task_status status) {
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
 
-static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+static int s_unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     struct epoll_event compat_event = {
@@ -360,7 +360,7 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
 
     /* We can't clean up yet, because we have schedule tasks and more events to process, add it to the cleanup list
      * and we'll process it after everything is finished for this event loop tick. */
-    if (is_on_callers_thread(event_loop) && handle->additional_data) {
+    if (s_is_on_callers_thread(event_loop) && handle->additional_data) {
         aws_linked_list_push_back(&epoll_loop->cleanup_list,
                                   &((struct epoll_event_data *) handle->additional_data)->list_handle);
     }
@@ -375,7 +375,7 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
             return AWS_OP_ERR;
         }
 
-        if (schedule_task(event_loop, &task, timestamp)) {
+        if (s_schedule_task(event_loop, &task, timestamp)) {
             return AWS_OP_ERR;
         }
     }
@@ -389,7 +389,7 @@ static int unsubscribe_from_io_events (struct aws_event_loop *event_loop, struct
     return AWS_OP_SUCCESS;
 }
 
-static bool is_on_callers_thread (struct aws_event_loop * event_loop) {
+static bool s_is_on_callers_thread (struct aws_event_loop * event_loop) {
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
     return aws_thread_current_thread_id() == aws_thread_get_id(&epoll_loop->thread);
@@ -419,11 +419,11 @@ static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_i
     }
 }
 
-static void main_loop (void *args) {
+static void s_main_loop (void *args) {
     struct aws_event_loop *event_loop = (struct aws_event_loop *)args;
     struct epoll_loop *epoll_loop = (struct epoll_loop *)event_loop->impl_data;
 
-    if (subscribe_to_io_events(event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, on_tasks_to_schedule, NULL)) {
+    if (s_subscribe_to_io_events(event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, on_tasks_to_schedule, NULL)) {
         return;
     }
 
@@ -499,7 +499,7 @@ static void main_loop (void *args) {
         }
     }
 
-    unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
+    s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
     process_unsubscribe_cleanup_list(epoll_loop);
 }
 

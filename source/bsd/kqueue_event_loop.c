@@ -1,17 +1,17 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -22,17 +22,21 @@
 #include <assert.h>
 #include <unistd.h>
 
-static void destroy(struct aws_event_loop *);
-static int run(struct aws_event_loop *);
-static int stop(struct aws_event_loop *);
-static int wait_for_stop_completion(struct aws_event_loop *);
-static int schedule_task(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
-static int subscribe_to_io_events(struct aws_event_loop *, struct aws_io_handle *handle, int events,
-                                aws_event_loop_on_event_fn *on_event, void *ctx);
-static int unsubscribe_from_io_events(struct aws_event_loop *, struct aws_io_handle *handle);
-static bool is_event_thread(struct aws_event_loop *);
+static void s_destroy(struct aws_event_loop *);
+static int s_run(struct aws_event_loop *);
+static int s_stop(struct aws_event_loop *);
+static int s_wait_for_stop_completion(struct aws_event_loop *);
+static int s_schedule_task(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *ctx);
+static int s_unsubscribe_from_io_events(struct aws_event_loop *, struct aws_io_handle *handle);
+static bool s_is_event_thread(struct aws_event_loop *);
 
-static void event_thread_main(void *user_data);
+static void s_event_thread_main(void *user_data);
 
 enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -62,7 +66,8 @@ struct kqueue_loop {
     struct {
         struct aws_task_scheduler scheduler;
 
-        /* These variables duplicate ones in cross_thread_data. We move values out while holding the mutex and operate on them later */
+        /* These variables duplicate ones in cross_thread_data. We move values out while holding the mutex and operate
+         * on them later */
         struct aws_array_list tasks_to_schedule;
         enum event_thread_state state;
     } thread_data;
@@ -82,15 +87,17 @@ struct handle_data {
     void *on_event_user_data;
 
     int events_subscribed; /* aws_io_event_types this handle is subscribed to */
-    int events_this_loop; /* aws_io_event_types received during current loop of the event-thread */
+    int events_this_loop;  /* aws_io_event_types received during current loop of the event-thread */
 
     bool kevent_added_successfully;
 };
 
-static const uint64_t DEFAULT_TIMEOUT_SEC = 100; /* Max kevent() timeout per loop of the event-thread */
-static const uint64_t NANOSEC_PER_SEC = 1000000000;
-#define MAX_EVENTS 100 /* Max kevents to process per loop of the event-thread */
-static const size_t DEFAULT_ARRAY_LIST_RESERVE = 32;
+enum {
+    DEFAULT_TIMEOUT_SEC = 100, /* Max kevent() timeout per loop of the event-thread */
+    NANOSEC_PER_SEC = 1000000000,
+    MAX_EVENTS = 100, /* Max kevents to process per loop of the event-thread */
+    DEFAULT_ARRAY_LIST_RESERVE = 32,
+};
 
 struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
@@ -143,9 +150,21 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     /* Set up kevent to handle activity on the cross_thread_signal_pipe */
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data.fd,
-           EVFILT_READ/*filter*/, EV_ADD/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
-    int res = kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+    EV_SET(
+        &thread_signal_kevent,
+        impl->cross_thread_signal_pipe_read.data.fd,
+        EVFILT_READ /*filter*/,
+        EV_ADD /*flags*/,
+        0 /*fflags*/,
+        0 /*data*/,
+        NULL /*udata*/);
+    int res = kevent(
+        impl->kq_fd,
+        &thread_signal_kevent /*changelist*/,
+        1 /*nchanges*/,
+        NULL /*eventlist*/,
+        0 /*nevents*/,
+        NULL /*timeout*/);
     if (res == -1) {
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
@@ -159,7 +178,11 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     impl->cross_thread_data.thread_signaled = false;
 
-    if (aws_array_list_init_dynamic(&impl->cross_thread_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule))) {
+    if (aws_array_list_init_dynamic(
+            &impl->cross_thread_data.tasks_to_schedule,
+            alloc,
+            DEFAULT_ARRAY_LIST_RESERVE,
+            sizeof(struct task_to_schedule))) {
         goto clean_up;
     }
     clean_up_cross_thread_array = true;
@@ -171,7 +194,8 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     }
     clean_up_scheduler = true;
 
-    if (aws_array_list_init_dynamic(&impl->thread_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule))) {
+    if (aws_array_list_init_dynamic(
+            &impl->thread_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule))) {
         goto clean_up;
     }
 
@@ -179,14 +203,14 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
 
     event_loop->impl_data = impl;
 
-    event_loop->vtable.destroy = destroy;
-    event_loop->vtable.run = run;
-    event_loop->vtable.stop = stop;
-    event_loop->vtable.wait_for_stop_completion = wait_for_stop_completion;
-    event_loop->vtable.schedule_task = schedule_task;
-    event_loop->vtable.subscribe_to_io_events = subscribe_to_io_events;
-    event_loop->vtable.unsubscribe_from_io_events = unsubscribe_from_io_events;
-    event_loop->vtable.is_on_callers_thread = is_event_thread;
+    event_loop->vtable.destroy = s_destroy;
+    event_loop->vtable.run = s_run;
+    event_loop->vtable.stop = s_stop;
+    event_loop->vtable.wait_for_stop_completion = s_wait_for_stop_completion;
+    event_loop->vtable.schedule_task = s_schedule_task;
+    event_loop->vtable.subscribe_to_io_events = s_subscribe_to_io_events;
+    event_loop->vtable.unsubscribe_from_io_events = s_unsubscribe_from_io_events;
+    event_loop->vtable.is_on_callers_thread = s_is_event_thread;
 
     /* success */
     return event_loop;
@@ -203,7 +227,13 @@ clean_up:
     }
     if (clean_up_signal_kevent) {
         thread_signal_kevent.flags = EV_DELETE;
-        kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+        kevent(
+            impl->kq_fd,
+            &thread_signal_kevent /*changelist*/,
+            1 /*nchanges*/,
+            NULL /*eventlist*/,
+            0 /*nevents*/,
+            NULL /*timeout*/);
     }
     if (clean_up_signal_pipe) {
         aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
@@ -226,12 +256,12 @@ clean_up:
     return NULL;
 }
 
-static void destroy(struct aws_event_loop *event_loop) {
+static void s_destroy(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* Stop the event-thread. This might have already happened. It's safe to call multiple times. */
-    stop(event_loop);
-    if (wait_for_stop_completion(event_loop)) {
+    s_stop(event_loop);
+    if (s_wait_for_stop_completion(event_loop)) {
         assert("Failed to destroy event-thread, resources have been leaked." == NULL);
         return;
     }
@@ -259,9 +289,21 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_mutex_clean_up(&impl->cross_thread_data.mutex);
 
     struct kevent thread_signal_kevent;
-    EV_SET(&thread_signal_kevent, impl->cross_thread_signal_pipe_read.data.fd,
-           EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, NULL/*udata*/);
-    kevent(impl->kq_fd, &thread_signal_kevent/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+    EV_SET(
+        &thread_signal_kevent,
+        impl->cross_thread_signal_pipe_read.data.fd,
+        EVFILT_READ /*filter*/,
+        EV_DELETE /*flags*/,
+        0 /*fflags*/,
+        0 /*data*/,
+        NULL /*udata*/);
+    kevent(
+        impl->kq_fd,
+        &thread_signal_kevent /*changelist*/,
+        1 /*nchanges*/,
+        NULL /*eventlist*/,
+        0 /*nevents*/,
+        NULL /*timeout*/);
 
     aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
     close(impl->kq_fd);
@@ -271,16 +313,18 @@ static void destroy(struct aws_event_loop *event_loop) {
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
-static int run(struct aws_event_loop *event_loop) {
+static int s_run(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* Since thread isn't running it's ok to touch thread_data,
      * and it's ok to touch cross_thread_data without locking the mutex */
-    assert(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN); /* to re-run, call stop() and wait_for_stop_completion() */
+    assert(
+        impl->cross_thread_data.state ==
+        EVENT_THREAD_STATE_READY_TO_RUN); /* to re-run, call stop() and wait_for_stop_completion() */
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
-    if (aws_thread_launch(&impl->thread, event_thread_main, (void *)event_loop, NULL)) {
+    if (aws_thread_launch(&impl->thread, s_event_thread_main, (void *)event_loop, NULL)) {
         goto clean_up;
     }
 
@@ -296,12 +340,13 @@ void signal_cross_thread_data_changed(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* Doesn't actually matter what we write, any activity on pipe signals that cross_thread_data has changed,
-     * If the pipe is full and the write fails, that's fine, the event-thread will get the signal from some previous write */
+     * If the pipe is full and the write fails, that's fine, the event-thread will get the signal from some previous
+     * write */
     uint32_t write_whatever = 0xC0FFEE;
     write(impl->cross_thread_signal_pipe_write.data.fd, &write_whatever, sizeof(write_whatever));
 }
 
-static int stop(struct aws_event_loop *event_loop) {
+static int s_stop(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     bool signal_thread = false;
@@ -323,12 +368,14 @@ static int stop(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-static int wait_for_stop_completion(struct aws_event_loop *event_loop) {
+static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
 #ifdef DEBUG_BUILD
     aws_mutex_lock(&impl->cross_thread_data.mutex);
-    assert(impl->cross_thread_data.state != EVENT_THREAD_STATE_RUNNING); /* call stop() before wait_for_stop_completion() or you'll wait forever */
+    assert(
+        impl->cross_thread_data.state !=
+        EVENT_THREAD_STATE_RUNNING); /* call stop() before wait_for_stop_completion() or you'll wait forever */
     aws_mutex_unlock(&impl->cross_thread_data.mutex);
 #endif
 
@@ -344,20 +391,20 @@ static int wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-static int schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
+static int s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
     uint64_t now;
     if (event_loop->clock(&now)) {
         return AWS_OP_ERR;
     }
-    return schedule_task(event_loop, task, now);
+    return s_schedule_task(event_loop, task, now);
 }
 
-static int schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
+static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
     assert(task);
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* If we're on the event-thread, just schedule it directly */
-    if (is_event_thread(event_loop)) {
+    if (s_is_event_thread(event_loop)) {
         return aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at);
     }
 
@@ -391,7 +438,7 @@ static int schedule_task(struct aws_event_loop *event_loop, struct aws_task *tas
 }
 
 /* Scheduled task that connects aws_io_handle with the kqueue */
-static void subscribe_task(void *user_data, aws_task_status status) {
+static void s_subscribe_task(void *user_data, aws_task_status status) {
     struct handle_data *handle_data = user_data;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
@@ -408,24 +455,43 @@ static void subscribe_task(void *user_data, aws_task_status status) {
     int changelist_size = 0;
 
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-               EVFILT_READ/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_READ /*filter*/,
+            EV_ADD | EV_RECEIPT /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
     }
     if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-        EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-               EVFILT_WRITE/*filter*/, EV_ADD|EV_RECEIPT/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_WRITE /*filter*/,
+            EV_ADD | EV_RECEIPT /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
     }
 
     /* It's OK to re-use the same memory for changelist input and eventlist output */
-    int num_events = kevent(impl->kq_fd, changelist/*changelist*/, changelist_size/*nchanges*/,
-            changelist/*eventlist*/, changelist_size/*nevents*/, NULL/*timeout*/);
+    int num_events = kevent(
+        impl->kq_fd,
+        changelist /*changelist*/,
+        changelist_size /*nchanges*/,
+        changelist /*eventlist*/,
+        changelist_size /*nevents*/,
+        NULL /*timeout*/);
     if (num_events == -1) {
         goto subscribe_failed;
     }
 
     /* Look through results to see if any failed */
     for (int i = 0; i < num_events; ++i) {
-        assert(changelist[i].flags & EV_ERROR); /* Every result should be flagged as error, that's just how EV_RECEIPT works */
+        assert(
+            changelist[i].flags &
+            EV_ERROR); /* Every result should be flagged as error, that's just how EV_RECEIPT works */
 
         if (changelist[i].data != 0) { /* If a real error occurred, .data contains the error code */
             goto subscribe_failed;
@@ -443,7 +509,13 @@ subscribe_failed:
     for (int i = 0; i < num_events; ++i) {
         if (changelist[i].data == 0) {
             changelist[i].flags = EV_DELETE;
-            kevent(impl->kq_fd, &changelist[i]/*changelist*/, 1/*nchanges*/, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+            kevent(
+                impl->kq_fd,
+                &changelist[i] /*changelist*/,
+                1 /*nchanges*/,
+                NULL /*eventlist*/,
+                0 /*nevents*/,
+                NULL /*timeout*/);
         }
     }
 
@@ -451,16 +523,23 @@ subscribe_failed:
      * Notify the user of the failed subscription by passing AWS_IO_EVENT_TYPE_ERROR to the callback.
      * Also raise AWS_IO_SYS_CALL_FAILURE, which might be helpful to anyone monitoring */
     aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    handle_data->on_event(handle_data->event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
+    handle_data->on_event(
+        handle_data->event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
 }
 
-static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                                  aws_event_loop_on_event_fn *on_event, void *user_data) {
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data) {
     assert(event_loop);
     assert(handle->data.fd != -1);
     assert(handle->additional_data == NULL);
     assert(on_event);
-    assert(events & (AWS_IO_EVENT_TYPE_READABLE|AWS_IO_EVENT_TYPE_WRITABLE)); /* Must subscribe for read, write, or both */
+    assert(
+        events &
+        (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE)); /* Must subscribe for read, write, or both */
 
     struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
     if (!handle_data) {
@@ -486,11 +565,11 @@ static int subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_
      * in the brief window of time before the registration is deleted. */
 
     struct aws_task task = {
-        .fn = subscribe_task,
+        .fn = s_subscribe_task,
         .arg = handle_data,
     };
 
-    if (schedule_task_now(event_loop, &task)) {
+    if (s_schedule_task_now(event_loop, &task)) {
         goto clean_up;
     }
 
@@ -502,7 +581,7 @@ clean_up:
     return AWS_OP_ERR;
 }
 
-static void unsubscribe_task(void *user_data, aws_task_status status) {
+static void s_unsubscribe_task(void *user_data, aws_task_status status) {
     struct handle_data *handle_data = user_data;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
@@ -512,15 +591,27 @@ static void unsubscribe_task(void *user_data, aws_task_status status) {
             int changelist_size = 0;
 
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-                       EVFILT_READ/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+                EV_SET(
+                    &changelist[changelist_size++],
+                    handle_data->owner->data.fd,
+                    EVFILT_READ /*filter*/,
+                    EV_DELETE /*flags*/,
+                    0 /*fflags*/,
+                    0 /*data*/,
+                    handle_data /*udata*/);
             }
             if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-                EV_SET(&changelist[changelist_size++], handle_data->owner->data.fd,
-                       EVFILT_WRITE/*filter*/, EV_DELETE/*flags*/, 0/*fflags*/, 0/*data*/, handle_data/*udata*/);
+                EV_SET(
+                    &changelist[changelist_size++],
+                    handle_data->owner->data.fd,
+                    EVFILT_WRITE /*filter*/,
+                    EV_DELETE /*flags*/,
+                    0 /*fflags*/,
+                    0 /*data*/,
+                    handle_data /*udata*/);
             }
 
-            kevent(impl->kq_fd, changelist, changelist_size, NULL/*eventlist*/, 0/*nevents*/, NULL/*timeout*/);
+            kevent(impl->kq_fd, changelist, changelist_size, NULL /*eventlist*/, 0 /*nevents*/, NULL /*timeout*/);
         }
     }
 
@@ -528,17 +619,17 @@ static void unsubscribe_task(void *user_data, aws_task_status status) {
     aws_mem_release(handle_data->event_loop->alloc, handle_data);
 }
 
-static int unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     assert(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
     handle->additional_data = NULL;
 
     struct aws_task task = {
-        .fn = unsubscribe_task,
+        .fn = s_unsubscribe_task,
         .arg = handle_data,
     };
 
-    if (schedule_task_now(event_loop, &task)) {
+    if (s_schedule_task_now(event_loop, &task)) {
         goto clean_up;
     }
 
@@ -548,7 +639,7 @@ clean_up:
     return AWS_OP_ERR;
 }
 
-static bool is_event_thread(struct aws_event_loop *event_loop) {
+static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     return aws_thread_current_thread_id() == aws_thread_get_id(&impl->thread);
@@ -558,7 +649,7 @@ static bool is_event_thread(struct aws_event_loop *event_loop) {
  * Takes tasks from tasks_to_schedule and adds them to the scheduler.
  * If everything is successful, tasks_to_schedule will be emptied.
  * If anything goes wrong, tasks_to_schedule will be left with the unprocessed tasks */
- static int process_tasks_to_schedule(struct aws_event_loop *event_loop) {
+static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     const size_t num_tasks = aws_array_list_length(&impl->thread_data.tasks_to_schedule);
@@ -571,7 +662,8 @@ static bool is_event_thread(struct aws_event_loop *event_loop) {
     for (task_i = 0; task_i < num_tasks; ++task_i) {
         struct task_to_schedule *task_to_schedule;
         aws_array_list_get_at_ptr(&impl->thread_data.tasks_to_schedule, (void **)&task_to_schedule, task_i);
-        if (aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, &task_to_schedule->task, task_to_schedule->run_at)) {
+        if (aws_task_scheduler_schedule_future(
+                &impl->thread_data.scheduler, &task_to_schedule->task, task_to_schedule->run_at)) {
             break;
         }
     }
@@ -580,15 +672,14 @@ static bool is_event_thread(struct aws_event_loop *event_loop) {
         /* Not all tasks were scheduled, modify list so only unprocessed tasks remain */
         aws_array_list_pop_front_n(&impl->thread_data.tasks_to_schedule, task_i);
         return AWS_OP_ERR;
-    }
-    else {
+    } else {
         /* Success, clear list */
         aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
         return AWS_OP_SUCCESS;
     }
 }
 
-static void process_cross_thread_data(struct aws_event_loop *event_loop) {
+static void s_process_cross_thread_data(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     bool should_resignal_cross_thread_data = false;
@@ -611,9 +702,9 @@ static void process_cross_thread_data(struct aws_event_loop *event_loop) {
              * but requires the other list to be empty. */
             bool swap_possible = aws_array_list_length(&impl->thread_data.tasks_to_schedule) == 0;
             if (AWS_LIKELY(swap_possible)) {
-                aws_array_list_swap_contents(&impl->cross_thread_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
-            }
-            else {
+                aws_array_list_swap_contents(
+                    &impl->cross_thread_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
+            } else {
                 /* If swap not possible, signal the thread to try again next loop */
                 should_resignal_cross_thread_data = true;
                 impl->cross_thread_data.thread_signaled = true;
@@ -623,20 +714,19 @@ static void process_cross_thread_data(struct aws_event_loop *event_loop) {
         aws_mutex_unlock(&impl->cross_thread_data.mutex);
     } /* End critical section */
 
-    process_tasks_to_schedule(event_loop);
+    s_process_tasks_to_schedule(event_loop);
 
     if (should_resignal_cross_thread_data) {
         signal_cross_thread_data_changed(event_loop);
     }
 }
 
-static int aws_event_flags_from_kevent(struct kevent *kevent) {
+static int s_aws_event_flags_from_kevent(struct kevent *kevent) {
     int event_flags = 0;
 
     if (kevent->flags & EV_ERROR) {
         event_flags |= AWS_IO_EVENT_TYPE_ERROR;
-    }
-    else if (kevent->filter == EVFILT_READ) {
+    } else if (kevent->filter == EVFILT_READ) {
         if (kevent->data != 0) {
             event_flags |= AWS_IO_EVENT_TYPE_READABLE;
         }
@@ -644,8 +734,7 @@ static int aws_event_flags_from_kevent(struct kevent *kevent) {
         if (kevent->flags & EV_EOF) {
             event_flags |= AWS_IO_EVENT_TYPE_CLOSED;
         }
-    }
-    else if (kevent->filter == EVFILT_WRITE) {
+    } else if (kevent->filter == EVFILT_WRITE) {
         if (kevent->data != 0) {
             event_flags |= AWS_IO_EVENT_TYPE_WRITABLE;
         }
@@ -658,7 +747,7 @@ static int aws_event_flags_from_kevent(struct kevent *kevent) {
     return event_flags;
 }
 
-static void event_thread_main(void *user_data) {
+static void s_event_thread_main(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
     struct kqueue_loop *impl = event_loop->impl_data;
 
@@ -683,7 +772,8 @@ static void event_thread_main(void *user_data) {
         bool should_process_cross_thread_data = false;
 
         /* Process kqueue events */
-        int num_kevents = kevent(impl->kq_fd, NULL/*changelist*/, 0/*nchanges*/, kevents/*eventlist*/, MAX_EVENTS/*nevents*/, &timeout);
+        int num_kevents = kevent(
+            impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
         if (num_kevents == -1) {
             /* Raise an error, in case this is interesting to anyone monitoring,
@@ -713,7 +803,7 @@ static void event_thread_main(void *user_data) {
             }
 
             /* Otherwise this was a normal event on a subscribed handle. Figure out which flags to report. */
-            int event_flags = aws_event_flags_from_kevent(kevent);
+            int event_flags = s_aws_event_flags_from_kevent(kevent);
             if (event_flags == 0) {
                 continue;
             }
@@ -729,16 +819,17 @@ static void event_thread_main(void *user_data) {
         /* Invoke each handle's event callback */
         for (int i = 0; i < num_io_handle_events; ++i) {
             struct handle_data *handle_data = io_handle_events[i];
-            handle_data->on_event(event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
+            handle_data->on_event(
+                event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
             handle_data->events_this_loop = 0;
         }
 
         /* Just in case anything in thread_data.tasks_to_schedule failed to process in the past, try again. */
-        process_tasks_to_schedule(event_loop);
+        s_process_tasks_to_schedule(event_loop);
 
         /* Process cross_thread_data */
         if (should_process_cross_thread_data) {
-            process_cross_thread_data(event_loop);
+            s_process_cross_thread_data(event_loop);
         }
 
         /* Run scheduled tasks */
@@ -752,8 +843,7 @@ static void event_thread_main(void *user_data) {
 
             timeout.tv_sec = (time_t)(timeout_ns / NANOSEC_PER_SEC);
             timeout.tv_nsec = (long)(timeout_ns % NANOSEC_PER_SEC);
-        }
-        else {
+        } else {
             timeout.tv_sec = DEFAULT_TIMEOUT_SEC;
             timeout.tv_nsec = 0;
         }

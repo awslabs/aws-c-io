@@ -25,8 +25,11 @@
 #pragma warning(disable:4204) /* non-constant aggregate initializer */
 #endif
 
-static size_t MESSAGE_POOL_KEY = 0;
-static size_t KB_16 = 16 * 1024;
+static size_t s_message_pool_key = 0; /* Address of variable serves as key in hash table */
+
+enum {
+    KB_16 = 16 * 1024,
+};
 
 struct channel_setup_args {
     struct aws_allocator *alloc;
@@ -35,7 +38,7 @@ struct channel_setup_args {
     void *user_data;
 };
 
-static void on_msg_pool_removed(struct aws_event_loop_local_object *object) {
+static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
     struct aws_message_pool *msg_pool = (struct aws_message_pool *)object->object;
     struct aws_allocator *alloc = msg_pool->alloc;
     aws_message_pool_clean_up(msg_pool);
@@ -43,7 +46,7 @@ static void on_msg_pool_removed(struct aws_event_loop_local_object *object) {
     aws_mem_release(alloc, object);
 }
 
-static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
+static void s_on_channel_setup_complete(void *arg, aws_task_status task_status) {
     struct channel_setup_args *setup_args = (struct channel_setup_args *)arg;
     struct aws_message_pool *message_pool = NULL;
     struct aws_event_loop_local_object *local_object = NULL;
@@ -53,7 +56,7 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
         AWS_ZERO_STRUCT(stack_obj);
         local_object = &stack_obj;
 
-        if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &MESSAGE_POOL_KEY, local_object) ) {
+        if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &s_message_pool_key, local_object) ) {
             local_object = (struct aws_event_loop_local_object *)aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
 
             if (!local_object) {
@@ -74,9 +77,9 @@ static void on_channel_setup_complete(void *arg, aws_task_status task_status) {
                 goto cleanup_msg_pool_mem;
             }
 
-            local_object->key = &MESSAGE_POOL_KEY;
+            local_object->key = &s_message_pool_key;
             local_object->object = message_pool;
-            local_object->on_object_removed = on_msg_pool_removed;
+            local_object->on_object_removed = s_on_msg_pool_removed;
 
             if (aws_event_loop_put_local_object(setup_args->channel->loop, local_object)) {
                 goto cleanup_msg_pool;
@@ -131,7 +134,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     setup_args->user_data = callbacks->setup_user_data;
 
     struct aws_task task = {
-        .fn = on_channel_setup_complete,
+        .fn = s_on_channel_setup_complete,
         .arg = setup_args,
     };
 
@@ -149,7 +152,7 @@ int aws_channel_init(struct aws_channel *channel, struct aws_allocator *alloc,
     return AWS_OP_SUCCESS;
 }
 
-static inline void cleanup_slot(struct aws_channel_slot *slot) {
+static void s_cleanup_slot(struct aws_channel_slot *slot) {
 
     if (slot) {
         if (slot->handler) {
@@ -176,7 +179,7 @@ void aws_channel_clean_up(struct aws_channel *channel) {
 
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
-        cleanup_slot(current);
+        s_cleanup_slot(current);
         current = tmp;
     }
 
@@ -189,7 +192,7 @@ struct channel_shutdown_task_args {
     int error_code;
 };
 
-static void shutdown_task(void *arg, aws_task_status status) {
+static void s_shutdown_task(void *arg, aws_task_status status) {
     struct channel_shutdown_task_args *task_args = (struct channel_shutdown_task_args *)arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -228,7 +231,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
         }
 
         struct aws_task task = {
-            .fn = shutdown_task,
+            .fn = s_shutdown_task,
             .arg = task_args,
         };
 
@@ -321,7 +324,7 @@ int aws_channel_slot_remove (struct aws_channel_slot *slot) {
         slot->channel->first = NULL;
     }
 
-    cleanup_slot(slot);
+    s_cleanup_slot(slot);
     return AWS_OP_SUCCESS;
 }
 
@@ -342,7 +345,7 @@ int aws_channel_slot_replace (struct aws_channel_slot *remove, struct aws_channe
         remove->channel->first = new;
     }
 
-    cleanup_slot(remove);
+    s_cleanup_slot(remove);
     return AWS_OP_SUCCESS;
 }
 

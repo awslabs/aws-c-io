@@ -16,7 +16,7 @@
 
 #define LIB_NAME  "aws-c-io"
 
-static struct aws_error_info errors[] = {
+static struct aws_error_info s_errors[] = {
         AWS_DEFINE_ERROR_INFO(AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT,
                               "Channel cannot accept input", LIB_NAME),
         AWS_DEFINE_ERROR_INFO(AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
@@ -80,16 +80,16 @@ static struct aws_error_info errors[] = {
 
 };
 
-static struct aws_error_info_list list = {
-        .error_list = errors,
-        .count = sizeof(errors) / sizeof(struct aws_error_info),
+static struct aws_error_info_list s_list = {
+        .error_list = s_errors,
+        .count = sizeof(s_errors) / sizeof(struct aws_error_info),
 };
 
-static int8_t error_strings_loaded = 0;
+static bool s_error_strings_loaded = false;
 
 void aws_io_load_error_strings(void) {
-    if (!error_strings_loaded) {
-        error_strings_loaded = 1;
-        aws_register_error_info(&list);
+    if (!s_error_strings_loaded) {
+        s_error_strings_loaded = true;
+        aws_register_error_info(&s_list);
     }
 }
