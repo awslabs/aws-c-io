@@ -26,7 +26,7 @@ struct task_args {
 };
 
 static void s_test_task(void *user_data, aws_task_status status) {
-    struct task_args *args = (struct task_args *)user_data;
+    struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
     args->invoked += 1;
@@ -35,7 +35,7 @@ static void s_test_task(void *user_data, aws_task_status status) {
 }
 
 static bool s_task_ran_predicate(void *args){
-    struct task_args *task_args = (struct task_args *)args;
+    struct task_args *task_args = args;
     return task_args->invoked;
 }
 /*
@@ -87,7 +87,7 @@ struct pipe_data {
 
 static void s_on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
-        struct pipe_data *data = (struct pipe_data *)user_data;
+        struct pipe_data *data = user_data;
 
         aws_mutex_lock(&data->mutex);
         size_t data_read = 0;
@@ -101,7 +101,7 @@ static void s_on_pipe_readable (struct aws_event_loop *event_loop, struct aws_io
 
 static void s_on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
     if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        struct pipe_data *data = (struct pipe_data *)user_data;
+        struct pipe_data *data = user_data;
         aws_mutex_lock(&data->mutex);
         data->invoked += 1;
         aws_condition_variable_notify_one(&data->condition_variable);
@@ -110,7 +110,7 @@ static void s_on_pipe_writable (struct aws_event_loop *event_loop, struct aws_io
 }
 
 static bool s_invocation_predicate(void *args) {
-    struct pipe_data *data = (struct pipe_data *)args;
+    struct pipe_data *data = args;
     return data->invoked == data->expected_invocations;
 }
 

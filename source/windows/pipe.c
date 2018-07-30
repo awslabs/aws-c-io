@@ -1,17 +1,17 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 
 #include <aws/io/io.h>
 #include <aws/io/pipe.h>
@@ -22,12 +22,12 @@
 static int raise_last_windows_error() {
     const DWORD err = GetLastError();
     switch (err) {
-    case ERROR_INVALID_HANDLE:
-        return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-    case ERROR_BROKEN_PIPE:
-        return aws_raise_error(AWS_IO_BROKEN_PIPE);
-    default:
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        case ERROR_INVALID_HANDLE:
+            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        case ERROR_BROKEN_PIPE:
+            return aws_raise_error(AWS_IO_BROKEN_PIPE);
+        default:
+            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 }
 
@@ -38,10 +38,10 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
     write_handle->additional_data = NULL;
 
     bool success = CreatePipe(
-            &read_handle->data.handle, /*read handle*/
-            &write_handle->data.handle, /*write handle*/
-            NULL, /*NULL means default security attributes*/
-            SUGGESTED_BUFFER_SIZE); /*suggested size, in bytes, for the pipe's buffer*/
+        &read_handle->data.handle,  /*read handle*/
+        &write_handle->data.handle, /*write handle*/
+        NULL,                       /*NULL means default security attributes*/
+        SUGGESTED_BUFFER_SIZE);     /*suggested size, in bytes, for the pipe's buffer*/
     if (!success) {
         return raise_last_windows_error();
     }
@@ -50,10 +50,10 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
      * It's possible to set non-blocking IO on an anonymous pipe via SetNamedPipeHandleState() */
     DWORD read_mode = PIPE_NOWAIT | PIPE_READMODE_BYTE;
     success = SetNamedPipeHandleState(
-            read_handle->data.handle, /*pipe handle*/
-            &read_mode, /*mode to set*/
-            NULL, /*NULL if the collection count is not being set*/
-            NULL); /*NULL if the collection count is not being set*/
+        read_handle->data.handle, /*pipe handle*/
+        &read_mode,               /*mode to set*/
+        NULL,                     /*NULL if the collection count is not being set*/
+        NULL);                    /*NULL if the collection count is not being set*/
     if (!success) {
         raise_last_windows_error();
         goto clean_up;
@@ -61,10 +61,10 @@ int aws_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write
 
     DWORD write_mode = PIPE_NOWAIT | PIPE_TYPE_BYTE;
     success = SetNamedPipeHandleState(
-            write_handle->data.handle, /*pipe handle*/
-            &write_mode, /*mode to set*/
-            NULL, /*NULL if the collection count is not being set*/
-            NULL); /*NULL if the collection count is not being set*/
+        write_handle->data.handle, /*pipe handle*/
+        &write_mode,               /*mode to set*/
+        NULL,                      /*NULL if the collection count is not being set*/
+        NULL);                     /*NULL if the collection count is not being set*/
     if (!success) {
         raise_last_windows_error();
         goto clean_up;
@@ -129,12 +129,12 @@ int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_
      * Therefore, in a loop, attempt to write less and less bytes until we
      * write SOMETHING, or we give up.
      */
-    const DWORD PARTIAL_WRITE_RETRY_MIN = 128; /*If we can't write this many bytes, give up*/
+    const DWORD PARTIAL_WRITE_RETRY_MIN = 128;  /*If we can't write this many bytes, give up*/
     const DWORD PARTIAL_WRITE_RETRY_RSHIFT = 2; /*If we can't write, decrease bytes_to_write by rshifting this much*/
     DWORD bytes_to_write = src_size > SUGGESTED_BUFFER_SIZE ? SUGGESTED_BUFFER_SIZE : (DWORD)src_size;
     DWORD bytes_written;
     while (true) {
-        if (!WriteFile(handle->data.handle, src, bytes_to_write, &bytes_written, NULL/*lpOverlapped*/)) {
+        if (!WriteFile(handle->data.handle, src, bytes_to_write, &bytes_written, NULL /*lpOverlapped*/)) {
             return raise_last_windows_error();
         }
 
@@ -171,7 +171,7 @@ int aws_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, s
      *     using a nonblocking-wait handle, the function returns zero immediately,
      *     and the GetLastError function returns ERROR_NO_DATA.
      */
-    bool success = ReadFile(handle->data.handle, dst, bytes_to_read, &bytes_read, NULL/*lpOverlapped*/);
+    bool success = ReadFile(handle->data.handle, dst, bytes_to_read, &bytes_read, NULL /*lpOverlapped*/);
 
     if (!success) {
         if (GetLastError() == ERROR_NO_DATA) {

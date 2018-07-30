@@ -1,17 +1,17 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 #include <aws/common/byte_buf.h>
 #include <aws/io/io.h>
 #include <aws/io/pipe.h>
@@ -30,11 +30,11 @@ AWS_TEST_CASE(pipe_open_close, s_test_pipe_open_close);
 /* Copy from buf_src to buf_dst using the pipe.
  * Assert that both buffers are identical when the work is done. */
 static int s_copy_buffers_via_pipe(
-        struct aws_io_handle *read_handle,
-        struct aws_io_handle *write_handle,
-        const uint8_t *buf_src,
-        uint8_t *buf_dst,
-        size_t buf_size) {
+    struct aws_io_handle *read_handle,
+    struct aws_io_handle *write_handle,
+    const uint8_t *buf_src,
+    uint8_t *buf_dst,
+    size_t buf_size) {
 
     size_t total_bytes_written = 0;
     size_t total_bytes_read = 0;
@@ -52,8 +52,7 @@ static int s_copy_buffers_via_pipe(
             if (write_res == AWS_OP_SUCCESS) {
                 total_bytes_written += bytes_written;
                 aws_byte_cursor_advance(&src_cursor, bytes_written);
-            }
-            else {
+            } else {
                 ASSERT_INT_EQUALS(AWS_IO_WRITE_WOULD_BLOCK, aws_last_error());
                 break;
             }
@@ -65,8 +64,7 @@ static int s_copy_buffers_via_pipe(
             if (read_res == AWS_OP_SUCCESS) {
                 total_bytes_read += bytes_read;
                 aws_byte_cursor_advance(&dst_cursor, bytes_read);
-            }
-            else {
+            } else {
                 ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
                 break;
             }
@@ -83,8 +81,8 @@ static int s_test_pipe_read_write(struct aws_allocator *alloc, void *user_data) 
     struct aws_io_handle read_handle, write_handle;
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle));
 
-    uint8_t src_array[4] = { 0x11, 0x22, 0x33, 0x44 };
-    uint8_t dst_array[4] = { 0 };
+    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
+    uint8_t dst_array[4] = {0};
 
     ASSERT_SUCCESS(s_copy_buffers_via_pipe(&read_handle, &write_handle, src_array, dst_array, sizeof(src_array)));
 
