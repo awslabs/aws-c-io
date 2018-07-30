@@ -13,14 +13,15 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/io/event_loop.h>
+
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/event_loop.h>
+#include <sys/epoll.h>
 
 #include <errno.h>
-#include <sys/epoll.h>
 #include <unistd.h>
 
 #if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 8

@@ -13,10 +13,10 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/testing/aws_test_harness.h>
-
+#include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/io/channel.h>
+#include <aws/testing/aws_test_harness.h>
 
 #include <read_write_test_handler.c>
 

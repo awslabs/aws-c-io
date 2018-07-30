@@ -13,6 +13,8 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/io/pipe.h>
+
 #include <aws/io/io.h>
 
 #ifdef __GLIBC__

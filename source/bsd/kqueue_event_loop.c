@@ -13,13 +13,15 @@
  * permissions and limitations under the License.
  */
 
-#include <assert.h>
+#include <aws/io/event_loop.h>
+
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
 #include <sys/event.h>
+
+#include <assert.h>
 #include <unistd.h>
 
 static void s_destroy(struct aws_event_loop *);

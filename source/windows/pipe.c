@@ -13,8 +13,9 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/io/io.h>
 #include <aws/io/pipe.h>
+
+#include <aws/io/io.h>
 
 #define SUGGESTED_BUFFER_SIZE 4096
 

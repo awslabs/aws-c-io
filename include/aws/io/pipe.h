@@ -17,6 +17,7 @@
  */
 
 #include <aws/io/exports.h>
+#include <aws/common/common.h>
 
 struct aws_io_handle;
 

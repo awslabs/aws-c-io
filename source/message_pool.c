@@ -13,9 +13,11 @@
  * permissions and limitations under the License.
  */
 
-#include <assert.h>
-#include <aws/common/thread.h>
 #include <aws/io/message_pool.h>
+
+#include <aws/common/thread.h>
+
+#include <assert.h>
 
 int aws_memory_pool_init(
     struct aws_memory_pool *mempool,

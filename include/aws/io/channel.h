@@ -16,12 +16,16 @@
  */
 
 #include <aws/io/io.h>
-#include <stdbool.h>
 
-enum aws_channel_direction { AWS_CHANNEL_DIR_READ, AWS_CHANNEL_DIR_WRITE };
+enum aws_channel_direction {
+    AWS_CHANNEL_DIR_READ,
+    AWS_CHANNEL_DIR_WRITE,
+};
 
+struct aws_channel;
 struct aws_event_loop;
 struct aws_event_loop_local_object;
+struct aws_io_message;
 struct aws_task;
 struct aws_message_pool;
 

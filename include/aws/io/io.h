@@ -19,7 +19,6 @@
 #include <aws/common/common.h>
 #include <aws/common/linked_list.h>
 #include <aws/io/exports.h>
-#include <stdint.h>
 
 struct aws_io_handle {
     union {

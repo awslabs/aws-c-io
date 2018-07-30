@@ -16,10 +16,8 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/common/clock.h>
 #include <aws/common/hash_table.h>
 #include <aws/io/io.h>
-#include <stdbool.h>
 
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,

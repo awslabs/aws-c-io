@@ -13,9 +13,10 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/io/channel.h>
+
 #include <aws/common/condition_variable.h>
 #include <aws/common/task_scheduler.h>
-#include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
 

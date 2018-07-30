@@ -13,8 +13,9 @@
  * permissions and limitations under the License.
  */
 
-#include <assert.h>
 #include <aws/io/event_loop.h>
+
+#include <assert.h>
 
 static void s_object_removed(void *value) {
     struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)value;
