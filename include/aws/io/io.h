@@ -81,7 +81,7 @@ struct aws_io_message {
     struct aws_linked_list_node queueing_handle;
 };
 
-typedef int (*aws_io_clock)(uint64_t *timestamp);
+typedef int (aws_io_clock_fn)(uint64_t *timestamp);
 
 typedef enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,

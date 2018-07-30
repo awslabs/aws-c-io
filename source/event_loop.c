@@ -23,7 +23,7 @@ static void object_removed(void *value) {
     }
 }
 
-int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock) {
+int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock) {
 
     event_loop->alloc = alloc;
     event_loop->clock = clock;
