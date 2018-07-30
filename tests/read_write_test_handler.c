@@ -176,7 +176,7 @@ struct rw_handler_write_task_args {
     struct aws_byte_buf *buffer;
 };
 
-static void s_rw_handler_write_task(void *arg, aws_task_status task_status) {
+static void s_rw_handler_write_task(void *arg, enum aws_task_status task_status) {
     struct rw_handler_write_task_args *write_task_args = arg;
 
     struct aws_io_message *msg = aws_channel_acquire_message_from_pool(
@@ -227,7 +227,7 @@ struct increment_read_window_task_args {
 };
 
 #if 0 /* not used yet */
-static void s_increment_read_window_task(void *arg, aws_task_status task_status) {
+static void s_increment_read_window_task(void *arg, enum aws_task_status task_status) {
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
     struct rw_test_handler_impl *handler_impl = increment_read_window_task_args->handler->impl;
 

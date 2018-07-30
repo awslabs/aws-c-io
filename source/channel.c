@@ -46,7 +46,7 @@ static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
     aws_mem_release(alloc, object);
 }
 
-static void s_on_channel_setup_complete(void *arg, aws_task_status task_status) {
+static void s_on_channel_setup_complete(void *arg, enum aws_task_status task_status) {
     struct channel_setup_args *setup_args = (struct channel_setup_args *)arg;
     struct aws_message_pool *message_pool = NULL;
     struct aws_event_loop_local_object *local_object = NULL;
@@ -194,7 +194,7 @@ struct channel_shutdown_task_args {
     int error_code;
 };
 
-static void s_shutdown_task(void *arg, aws_task_status status) {
+static void s_shutdown_task(void *arg, enum aws_task_status status) {
     struct channel_shutdown_task_args *task_args = (struct channel_shutdown_task_args *)arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {

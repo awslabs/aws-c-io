@@ -448,7 +448,7 @@ static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *t
 }
 
 /* Scheduled task that connects aws_io_handle with the kqueue */
-static void s_subscribe_task(void *user_data, aws_task_status status) {
+static void s_subscribe_task(void *user_data, enum aws_task_status status) {
     struct handle_data *handle_data = user_data;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
@@ -593,7 +593,7 @@ clean_up:
     return AWS_OP_ERR;
 }
 
-static void s_unsubscribe_task(void *user_data, aws_task_status status) {
+static void s_unsubscribe_task(void *user_data, enum aws_task_status status) {
     struct handle_data *handle_data = user_data;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
