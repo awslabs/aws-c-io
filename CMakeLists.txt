@@ -9,6 +9,11 @@ file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
 
+file(GLOB AWS_IO_TESTING_HEADERS
+        "include/aws/testing/*.h"
+        )
+
+
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
@@ -150,6 +155,7 @@ find_package(aws-c-common REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} aws-c-common ${PLATFORM_LIBS})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
 
 install(
         TARGETS ${CMAKE_PROJECT_NAME} EXPORT ${CMAKE_PROJECT_NAME}-config

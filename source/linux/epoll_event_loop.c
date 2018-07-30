@@ -47,7 +47,7 @@ static bool is_on_callers_thread (struct aws_event_loop *);
 
 static void main_loop (void *args);
 
-static struct aws_event_loop_vtable vtable = {
+static struct aws_event_loop_vtable s_vtable = {
         .destroy = destroy,
         .run = run,
         .stop = stop,
@@ -91,7 +91,7 @@ static const int MAX_EVENTS = 100;
 static const int NANO_TO_MILLIS = 1000000;
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock clock) {
+struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn clock) {
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
 
     if (!loop) {
@@ -147,7 +147,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     aws_linked_list_init(&epoll_loop->cleanup_list);
 
     loop->impl_data = epoll_loop;
-    loop->vtable = vtable;
+    loop->vtable = s_vtable;
 
     return loop;
 
@@ -340,7 +340,7 @@ static inline void process_unsubscribe_cleanup_list(struct epoll_loop *event_loo
 
     while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
-        struct epoll_event_data *event_data = aws_container_of(node, struct epoll_event_data, list_handle);
+        struct epoll_event_data *event_data = AWS_CONTAINER_OF(node, struct epoll_event_data, list_handle);
         aws_mem_release(event_data->alloc, (void *)event_data);
     }
 }
@@ -409,7 +409,7 @@ static void on_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_i
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
-            struct task_data *task_data = aws_container_of(node, struct task_data, queue_handle);
+            struct task_data *task_data = AWS_CONTAINER_OF(node, struct task_data, queue_handle);
             aws_task_scheduler_schedule_future(&epoll_loop->scheduler, &task_data->task, task_data->timestamp);
             aws_mem_release(event_loop->alloc, task_data);
         }

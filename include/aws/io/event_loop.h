@@ -49,7 +49,7 @@ struct aws_event_loop_vtable {
 struct aws_event_loop {
     struct aws_event_loop_vtable vtable;
     struct aws_allocator *alloc;
-    aws_io_clock clock;
+    aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
     void *impl_data;
 };
@@ -70,7 +70,7 @@ extern "C" {
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
-AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock clock);
+AWS_IO_API struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock_fn *clock);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -83,7 +83,7 @@ AWS_IO_API void aws_event_loop_destroy(struct aws_event_loop *);
  * Initializes common event-loop data structures.
  * This is only called from the *new() function of event loop implementations.
  */
-AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock clock);
+AWS_IO_API int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
  * Common cleanup code for all implementations.
