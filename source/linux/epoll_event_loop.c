@@ -346,7 +346,7 @@ static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
     while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
-        struct epoll_event_data *event_data = aws_container_of(node, struct epoll_event_data, list_handle);
+        struct epoll_event_data *event_data = AWS_CONTAINER_OF(node, struct epoll_event_data, list_handle);
         aws_mem_release(event_data->alloc, (void *)event_data);
     }
 }
@@ -421,7 +421,7 @@ static void s_on_tasks_to_schedule(
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
-            struct task_data *task_data = aws_container_of(node, struct task_data, queue_handle);
+            struct task_data *task_data = AWS_CONTAINER_OF(node, struct task_data, queue_handle);
             aws_task_scheduler_schedule_future(&epoll_loop->scheduler, &task_data->task, task_data->timestamp);
             aws_mem_release(event_loop->alloc, task_data);
         }

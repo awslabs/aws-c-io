@@ -14,6 +14,7 @@
  */
 
 #include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/io/channel.h>
 
 typedef struct aws_byte_buf(rw_test_handler_driver_fn)(
@@ -237,7 +238,7 @@ static void s_increment_read_window_task(void *arg, enum aws_task_status task_st
 }
 
 static void s_rw_handler_trigger_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                 size_t window_update) {
+    size_t window_update) {
 
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
@@ -263,7 +264,7 @@ static void s_rw_handler_trigger_increment_read_window(struct aws_channel_handle
         aws_channel_schedule_task(slot->channel, &task, now);
     }
 }
-#endif
+#endif /* not used yet */
 
 static bool s_rw_handler_shutdown_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
@@ -291,4 +292,6 @@ static int s_rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
     return aws_condition_variable_wait_pred(&handler_impl->condition_variable, &handler_impl->mutex,
                                             s_rw_test_handler_shutdown_predicate, handler_impl);
 }
-#endif
+#endif /* not used yet */
+
+#endif /*READ_WRITE_TEST_HANDLER*/
