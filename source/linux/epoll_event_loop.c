@@ -36,10 +36,10 @@
 #    include <aws/io/pipe.h>
 #endif
 
-static void s_destroy;
-static int s_run;
-static int s_stop;
-static int s_wait_for_stop_completion;
+static void s_destroy(struct aws_event_loop *event_loop);
+static int s_run(struct aws_event_loop *event_loop);
+static int s_stop(struct aws_event_loop *event_loop);
+static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
@@ -48,7 +48,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-static bool s_is_on_callers_thread;
+static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static void s_main_loop(void *args);
 
