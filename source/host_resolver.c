@@ -377,7 +377,7 @@ static void resolver_thread_fn(void *arg) {
         while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
             struct aws_linked_list_node *resolution_callback_node = aws_linked_list_front(
                     &host_entry->pending_resolution_callbacks);
-            struct pending_callback *pending_callback = aws_container_of(resolution_callback_node,
+            struct pending_callback *pending_callback = AWS_CONTAINER_OF(resolution_callback_node,
                                                                          struct pending_callback, node);
             struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
             struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
@@ -438,7 +438,7 @@ static void on_host_value_removed(void *value) {
     while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
         struct aws_linked_list_node *resolution_callback_node = aws_linked_list_front(
                 &host_entry->pending_resolution_callbacks);
-        struct pending_callback *pending_callback = aws_container_of(resolution_callback_node,
+        struct pending_callback *pending_callback = AWS_CONTAINER_OF(resolution_callback_node,
                                                                      struct pending_callback, node);
         pending_callback->callback(host_entry->resolver, host_entry->host_name, AWS_IO_DNS_HOST_REMOVED_FROM_CACHE,
                                    NULL, pending_callback->user_data);

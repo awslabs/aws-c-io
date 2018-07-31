@@ -1,25 +1,24 @@
-#ifndef AWS_IO_H
-#define AWS_IO_H
+#ifndef AWS_IO_IO_H
+#define AWS_IO_IO_H
 
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
-#include <aws/io/exports.h>
-#include <aws/common/common.h>
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 #include <aws/common/byte_buf.h>
+#include <aws/common/common.h>
 #include <aws/common/linked_list.h>
-#include <stdint.h>
+#include <aws/io/exports.h>
 
 struct aws_io_handle {
     union {
@@ -29,18 +28,23 @@ struct aws_io_handle {
     void *additional_data;
 };
 
-typedef enum aws_io_message_type {
+enum aws_io_message_type {
     AWS_IO_MESSAGE_APPLICATION_DATA,
-} aws_io_message_type;
+};
 
 struct aws_io_message;
 struct aws_channel;
 
-typedef void(*aws_channel_on_message_write_completed)(struct aws_channel *, struct aws_io_message *, int err_code, void *user_data);
+typedef void(aws_channel_on_message_write_completed_fn)(
+    struct aws_channel *channel,
+    struct aws_io_message *message,
+    int err_code,
+    void *user_data);
 
 struct aws_io_message {
     /**
-     * Allocator used for the message and message data. If this is null, the message belongs to a pool or some other message manager.
+     * Allocator used for the message and message data. If this is null, the message belongs to a pool or some other
+     * message manager.
      */
     struct aws_allocator *allocator;
 
@@ -50,28 +54,30 @@ struct aws_io_message {
     struct aws_byte_buf message_data;
 
     /**
-     * type of the message. This is used for framework control messages. Currently the only type is AWS_IO_MESSAGE_APPLICATION_DATA
+     * type of the message. This is used for framework control messages. Currently the only type is
+     * AWS_IO_MESSAGE_APPLICATION_DATA
      */
-    aws_io_message_type message_type;
+    enum aws_io_message_type message_type;
 
     /**
-     * Conveys information about the contents of message_data (e.g. cast the ptr to some type). If 0, it's just opaque data.
+     * Conveys information about the contents of message_data (e.g. cast the ptr to some type). If 0, it's just opaque
+     * data.
      */
     int message_tag;
 
     /**
-     * In order to avoid excess allocations/copies, on a partial read or write, the copy mark is set to indicate how much of this
-     * message has already been processed or copied.
+     * In order to avoid excess allocations/copies, on a partial read or write, the copy mark is set to indicate how
+     * much of this message has already been processed or copied.
      */
     size_t copy_mark;
 
     /**
      * Invoked by the channel once the entire message has been written to the data sink.
      */
-    aws_channel_on_message_write_completed on_completion;
+    aws_channel_on_message_write_completed_fn *on_completion;
 
     /**
-     * arbitrary user data for the on_completion callback     *
+     * arbitrary user data for the on_completion callback
      */
     void *user_data;
 
@@ -81,9 +87,9 @@ struct aws_io_message {
     struct aws_linked_list_node queueing_handle;
 };
 
-typedef int (*aws_io_clock)(uint64_t *timestamp);
+typedef int(aws_io_clock_fn)(uint64_t *timestamp);
 
-typedef enum aws_io_errors {
+enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
     AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
     AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
@@ -119,8 +125,8 @@ typedef enum aws_io_errors {
     AWS_IO_DNS_NO_ADDRESS_FOR_HOST,
     AWS_IO_DNS_HOST_REMOVED_FROM_CACHE,
 
-    AWS_IO_ERROR_END_RANGE =  0x07FF
-} aws_io_errors;
+    AWS_IO_ERROR_END_RANGE = 0x07FF
+};
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,10 +135,11 @@ extern "C" {
 /**
  * Loads error strings for this API so that aws_last_error_str etc... will return useful debug strings.
  */
-AWS_IO_API void aws_io_load_error_strings(void);
+AWS_IO_API
+void aws_io_load_error_strings(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* AWS_IO_H */
+#endif /* AWS_IO_IO_H */

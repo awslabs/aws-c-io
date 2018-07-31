@@ -19,9 +19,9 @@ else ()
 endif ()
 
 #SSL certificates to use for testing.
-add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
+#add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
+#        COMMAND ${CMAKE_COMMAND} -E copy_directory
+#        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
 
 add_test(pipe_open_close ${TEST_BINARY_NAME} pipe_open_close)
 add_test(pipe_read_write ${TEST_BINARY_NAME} pipe_read_write)
