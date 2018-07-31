@@ -29,7 +29,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     char address_buffer[max_len];
 
     size_t hostname_len = host_name->len;
-    char *hostname_cstr = aws_string_bytes(host_name);    
+    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);    
 
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
