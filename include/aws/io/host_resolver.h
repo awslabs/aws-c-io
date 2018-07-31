@@ -48,18 +48,18 @@ struct aws_host_resolver;
  * plan to use it later. For convenience, we've provided the aws_host_address_copy() and aws_host_address_clean_up()
  * functions.
  */
-typedef void(aws_on_host_resolved_result)(struct aws_host_resolver *resolver, const struct aws_string *host_name,
+typedef void(aws_on_host_resolved_result_fn)(struct aws_host_resolver *resolver, const struct aws_string *host_name,
                                           int err_code, const struct aws_array_list *host_addresses, void *user_data);
 
 /**
  * Function signature for configuring your own resolver (the default just uses getaddrinfo()). The type in output_addresses
  * is struct aws_host_address (by-value). We assume this function blocks, hence this absurdly complicated design.
  */
-typedef int(*aws_resolve_host_implementation)(struct aws_allocator *allocator, const struct aws_string *host_name,
+typedef int(aws_resolve_host_implementation_fn)(struct aws_allocator *allocator, const struct aws_string *host_name,
                                               struct aws_array_list *output_addresses, void *user_data);
 
 struct aws_host_resolution_config {
-    aws_resolve_host_implementation impl;
+    aws_resolve_host_implementation_fn *impl;
     size_t max_ttl;
     void *impl_data;
 };
@@ -70,8 +70,8 @@ struct aws_host_resolver_vtable {
     void(*destroy)(struct aws_host_resolver *resolver);
     /** resolve the host by host_name, the user owns host_name, so it needs to be copied if you persist it,
      * invoke res with the result. This function should never block. */
-    int(*resolve_host)(struct aws_host_resolver * resolver, const struct aws_string *host_name,
-                       aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data);
+    int(*resolve_host)(struct aws_host_resolver *resolver, const struct aws_string *host_name,
+                       aws_on_host_resolved_result_fn *res, struct aws_host_resolution_config *config, void *user_data);
     /** gives your implementation a hint that an address has some failed connections occuring. Do whatever you want (or nothing)
      * about it.
      */
@@ -91,9 +91,15 @@ extern "C" {
 #endif
 
 /**
- * copies `from` to `to`.
+ * Copies `from` to `to`.
  */
-AWS_IO_API int aws_host_address_copy(struct aws_host_address *from, struct aws_host_address *to);
+AWS_IO_API int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to);
+
+/**
+* Moves `from` to `to`. After this call, from is no longer usable. Though, it could be resused for another
+* move or copy operation.
+*/
+AWS_IO_API void aws_host_address_move(struct aws_host_address *from, struct aws_host_address *to);
 
 /**
  * Cleans up the memory for `address`
@@ -113,14 +119,14 @@ AWS_IO_API int aws_default_dns_resolve(struct aws_allocator *allocator, const st
  * When you request an address, it checks the cache. If the entry isn't in the cache it creates a new one.
  * Each entry has a potentially short lived back-ground thread based on ttl for the records. Once we've populated the cache
  * and you keep the resolver active, the resolution callback will be invoked immediately. When it's idle, it will take a little
- * while in the background thread to fetch more, evaluate ttl's etc... In that case you're callback will be invoked from the background
+ * while in the background thread to fetch more, evaluate ttl's etc... In that case your callback will be invoked from the background
  * thread.
  *
  * --------------------------------------------------------------------------------------------------------------------
  *
  * A few things to note about ttls and connection failures.
  *
- * We attempt to honor your max ttl, but will not honor it if, dns queries are failing, or all of your connections are marked
+ * We attempt to honor your max ttl but will not honor it if dns queries are failing or all of your connections are marked
  * as failed. Once we are able to query dns again, we will re-evaluate the ttls.
  *
  * Upon notification connection failures, we move them to a separate list. Eventually we retry them when it's likely that
@@ -139,13 +145,13 @@ AWS_IO_API int aws_host_resolver_default_init(struct aws_host_resolver *resolver
 /**
  * Simply calls destroy on the vtable.
  */
-AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *);
+AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *resolver);
 
 /**
  * calls resolve_host on the vtable.
  */
 AWS_IO_API int aws_host_resolver_resolve_host(struct aws_host_resolver *resolver, const struct aws_string *host_name,
-                                              aws_on_host_resolved_result *res, struct aws_host_resolution_config *config, void *user_data);
+                                              aws_on_host_resolved_result_fn *res, struct aws_host_resolution_config *config, void *user_data);
 
 /**
  * calls record_connection_failure on the vtable.

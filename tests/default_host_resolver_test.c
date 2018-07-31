@@ -289,7 +289,7 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_1_ipv6 = {
@@ -300,7 +300,7 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_array_list address_list_1;
@@ -317,7 +317,7 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_2_ipv6 = {
@@ -328,7 +328,7 @@ static int test_resolver_ttls_fn (struct aws_allocator *allocator, void *user_da
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_array_list address_list_2;
@@ -446,7 +446,7 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_1_ipv6 = {
@@ -457,7 +457,7 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_2_ipv4 = {
@@ -468,7 +468,7 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_2_ipv6 = {
@@ -479,7 +479,7 @@ static int test_resolver_connect_failure_recording_fn (struct aws_allocator *all
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_array_list address_list_1;
@@ -614,7 +614,7 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_1_ipv6 = {
@@ -625,7 +625,7 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_2_ipv4 = {
@@ -636,7 +636,7 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_host_address host_address_2_ipv6 = {
@@ -647,7 +647,7 @@ static int test_resolver_ttl_refreshes_on_resolve_fn (struct aws_allocator *allo
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
-            .weight = 0
+            .weight = 0,
     };
 
     struct aws_array_list address_list_1;

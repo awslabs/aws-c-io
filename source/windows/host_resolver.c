@@ -48,12 +48,11 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
         goto clean_up;
     }
 
-    ADDRINFOA *iter = NULL;
     /* max string length for ipv6. */
     char address_buffer[INET6_ADDRSTRLEN];
     socklen_t max_ip_addrlen = INET6_ADDRSTRLEN;
 
-    for (iter = result; iter != NULL; iter = iter->ai_next) {
+    for (ADDRINFOA *iter = result; iter != NULL; iter = iter->ai_next) {
         struct aws_host_address host_address;
         AWS_ZERO_ARRAY(address_buffer);
         host_address.allocator = allocator;

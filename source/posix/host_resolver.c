@@ -29,9 +29,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     char address_buffer[max_len];
 
     size_t hostname_len = host_name->len;
-    char hostname_cstr[hostname_len + 1];
-    hostname_cstr[hostname_len] = 0;
-    memcpy(hostname_cstr, aws_string_bytes(host_name), hostname_len);
+    char *hostname_cstr = aws_string_bytes(host_name);    
 
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
@@ -60,35 +58,35 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
             inet_ntop(iter->ai_family, &((struct sockaddr_in *)iter->ai_addr)->sin_addr, address_buffer, max_len);
         }
 
-            size_t address_len = strlen(address_buffer);
-            const struct aws_string *address =
-                    aws_string_from_array_new(allocator, (const uint8_t *)address_buffer,
+        size_t address_len = strlen(address_buffer);
+        const struct aws_string *address =
+                aws_string_from_array_new(allocator, (const uint8_t *)address_buffer,
                                               address_len);
 
-            if (!address) {
-                goto clean_up;
-            }
+        if (!address) {
+            goto clean_up;
+        }
 
-            const struct aws_string *host_cpy =
-                aws_string_from_array_new(allocator, (const uint8_t *)hostname_cstr,
+        const struct aws_string *host_cpy =
+            aws_string_from_array_new(allocator, (const uint8_t *)hostname_cstr,
                                           hostname_len);
 
-            if (!host_cpy) {
-                aws_string_destroy((void *)address);
-                goto clean_up;
-            }
+        if (!host_cpy) {
+            aws_string_destroy((void *)address);
+            goto clean_up;
+        }
 
-            host_address.address = address;
-            host_address.weight = 0;
-            host_address.allocator = allocator;
-            host_address.use_count = 0;
-            host_address.connection_failure_count = 0;
-            host_address.host = host_cpy;
+        host_address.address = address;
+        host_address.weight = 0;
+        host_address.allocator = allocator;
+        host_address.use_count = 0;
+        host_address.connection_failure_count = 0;
+        host_address.host = host_cpy;
 
-            if (aws_array_list_push_back(output_addresses, &host_address)) {
-                aws_host_address_clean_up(&host_address);
-                goto clean_up;
-            }
+        if (aws_array_list_push_back(output_addresses, &host_address)) {
+            aws_host_address_clean_up(&host_address);
+            goto clean_up;
+        }
     }
 
     freeaddrinfo(result);
