@@ -18,8 +18,6 @@
 #include <aws/io/channel.h>
 #include <aws/testing/aws_test_harness.h>
 
-#include <read_write_test_handler.c>
-
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
@@ -28,6 +26,7 @@ struct channel_setup_test_args {
 };
 
 static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
     struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)user_data;
 
     aws_mutex_lock(&setup_test_args->mutex);
@@ -36,8 +35,8 @@ static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel,
     aws_mutex_unlock(&setup_test_args->mutex);
 }
 
-static int s_test_channel_setup(struct aws_allocator *allocator, void *user_data) {
-
+static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -80,8 +79,8 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *user_data
 
 AWS_TEST_CASE(channel_setup, s_test_channel_setup)
 
-static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator, void *user_data) {
-
+static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -118,8 +117,8 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(channel_single_slot_cleans_up, s_test_channel_single_slot_cleans_up)
 
-static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *user_data) {
-
+static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -206,6 +205,7 @@ static bool s_rw_test_shutdown_predicate(void *arg) {
 }
 
 static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, void *user_data) {
+    (void)channel;
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     rw_test_args->shutdown_completed = true;
@@ -255,6 +255,8 @@ static struct aws_byte_buf s_channel_rw_test_on_write(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
+    (void)handler;
+    (void)slot;
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
@@ -267,8 +269,8 @@ static struct aws_byte_buf s_channel_rw_test_on_write(
     return rw_test_args->latest_message;
 }
 
-static int s_test_channel_message_passing(struct aws_allocator *allocator, void *user_data) {
-
+static int s_test_channel_message_passing(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -330,7 +332,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
 
-    struct aws_channel_handler *handler_1 = rw_test_handler_new(
+    struct aws_channel_handler *handler_1 = s_rw_test_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_1_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
@@ -344,11 +346,11 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
         .condition_variable = NULL,
     };
 
-    struct aws_channel_handler *handler_2 = rw_test_handler_new(
+    struct aws_channel_handler *handler_2 = s_rw_test_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_2_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_2, handler_2));
 
-    struct aws_channel_handler *handler_3 = rw_test_handler_new(
+    struct aws_channel_handler *handler_3 = s_rw_test_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_3_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_3, handler_3));
 

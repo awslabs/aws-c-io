@@ -27,6 +27,7 @@ struct task_args {
 };
 
 static void s_test_task(void *user_data, enum aws_task_status status) {
+    (void)status;
     struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
@@ -42,8 +43,9 @@ static bool s_task_ran_predicate(void *args) {
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
-static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *user_data) {
+static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
 
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -86,6 +88,9 @@ static void s_on_pipe_readable(
     struct aws_io_handle *handle,
     int events,
     void *user_data) {
+
+    (void)event_loop;
+
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         struct pipe_data *data = user_data;
 
@@ -105,6 +110,10 @@ static void s_on_pipe_writable(
     struct aws_io_handle *handle,
     int events,
     void *user_data) {
+
+    (void)event_loop;
+    (void)handle;
+
     if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
         struct pipe_data *data = user_data;
         aws_mutex_lock(&data->mutex);
@@ -122,7 +131,8 @@ static bool s_invocation_predicate(void *args) {
 /*
  * Test that read/write subscriptions are functional.
  */
-static int s_test_read_write_notifications(struct aws_allocator *allocator, void *user_data) {
+static int s_test_read_write_notifications(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -191,8 +201,8 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(read_write_notifications, s_test_read_write_notifications)
 
-static int s_test_stop_then_restart(struct aws_allocator *allocator, void *user_data) {
-
+static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));

@@ -1,5 +1,5 @@
-#ifndef AWS_IO_H
-#define AWS_IO_H
+#ifndef AWS_IO_IO_H
+#define AWS_IO_IO_H
 
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -36,8 +36,8 @@ struct aws_io_message;
 struct aws_channel;
 
 typedef void(aws_channel_on_message_write_completed_fn)(
-    struct aws_channel *,
-    struct aws_io_message *,
+    struct aws_channel *channel,
+    struct aws_io_message *message,
     int err_code,
     void *user_data);
 
@@ -138,4 +138,4 @@ void aws_io_load_error_strings(void);
 }
 #endif
 
-#endif /* AWS_IO_H */
+#endif /* AWS_IO_IO_H */

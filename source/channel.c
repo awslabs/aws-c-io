@@ -423,11 +423,11 @@ int aws_channel_slot_send_message(
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
-    } else {
-        assert(slot->adj_left);
-        assert(slot->adj_left->handler);
-        return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
     }
+
+    assert(slot->adj_left);
+    assert(slot->adj_left->handler);
+    return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
 }
 
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
@@ -471,23 +471,23 @@ int aws_channel_slot_on_handler_shutdown_complete(
         if (slot->adj_right && slot->adj_right->handler) {
             return aws_channel_handler_shutdown(
                 slot->adj_right->handler, slot->adj_right, dir, err_code, free_scarce_resources_immediately);
-        } else {
-            return aws_channel_handler_shutdown(
-                slot->handler, slot, AWS_CHANNEL_DIR_WRITE, err_code, free_scarce_resources_immediately);
-        }
-    } else {
-        if (slot->adj_left && slot->adj_left->handler) {
-            return aws_channel_handler_shutdown(
-                slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
         }
 
-        if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
-            slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-            slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_user_data);
-        }
-
-        return AWS_OP_SUCCESS;
+        return aws_channel_handler_shutdown(
+            slot->handler, slot, AWS_CHANNEL_DIR_WRITE, err_code, free_scarce_resources_immediately);
     }
+
+    if (slot->adj_left && slot->adj_left->handler) {
+        return aws_channel_handler_shutdown(
+            slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
+    }
+
+    if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
+        slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+        slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_user_data);
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {

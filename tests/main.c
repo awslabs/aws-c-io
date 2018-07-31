@@ -23,6 +23,8 @@
 
 #include <event_loop_test.c>
 
+#include <read_write_test_handler.c>
+
 #include <channel_test.c>
 
 static int s_run_tests(int argc, char *argv[]) {

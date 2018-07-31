@@ -17,7 +17,9 @@
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 
-static int s_test_pipe_open_close(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_open_close(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
     struct aws_io_handle read, write;
     ASSERT_SUCCESS(aws_pipe_open(&read, &write));
 
@@ -77,7 +79,9 @@ static int s_copy_buffers_via_pipe(
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_pipe_read_write(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_read_write(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
     struct aws_io_handle read_handle, write_handle;
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle));
 
@@ -92,12 +96,13 @@ static int s_test_pipe_read_write(struct aws_allocator *alloc, void *user_data) 
 
 AWS_TEST_CASE(pipe_read_write, s_test_pipe_read_write);
 
-static int s_test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void *user_data) {
+static int s_test_pipe_read_write_large_buffer(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_io_handle read_handle, write_handle;
     ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle));
 
     const size_t buffer_size = 1024 * 1024 * 5; /* 5MB */
-    uint8_t *src_buf = aws_mem_acquire(alloc, buffer_size);
+    uint8_t *src_buf = aws_mem_acquire(allocator, buffer_size);
     ASSERT_NOT_NULL(src_buf);
 
     /* Fill buffer with random bytes */
@@ -106,13 +111,13 @@ static int s_test_pipe_read_write_large_buffer(struct aws_allocator *alloc, void
         aws_byte_cursor_write_u8(&src_cursor, (uint8_t)(rand() % 256));
     }
 
-    uint8_t *dst_buf = aws_mem_acquire(alloc, buffer_size);
+    uint8_t *dst_buf = aws_mem_acquire(allocator, buffer_size);
     ASSERT_NOT_NULL(dst_buf);
 
     ASSERT_SUCCESS(s_copy_buffers_via_pipe(&read_handle, &write_handle, src_buf, dst_buf, buffer_size));
 
-    aws_mem_release(alloc, src_buf);
-    aws_mem_release(alloc, dst_buf);
+    aws_mem_release(allocator, src_buf);
+    aws_mem_release(allocator, dst_buf);
     ASSERT_SUCCESS(aws_pipe_close(&read_handle, &write_handle));
     return AWS_OP_SUCCESS;
 }

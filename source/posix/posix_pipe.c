@@ -84,19 +84,19 @@ int aws_pipe_half_close(struct aws_io_handle *handle) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size, size_t *written) {
+int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size, size_t *num_bytes_written) {
     assert(handle);
     assert(src);
 
-    if (written) {
-        *written = 0;
+    if (num_bytes_written) {
+        *num_bytes_written = 0;
     }
 
     ssize_t write_val = write(handle->data.fd, src, src_size);
 
     if (write_val >= 0) {
-        if (written) {
-            *written = (size_t)write_val;
+        if (num_bytes_written) {
+            *num_bytes_written = (size_t)write_val;
         }
         return AWS_OP_SUCCESS;
     }
@@ -113,19 +113,19 @@ int aws_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
-int aws_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, size_t *amount_read) {
+int aws_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size, size_t *num_bytes_read) {
     assert(handle);
     assert(dst);
 
-    if (amount_read) {
-        *amount_read = 0;
+    if (num_bytes_read) {
+        *num_bytes_read = 0;
     }
 
     ssize_t read_val = read(handle->data.fd, dst, dst_size);
 
     if (read_val >= 0) {
-        if (amount_read) {
-            *amount_read = (size_t)read_val;
+        if (num_bytes_read) {
+            *num_bytes_read = (size_t)read_val;
         }
         return AWS_OP_SUCCESS;
     }

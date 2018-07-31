@@ -24,19 +24,19 @@
 #include <assert.h>
 #include <unistd.h>
 
-static void s_destroy(struct aws_event_loop *);
-static int s_run(struct aws_event_loop *);
-static int s_stop(struct aws_event_loop *);
-static int s_wait_for_stop_completion(struct aws_event_loop *);
-static int s_schedule_task(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+static void s_destroy(struct aws_event_loop *event_loop);
+static int s_run(struct aws_event_loop *event_loop);
+static int s_stop(struct aws_event_loop *event_loop);
+static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
+static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
 static int s_subscribe_to_io_events(
-    struct aws_event_loop *,
+    struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
     aws_event_loop_on_event_fn *on_event,
-    void *ctx);
-static int s_unsubscribe_from_io_events(struct aws_event_loop *, struct aws_io_handle *handle);
-static bool s_is_event_thread(struct aws_event_loop *);
+    void *user_data);
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static bool s_is_event_thread(struct aws_event_loop *event_loop);
 
 static void s_event_thread_main(void *user_data);
 
@@ -689,11 +689,11 @@ static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
         /* Not all tasks were scheduled, modify list so only unprocessed tasks remain */
         aws_array_list_pop_front_n(&impl->thread_data.tasks_to_schedule, task_i);
         return AWS_OP_ERR;
-    } else {
-        /* Success, clear list */
-        aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
-        return AWS_OP_SUCCESS;
     }
+
+    /* Success, clear list */
+    aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
+    return AWS_OP_SUCCESS;
 }
 
 static void s_process_cross_thread_data(struct aws_event_loop *event_loop) {

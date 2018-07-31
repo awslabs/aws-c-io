@@ -30,24 +30,27 @@ enum aws_io_event_type {
 struct aws_event_loop;
 struct aws_task;
 
-typedef void(
-    aws_event_loop_on_event_fn)(struct aws_event_loop *, struct aws_io_handle *handle, int events, void *user_data);
+typedef void(aws_event_loop_on_event_fn)(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data);
 
 struct aws_event_loop_vtable {
-    void (*destroy)(struct aws_event_loop *);
-    int (*run)(struct aws_event_loop *);
-    int (*stop)(struct aws_event_loop *);
-    int (*wait_for_stop_completion)(struct aws_event_loop *);
-    int (*schedule_task)(struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+    void (*destroy)(struct aws_event_loop *event_loop);
+    int (*run)(struct aws_event_loop *event_loop);
+    int (*stop)(struct aws_event_loop *event_loop);
+    int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
+    int (*schedule_task)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
     int (*subscribe_to_io_events)(
-        struct aws_event_loop *,
+        struct aws_event_loop *event_loop,
         struct aws_io_handle *handle,
         int events,
         aws_event_loop_on_event_fn *on_event,
         void *user_data);
 
-    int (*unsubscribe_from_io_events)(struct aws_event_loop *, struct aws_io_handle *handle);
-    bool (*is_on_callers_thread)(struct aws_event_loop *);
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+    bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
 struct aws_event_loop {
@@ -75,7 +78,7 @@ extern "C" {
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io_clock_fn *clock);
+struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -83,7 +86,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *, aws_io
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
  */
 AWS_IO_API
-void aws_event_loop_destroy(struct aws_event_loop *);
+void aws_event_loop_destroy(struct aws_event_loop *event_loop);
 
 /**
  * Initializes common event-loop data structures.
@@ -97,14 +100,17 @@ int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_alloc
  * This is only called from the *destroy() function of event loop implementations.
  */
 AWS_IO_API
-void aws_event_loop_base_clean_up(struct aws_event_loop *);
+void aws_event_loop_base_clean_up(struct aws_event_loop *event_loop);
 
 /**
  * Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to
  * by key. This function is not thread safe and should be called inside the event-loop's thread.
  */
 AWS_IO_API
-int aws_event_loop_fetch_local_object(struct aws_event_loop *, void *key, struct aws_event_loop_local_object *obj);
+int aws_event_loop_fetch_local_object(
+    struct aws_event_loop *event_loop,
+    void *key,
+    struct aws_event_loop_local_object *obj);
 
 /**
  * Puts an item object the event-loop's data store. Key will be taken as the memory address of the memory pointed to by
@@ -112,7 +118,7 @@ int aws_event_loop_fetch_local_object(struct aws_event_loop *, void *key, struct
  * should be called inside the event-loop's thread.
  */
 AWS_IO_API
-int aws_event_loop_put_local_object(struct aws_event_loop *, struct aws_event_loop_local_object *obj);
+int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj);
 
 /**
  * Removes an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to
@@ -122,7 +128,7 @@ int aws_event_loop_put_local_object(struct aws_event_loop *, struct aws_event_lo
  */
 AWS_IO_API
 int aws_event_loop_remove_local_object(
-    struct aws_event_loop *,
+    struct aws_event_loop *event_loop,
     void *key,
     struct aws_event_loop_local_object *removed_obj);
 
@@ -193,7 +199,7 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
  * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
  */
 AWS_IO_API
-int aws_event_loop_current_ticks(struct aws_event_loop *, uint64_t *ticks);
+int aws_event_loop_current_ticks(struct aws_event_loop *event_loop, uint64_t *ticks);
 
 #ifdef __cplusplus
 }

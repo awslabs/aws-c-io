@@ -79,7 +79,7 @@ void aws_message_pool_clean_up(struct aws_message_pool *msg_pool);
  */
 AWS_IO_API
 struct aws_io_message *aws_message_pool_acquire(
-    struct aws_message_pool *,
+    struct aws_message_pool *msg_pool,
     enum aws_io_message_type message_type,
     size_t size_hint);
 
@@ -88,10 +88,10 @@ struct aws_io_message *aws_message_pool_acquire(
  * @param message
  */
 AWS_IO_API
-void aws_message_pool_release(struct aws_message_pool *, struct aws_io_message *message);
+void aws_message_pool_release(struct aws_message_pool *msg_pool, struct aws_io_message *message);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /*AWS_IO_MESSAGE_POOL_H */
+#endif /* AWS_IO_MESSAGE_POOL_H */

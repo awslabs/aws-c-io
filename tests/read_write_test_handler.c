@@ -1,5 +1,3 @@
-#ifndef READ_WRITE_TEST_HANDLER
-#define READ_WRITE_TEST_HANDLER
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
@@ -119,7 +117,7 @@ static void s_rw_handler_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, handler);
 }
 
-struct aws_channel_handler *rw_test_handler_new(
+static struct aws_channel_handler *s_rw_test_handler_new(
     struct aws_allocator *allocator,
     rw_test_handler_driver_fn *on_read,
     rw_test_handler_driver_fn *on_write,
@@ -156,7 +154,7 @@ struct aws_channel_handler *rw_test_handler_new(
     return handler;
 }
 
-static void s_rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
+void s_rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
     struct aws_byte_buf next_data = handler_impl->on_read(handler, slot, NULL, handler_impl->ctx);
@@ -177,6 +175,7 @@ struct rw_handler_write_task_args {
 };
 
 static void s_rw_handler_write_task(void *arg, enum aws_task_status task_status) {
+    (void)task_status;
     struct rw_handler_write_task_args *write_task_args = arg;
 
     struct aws_io_message *msg = aws_channel_acquire_message_from_pool(
@@ -293,5 +292,3 @@ static int s_rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
                                             s_rw_test_handler_shutdown_predicate, handler_impl);
 }
 #endif
-
-#endif /*READ_WRITE_TEST_HANDLER*/

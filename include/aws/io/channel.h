@@ -180,26 +180,32 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel);
  * Fetches the current timestamp from the event-loop's clock.
  */
 AWS_IO_API
-int aws_channel_current_clock_time(struct aws_channel *, uint64_t *ticks);
+int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *ticks);
 
 /**
  * Retrieves an object by key from the event loop's local storage.
  */
 AWS_IO_API
-int aws_channel_fetch_local_object(struct aws_channel *, const void *key, struct aws_event_loop_local_object *obj);
+int aws_channel_fetch_local_object(
+    struct aws_channel *channel,
+    const void *key,
+    struct aws_event_loop_local_object *obj);
 
 /**
  * Stores an object by key in the event loop's local storage.
  */
 AWS_IO_API
-int aws_channel_put_local_object(struct aws_channel *, const void *key, const struct aws_event_loop_local_object *obj);
+int aws_channel_put_local_object(
+    struct aws_channel *channel,
+    const void *key,
+    const struct aws_event_loop_local_object *obj);
 
 /**
  * Removes an object by key from the event loop's local storage.
  */
 AWS_IO_API
 int aws_channel_remove_local_object(
-    struct aws_channel *,
+    struct aws_channel *channel,
     const void *key,
     struct aws_event_loop_local_object *removed_obj);
 
@@ -210,7 +216,7 @@ int aws_channel_remove_local_object(
  */
 AWS_IO_API
 struct aws_io_message *aws_channel_acquire_message_from_pool(
-    struct aws_channel *,
+    struct aws_channel *channel,
     enum aws_io_message_type message_type,
     size_t size_hint);
 
@@ -218,28 +224,28 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
  * Returns a message back to the event loop's message pool for reuse.
  */
 AWS_IO_API
-void aws_channel_release_message_to_pool(struct aws_channel *, struct aws_io_message *message);
+void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message);
 
 /**
  * Schedules a task to run on the event loop. This is the ideal way to move a task into the correct thread. It's also
  * handy for context switches. task is copied. This function is safe to call from any thread.
  */
 AWS_IO_API
-int aws_channel_schedule_task(struct aws_channel *, struct aws_task *task, uint64_t run_at);
+int aws_channel_schedule_task(struct aws_channel *channel, struct aws_task *task, uint64_t run_at);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use
  * aws_channel_schedule_task(). This function is safe to call from any thread.
  */
 AWS_IO_API
-bool aws_channel_thread_is_callers_thread(struct aws_channel *);
+bool aws_channel_thread_is_callers_thread(struct aws_channel *channel);
 
 /**
  * Sets the handler for a slot, the slot will also call get_current_window_size() and propagate a window update
  * upstream.
  */
 AWS_IO_API
-int aws_channel_slot_set_handler(struct aws_channel_slot *, struct aws_channel_handler *handler);
+int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_channel_handler *handler);
 
 /**
  * Removes slot from the channel and deallocates the slot and its handler.

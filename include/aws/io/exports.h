@@ -1,5 +1,5 @@
-#ifndef AWS_IO_EXPORTS_H_
-#define AWS_IO_EXPORTS_H_
+#ifndef AWS_IO_EXPORTS_H
+#define AWS_IO_EXPORTS_H
 
 /*
  *Copyright 2010-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -31,4 +31,4 @@
 #    define AWS_IO_API
 #endif // defined (USE_WINDOWS_DLL_SEMANTICS) || defined (WIN32)
 
-#endif /*AWS_IO_EXPORTS_H_*/
+#endif /* AWS_IO_EXPORTS_H */
