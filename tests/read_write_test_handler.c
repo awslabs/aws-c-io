@@ -293,5 +293,3 @@ static int s_rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
                                             s_rw_test_handler_shutdown_predicate, handler_impl);
 }
 #endif /* not used yet */
-
-#endif /*READ_WRITE_TEST_HANDLER*/
