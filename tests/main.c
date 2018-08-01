@@ -26,6 +26,7 @@
 #include <read_write_test_handler.c>
 
 #include <channel_test.c>
+#include <default_host_resolver_test.c>
 
 static int s_run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(
@@ -38,7 +39,13 @@ static int s_run_tests(int argc, char *argv[]) {
         &channel_setup,
         &channel_single_slot_cleans_up,
         &channel_slots_clean_up,
-        &channel_message_passing, );
+        &channel_message_passing,
+        &test_default_with_ipv6_lookup,
+        &test_default_with_ipv4_only_lookup,
+        &test_default_with_multiple_lookups,
+        &test_resolver_ttls,
+        &test_resolver_connect_failure_recording,
+        &test_resolver_ttl_refreshes_on_resolve, );
 }
 
 int main(int argc, char *argv[]) {
