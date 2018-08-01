@@ -74,7 +74,7 @@ static OSStatus aws_tls_read_cb(SSLConnectionRef conn, void *data, size_t *len) 
 
     while (!aws_linked_list_empty(&handler->input_queue) && written < buf.capacity) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&handler->input_queue);
-        struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
+        struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
 
         size_t remaining_message_len = message->message_data.len - message->copy_mark;
         size_t remaining_buf_len = buf.capacity - written;
@@ -345,7 +345,7 @@ static int secure_transport_handler_shutdown (struct aws_channel_handler *handle
     else {
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
-            struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
+            struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
             aws_channel_release_message_to_pool(secure_transport_handler->parent_slot->channel, message);
         }
     }

@@ -62,7 +62,7 @@ static int do_write(struct socket_handler *socket_handler) {
     while (!aws_linked_list_empty(&socket_handler->write_queue) && written < socket_handler->max_rw_size) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_handler->write_queue);
 
-        struct aws_io_message *next_message = aws_container_of(node, struct aws_io_message, queueing_handle);
+        struct aws_io_message *next_message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
 
         size_t left_to_write = next_message->message_data.len - next_message->copy_mark;
         size_t available_to_write = socket_handler->max_rw_size - written;
@@ -267,7 +267,7 @@ static int socket_shutdown(struct aws_channel_handler *handler, struct aws_chann
     else {
         while(!aws_linked_list_empty(&socket_handler->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_handler->write_queue);
-            struct aws_io_message *message = aws_container_of(node, struct aws_io_message, queueing_handle);
+            struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
 
             if (message->on_completion) {
                 message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->user_data);
