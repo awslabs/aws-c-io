@@ -199,9 +199,9 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
 
     struct host_entry *host_entry = NULL;
     int host_lookup_err = aws_lru_cache_find(&default_host_resolver->host_table, address->host, (void **)&host_entry);
-    aws_rw_lock_runlock(&default_host_resolver->host_lock);
 
     if (host_lookup_err) {
+        aws_rw_lock_runlock(&default_host_resolver->host_lock);
         return AWS_OP_ERR;
     }   
 
@@ -209,6 +209,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         struct aws_host_address *cached_address = NULL;
 
         aws_rw_lock_wlock(&host_entry->entry_lock);
+        aws_rw_lock_runlock(&default_host_resolver->host_lock);
         struct aws_lru_cache *address_table = address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ?
                                               &host_entry->aaaa_records : &host_entry->a_records;
 
@@ -256,6 +257,10 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         return AWS_OP_ERR;
 
     }
+    else {
+        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+    }
+
     return AWS_OP_SUCCESS;
 }
 
