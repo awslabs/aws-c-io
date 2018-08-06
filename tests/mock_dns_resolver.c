@@ -1,5 +1,3 @@
-#ifndef MOCK_DNS_RESOLVER_H
-#define MOCK_DNS_RESOLVER_H
 /*
 * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 *
@@ -52,6 +50,9 @@ static int mock_dns_resolver_append_address_list(struct mock_dns_resolver *resol
 }
 
 static int mock_dns_resolve(struct aws_allocator *allocator, const struct aws_string *host_name, struct aws_array_list *output_addresses, void *user_data) {
+
+    (void)allocator;
+    (void)host_name;
     struct mock_dns_resolver *mock_resolver = user_data;
 
     if (mock_resolver->resolve_count == mock_resolver->max_resolves) {
@@ -77,5 +78,3 @@ static int mock_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
     return AWS_OP_SUCCESS;
 }
-
-#endif

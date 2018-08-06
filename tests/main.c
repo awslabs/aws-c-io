@@ -26,6 +26,9 @@
 #include <read_write_test_handler.c>
 
 #include <channel_test.c>
+
+#include <mock_dns_resolver.c>
+
 #include <default_host_resolver_test.c>
 
 static int s_run_tests(int argc, char *argv[]) {
