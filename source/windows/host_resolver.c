@@ -67,13 +67,13 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
         }        
        
         const struct aws_string *address =
-        aws_string_from_array_new(allocator, (const uint8_t *)address_buffer, strlen(address_buffer));
+        aws_string_new_from_array(allocator, (const uint8_t *)address_buffer, strlen(address_buffer));
 
         if (!address) {
            goto clean_up;
         }
 
-        host_address.host = aws_string_from_array_new(allocator, aws_string_bytes(host_name), host_name->len);
+        host_address.host = aws_string_new_from_array(allocator, aws_string_bytes(host_name), host_name->len);
         if (!host_address.host) {
            aws_string_destroy((void *)host_address.host);
            goto clean_up;

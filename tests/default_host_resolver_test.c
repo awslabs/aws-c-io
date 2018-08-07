@@ -75,7 +75,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "s3.dualstack.us-east-1.amazonaws.com");
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
 
     struct aws_host_resolution_config config = {
@@ -129,7 +129,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "s3.us-east-1.amazonaws.com");
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
 
     struct aws_host_resolution_config config = {
@@ -184,8 +184,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name_1 = aws_string_from_c_str_new(allocator, "s3.dualstack.us-east-1.amazonaws.com");
-    const struct aws_string *host_name_2 = aws_string_from_c_str_new(allocator, "s3.us-east-1.amazonaws.com");
+    const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
+    const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
 
     ASSERT_NOT_NULL(host_name_1);
     ASSERT_NOT_NULL(host_name_2);
@@ -271,13 +271,13 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "host_address");
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
-    const struct aws_string *addr1_ipv4 = aws_string_from_c_str_new(allocator, "address1ipv4");
-    const struct aws_string *addr1_ipv6 = aws_string_from_c_str_new(allocator, "address1ipv6");
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+    const struct aws_string *addr1_ipv6 = aws_string_new_from_c_str(allocator, "address1ipv6");
 
-    const struct aws_string *addr2_ipv4 = aws_string_from_c_str_new(allocator, "address2ipv4");
-    const struct aws_string *addr2_ipv6 = aws_string_from_c_str_new(allocator, "address2ipv6");
+    const struct aws_string *addr2_ipv4 = aws_string_new_from_c_str(allocator, "address2ipv4");
+    const struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "address2ipv6");
 
 
     struct mock_dns_resolver mock_resolver;
@@ -293,7 +293,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
             .address = addr1_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -304,7 +304,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
             .address = addr1_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
@@ -321,7 +321,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
             .address = addr2_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -332,7 +332,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
             .address = addr2_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
@@ -432,13 +432,13 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "host_address");
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
-    const struct aws_string *addr1_ipv4 = aws_string_from_c_str_new(allocator, "address1ipv4");
-    const struct aws_string *addr1_ipv6 = aws_string_from_c_str_new(allocator, "address1ipv6");
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+    const struct aws_string *addr1_ipv6 = aws_string_new_from_c_str(allocator, "address1ipv6");
 
-    const struct aws_string *addr2_ipv4 = aws_string_from_c_str_new(allocator, "address2ipv4");
-    const struct aws_string *addr2_ipv6 = aws_string_from_c_str_new(allocator, "address2ipv6");
+    const struct aws_string *addr2_ipv4 = aws_string_new_from_c_str(allocator, "address2ipv4");
+    const struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "address2ipv6");
 
 
     struct mock_dns_resolver mock_resolver;
@@ -454,7 +454,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
             .address = addr1_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -465,7 +465,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
             .address = addr1_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
@@ -476,7 +476,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
             .address = addr2_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -487,7 +487,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
             .address = addr2_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
@@ -605,13 +605,13 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 
     ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
 
-    const struct aws_string *host_name = aws_string_from_c_str_new(allocator, "host_address");
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
-    const struct aws_string *addr1_ipv4 = aws_string_from_c_str_new(allocator, "address1ipv4");
-    const struct aws_string *addr1_ipv6 = aws_string_from_c_str_new(allocator, "address1ipv6");
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+    const struct aws_string *addr1_ipv6 = aws_string_new_from_c_str(allocator, "address1ipv6");
 
-    const struct aws_string *addr2_ipv4 = aws_string_from_c_str_new(allocator, "address2ipv4");
-    const struct aws_string *addr2_ipv6 = aws_string_from_c_str_new(allocator, "address2ipv6");
+    const struct aws_string *addr2_ipv4 = aws_string_new_from_c_str(allocator, "address2ipv4");
+    const struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "address2ipv6");
 
 
     struct mock_dns_resolver mock_resolver;
@@ -627,7 +627,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
             .address = addr1_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -638,7 +638,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
             .address = addr1_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,
@@ -649,7 +649,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
             .address = addr2_ipv4,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_A,
             .use_count = 0,
@@ -660,7 +660,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
             .address = addr2_ipv6,
             .allocator = allocator,
             .expiry = 0,
-            .host = aws_string_from_c_str_new(allocator, "host_address"),
+            .host = aws_string_new_from_c_str(allocator, "host_address"),
             .connection_failure_count = 0,
             .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
             .use_count = 0,

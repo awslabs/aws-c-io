@@ -27,13 +27,13 @@ const uint64_t NS_PER_SEC = 1000000000;
 
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;
-    to->address = aws_string_from_array_new(to->allocator, aws_string_bytes(from->address), from->address->len);
+    to->address = aws_string_new_from_array(to->allocator, aws_string_bytes(from->address), from->address->len);
 
     if (!to->address) {
         return AWS_OP_ERR;
     }
 
-    to->host = aws_string_from_array_new(to->allocator, aws_string_bytes(from->host), from->host->len);
+    to->host = aws_string_new_from_array(to->allocator, aws_string_bytes(from->host), from->host->len);
 
     if (!to->host) {
         aws_string_destroy((void *)to->address);
@@ -454,7 +454,7 @@ static inline int create_and_init_host_entry(struct aws_host_resolver *resolver,
     bool a_records_init = false, aaaa_records_init = false, failed_a_records_init = false,
                 failed_aaaa_records_init = false, thread_init = false;
     struct pending_callback *pending_callback = NULL;
-    const struct aws_string *host_string_copy = aws_string_from_array_new(resolver->allocator, aws_string_bytes(host_name),
+    const struct aws_string *host_string_copy = aws_string_new_from_array(resolver->allocator, aws_string_bytes(host_name),
                                                                                   host_name->len);
     if (AWS_UNLIKELY(!host_string_copy)) {
         goto setup_host_entry_error;
