@@ -650,7 +650,7 @@ static struct aws_host_resolver_vtable vtable = {
         .destroy = resolver_destroy,
 };
 
-int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aws_allocator *allocator,
+int aws_host_resolver_init_default(struct aws_host_resolver *resolver, struct aws_allocator *allocator,
                                    size_t max_entries) {
 
     struct default_host_resolver *default_host_resolver = aws_mem_acquire(allocator,

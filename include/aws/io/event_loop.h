@@ -78,7 +78,7 @@ extern "C" {
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock);
+struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -93,14 +93,14 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop);
  * This is only called from the *new() function of event loop implementations.
  */
 AWS_IO_API
-int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
+int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
  * Common cleanup code for all implementations.
  * This is only called from the *destroy() function of event loop implementations.
  */
 AWS_IO_API
-void aws_event_loop_base_clean_up(struct aws_event_loop *event_loop);
+void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
 /**
  * Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to

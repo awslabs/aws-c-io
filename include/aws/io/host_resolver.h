@@ -140,7 +140,7 @@ AWS_IO_API int aws_default_dns_resolve(struct aws_allocator *allocator, const st
  *
  * This for example, should enable you to hit thousands of hosts in the Amazon S3 fleet instead of just one or two.
  */
-AWS_IO_API int aws_host_resolver_default_init(struct aws_host_resolver *resolver, struct aws_allocator *allocator, size_t max_entries);
+AWS_IO_API int aws_host_resolver_init_default(struct aws_host_resolver *resolver, struct aws_allocator *allocator, size_t max_entries);
 
 /**
  * Simply calls destroy on the vtable.

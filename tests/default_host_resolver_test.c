@@ -73,7 +73,7 @@ static void s_default_host_resolved_test_callback(struct aws_host_resolver *reso
 static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -127,7 +127,7 @@ AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -182,7 +182,7 @@ AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_
 static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
@@ -269,7 +269,7 @@ AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_l
 static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -430,7 +430,7 @@ AWS_TEST_CASE(test_resolver_ttls, s_test_resolver_ttls_fn)
 static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -603,7 +603,7 @@ AWS_TEST_CASE(test_resolver_connect_failure_recording, s_test_resolver_connect_f
 static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *user_data) {
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_default_init(&resolver, allocator, 10));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
