@@ -21,8 +21,6 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/thread.h>
 
-#include <mock_dns_resolver.c>
-
 static const uint64_t FORCE_RESOLVE_SLEEP_TIME = 1500000000;
 
 struct default_host_callback_data {
@@ -44,6 +42,11 @@ static void s_default_host_resolved_test_callback(struct aws_host_resolver *reso
                                                   const struct aws_string *host_name,
                                                   int err_code, const struct aws_array_list *host_addresses,
                                                   void *user_data) {
+
+    (void)resolver;
+    (void)host_name;
+    (void)err_code;
+
     struct default_host_callback_data *callback_data = user_data;
 
     struct aws_host_address *host_address = NULL;
@@ -70,7 +73,8 @@ static void s_default_host_resolved_test_callback(struct aws_host_resolver *reso
     aws_condition_variable_notify_one(&callback_data->condition_variable);
 }
 
-static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
@@ -124,7 +128,8 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 
 /* just FYI, this test assumes that "s3.us-east-1.amazonaws.com" does not return IPv6 addresses. */
-static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
@@ -179,7 +184,8 @@ AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_
  * The third assumption is that this test runs in less than one second after the first background resolve.
  * The fourth assumption is that S3 does not return multiple addresses per A or AAAA record.
  * If any of these assumptions ever change, this test will likely be broken, but I don't know of a better way to test this end-to-end. */
-static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
@@ -266,7 +272,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_lookups_fn)
 
-static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
@@ -427,7 +434,8 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *user_d
 
 AWS_TEST_CASE(test_resolver_ttls, s_test_resolver_ttls_fn)
 
-static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
@@ -600,7 +608,8 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 
 AWS_TEST_CASE(test_resolver_connect_failure_recording, s_test_resolver_connect_failure_recording_fn)
 
-static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     struct aws_host_resolver resolver;
 
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));

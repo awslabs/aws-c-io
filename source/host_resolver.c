@@ -184,7 +184,8 @@ static inline void process_records(struct aws_allocator *allocator, struct aws_l
                     aws_lru_cache_remove(failed_records, lru_element->address);
                     break;
                 }
-                else if (to_add) {
+                
+                if (to_add) {
                     aws_mem_release(allocator, to_add);
                 }
             }
@@ -257,9 +258,8 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         return AWS_OP_ERR;
 
     }
-    else {
-        aws_rw_lock_runlock(&default_host_resolver->host_lock);
-    }
+
+    aws_rw_lock_runlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -535,18 +535,18 @@ static inline int create_and_init_host_entry(struct aws_host_resolver *resolver,
         on_host_value_removed(new_host_entry);
         aws_rw_lock_wunlock(&default_host_resolver->host_lock);
         return AWS_OP_SUCCESS;
-    } else {
-        host_entry = new_host_entry;
-        host_entry->keep_active = true;
-
-        if (AWS_UNLIKELY(aws_lru_cache_put(&default_host_resolver->host_table, host_string_copy, host_entry))) {
-            goto setup_host_entry_error;
-        }
-
-        aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
-        aws_rw_lock_wunlock(&default_host_resolver->host_lock);
-        return AWS_OP_SUCCESS;
     }
+    
+    host_entry = new_host_entry;
+    host_entry->keep_active = true;
+
+    if (AWS_UNLIKELY(aws_lru_cache_put(&default_host_resolver->host_table, host_string_copy, host_entry))) {
+        goto setup_host_entry_error;
+    }
+
+    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
+    aws_rw_lock_wunlock(&default_host_resolver->host_lock);
+    return AWS_OP_SUCCESS;
 
 setup_host_entry_error:
     if (host_string_copy) {
