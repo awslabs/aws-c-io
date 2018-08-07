@@ -120,6 +120,18 @@ int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_t
     return event_loop->vtable.schedule_task(event_loop, task, run_at);
 }
 
+#if AWS_USE_IO_COMPLETION_PORTS
+
+int aws_event_loop_connect_handle_to_io_completion_port(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle) {
+
+    assert(event_loop->vtable.connect_to_io_completion_port);
+    return event_loop->vtable.connect_to_io_completion_port(event_loop, handle);
+}
+
+#else /* !AWS_USE_IO_COMPLETION_PORTS */
+
 int aws_event_loop_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -135,6 +147,8 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
     assert(event_loop->vtable.unsubscribe_from_io_events);
     return event_loop->vtable.unsubscribe_from_io_events(event_loop, handle);
 }
+
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.is_on_callers_thread);

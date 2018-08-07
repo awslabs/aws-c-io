@@ -74,6 +74,9 @@ static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocato
 
 AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_execute)
 
+#if AWS_USE_IO_COMPLETION_PORTS
+#else /* !AWS_USE_IO_COMPLETION_PORTS */
+
 struct pipe_data {
     struct aws_byte_buf buf;
     size_t bytes_processed;
@@ -200,6 +203,7 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(read_write_notifications, s_test_read_write_notifications)
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

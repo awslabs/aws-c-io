@@ -23,12 +23,23 @@ file(GLOB AWS_IO_SRC
         )
 
 if (WIN32)
+    option(USE_IO_COMPLETION_PORTS
+            "Use I/O Completion Ports to drive event-loops."
+            ON)
+
     file(GLOB AWS_IO_OS_HEADERS
             )
 
     file(GLOB AWS_IO_OS_SRC
             "source/windows/*.c"
             )
+
+    if (USE_IO_COMPLETION_PORTS)
+        file(GLOB AWS_IO_IOCP_SRC
+                "source/windows/iocp/*.c"
+                )
+         list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
+    endif ()
 
     if (MSVC)
         source_group("Header Files\\aws\\io" FILES ${AWS_IO_HEADERS})
@@ -129,6 +140,10 @@ endif ()
 if (BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_IO_EXPORTS")
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DUSE_IMPORT_EXPORT")
+endif ()
+
+if (USE_IO_COMPLETION_PORTS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
 endif ()
 
 if (BUILD_JNI_BINDINGS)
