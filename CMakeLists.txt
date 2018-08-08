@@ -24,7 +24,9 @@ file(GLOB AWS_IO_SRC
 
 if (WIN32)
     option(USE_IO_COMPLETION_PORTS
-            "Use I/O Completion Ports to drive event-loops."
+            "Use I/O Completion Ports to drive event-loops. \
+            If disabled, a less performant implementation based on select() is used. \
+            Disable this if implementing your own event-loop whose interface does not match the IOCP interface."
             ON)
 
     file(GLOB AWS_IO_OS_HEADERS
