@@ -226,7 +226,8 @@ int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_t
  * Once disconnected, a handle cannot be re-connected.
  *
  */
-AWS_IO_API int aws_event_loop_connect_handle_to_io_completion_port(
+AWS_IO_API
+int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle);
 
