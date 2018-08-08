@@ -275,26 +275,25 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         return;
     }
 
-    /* Cancel tasks before cleaning up, in case a cancelled task tries to do something with this event_loop.
-     * Remember that some tasks might still be stuck in a tasks_to_schedule list */
+    /* Clean up task-related stuff first. It's possible the a cancelled task adds further tasks to this event_loop.
+     * Tasks added in this way will be in cross_thread_data.tasks_to_schedule, so we clean that up last */
+
+    aws_task_scheduler_clean_up(&impl->thread_data.scheduler); /* Tasks in scheduler get cancelled*/
+
     struct task_to_schedule task_to_schedule;
-    size_t num_tasks = aws_array_list_length(&impl->thread_data.tasks_to_schedule);
-    for (size_t i = 0; i < num_tasks; ++i) {
+    for (size_t i = 0; i < aws_array_list_length(&impl->thread_data.tasks_to_schedule); ++i) {
         aws_array_list_get_at(&impl->thread_data.tasks_to_schedule, &task_to_schedule, i);
         task_to_schedule.task.fn(task_to_schedule.task.arg, AWS_TASK_STATUS_CANCELED);
     }
+    aws_array_list_clean_up(&impl->thread_data.tasks_to_schedule);
 
-    num_tasks = aws_array_list_length(&impl->cross_thread_data.tasks_to_schedule);
-    for (size_t i = 0; i < num_tasks; ++i) {
+    for (size_t i = 0; i < aws_array_list_length(&impl->cross_thread_data.tasks_to_schedule); ++i) {
         aws_array_list_get_at(&impl->cross_thread_data.tasks_to_schedule, &task_to_schedule, i);
         task_to_schedule.task.fn(task_to_schedule.task.arg, AWS_TASK_STATUS_CANCELED);
     }
-
-    aws_task_scheduler_clean_up(&impl->thread_data.scheduler); /* cancels remaining tasks */
+    aws_array_list_clean_up(&impl->cross_thread_data.tasks_to_schedule);
 
     /* Clean up everything else */
-    aws_array_list_clean_up(&impl->thread_data.tasks_to_schedule);
-    aws_array_list_clean_up(&impl->cross_thread_data.tasks_to_schedule);
     aws_mutex_clean_up(&impl->cross_thread_data.mutex);
 
     struct kevent thread_signal_kevent;
@@ -426,24 +425,26 @@ static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *t
         .run_at = run_at,
     };
 
-    int push_back_result;
-    bool thread_already_signaled;
+    /* Begin critical section */
+    aws_mutex_lock(&impl->cross_thread_data.mutex);
+    int push_back_err = aws_array_list_push_back(&impl->cross_thread_data.tasks_to_schedule, &task_to_schedule);
 
-    { /* Begin critical section */
-        aws_mutex_lock(&impl->cross_thread_data.mutex);
-        push_back_result = aws_array_list_push_back(&impl->cross_thread_data.tasks_to_schedule, &task_to_schedule);
-        thread_already_signaled = impl->cross_thread_data.thread_signaled;
+    /* If successful, signal thread that cross_thread_data has changed (unless it's been signaled already) */
+    bool should_signal_thread = false;
+    if (!push_back_err) {
+        should_signal_thread = !impl->cross_thread_data.thread_signaled;
         impl->cross_thread_data.thread_signaled = true;
-        aws_mutex_unlock(&impl->cross_thread_data.mutex);
-    } /* End critical section */
-
-    if (push_back_result) {
-        return AWS_OP_ERR;
     }
 
-    /* Signal thread that cross_thread_data has changed (unless it's been signaled already) */
-    if (!thread_already_signaled) {
+    aws_mutex_unlock(&impl->cross_thread_data.mutex);
+    /* End critical section */
+
+    if (should_signal_thread) {
         signal_cross_thread_data_changed(event_loop);
+    }
+
+    if (push_back_err) {
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
@@ -656,7 +657,8 @@ clean_up:
 
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
-
+    assert(aws_thread_get_detach_state(&impl->thread) == AWS_THREAD_JOINABLE);
+    
     return aws_thread_current_thread_id() == aws_thread_get_id(&impl->thread);
 }
 
