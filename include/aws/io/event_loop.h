@@ -34,10 +34,12 @@ struct aws_task;
 struct aws_overlapped;
 
 typedef void(aws_event_loop_on_completion_fn)(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped);
+
 /**
- * Use aws_overlapped when a handle associated with the event loop needs an OVERLAPPED struct.
- * When the overlapped I/O completes, the assigned aws_event_loop_on_completion_fn is called from the event_loop's
- * thread. While overlapped I/O is pending, it is not safe to modify or delete aws_overlapped.
+ * Use aws_overlapped when a handle connected to the event loop needs an OVERLAPPED struct.
+ * OVERLAPPED structs are needed to make OS-level async I/O calls.
+ * When the I/O completes, the assigned aws_event_loop_on_completion_fn is called from the event_loop's thread.
+ * While the I/O is pending, it is not safe to modify or delete aws_overlapped.
  * Call aws_overlapped_init() before first use. If the aws_overlapped will be used multiple times, call
  * aws_overlapped_reset() or aws_overlapped_init() between uses.
  */

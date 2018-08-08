@@ -1,17 +1,17 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -59,7 +59,7 @@ enum {
     DEFAULT_TIMEOUT_MS = 100000,
     NANOSEC_PER_MS = 1000000,
 
-     /* Max I/O completion packets to process per loop of the event-thread */
+    /* Max I/O completion packets to process per loop of the event-thread */
     MAX_COMPLETION_PACKETS_PER_LOOP = 100,
 
     DEFAULT_ARRAY_LIST_RESERVE = 32,
@@ -82,7 +82,7 @@ void aws_overlapped_init(
     void *user_data) {
 
     assert(overlapped);
-  
+
     AWS_ZERO_STRUCT(overlapped->overlapped);
     overlapped->on_completion = on_completion;
     overlapped->user_data = user_data;
@@ -128,9 +128,9 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     impl->iocp_handle = CreateIoCompletionPort(
         INVALID_HANDLE_VALUE, /* FileHandle: passing invalid handle creates a new IOCP */
-        NULL, /* ExistingCompletionPort: should be NULL when file handle is invalid. */
-        0, /* CompletionKey: should be 0 when file handle is invalid */
-        1); /* NumberOfConcurrentThreads */
+        NULL,                 /* ExistingCompletionPort: should be NULL when file handle is invalid. */
+        0,                    /* CompletionKey: should be 0 when file handle is invalid */
+        1);                   /* NumberOfConcurrentThreads */
     if (impl->iocp_handle == NULL) {
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
@@ -150,10 +150,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     clean_up_mutex = true;
 
     err = aws_array_list_init_dynamic(
-        &impl->synced_data.tasks_to_schedule,
-        alloc,
-        DEFAULT_ARRAY_LIST_RESERVE,
-        sizeof(struct task_to_schedule));
+        &impl->synced_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule));
     if (err) {
         goto clean_up;
     }
@@ -166,10 +163,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     clean_up_scheduler = true;
 
     err = aws_array_list_init_dynamic(
-        &impl->thread_data.tasks_to_schedule,
-        alloc,
-        DEFAULT_ARRAY_LIST_RESERVE,
-        sizeof(struct task_to_schedule));
+        &impl->thread_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule));
     if (err) {
         goto clean_up;
     }
@@ -224,7 +218,7 @@ clean_up:
     if (event_loop) {
         aws_mem_release(alloc, event_loop);
     }
-    
+
     return NULL;
 }
 
@@ -242,7 +236,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     }
 
     /* Clean up task-related stuff first.
-     * It's possible the a cancelled task adds further tasks to this event_loop, these new tasks would end up in 
+     * It's possible the a cancelled task adds further tasks to this event_loop, these new tasks would end up in
      * synced_data.tasks_to_schedule, so clean that up last */
 
     aws_task_scheduler_clean_up(&impl->thread_data.scheduler); /* cancels remaining tasks in scheduler */
@@ -262,7 +256,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     /* Clean up everything else */
     bool close_iocp_success = CloseHandle(impl->iocp_handle);
-    assert(close_iocp_success); (void)close_iocp_success;
+    assert(close_iocp_success);
+    (void)close_iocp_success;
 
     aws_mutex_clean_up(&impl->synced_data.mutex);
     aws_thread_clean_up(&impl->thread);
@@ -284,9 +279,9 @@ static void s_signal_synced_data_changed(struct aws_event_loop *event_loop) {
     ULONG_PTR completion_key = (ULONG_PTR)impl->iocp_handle;
     PostQueuedCompletionStatus(
         impl->iocp_handle, /* CompletionPort */
-        0, /* dwNumberOfBytesTransferred */
-        completion_key, /* dwCompletionKey */
-        NULL); /* lpOverlapped */
+        0,                 /* dwNumberOfBytesTransferred */
+        completion_key,    /* dwCompletionKey */
+        NULL);             /* lpOverlapped */
 }
 
 static int s_run(struct aws_event_loop *event_loop) {
@@ -433,10 +428,10 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
 
     bool success = CreateIoCompletionPort(
         handle->data.handle, /* FileHandle */
-        impl->iocp_handle, /* ExistingCompletionPort */
-        0, /* CompletionKey */
-        1); /* NumberOfConcurrentThreads */
-    
+        impl->iocp_handle,   /* ExistingCompletionPort */
+        0,                   /* CompletionKey */
+        1);                  /* NumberOfConcurrentThreads */
+
     if (!success) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -455,7 +450,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
  * Takes tasks from tasks_to_schedule and adds them to the scheduler.
  * If everything is successful, tasks_to_schedule will be emptied.
  * If anything goes wrong, tasks_to_schedule will be left with the unprocessed tasks */
- static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
+static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
     assert(impl);
 
@@ -469,7 +464,8 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     for (task_i = 0; task_i < num_tasks; ++task_i) {
         struct task_to_schedule *task_to_schedule;
         aws_array_list_get_at_ptr(&impl->thread_data.tasks_to_schedule, (void **)&task_to_schedule, task_i);
-        int err = aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, &task_to_schedule->task, task_to_schedule->run_at);
+        int err = aws_task_scheduler_schedule_future(
+            &impl->thread_data.scheduler, &task_to_schedule->task, task_to_schedule->run_at);
         if (err) {
             break;
         }
@@ -479,8 +475,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         /* Not all tasks were scheduled, modify list so only unprocessed tasks remain */
         aws_array_list_pop_front_n(&impl->thread_data.tasks_to_schedule, task_i);
         return AWS_OP_ERR;
-    }
-    else {
+    } else {
         /* Success, clear list */
         aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
         return AWS_OP_SUCCESS;
@@ -511,9 +506,9 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
              * but requires the other list to be empty. */
             bool swap_possible = aws_array_list_length(&impl->thread_data.tasks_to_schedule) == 0;
             if (AWS_LIKELY(swap_possible)) {
-                aws_array_list_swap_contents(&impl->synced_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
-            }
-            else {
+                aws_array_list_swap_contents(
+                    &impl->synced_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
+            } else {
                 /* If swap not possible, signal the thread to try again next loop */
                 should_resignal_synced_data_changed = true;
                 impl->synced_data.thread_signaled = true;
@@ -533,8 +528,6 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
 /* Called from event-thread */
 static void s_event_thread_main(void *user_data) {
 
-    // TODO: does event-thread properly handle tasks scheduled before it runs? while it's temporarily stopped?
-
     struct aws_event_loop *event_loop = user_data;
     struct iocp_loop *impl = event_loop->impl_data;
 
@@ -550,13 +543,13 @@ static void s_event_thread_main(void *user_data) {
         ULONG num_entries = 0;
         bool should_process_synced_data = false;
 
-        bool has_completion_entries = GetQueuedCompletionStatusEx( 
-            impl->iocp_handle, /* Completion port */
-            completion_packets, /* Out: completion port entries */
+        bool has_completion_entries = GetQueuedCompletionStatusEx(
+            impl->iocp_handle,               /* Completion port */
+            completion_packets,              /* Out: completion port entries */
             MAX_COMPLETION_PACKETS_PER_LOOP, /* max number of entries to remove */
-            &num_entries, /* Out: number of entries removed */
-            timeout_ms, /* Timeout in ms. If timeout reached then FALSE is returned. */
-            false); /* fAlertable */
+            &num_entries,                    /* Out: number of entries removed */
+            timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
+            false);                          /* fAlertable */
 
         if (has_completion_entries) {
             for (ULONG i = 0; i < num_entries; ++i) {
@@ -578,8 +571,7 @@ static void s_event_thread_main(void *user_data) {
                     }
                 }
             }
-        }
-        else {
+        } else {
             /* If no completion entries were dequeued then the timeout must have triggered */
             assert(GetLastError() == WAIT_TIMEOUT);
         }
@@ -602,8 +594,7 @@ static void s_event_thread_main(void *user_data) {
             uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
             uint64_t timeout_ms64 = timeout_ns / NANOSEC_PER_MS;
             timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
-        }
-        else {
+        } else {
             timeout_ms = DEFAULT_TIMEOUT_MS;
         }
     }
