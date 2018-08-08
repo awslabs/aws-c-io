@@ -30,11 +30,34 @@ enum aws_io_event_type {
 struct aws_event_loop;
 struct aws_task;
 
+#if AWS_USE_IO_COMPLETION_PORTS
+struct aws_overlapped;
+
+typedef void(aws_event_loop_on_completion_fn)(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped);
+
+/**
+ * Use aws_overlapped when a handle connected to the event loop needs an OVERLAPPED struct.
+ * OVERLAPPED structs are needed to make OS-level async I/O calls.
+ * When the I/O completes, the assigned aws_event_loop_on_completion_fn is called from the event_loop's thread.
+ * While the I/O is pending, it is not safe to modify or delete aws_overlapped.
+ * Call aws_overlapped_init() before first use. If the aws_overlapped will be used multiple times, call
+ * aws_overlapped_reset() or aws_overlapped_init() between uses.
+ */
+struct aws_overlapped {
+    OVERLAPPED overlapped;
+    aws_event_loop_on_completion_fn *on_completion;
+    void *user_data;
+};
+
+#else /* !AWS_USE_IO_COMPLETION_PORTS */
+
 typedef void(aws_event_loop_on_event_fn)(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
     void *user_data);
+
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *event_loop);
@@ -42,6 +65,9 @@ struct aws_event_loop_vtable {
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
     int (*schedule_task)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+#if AWS_USE_IO_COMPLETION_PORTS
+    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+#else
     int (*subscribe_to_io_events)(
         struct aws_event_loop *event_loop,
         struct aws_io_handle *handle,
@@ -50,6 +76,7 @@ struct aws_event_loop_vtable {
         void *user_data);
 
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+#endif
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -73,6 +100,24 @@ struct aws_event_loop_local_object {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#ifdef AWS_USE_IO_COMPLETION_PORTS
+/**
+ * Prepares aws_overlapped for use, and sets a function to call when the overlapped operation completes.
+ */
+AWS_IO_API
+void aws_overlapped_init(
+    struct aws_overlapped *overlapped,
+    aws_event_loop_on_completion_fn *on_completion,
+    void *user_data);
+
+/**
+ * Prepares aws_overlapped for re-use without changing the assigned aws_event_loop_on_completion_fn.
+ * Call aws_overlapped_init(), instead of aws_overlapped_reset(), to change the aws_event_loop_on_completion_fn.
+ */
+AWS_IO_API
+void aws_overlapped_reset(struct aws_overlapped *overlapped);
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
@@ -168,6 +213,25 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
 AWS_IO_API
 int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
 
+#if AWS_USE_IO_COMPLETION_PORTS
+
+/**
+ * Associates an aws_io_handle with the event loop's I/O Completion Port.
+ * The handle must use aws_overlapped for any calls requiring an OVERLAPPED struct.
+ * When an aws_overlapped operation completes, its on_completion function
+ * will run on the event loop thread.
+ *
+ * The handle must be disconnected via aws_event_loop_disconnect_handle_from_io_completion_port()
+ * before the event loop must be called before the event loop can be stopped, destroyed, or cleaned up.
+ * Once disconnected, a handle cannot be re-connected.
+ *
+ */
+AWS_IO_API int aws_event_loop_connect_handle_to_io_completion_port(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle);
+
+#else /* !AWS_USE_IO_COMPLETION_PORTS */
+
 /**
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were
  * received. The definition for these values can be found in aws_io_event_type. Currently, only
@@ -181,6 +245,8 @@ int aws_event_loop_subscribe_to_io_events(
     int events,
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
+
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
  * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.

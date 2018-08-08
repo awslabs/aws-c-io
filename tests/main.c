@@ -31,13 +31,19 @@
 
 #include <default_host_resolver_test.c>
 
+#if AWS_USE_IO_COMPLETION_PORTS
+#    define EVENT_LOOP_IO_TESTS &event_loop_completion_events
+#else
+#    define EVENT_LOOP_IO_TESTS &read_write_notifications
+#endif
+
 static int s_run_tests(int argc, char *argv[]) {
     AWS_RUN_TEST_CASES(
         &pipe_open_close,
         &pipe_read_write,
         &pipe_read_write_large_buffer,
         &xthread_scheduled_tasks_execute,
-        &read_write_notifications,
+        EVENT_LOOP_IO_TESTS,
         &stop_then_restart,
         &channel_setup,
         &channel_single_slot_cleans_up,
