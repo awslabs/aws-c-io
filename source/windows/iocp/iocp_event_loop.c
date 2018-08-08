@@ -177,6 +177,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     event_loop->impl_data = impl;
 
+    event_loop->vtable.destroy = s_destroy;
     event_loop->vtable.run = s_run;
     event_loop->vtable.stop = s_stop;
     event_loop->vtable.wait_for_stop_completion = s_wait_for_stop_completion;
