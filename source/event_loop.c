@@ -24,7 +24,7 @@ static void s_object_removed(void *value) {
     }
 }
 
-int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock) {
 
     event_loop->alloc = alloc;
     event_loop->clock = clock;
@@ -36,7 +36,7 @@ int aws_event_loop_base_init(struct aws_event_loop *event_loop, struct aws_alloc
     return AWS_OP_SUCCESS;
 }
 
-void aws_event_loop_base_clean_up(struct aws_event_loop *event_loop) {
+void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
     aws_hash_table_clean_up(&event_loop->local_data);
 }
 

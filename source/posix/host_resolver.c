@@ -62,7 +62,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
         size_t address_len = strlen(address_buffer);
         const struct aws_string *address =
-                aws_string_from_array_new(allocator, (const uint8_t *)address_buffer,
+                aws_string_new_from_array(allocator, (const uint8_t *)address_buffer,
                                               address_len);
 
         if (!address) {
@@ -70,7 +70,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
         }
 
         const struct aws_string *host_cpy =
-            aws_string_from_array_new(allocator, (const uint8_t *)hostname_cstr,
+            aws_string_new_from_array(allocator, (const uint8_t *)hostname_cstr,
                                           hostname_len);
 
         if (!host_cpy) {

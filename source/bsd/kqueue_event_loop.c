@@ -101,7 +101,7 @@ enum {
     DEFAULT_ARRAY_LIST_RESERVE = 32,
 };
 
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
 
@@ -122,7 +122,7 @@ struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, a
     }
     clean_up_event_loop_mem = true;
 
-    int err = aws_event_loop_base_init(event_loop, alloc, clock);
+    int err = aws_event_loop_init_base(event_loop, alloc, clock);
     if (err) {
         goto clean_up;
     }
@@ -256,7 +256,7 @@ clean_up:
         aws_mem_release(alloc, impl);
     }
     if (clean_up_event_loop_base) {
-        aws_event_loop_base_clean_up(event_loop);
+        aws_event_loop_clean_up_base(event_loop);
     }
     if (clean_up_event_loop_mem) {
         aws_mem_release(alloc, event_loop);
@@ -319,7 +319,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     close(impl->kq_fd);
     aws_thread_clean_up(&impl->thread);
     aws_mem_release(event_loop->alloc, impl);
-    aws_event_loop_base_clean_up(event_loop);
+    aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 }
 

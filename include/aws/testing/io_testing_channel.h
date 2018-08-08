@@ -71,7 +71,7 @@ static void s_testing_loop_destroy(struct aws_event_loop *event_loop) {
     struct testing_loop *testing_loop = event_loop->impl_data;
     aws_task_scheduler_clean_up(&testing_loop->scheduler);
     aws_mem_release(event_loop->alloc, testing_loop);
-    aws_event_loop_base_clean_up(event_loop);
+    aws_event_loop_clean_up_base(event_loop);
 }
 
 static struct aws_event_loop_vtable s_testing_loop_vtable = {
@@ -87,7 +87,7 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
 
 static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator, aws_io_clock_fn clock) {
     struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
-    aws_event_loop_base_init(event_loop, allocator, clock);
+    aws_event_loop_init_base(event_loop, allocator, clock);
 
     struct testing_loop *testing_loop = aws_mem_acquire(allocator, sizeof(struct testing_loop));
     aws_task_scheduler_init(&testing_loop->scheduler, allocator, clock);

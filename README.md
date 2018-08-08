@@ -26,7 +26,7 @@ Typical Client API Usage Pattern:
         
         struct aws_event_loop_group el_group;
         
-        if (aws_event_loop_group_default_init(&el_group, allocator)) {
+        if (aws_event_loop_group_init_default(&el_group, allocator)) {
             goto cleanup;
         }
         
@@ -66,7 +66,7 @@ Typical Server API Usage Pattern:
             
         struct aws_event_loop_group el_group;
         
-        if (aws_event_loop_group_default_init(&el_group, allocator)) {
+        if (aws_event_loop_group_init_default(&el_group, allocator)) {
             goto cleanup;
         }
         
@@ -399,13 +399,13 @@ This function is thread-safe.
 
 #### API
 
-    int aws_event_loop_base_init (struct aws_allocator *, aws_clock clock, ...);
+    int aws_event_loop_init_base (struct aws_allocator *, aws_clock clock, ...);
 
 Initializes common data for all event loops regardless of implementation. All implementations must call this function before returning from their allocation function.
 
-    struct aws_event_loop *aws_event_loop_default_new (struct aws_allocator *, aws_clock clock, ...);
+    struct aws_event_loop *aws_event_loop_new_default (struct aws_allocator *, aws_clock clock, ...);
 
-Allocates and initializes the default event loop implementation for the current platform. Calls `aws_event_loop_base_init` before returning.
+Allocates and initializes the default event loop implementation for the current platform. Calls `aws_event_loop_init_base` before returning.
 
     struct aws_event_loop *aws_event_loop_destroy (struct aws_event_loop *);
 

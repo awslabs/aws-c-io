@@ -97,14 +97,14 @@ enum {
 };
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_default_new(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
 
     if (!loop) {
         return NULL;
     }
 
-    if (aws_event_loop_base_init(loop, alloc, clock)) {
+    if (aws_event_loop_init_base(loop, alloc, clock)) {
         goto clean_up_loop;
     }
 
@@ -176,7 +176,7 @@ clean_up_epoll:
     aws_mem_release(alloc, epoll_loop);
 
 cleanup_base_loop:
-    aws_event_loop_base_clean_up(loop);
+    aws_event_loop_clean_up_base(loop);
 
 clean_up_loop:
     aws_mem_release(alloc, loop);
@@ -204,7 +204,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     close(epoll_loop->epoll_fd);
     aws_mem_release(event_loop->alloc, epoll_loop);
-    aws_event_loop_base_clean_up(event_loop);
+    aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
