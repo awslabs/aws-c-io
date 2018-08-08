@@ -43,6 +43,8 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.destroy);
+    assert(!aws_event_loop_thread_is_callers_thread(event_loop));
+    
     event_loop->vtable.destroy(event_loop);
 }
 
