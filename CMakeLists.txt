@@ -11,6 +11,11 @@ file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
 
+file(GLOB AWS_IO_TESTING_HEADERS
+        "include/aws/testing/*.h"
+        )
+
+
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
@@ -20,6 +25,12 @@ file(GLOB AWS_IO_SRC
         )
 
 if (WIN32)
+    option(USE_IO_COMPLETION_PORTS
+            "Use I/O Completion Ports to drive event-loops. \
+            If disabled, a less performant implementation based on select() is used. \
+            Disable this if implementing your own event-loop whose interface does not match the IOCP interface."
+            ON)
+
     file(GLOB AWS_IO_OS_HEADERS
             )
 
@@ -27,11 +38,18 @@ if (WIN32)
             "source/windows/*.c"
             )
 
+    if (USE_IO_COMPLETION_PORTS)
+        file(GLOB AWS_IO_IOCP_SRC
+                "source/windows/iocp/*.c"
+                )
+         list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
+    endif ()
+
     if (MSVC)
         source_group("Header Files\\aws\\io" FILES ${AWS_IO_HEADERS})
         source_group("Header Files\\aws\\io\\private" FILES ${AWS_IO_PRIV_HEADERS})
         source_group("Source Files" FILES ${AWS_IO_SRC})
-        source_group("Source Files\\windows" FILES ${AWS_OS_SRC})
+        source_group("Source Files\\windows" FILES ${AWS_IO_OS_SRC})
     endif ()
     #platform libs come from aws-c-common transitively, so we don't specify them here, but for documentation purposes,
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
@@ -138,6 +156,10 @@ if (BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DUSE_IMPORT_EXPORT")
 endif ()
 
+if (USE_IO_COMPLETION_PORTS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
+endif ()
+
 if (BUILD_JNI_BINDINGS)
     set(BUILD_PORTABLE_BINARIES ON)
     find_package(JNI)
@@ -162,6 +184,7 @@ find_package(aws-c-common REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} aws-c-common ${PLATFORM_LIBS})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
 
 install(
         TARGETS ${CMAKE_PROJECT_NAME} EXPORT ${CMAKE_PROJECT_NAME}-config

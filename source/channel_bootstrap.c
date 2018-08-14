@@ -517,7 +517,7 @@ error:
     aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
 }
 
-static void on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+static void s_on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
     struct server_channel_data *channel_data = (struct server_channel_data *)user_data;
 
     void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
@@ -553,7 +553,7 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
             .on_setup_completed = on_server_channel_on_setup_completed,
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
-            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .on_shutdown_completed = s_on_server_channel_on_shutdown,
     };
 
     if (aws_channel_init(&channel_data->channel, connection_args->bootstrap->allocator, event_loop, &channel_callbacks)) {

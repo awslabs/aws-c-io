@@ -105,7 +105,7 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *allo
 AWS_IO_API void  aws_tls_ctx_destroy(struct aws_tls_ctx *ctx);
 
 AWS_IO_API int aws_tls_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buf,
-                                     aws_channel_on_message_write_completed on_write_completed, void *completion_user_data);
+                                     aws_channel_on_message_write_completed_fn *on_write_completed, void *completion_user_data);
 
 AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler);
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);

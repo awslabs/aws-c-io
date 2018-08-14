@@ -16,6 +16,10 @@
 #include <aws/testing/aws_test_harness.h>
 #include <aws/io/tls_channel_handler.h>
 #include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
+
+#include <aws/common/clock.h>
+#include <aws/common/condition_variable.h>
 
 struct alpn_channel_setup_test_args {
     struct aws_condition_variable condition_variable;
@@ -23,7 +27,7 @@ struct alpn_channel_setup_test_args {
     bool shutdown_finished;
 };
 
-static void alpn_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
+static void s_alpn_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
     struct alpn_channel_setup_test_args *setup_test_args = (struct alpn_channel_setup_test_args *)ctx;
 
     setup_test_args->error_code |= error_code;
@@ -37,20 +41,22 @@ struct alpn_test_on_negotiation_args {
     struct aws_byte_buf protocol;
 };
 
-int alpn_test_shutdown (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir, int error_code, bool abort_immediately) {
+static int s_alpn_test_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                                enum aws_channel_direction dir, int error_code, bool abort_immediately) {
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-size_t alpn_test_initial_window_size(struct aws_channel_handler *handler) {
+static size_t s_alpn_test_initial_window_size(struct aws_channel_handler *handler) {
     return SIZE_MAX;
 }
 
-void alpn_test_destroy(struct aws_channel_handler *handler) {
+static void s_alpn_test_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, (void *)handler);
 }
 
-struct aws_channel_handler *alpn_tls_successful_negotiation(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol,
-                                                              void *ctx) {
+static struct aws_channel_handler *s_alpn_tls_successful_negotiation(struct aws_channel_slot *new_slot,
+                                                                     struct aws_byte_buf *protocol,
+                                                                     void *ctx) {
     struct alpn_test_on_negotiation_args *negotiation_args = (struct alpn_test_on_negotiation_args *)ctx;
 
     struct aws_channel_handler *handler = (struct aws_channel_handler *)
@@ -60,29 +66,29 @@ struct aws_channel_handler *alpn_tls_successful_negotiation(struct aws_channel_s
     negotiation_args->protocol = *protocol;
     negotiation_args->new_slot = new_slot;
 
-    handler->vtable.destroy = alpn_test_destroy;
-    handler->vtable.shutdown = alpn_test_shutdown;
-    handler->vtable.initial_window_size = alpn_test_initial_window_size;
+    handler->vtable.destroy = s_alpn_test_destroy;
+    handler->vtable.shutdown = s_alpn_test_shutdown;
+    handler->vtable.initial_window_size = s_alpn_test_initial_window_size;
     handler->alloc = negotiation_args->allocator;
 
     return handler;
 }
 
-static bool alpn_test_shutdown_predicate(void *arg) {
+static bool s_alpn_test_shutdown_predicate(void *arg) {
     struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)arg;
     return test_args->shutdown_finished;
 }
 
-static void on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+static void s_on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
     struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)user_data;
 
     test_args->shutdown_finished = true;
     aws_condition_variable_notify_one(&test_args->condition_variable);
 }
 
-static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, void *ctx) {
+static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, void *ctx) {
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -95,9 +101,9 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
     };
 
     struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
+            .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .on_shutdown_completed = s_on_server_channel_on_shutdown,
             .shutdown_user_data = &test_args,
     };
 
@@ -117,7 +123,8 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
             .allocator = allocator
     };
 
-    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, alpn_tls_successful_negotiation, &on_negotiation_args);
+    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, s_alpn_tls_successful_negotiation,
+                                                                   &on_negotiation_args);
     ASSERT_NOT_NULL(handler);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
@@ -143,18 +150,20 @@ static int test_alpn_successfully_negotiates (struct aws_allocator *allocator, v
                              on_negotiation_args.protocol.buffer, on_negotiation_args.protocol.len);
 
     aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
+    ASSERT_SUCCESS(
+            aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate,
+                                             &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(alpn_successfully_negotiates, test_alpn_successfully_negotiates)
+AWS_TEST_CASE(alpn_successfully_negotiates, s_test_alpn_successfully_negotiates)
 
-static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void *ctx) {
+static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void *ctx) {
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -167,9 +176,9 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
     };
 
     struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
+            .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .on_shutdown_completed = s_on_server_channel_on_shutdown,
             .shutdown_user_data = &test_args,
     };
 
@@ -189,12 +198,13 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
             .allocator = allocator
     };
 
-    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, alpn_tls_successful_negotiation, &on_negotiation_args);
+    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, s_alpn_tls_successful_negotiation,
+                                                                   &on_negotiation_args);
     ASSERT_NOT_NULL(handler);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     /*this is just for the test since it's the only slot in the channel */
-    handler->vtable.shutdown = alpn_test_shutdown;
+    handler->vtable.shutdown = s_alpn_test_shutdown;
 
     struct aws_io_message message = {
             .allocator = NULL,
@@ -208,23 +218,26 @@ static int test_alpn_no_protocol_message (struct aws_allocator *allocator, void 
     ASSERT_ERROR(AWS_IO_MISSING_ALPN_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
     aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
+    ASSERT_SUCCESS(
+            aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate,
+                                             &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(alpn_no_protocol_message, test_alpn_no_protocol_message)
+AWS_TEST_CASE(alpn_no_protocol_message, s_test_alpn_no_protocol_message)
 
-struct aws_channel_handler *alpn_tls_failed_negotiation(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol,
-                                                            void *ctx) {
+static struct aws_channel_handler *s_alpn_tls_failed_negotiation(struct aws_channel_slot *new_slot,
+                                                          struct aws_byte_buf *protocol,
+                                                          void *ctx) {
     return NULL;
 }
 
-static int test_alpn_error_creating_handler (struct aws_allocator *allocator, void *ctx) {
+static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, void *ctx) {
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -237,9 +250,9 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
     };
 
     struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = alpn_channel_setup_test_on_setup_completed,
+            .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
             .setup_user_data = &test_args,
-            .on_shutdown_completed = on_server_channel_on_shutdown,
+            .on_shutdown_completed = s_on_server_channel_on_shutdown,
             .shutdown_user_data = &test_args,
     };
 
@@ -273,21 +286,24 @@ static int test_alpn_error_creating_handler (struct aws_allocator *allocator, vo
             .allocator = allocator
     };
 
-    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, alpn_tls_failed_negotiation, &on_negotiation_args);
+    struct aws_channel_handler *handler = aws_tls_alpn_handler_new(allocator, s_alpn_tls_failed_negotiation,
+                                                                   &on_negotiation_args);
     ASSERT_NOT_NULL(handler);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     /*this is just for the test since it's the only slot in the channel */
-    handler->vtable.shutdown = alpn_test_shutdown;
+    handler->vtable.shutdown = s_alpn_test_shutdown;
 
     ASSERT_ERROR(AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
     aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, alpn_test_shutdown_predicate, &test_args));
+    ASSERT_SUCCESS(
+            aws_condition_variable_wait_pred(&test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate,
+                                             &test_args));
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(alpn_error_creating_handler, test_alpn_error_creating_handler)
+AWS_TEST_CASE(alpn_error_creating_handler, s_test_alpn_error_creating_handler)

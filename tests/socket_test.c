@@ -14,6 +14,10 @@
 */
 
 #include <aws/testing/aws_test_harness.h>
+
+#include <aws/common/clock.h>
+#include <aws/common/condition_variable.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
 
@@ -25,20 +29,20 @@ struct local_listener_args {
     bool error_invoked;
 };
 
-static bool incoming_predicate(void *arg) {
+static bool s_incoming_predicate(void *arg) {
     struct local_listener_args *listener_args = (struct local_listener_args *)arg;
 
     return listener_args->incoming_invoked || listener_args->error_invoked;
 }
 
-static void local_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
+static void s_local_listener_incoming(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
     struct local_listener_args *listener_args = (struct local_listener_args *)user_data;
     listener_args->incoming = new_socket;
     listener_args->incoming_invoked = true;
     aws_condition_variable_notify_one(listener_args->condition_variable);
 }
 
-static void local_listener_error(struct aws_socket *socket, int err_code, void *user_data) {
+static void s_local_listener_error(struct aws_socket *socket, int err_code, void *user_data) {
     struct local_listener_args *listener_args = (struct local_listener_args *)user_data;
     listener_args->error_invoked = true;
 }
@@ -51,13 +55,13 @@ struct local_outgoing_args {
     struct aws_condition_variable *condition_variable;
 };
 
-static bool connection_completed_predicate(void *arg) {
+static bool s_connection_completed_predicate(void *arg) {
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)arg;
 
     return outgoing_args->connect_invoked || outgoing_args->error_invoked;
 }
 
-static void local_outgoing_connection(struct aws_socket *socket, void *user_data) {
+static void s_local_outgoing_connection(struct aws_socket *socket, void *user_data) {
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
 
     aws_condition_variable_notify_one(outgoing_args->condition_variable);
@@ -69,14 +73,15 @@ static void local_outgoing_connection(struct aws_socket *socket, void *user_data
     }
 }
 
-static void local_outgoing_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
+static void s_local_outgoing_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
     outgoing_args->error_invoked = true;
 }
 
-static int test_socket (struct aws_allocator *allocator, struct aws_socket_options *options, struct aws_socket_endpoint *endpoint) {
+static int s_test_socket(struct aws_allocator *allocator, struct aws_socket_options *options,
+                         struct aws_socket_endpoint *endpoint) {
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -93,8 +98,8 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     };
 
     struct aws_socket_creation_args listener_creation_args = {
-            .on_incoming_connection = local_listener_incoming,
-            .on_error = local_listener_error,
+            .on_incoming_connection = s_local_listener_incoming,
+            .on_error = s_local_listener_error,
             .on_connection_established = NULL,
             .user_data = &listener_args,
     };
@@ -117,8 +122,8 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     };
 
     struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = local_outgoing_connection,
-            .on_error = local_outgoing_connection_error,
+            .on_connection_established = s_local_outgoing_connection,
+            .on_error = s_local_outgoing_connection_error,
             .user_data = &outgoing_args
     };
 
@@ -129,8 +134,10 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint));
 
     if (options->type == AWS_SOCKET_STREAM) {
-        ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, incoming_predicate, &listener_args));
-        ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, connection_completed_predicate, &outgoing_args));
+        ASSERT_SUCCESS(
+                aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_connection_completed_predicate,
+                                                        &outgoing_args));
     }
 
     struct aws_socket *server_sock = &listener;
@@ -205,7 +212,7 @@ static int test_socket (struct aws_allocator *allocator, struct aws_socket_optio
     return 0;
 }
 
-static int test_local_socket_communication (struct aws_allocator *allocator, void *user_data) {
+static int s_test_local_socket_communication(struct aws_allocator *allocator, void *user_data) {
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
@@ -218,12 +225,12 @@ static int test_local_socket_communication (struct aws_allocator *allocator, voi
 
     snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
 
-    return test_socket(allocator, &options, &endpoint);
+    return s_test_socket(allocator, &options, &endpoint);
 }
 
-AWS_TEST_CASE(local_socket_communication, test_local_socket_communication)
+AWS_TEST_CASE(local_socket_communication, s_test_local_socket_communication)
 
-static int test_tcp_socket_communication (struct aws_allocator *allocator, void *user_data) {
+static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void *user_data) {
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
@@ -235,12 +242,12 @@ static int test_tcp_socket_communication (struct aws_allocator *allocator, void 
             .port = "8125"
     };
 
-    return test_socket(allocator, &options, &endpoint);
+    return s_test_socket(allocator, &options, &endpoint);
 }
 
-AWS_TEST_CASE(tcp_socket_communication, test_tcp_socket_communication)
+AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
-static int test_udp_socket_communication (struct aws_allocator *allocator, void *user_data) {
+static int s_test_udp_socket_communication(struct aws_allocator *allocator, void *user_data) {
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
@@ -252,13 +259,13 @@ static int test_udp_socket_communication (struct aws_allocator *allocator, void 
             .port = "8126"
     };
 
-    return test_socket(allocator, &options, &endpoint);
+    return s_test_socket(allocator, &options, &endpoint);
 }
 
-AWS_TEST_CASE(udp_socket_communication, test_udp_socket_communication)
+AWS_TEST_CASE(udp_socket_communication, s_test_udp_socket_communication)
 
 
-static void timeout_error_handler(struct aws_socket *socket, int err_code, void *user_data) {
+static void s_timeout_error_handler(struct aws_socket *socket, int err_code, void *user_data) {
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
 
     outgoing_args->error_invoked = true;
@@ -267,9 +274,9 @@ static void timeout_error_handler(struct aws_socket *socket, int err_code, void 
     aws_mutex_unlock(outgoing_args->mutex);
 }
 
-static int test_connect_timeout (struct aws_allocator *allocator, void *user_data) {
+static int s_test_connect_timeout(struct aws_allocator *allocator, void *user_data) {
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -297,8 +304,8 @@ static int test_connect_timeout (struct aws_allocator *allocator, void *user_dat
     };
 
     struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = local_outgoing_connection,
-            .on_error = timeout_error_handler,
+            .on_connection_established = s_local_outgoing_connection,
+            .on_error = s_timeout_error_handler,
             .user_data = &outgoing_args
     };
 
@@ -315,7 +322,7 @@ static int test_connect_timeout (struct aws_allocator *allocator, void *user_dat
     return 0;
 }
 
-AWS_TEST_CASE(connect_timeout, test_connect_timeout)
+AWS_TEST_CASE(connect_timeout, s_test_connect_timeout)
 
 struct error_test_args {
     int error_code;
@@ -323,19 +330,23 @@ struct error_test_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void null_sock_error_handler(struct aws_socket *socket, int err_code, void *user_data) {
+static void s_null_sock_error_handler(struct aws_socket *socket, int err_code, void *user_data) {
+    (void)socket;
     struct error_test_args *error_args = (struct error_test_args *)user_data;
 
     error_args->error_code = err_code;
     aws_condition_variable_notify_one(&error_args->condition_variable);
 }
 
-static void null_sock_connection(struct aws_socket *socket, void *user_data) {
+static void s_null_sock_connection(struct aws_socket *socket, void *user_data) {
+    (void)socket;
+    (void)user_data;
 }
 
-static int test_outgoing_local_sock_errors (struct aws_allocator *allocator, void *user_data) {
+static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -358,8 +369,8 @@ static int test_outgoing_local_sock_errors (struct aws_allocator *allocator, voi
     };
 
     struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -376,11 +387,12 @@ static int test_outgoing_local_sock_errors (struct aws_allocator *allocator, voi
     return 0;
 }
 
-AWS_TEST_CASE(outgoing_local_sock_errors, test_outgoing_local_sock_errors)
+AWS_TEST_CASE(outgoing_local_sock_errors, s_test_outgoing_local_sock_errors)
 
-static int test_incoming_local_sock_errors (struct aws_allocator *allocator, void *user_data) {
+static int s_test_incoming_local_sock_errors(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
 
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -403,8 +415,8 @@ static int test_incoming_local_sock_errors (struct aws_allocator *allocator, voi
     };
 
     struct aws_socket_creation_args incoming_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -418,17 +430,17 @@ static int test_incoming_local_sock_errors (struct aws_allocator *allocator, voi
     return 0;
 }
 
-AWS_TEST_CASE(incoming_local_sock_errors, test_incoming_local_sock_errors)
+AWS_TEST_CASE(incoming_local_sock_errors, s_test_incoming_local_sock_errors)
 
-static bool outgoing_tcp_error_predicate(void *args) {
+static bool s_outgoing_tcp_error_predicate(void *args) {
     struct error_test_args *test_args = (struct error_test_args *)args;
 
     return test_args->error_code != 0;
 }
 
-static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *user_data) {
-
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -452,8 +464,8 @@ static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *
     };
 
     struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -462,7 +474,9 @@ static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *
     /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, outgoing_tcp_error_predicate, &args));
+    ASSERT_SUCCESS(
+            aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate,
+                                             &args));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
 
 
@@ -472,11 +486,11 @@ static int test_outgoing_tcp_sock_error (struct aws_allocator *allocator, void *
     return 0;
 }
 
-AWS_TEST_CASE(outgoing_tcp_sock_error, test_outgoing_tcp_sock_error)
+AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
-static int test_incoming_tcp_sock_errors (struct aws_allocator *allocator, void *user_data) {
-
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -500,8 +514,8 @@ static int test_incoming_tcp_sock_errors (struct aws_allocator *allocator, void 
     };
 
     struct aws_socket_creation_args incoming_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -515,11 +529,11 @@ static int test_incoming_tcp_sock_errors (struct aws_allocator *allocator, void 
     return 0;
 }
 
-AWS_TEST_CASE(incoming_tcp_sock_errors, test_incoming_tcp_sock_errors)
+AWS_TEST_CASE(incoming_tcp_sock_errors, s_test_incoming_tcp_sock_errors)
 
-static int test_incoming_udp_sock_errors (struct aws_allocator *allocator, void *user_data) {
-
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -543,8 +557,8 @@ static int test_incoming_udp_sock_errors (struct aws_allocator *allocator, void 
     };
 
     struct aws_socket_creation_args incoming_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -558,11 +572,11 @@ static int test_incoming_udp_sock_errors (struct aws_allocator *allocator, void 
     return 0;
 }
 
-AWS_TEST_CASE(incoming_udp_sock_errors, test_incoming_udp_sock_errors)
+AWS_TEST_CASE(incoming_udp_sock_errors, s_test_incoming_udp_sock_errors)
 
-static int test_non_connected_read_write_fails (struct aws_allocator *allocator, void *user_data) {
-
-    struct aws_event_loop *event_loop = aws_event_loop_default_new(allocator, aws_high_res_clock_get_ticks);
+static int s_test_non_connected_read_write_fails(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
@@ -586,8 +600,8 @@ static int test_non_connected_read_write_fails (struct aws_allocator *allocator,
     };
 
     struct aws_socket_creation_args incoming_creation_args = {
-            .on_connection_established = null_sock_connection,
-            .on_error = null_sock_error_handler,
+            .on_connection_established = s_null_sock_connection,
+            .on_error = s_null_sock_error_handler,
             .user_data = &args
     };
 
@@ -603,4 +617,4 @@ static int test_non_connected_read_write_fails (struct aws_allocator *allocator,
     return 0;
 }
 
-AWS_TEST_CASE(non_connected_read_write_fails, test_non_connected_read_write_fails)
+AWS_TEST_CASE(non_connected_read_write_fails, s_test_non_connected_read_write_fails)

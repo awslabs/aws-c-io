@@ -610,7 +610,7 @@ int aws_socket_shutdown(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_half_close(struct aws_socket *socket, aws_channel_direction dir) {
+int aws_socket_half_close(struct aws_socket *socket, enum aws_channel_direction dir) {
     int how = dir == AWS_CHANNEL_DIR_READ ? 0 : 1;
 
     if (shutdown(socket->io_handle.data.fd, how)) {

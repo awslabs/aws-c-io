@@ -34,7 +34,7 @@ struct s2n_handler {
     struct aws_byte_buf protocol;
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
-    aws_channel_on_message_write_completed latest_message_on_completion;
+    aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     bool negotiation_finished;
 };
