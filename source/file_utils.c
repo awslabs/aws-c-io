@@ -48,25 +48,21 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
 enum PEM_TO_DER_STATE {
     BEGIN,
     ON_DATA,
-    FINISHED
-
+    ON_END_OF_CERT,
+    END_OF_CERT_OR_FINISHED
 };
 
-static int convert_pem_to_raw_base64(const struct aws_byte_buf *pem, struct aws_byte_buf *output) {
+static int convert_pem_to_raw_base64(const struct aws_byte_buf *pem, struct aws_array_list *certificates) {
     enum PEM_TO_DER_STATE state = BEGIN;
     struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
 
-    if (aws_byte_buf_init(pem->allocator, output, pem->len)) {
-        return AWS_OP_ERR;
-    }
-    output->len = pem->len;
+    size_t begin_offset = 0, end_offset = 0, current_location = 0;
 
-    struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(output);
-
-    while (pem_cursor.ptr && state < FINISHED) {
+    while (pem_cursor.ptr && state < ON_END_OF_CERT) {
         switch (state) {
         case BEGIN:
             if (*pem_cursor.ptr == '\n') {
+                begin_offset = current_location + 1;
                 state = ON_DATA;
                 break;
             }
@@ -75,20 +71,40 @@ static int convert_pem_to_raw_base64(const struct aws_byte_buf *pem, struct aws_
             if (*pem_cursor.ptr == '\n') {
                 break;
             }
+
             if (*pem_cursor.ptr == '-') {
-                state = FINISHED;
+                end_offset = current_location;
+                struct aws_byte_cursor current_cert = {
+                        .ptr = pem->buffer + begin_offset,
+                        .len = end_offset - begin_offset
+                };
+
+                if (aws_array_list_push_back(certificates, &current_cert)) {
+                    return AWS_OP_ERR;
+                }
+
+                state = ON_END_OF_CERT;
                 break;
             }
-            aws_byte_cursor_write(&output_cursor, pem_cursor.ptr, 1);
             break;
-        case FINISHED:
+        case ON_END_OF_CERT:
+            if (*pem_cursor.ptr == '\n') {
+                state = END_OF_CERT_OR_FINISHED;
+                break;
+            }
+            break;
+        case END_OF_CERT_OR_FINISHED:
+            if (*pem_cursor.ptr == '-') {
+                state = BEGIN;
+                break;
+            }
             break;
         }
         aws_byte_cursor_advance(&pem_cursor, 1);
+        current_location++;
     }
-    output->len = output_cursor.ptr - output->buffer;
 
-    if (state == FINISHED) {
+    if (state == END_OF_CERT_OR_FINISHED) {
         return AWS_OP_SUCCESS;
     }
     else {
@@ -106,14 +122,31 @@ int aws_decode_pem_to_buffer(struct aws_allocator *alloc,
     }
 
     size_t decoded_len = 0;
-    aws_base64_compute_decoded_len((const char *)base_64_buffer.buffer, base_64_buffer.len, &decoded_len);
+    if (aws_base64_compute_decoded_len((const char *)base_64_buffer.buffer, base_64_buffer.len, &decoded_len)) {
+        goto cleanup_base64_buf;
+    }
 
-    aws_byte_buf_init(alloc, out_buf, decoded_len);
-    aws_base64_decode(&base_64_buffer, out_buf);
+    if (aws_byte_buf_init(alloc, out_buf, decoded_len)) {
+        goto cleanup_base64_buf;
+    }
+
+    if (aws_base64_decode(&base_64_buffer, out_buf)) {
+       goto cleanup_out_buf;
+    }
 
     aws_secure_zero(base_64_buffer.buffer, base_64_buffer.len);
     aws_byte_buf_clean_up(&base_64_buffer);
     return AWS_OP_SUCCESS;
+
+cleanup_out_buf:
+    aws_secure_zero(out_buf->buffer, out_buf->len);
+    aws_byte_buf_clean_up(out_buf);
+
+cleanup_base64_buf:
+    aws_secure_zero(base_64_buffer.buffer, base_64_buffer.len);
+    aws_byte_buf_clean_up(&base_64_buffer);
+
+    return AWS_OP_ERR;
 }
 
 int aws_read_and_decode_pem_file_to_buffer(struct aws_allocator *alloc, const char *filename,
