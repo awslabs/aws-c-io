@@ -9,6 +9,11 @@ file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
 
+file(GLOB AWS_IO_TESTING_HEADERS
+        "include/aws/testing/*.h"
+        )
+
+
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
@@ -18,12 +23,25 @@ file(GLOB AWS_IO_SRC
         )
 
 if (WIN32)
+    option(USE_IO_COMPLETION_PORTS
+            "Use I/O Completion Ports to drive event-loops. \
+            If disabled, a less performant implementation based on select() is used. \
+            Disable this if implementing your own event-loop whose interface does not match the IOCP interface."
+            ON)
+
     file(GLOB AWS_IO_OS_HEADERS
             )
 
     file(GLOB AWS_IO_OS_SRC
             "source/windows/*.c"
             )
+
+    if (USE_IO_COMPLETION_PORTS)
+        file(GLOB AWS_IO_IOCP_SRC
+                "source/windows/iocp/*.c"
+                )
+         list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
+    endif ()
 
     if (MSVC)
         source_group("Header Files\\aws\\io" FILES ${AWS_IO_HEADERS})
@@ -126,6 +144,10 @@ if (BUILD_SHARED_LIBS AND WIN32)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DUSE_IMPORT_EXPORT")
 endif ()
 
+if (USE_IO_COMPLETION_PORTS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
+endif ()
+
 if (BUILD_JNI_BINDINGS)
     set(BUILD_RELOCATABLE_BINARIES ON)
     find_package(JNI)
@@ -150,6 +172,7 @@ find_package(aws-c-common REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} aws-c-common ${PLATFORM_LIBS})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
 
 install(
         TARGETS ${CMAKE_PROJECT_NAME} EXPORT ${CMAKE_PROJECT_NAME}-config
