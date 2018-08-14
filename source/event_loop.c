@@ -38,9 +38,13 @@ int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_
             goto cleanup_error;
         }
 
-        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop) ||
-            aws_event_loop_run(loop)) {
+        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
             aws_event_loop_destroy(loop);
+            goto cleanup_error;
+
+        }
+
+        if (aws_event_loop_run(loop)) {
             goto cleanup_error;
         }
     }
