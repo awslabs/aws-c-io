@@ -14,11 +14,14 @@
  */
 
 #include <aws/io/event_loop.h>
+
+#include <aws/common/clock.h>
 #include <aws/common/system_info.h>
+
 #include <assert.h>
 
-int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc, aws_io_clock clock,
-                                         uint16_t el_count, aws_new_event_loop new_loop_fn, void *new_loop_user_data) {
+int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc, aws_io_clock_fn *clock,
+                              uint16_t el_count, aws_new_event_loop new_loop_fn, void *new_loop_user_data) {
     assert(new_loop_fn);
 
     el_group->allocator = alloc;
@@ -30,9 +33,13 @@ int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_
 
     for (uint16_t i = 0; i < el_count; ++i) {
         struct aws_event_loop *loop = new_loop_fn(alloc, clock, new_loop_user_data);
-        if (!loop ||
-                aws_array_list_push_back(&el_group->event_loops, (const void *)&loop) ||
-                aws_event_loop_run(loop)) {
+
+        if (!loop) {
+            goto cleanup_error;
+        }
+
+        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop) ||
+            aws_event_loop_run(loop)) {
             aws_event_loop_destroy(loop);
             goto cleanup_error;
         }
@@ -46,8 +53,9 @@ cleanup_error:
 
 }
 
-static struct aws_event_loop *default_new_event_loop(struct aws_allocator *allocator, aws_io_clock clock, void *user_data) {
-    return aws_event_loop_default_new(allocator, clock);
+static struct aws_event_loop *default_new_event_loop(struct aws_allocator *allocator, aws_io_clock_fn *clock, void *user_data) {
+    (void)user_data;
+    return aws_event_loop_new_default(allocator, clock);
 }
 
 int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
@@ -85,6 +93,7 @@ struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group 
     aws_array_list_get_at(&el_group->event_loops, &loop, index);
     return loop;
 }
+
 
 static void s_object_removed(void *value) {
     struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)value;
@@ -155,8 +164,7 @@ int aws_event_loop_remove_local_object(
 
     assert(aws_event_loop_thread_is_callers_thread(event_loop));
 
-    struct aws_hash_element existing_object;
-    AWS_ZERO_STRUCT(existing_object);
+    struct aws_hash_element existing_object = {0};
     int was_present = 0;
 
     struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;
