@@ -567,7 +567,11 @@ static void s_event_thread_main(void *user_data) {
                         AWS_CONTAINER_OF(completion->lpOverlapped, struct aws_overlapped, overlapped);
 
                     if (overlapped->on_completion) {
-                        overlapped->on_completion(event_loop, overlapped);
+                        overlapped->on_completion(
+                            event_loop,
+                            overlapped,
+                            (int)overlapped->overlapped.Internal, /* Status code for the completed request */
+                            completion->dwNumberOfBytesTransferred);
                     }
                 }
             }

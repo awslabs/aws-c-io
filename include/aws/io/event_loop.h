@@ -33,7 +33,11 @@ struct aws_task;
 #if AWS_USE_IO_COMPLETION_PORTS
 struct aws_overlapped;
 
-typedef void(aws_event_loop_on_completion_fn)(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped);
+typedef void(aws_event_loop_on_completion_fn)(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred);
 
 /**
  * Use aws_overlapped when a handle connected to the event loop needs an OVERLAPPED struct.
@@ -217,14 +221,13 @@ int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_t
 
 /**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
- * The handle must use aws_overlapped for any calls requiring an OVERLAPPED struct.
- * When an aws_overlapped operation completes, its on_completion function
- * will run on the event loop thread.
  *
- * The handle must be disconnected via aws_event_loop_disconnect_handle_from_io_completion_port()
- * before the event loop must be called before the event loop can be stopped, destroyed, or cleaned up.
- * Once disconnected, a handle cannot be re-connected.
+ * The handle must use aws_overlapped for all async operations requiring an OVERLAPPED struct.
+ * When the operation completes, the aws_overlapped's completion function will run on the event loop thread.
+ * Note that completion functions will not be invoked while the event loop is stopped. Users should wait for all async
+ * operations on connected handles to complete before cleaning up or destroying the event loop.
  *
+ * A handle may only be connected to one event loop in its lifetime.
  */
 AWS_IO_API
 int aws_event_loop_connect_handle_to_io_completion_port(

@@ -17,7 +17,6 @@
 
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/io.h>
 
 #include <assert.h>
 #include <stdbool.h>
@@ -25,11 +24,10 @@
 
 enum read_end_state {
     /* Pipe is in the process of closing.
-     * If the user was subscribed, they no longer receive events and cannot
-     * resubscribe without first re-opening the pipe. */
+     * If the user was subscribed, they no longer receive events */
     READ_END_STATE_CLOSING,
 
-    /* Pipe has been opened */
+    /* Pipe is open. */
     READ_END_STATE_OPEN,
 
     /* Pipe is open, user has subscribed, but async monitoring hasn't started yet.
@@ -39,15 +37,14 @@ enum read_end_state {
     READ_END_STATE_SUBSCRIBING,
 
     /* Pipe is open, user has subscribed, and user is receiving events delivered by async monitoring.
-     * We pause async monitoring once we know the file is readable.
-     * We resume async monitoring once the user reads all available bytes.
+     * Async monitoring is paused once the file is known to be readable.
+     * Async monitoring is resumed once the user reads all available bytes.
      * Pipe moves to SUBSCRIBE_ERROR state if async monitoring reports an error, or fails to restart.
      * Pipe move sto OPEN state if user unsubscribes. */
     READ_END_STATE_SUBSCRIBED,
 
-    /* Pipe is open, has subscribed, and we've delivered an error event to the user.
-     * We don't bother with delivering further error events and we
-     * don't attempt to do async monitoring anymore. */
+    /* Pipe is open, use has subscribed, and an error event has been delivered to the user.
+     * No further error events are delivered to the user, and no more async monitoring occurs.*/
     READ_END_STATE_SUBSCRIBE_ERROR,
 };
 
@@ -63,37 +60,31 @@ struct read_end_impl {
 
     enum read_end_state state;
 
-    /* For async zero-byte-read operation that allows us to monitor when the pipe becomes readable */
+    struct aws_io_handle handle;
+
+    struct aws_event_loop *event_loop;
+
+    /* Overlapped struct for use by async zero-byte-read operation (used for async monitoring of pipe status). */
     struct aws_overlapped overlapped;
 
-    /* True while monitoring-operation, or error-reporting task, is outstanding.
-     * Note that rapidly opening/closing or subscribing/unsubscribing could
-     * lead to async operations from a previous subscribe still pending
-     * while the user is re-subscribing. */
+    /* True while async monitoring-operation, or error-reporting task, is outstanding.
+     * Note that rapidly subscribing/unsubscribing could lead to async operations from a previous subscribe still
+     * pending while the user is re-subscribing. */
     bool is_async_operation_pending;
 
-    struct aws_io_handle handle; /* Set when opening. */
+    aws_pipe_on_read_end_closed_fn *on_closed_user_callback;
+    void *on_closed_user_data;
 
-    struct aws_event_loop *event_loop; /* Set when opening. */
-
-    aws_pipe_on_read_end_closed_fn *on_closed_user_callback; /* Set when entering CLOSING state. */
-    void *on_closed_user_data;                               /* Set when entering CLOSING state. */
-
-    aws_pipe_on_read_event_fn
-        *on_read_event_user_callback; /* Set when entering SUBSCRIBING state. Reset when exiting one of the SUBSCRIBE*
-                                         states for a non-SUBSCRIBE* state. */
+    aws_pipe_on_read_event_fn *on_read_event_user_callback;
     void *on_read_event_user_data;
 
     /* Reasons to restart monitoring once current async operation completes.
      * Contains read_end_monitoring_request_t flags.*/
-    uint8_t
-        monitoring_request_reasons; /* Used while in the SUBSCRIBE* states. Reset whenever a new async monitoring task
-                                       starts, and also when exiting one of the SUBSCRIBE* for a non-SUBSCRIBE state. */
+    uint8_t monitoring_request_reasons;
 
     /* Events that the error-reporting task will report.
      * Contains aws_io_event_t flags.*/
-    uint8_t error_events_to_report; /* Set when entering the SUBSCRIBE_ERROR state. Reset when exiting SUBSCRIBE_ERROR
-                                       state. */
+    uint8_t error_events_to_report;
 };
 
 enum write_end_state {
@@ -114,7 +105,10 @@ struct write_end_impl {
     enum write_end_state state;
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
-    struct aws_linked_list write_list; /* List of write_request */
+
+    /* List of currently active write_requests */
+    struct aws_linked_list write_list;
+
     aws_pipe_on_write_end_closed_fn *on_closed_user_fn;
     void *on_closed_user_data;
 };
@@ -126,10 +120,16 @@ enum {
 
 static void s_read_end_on_zero_byte_read_completion(
     struct aws_event_loop *event_loop,
-    struct aws_overlapped *overlapped);
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred);
 static void s_read_end_report_error_task(void *user_data, aws_task_status status);
 static void s_read_end_finish_closing_task(void *read_end, aws_task_status task_status);
-static void s_write_end_on_write_completion(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped);
+static void s_write_end_on_write_completion(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred);
 static void s_write_end_finish_closing_task(void *write_end, aws_task_status task_status);
 
 /* Translate Windows errors into aws_pipe errors */
@@ -150,28 +150,41 @@ static int s_raise_last_windows_error() {
     return aws_raise_error(aws_error);
 }
 
-static int s_create_random_pipe_name(char *buffer, size_t buffer_size) {
-    /* Name should be unique per-machine.
-     * Use Windows UUID functions as source of randomness. */
-    UUID uuid;
-    RPC_STATUS uuid_status = UuidCreateSequential(&uuid);
-    if (uuid_status == RPC_S_UUID_NO_ADDRESS) {
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+AWS_THREAD_LOCAL uint32_t tl_unique_name_counter = 0;
+
+int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
+    /* For local pipes, name should be unique per-machine.
+     * Mix together several sources that should should lead to something unique. */
+
+    DWORD process_id = GetCurrentProcessId();
+
+    DWORD thread_id = GetCurrentThreadId();
+
+    uint32_t counter = tl_unique_name_counter++;
+
+    LARGE_INTEGER timestamp;
+    bool success = QueryPerformanceCounter(&timestamp);
+    assert(success); (void)success; /* QueryPerformanceCounter() always succeeds on XP and later */
+
+    /* snprintf() returns number of characters (not including '\0') which would have written if dst_size was ignored */
+    int ideal_strlen = snprintf(
+        dst,
+        dst_size,
+        "\\\\.\\pipe\\aws_pipe_%08x_%08x_%08x_%08x%08x",
+        process_id,
+        thread_id,
+        counter,
+        timestamp.HighPart,
+        timestamp.LowPart);
+
+    if (dst_size < (ideal_strlen + 1)) {
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
-    RPC_CSTR uuid_string;
-    uuid_status = UuidToStringA(&uuid, &uuid_string);
-    if (uuid_status != RPC_S_OK) {
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    }
-
-    snprintf(buffer, buffer_size, "\\\\.\\pipe\\aws_pipe_%s", uuid_string);
-
-    RpcStringFreeA(&uuid_string);
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_open(
+int aws_pipe_init(
     struct aws_pipe_read_end *read_end,
     struct aws_event_loop *read_end_event_loop,
     struct aws_pipe_write_end *write_end,
@@ -184,13 +197,13 @@ int aws_pipe_open(
     assert(write_end_event_loop);
     assert(allocator);
 
-    AWS_ZERO_STRUCT(write_end);
-    AWS_ZERO_STRUCT(read_end);
+    AWS_ZERO_STRUCT(*write_end);
+    AWS_ZERO_STRUCT(*read_end);
 
     struct write_end_impl *write_impl = NULL;
     struct read_end_impl *read_impl = NULL;
 
-    /* Setup write-end */
+    /* Init write-end */
     write_impl = aws_mem_acquire(allocator, sizeof(struct write_end_impl));
     if (!write_impl) {
         goto clean_up;
@@ -207,7 +220,7 @@ int aws_pipe_open(
     char pipe_name[256];
     int tries = 0;
     while (true) {
-        int err = s_create_random_pipe_name(pipe_name, sizeof(pipe_name));
+        int err = aws_pipe_get_unique_name(pipe_name, sizeof(pipe_name));
         if (err) {
             goto clean_up;
         }
@@ -244,7 +257,7 @@ int aws_pipe_open(
 
     write_impl->event_loop = write_end_event_loop;
 
-    /* Setup read-end */
+    /* Init read-end */
     read_impl = aws_mem_acquire(allocator, sizeof(struct read_end_impl));
     if (!read_impl) {
         goto clean_up;
@@ -284,10 +297,6 @@ int aws_pipe_open(
 
 clean_up:
     if (write_impl) {
-        if (write_impl->event_loop) {
-            err = aws_event_loop_disconnect_handle_from_io_completion_port(write_impl->event_loop, &write_impl->handle);
-        }
-
         if (write_impl->handle.data.handle != INVALID_HANDLE_VALUE) {
             CloseHandle(write_impl->handle.data.handle);
         }
@@ -297,10 +306,6 @@ clean_up:
     }
 
     if (read_impl) {
-        if (read_impl->event_loop) {
-            aws_event_loop_disconnect_handle_from_io_completion_port(read_impl->event_loop, &read_impl->handle);
-        }
-
         if (read_impl->handle.data.handle != INVALID_HANDLE_VALUE) {
             CloseHandle(read_impl->handle.data.handle);
         }
@@ -326,7 +331,7 @@ struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_w
     return write_impl->event_loop;
 }
 
-int aws_pipe_close_read_end(
+int aws_pipe_clean_up_read_end(
     struct aws_pipe_read_end *read_end,
     aws_pipe_on_read_end_closed_fn *on_closed,
     void *user_data) {
@@ -334,11 +339,11 @@ int aws_pipe_close_read_end(
     assert(read_impl);
 
     if (read_impl->state == READ_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_UNKNOWN); // TODO: AWS_ERROR_IO_ALREADY_CLOSING
+        return aws_raise_error(AWS_ERROR_IO_CLOSING);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return aws_raise_error(AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD);
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
     read_impl->state = READ_END_STATE_CLOSING;
@@ -358,15 +363,19 @@ int aws_pipe_close_read_end(
         struct aws_task task;
         task.fn = s_read_end_finish_closing_task;
         task.arg = read_end;
-        aws_event_loop_schedule_task_now(read_impl->event_loop, &task);
-        // TODO: wtf if this fails
+
+        uint64_t time_now;
+        read_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
+        aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); // TODO: wtf if this fails
     }
 
     return AWS_OP_SUCCESS;
 }
 
 static void s_read_end_finish_closing(struct aws_pipe_read_end *read_end) {
+
     struct read_end_impl *read_impl = read_end->impl_data;
+    assert(read_impl);
     assert(read_impl->state == READ_END_STATE_CLOSING);
     assert(!read_impl->is_async_operation_pending);
     assert(aws_event_loop_thread_is_callers_thread(read_impl->event_loop));
@@ -374,10 +383,6 @@ static void s_read_end_finish_closing(struct aws_pipe_read_end *read_end) {
     /* Save off callback so we can invoke it last */
     aws_pipe_on_read_end_closed_fn *on_closed_user_callback = read_impl->on_closed_user_callback;
     void *on_closed_user_data = read_impl->on_closed_user_data;
-
-    aws_event_loop_disconnect_handle_from_io_completion_port(read_impl->event_loop, &read_impl->handle);
-
-    CloseHandle(read_impl->handle.data.handle);
 
     aws_mem_release(read_impl->alloc, read_impl);
     AWS_ZERO_STRUCT(*read_end);
@@ -392,6 +397,19 @@ static void s_read_end_finish_closing_task(void *read_end, aws_task_status task_
     s_read_end_finish_closing(read_end);
 }
 
+/* Return whether a user is subscribed to receive read events */
+static bool s_read_end_is_subscribed(struct aws_pipe_read_end *read_end) {
+    struct read_end_impl *read_impl = read_end->impl_data;
+    switch (read_impl->state) {
+        case READ_END_STATE_SUBSCRIBING:
+        case READ_END_STATE_SUBSCRIBED:
+        case READ_END_STATE_SUBSCRIBE_ERROR:
+            return true;
+        default:
+            return false;
+    }
+}
+
 /* Detect events on the pipe by kicking off an async zero-byte-read.
  * When the pipe becomes readable or an error occurs, the read will
  * complete and we will report the event. */
@@ -402,7 +420,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
     /* We only do async monitoring while user is subscribed, but not if we've
      * reported an error and moved into the SUBSCRIBE_ERROR state */
     bool async_monitoring_allowed =
-        read_impl->state == READ_END_STATE_SUBSCRIBING || read_impl->state == READ_END_STATE_SUBSCRIBED;
+        s_read_end_is_subscribed(read_end) && (read_impl->state != READ_END_STATE_SUBSCRIBE_ERROR);
     if (!async_monitoring_allowed) {
         return;
     }
@@ -437,20 +455,19 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
         return;
     }
 
-    /* User is subscribed for IO events and expects to be notified of
-     * errors via the event callback. We schedule this as a task so
-     * the callback doesn't happen before the user expects it.
-     * We also set the state to SUBSCRIBE_ERROR so we don't keep trying
-     * to monitor the file. */
+    /* User is subscribed for IO events and expects to be notified of errors via the event callback.
+     * We schedule this as a task so the callback doesn't happen before the user expects it.
+     * We also set the state to SUBSCRIBE_ERROR so we don't keep trying to monitor the file. */
     read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
-    read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR; // TODO: translate errors more specifically
+    read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
 
     struct aws_task task;
     task.fn = s_read_end_report_error_task;
     task.arg = read_end;
 
-    aws_event_loop_schedule_task_now(read_impl->event_loop, &task);
-    // TODO: wtf to do if this fails
+    uint64_t time_now;
+    read_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
+    aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); // TODO: wtf to do if this fails
 }
 
 /* Common functionality that needs to run after completion of any async task on the read-end */
@@ -461,18 +478,13 @@ static void s_read_end_complete_async_operation(struct aws_pipe_read_end *read_e
 
     read_impl->is_async_operation_pending = false;
 
-    switch (read_impl->state) {
-        case READ_END_STATE_CLOSING:
-            s_read_end_finish_closing(read_end);
-            return;
-
-        case READ_END_STATE_SUBSCRIBING:
-        case READ_END_STATE_SUBSCRIBED:
-            /* Check if there's a reason to relaunch async monitoring */
-            if (read_impl->monitoring_request_reasons != 0) {
-                s_read_end_request_async_monitoring(read_end, read_impl->monitoring_request_reasons);
-            }
-            return;
+    if (read_impl->state == READ_END_STATE_CLOSING) {
+        s_read_end_finish_closing(read_end);
+    } else {
+        /* Check if there's a reason to relaunch async monitoring */
+        if (read_impl->monitoring_request_reasons != 0) {
+            s_read_end_request_async_monitoring(read_end, read_impl->monitoring_request_reasons);
+        }
     }
 }
 
@@ -501,33 +513,36 @@ static void s_read_end_report_error_task(void *user_data, aws_task_status status
 
 static void s_read_end_on_zero_byte_read_completion(
     struct aws_event_loop *event_loop,
-    struct aws_overlapped *overlapped) {
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred) {
 
     (void)event_loop;
+    (void)num_bytes_transferred;
+
     struct aws_pipe_read_end *read_end = overlapped->user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    /* TODO: explain why only this one state works */
+    /* Only report events to user, and only continue async monitoring, when in the SUBSCRIBED state.
+     * If in the SUBSCRIBING state, this completion is from an operation begun during a previous subscription. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBED) {
         int events;
-        if (overlapped->overlapped.Internal == 0) {
+        if (status_code == 0) {
             events = AWS_IO_EVENT_TYPE_READABLE;
 
-            /* Clear out the "need more data" reason to restart zero-byte-read,
-             * since we're about to tell the user that the pipe is readable.
-             * If the user consumes all the data, the reason will get set again
-             * and async-monitoring will be realaunched at the end of
-             * s_read_end_complete_async_operation()  */
+            /* Clear out the "waiting for data" reason to restart zero-byte-read, since we're about to tell the user
+             * that the pipe is readable. If the user consumes all the data, the "waiting for data" reason will get set
+             * again and async-monitoring will be realaunched at the end of s_read_end_complete_async_operation()  */
             read_impl->monitoring_request_reasons &= ~MONITORING_BECAUSE_WAITING_FOR_DATA;
+
         } else {
+            events = AWS_IO_EVENT_TYPE_ERROR;
+
             /* Move pipe to SUBSCRIBE_ERROR state so we don't keep monitoring */
             read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
-            events = AWS_IO_EVENT_TYPE_ERROR; // TODO: what error codes do we get if the pipe is closed?
         }
 
-        /* TODO: Explain how responses like close() and need more data will
-         * be queued, and handled when we end the async operation */
         if (read_impl->on_read_event_user_callback) {
             read_impl->on_read_event_user_callback(read_end, events, read_impl->on_read_event_user_data);
         }
@@ -544,11 +559,20 @@ int aws_pipe_subscribe_to_read_events(
     assert(read_impl);
 
     if (read_impl->state != READ_END_STATE_OPEN) {
-        return aws_raise_error(AWS_ERROR_UNKNOWN); // TODO more granual errors: closing vs already-subscribed
+        /* Return specific error about why user can't subscribe */
+        if (read_impl->state == READ_END_STATE_CLOSING) {
+            return aws_raise_error(AWS_ERROR_IO_CLOSING);
+
+        } else if (s_read_end_is_subscribed(read_end)) {
+            return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
+        }
+
+        assert(0); /* Unexpected state */
+        return aws_raise_error(AWS_ERROR_UNKNOWN);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD;
+        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
     }
 
     read_impl->state = READ_END_STATE_SUBSCRIBING;
@@ -564,12 +588,12 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    if (read_impl->state < READ_END_STATE_SUBSCRIBING) {
-        return aws_raise_error(AWS_ERROR_UNKNOWN); // TODO NOT_SUBSCRIBED
+    if (!s_read_end_is_subscribed(read_end)) {
+        return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD;
+        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
     }
 
     read_impl->state = READ_END_STATE_OPEN;
@@ -598,19 +622,20 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
         *amount_read = 0;
     }
 
-    if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return aws_raise_error(AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD);
+    if (read_impl->state == READ_END_STATE_CLOSING) {
+        return aws_raise_error(AWS_ERROR_IO_CLOSING);
     }
 
-    // TODO: what if state is closing?
+    if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
 
     if (dst_size == 0) {
         return AWS_OP_SUCCESS;
     }
 
-    /* ReadFile() will be called in synchronous mode and would block
-     * indefinitely if it asked for more bytes than are currently available.
-     * Therefore, peek at the available bytes before performing the actual read. */
+    /* ReadFile() will be called in synchronous mode and would block indefinitely if it asked for more bytes than are
+     * currently available. Therefore, peek at the available bytes before performing the actual read. */
     DWORD bytes_available = 0;
     bool peek_success = PeekNamedPipe(
         read_impl->handle.data.handle,
@@ -660,7 +685,7 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_close_write_end(
+int aws_pipe_clean_up_write_end(
     struct aws_pipe_write_end *write_end,
     aws_pipe_on_write_end_closed_fn *on_closed,
     void *user_data) {
@@ -669,11 +694,11 @@ int aws_pipe_close_write_end(
     assert(write_impl); // TOOD: replace impl asserts in public functions with AWS_ERROR_IO_NOT_OPEN?
 
     if (write_impl->state == WRITE_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_UNKNOWN); // TODO: alreayd closing
+        return aws_raise_error(AWS_ERROR_IO_CLOSING);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
-        return aws_raise_error(AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD);
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
     write_impl->state = WRITE_END_STATE_CLOSING;
@@ -701,8 +726,10 @@ int aws_pipe_close_write_end(
         struct aws_task task;
         task.fn = s_write_end_finish_closing_task;
         task.arg = write_end;
-        aws_event_loop_schedule_task_now(write_impl->event_loop, &task);
-        // TODO WTF IF THIS FAILS
+
+        uint64_t time_now;
+        write_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
+        aws_event_loop_schedule_task(write_impl->event_loop, &task, time_now); // TODO: wtf if this fails
     }
 
     return AWS_OP_SUCCESS;
@@ -719,8 +746,6 @@ static void s_write_end_finish_closing(struct aws_pipe_write_end *write_end) {
     aws_pipe_on_write_end_closed_fn *on_closed_user_fn = write_impl->on_closed_user_fn;
     void *on_closed_user_data = write_impl->on_closed_user_data;
 
-    aws_event_loop_disconnect_handle_from_io_completion_port(write_impl->event_loop, &write_impl->handle);
-
     aws_mem_release(write_impl->alloc, write_impl);
     AWS_ZERO_STRUCT(*write_end);
 
@@ -731,7 +756,7 @@ static void s_write_end_finish_closing(struct aws_pipe_write_end *write_end) {
 
 static void s_write_end_finish_closing_task(void *write_end, aws_task_status task_status) {
     (void)task_status;
-    s_write_end_finish_closing(write_end); // TODO: rename "clean_up" instead of "close"
+    s_write_end_finish_closing(write_end);
 }
 
 int aws_pipe_write(
@@ -744,18 +769,17 @@ int aws_pipe_write(
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
 
-    if (write_impl->state != WRITE_END_STATE_OPEN) {
-        return aws_raise_error(AWS_ERROR_UNKNOWN); // TODO: must be open
+    if (write_impl->state == WRITE_END_STATE_CLOSING) {
+        return aws_raise_error(AWS_ERROR_IO_CLOSING);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
-        return AWS_ERROR_IO_MUST_RUN_ON_EVENT_LOOP_THREAD;
+        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
     }
 
     if (src_size > MAXDWORD) {
-        return AWS_ERROR_UNKNOWN; // TODO: AWS_ERROR_SIZE_EXCEEDS_MAX
+        return AWS_ERROR_INVALID_BUFFER_SIZE;
     }
-
     DWORD num_bytes_to_write = (DWORD)src_size;
 
     struct write_request *write = aws_mem_acquire(write_impl->alloc, sizeof(struct write_request));
@@ -786,7 +810,12 @@ int aws_pipe_write(
     return AWS_OP_SUCCESS;
 }
 
-void s_write_end_on_write_completion(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped) {
+void s_write_end_on_write_completion(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred) {
+
     (void)event_loop;
 
     struct aws_pipe_write_end *write_end = overlapped->user_data;
@@ -799,11 +828,11 @@ void s_write_end_on_write_completion(struct aws_event_loop *event_loop, struct a
     /* Report outcome to user */
     if (write_request->user_callback) {
         int write_result = AWS_ERROR_SUCCESS;
-        if (overlapped->overlapped.Internal != 0) {
-            write_result = s_translate_windows_error((DWORD)overlapped->overlapped.Internal);
+        if (status_code != 0) {
+            write_result = s_translate_windows_error(status_code);
         }
 
-        write_request->user_callback(write_end, write_result, write_request->user_data);
+        write_request->user_callback(write_end, write_result, num_bytes_transferred, write_request->user_data);
     }
 
     /* Clean up write-request*/

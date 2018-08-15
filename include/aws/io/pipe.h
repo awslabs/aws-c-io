@@ -16,8 +16,9 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/common/common.h>
-#include <aws/io/exports.h>
+#include <aws/io/io.h>
+
+struct aws_event_loop;
 
 struct aws_pipe_read_end {
     void *impl_data;
@@ -155,6 +156,15 @@ int aws_pipe_subscribe_to_read_events(
  */
 AWS_IO_API
 int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end);
+
+#if defined(_WIN32)
+/**
+ * Generate a unique pipe name.
+ * The suggested dst_size is 256.
+ */
+AWS_IO_API
+int aws_pipe_get_unique_name(char *dst, size_t dst_size);
+#endif
 
 #ifdef __cplusplus
 }
