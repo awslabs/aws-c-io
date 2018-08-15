@@ -31,6 +31,8 @@
 
 #include <default_host_resolver_test.c>
 
+#include <file_utils_test.c>
+
 #if AWS_USE_IO_COMPLETION_PORTS
 #    define EVENT_LOOP_IO_TESTS &event_loop_completion_events
 #else
@@ -54,7 +56,8 @@ static int s_run_tests(int argc, char *argv[]) {
         &test_default_with_multiple_lookups,
         &test_resolver_ttls,
         &test_resolver_connect_failure_recording,
-        &test_resolver_ttl_refreshes_on_resolve, );
+        &test_resolver_ttl_refreshes_on_resolve,
+        &test_pem_single_cert_parse );
 }
 
 int main(int argc, char *argv[]) {
