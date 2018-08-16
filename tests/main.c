@@ -24,12 +24,8 @@
 #include <event_loop_test.c>
 
 #include <read_write_test_handler.c>
-
-#include <channel_test.c>
-
 #include <mock_dns_resolver.c>
-
-#include <default_host_resolver_test.c>
+#include <channel_test.c>
 
 #if AWS_USE_IO_COMPLETION_PORTS
 #    define EVENT_LOOP_IO_TESTS &event_loop_completion_events
@@ -44,6 +40,8 @@ static int s_run_tests(int argc, char *argv[]) {
         &pipe_read_write_large_buffer,
         &xthread_scheduled_tasks_execute,
         EVENT_LOOP_IO_TESTS,
+        &event_loop_group_setup_and_shutdown,
+        &event_loop_group_counter_overflow,
         &stop_then_restart,
         &channel_setup,
         &channel_single_slot_cleans_up,

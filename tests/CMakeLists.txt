@@ -19,9 +19,9 @@ else ()
 endif ()
 
 #SSL certificates to use for testing.
-#add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
-#        COMMAND ${CMAKE_COMMAND} -E copy_directory
-#        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
+add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/resources ${CMAKE_CURRENT_BINARY_DIR})
 
 add_test(pipe_open_close ${TEST_BINARY_NAME} pipe_open_close)
 add_test(pipe_read_write ${TEST_BINARY_NAME} pipe_read_write)
@@ -33,6 +33,8 @@ else ()
     add_test(read_write_notifications ${TEST_BINARY_NAME} read_write_notifications)
 endif ()
 add_test(stop_then_restart ${TEST_BINARY_NAME} stop_then_restart)
+add_test(event_loop_group_setup_and_shutdown ${TEST_BINARY_NAME} event_loop_group_setup_and_shutdown)
+add_test(event_loop_group_counter_overflow ${TEST_BINARY_NAME} event_loop_group_counter_overflow)
 
 add_test(channel_setup ${TEST_BINARY_NAME} channel_setup)
 add_test(channel_single_slot_cleans_up ${TEST_BINARY_NAME} channel_single_slot_cleans_up)
