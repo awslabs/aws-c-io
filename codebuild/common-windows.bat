@@ -1,16 +1,19 @@
+:install_library
+git clone https://github.com/awslabs/%~1.git
+cd %~1
+mkdir build
+cd build
+cmake %* -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=../../install ../ || goto error
+msbuild.exe %~1.vcxproj /p:Configuration=Release || goto error
+msbuild.exe INSTALL.vcxproj /p:Configuration=Release || goto error
+ctest -V || goto error
+cd ../..
+EXIT /B %ERRORLEVEL%
 
 cd ../
 mkdir install
 
-git clone https://github.com/awslabs/aws-c-common.git
-cd aws-c-common
-mkdir build
-cd build
-cmake %* -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=../../install ../ || goto error
-msbuild.exe aws-c-common.vcxproj /p:Configuration=Release || goto error
-msbuild.exe INSTALL.vcxproj /p:Configuration=Release || goto error
-ctest -V || goto error
-cd ../..
+CALL :install_library aws-c-common
 
 cd aws-c-io
 mkdir build

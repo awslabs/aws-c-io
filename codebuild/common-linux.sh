@@ -2,24 +2,32 @@
 
 set -e
 
+CMAKE_ARGS="$@"
+
+function install_library {
+    git clone https://github.com/awslabs/$1.git
+    cd $1
+    mkdir build
+    cd build
+
+    cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
+    make install
+    
+    cd ../..
+}
+
+
 cd ../
 
 mkdir install
 
-git clone https://github.com/awslabs/aws-c-common.git
-cd aws-c-common
-mkdir build
-cd build
-
-cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $@ ../
-make install
-
-cd ../..
+install_library s2n
+install_library aws-c-common
 
 cd aws-c-io
 mkdir build
 cd build
-cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $@ ../
+cmake -DCMAKE_INSTALL_PREFIX=../../install -DENABLE_SANITIZERS=ON $CMAKE_ARGS ../
 
 make
 
