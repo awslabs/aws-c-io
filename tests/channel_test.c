@@ -16,7 +16,10 @@
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
 #include <aws/testing/aws_test_harness.h>
+
+#include "read_write_test_handler.h"
 
 struct channel_setup_test_args {
     struct aws_mutex mutex;
@@ -243,7 +246,7 @@ static struct aws_byte_buf s_channel_rw_test_on_read(
     if (rw_test_args->write_on_read) {
         struct aws_byte_buf write_data =
             s_channel_rw_test_on_write(handler, slot, &rw_test_args->latest_message, user_data);
-        s_rw_handler_write(handler, slot, &write_data);
+        rw_handler_write(handler, slot, &write_data);
     }
 
     return rw_test_args->latest_message;
@@ -332,7 +335,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
 
-    struct aws_channel_handler *handler_1 = s_rw_test_handler_new(
+    struct aws_channel_handler *handler_1 = rw_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_1_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
@@ -346,15 +349,15 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
         .condition_variable = NULL,
     };
 
-    struct aws_channel_handler *handler_2 = s_rw_test_handler_new(
+    struct aws_channel_handler *handler_2 = rw_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_2_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_2, handler_2));
 
-    struct aws_channel_handler *handler_3 = s_rw_test_handler_new(
+    struct aws_channel_handler *handler_3 = rw_handler_new(
         allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_3_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_3, handler_3));
 
-    s_rw_handler_trigger_read(handler_1, slot_1);
+    rw_handler_trigger_read(handler_1, slot_1);
     struct aws_byte_buf final_message = handler_1_args.latest_message;
 
     struct aws_byte_buf expected = aws_byte_buf_from_c_str("handler 1 read, handler 2 read, handler 3 read, "
@@ -368,11 +371,11 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
 
     ASSERT_TRUE(handler_1_args.shutdown_completed);
 
-    ASSERT_TRUE(s_rw_handler_shutdown_called(handler_1));
-    ASSERT_TRUE(s_rw_handler_shutdown_called(handler_2));
-    ASSERT_TRUE(s_rw_handler_shutdown_called(handler_3));
-    ASSERT_TRUE(s_rw_handler_increment_read_window_called(handler_1));
-    ASSERT_TRUE(s_rw_handler_increment_read_window_called(handler_2));
+    ASSERT_TRUE(rw_handler_shutdown_called(handler_1));
+    ASSERT_TRUE(rw_handler_shutdown_called(handler_2));
+    ASSERT_TRUE(rw_handler_shutdown_called(handler_3));
+    ASSERT_TRUE(rw_handler_increment_read_window_called(handler_1));
+    ASSERT_TRUE(rw_handler_increment_read_window_called(handler_2));
 
     aws_channel_clean_up(&channel);
     aws_event_loop_destroy(event_loop);

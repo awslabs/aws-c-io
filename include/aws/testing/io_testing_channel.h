@@ -15,11 +15,8 @@
  * permissions and limitations under the License.
  */
 #include <aws/common/task_scheduler.h>
-
 #include <aws/io/event_loop.h>
 #include <aws/io/channel.h>
-
-#include <aws/testing/aws_test_harness.h>
 
 struct testing_loop {
     struct aws_task_scheduler scheduler;
