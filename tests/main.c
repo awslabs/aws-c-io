@@ -19,13 +19,16 @@
 #    pragma warning(disable : 4221) /* initialization using address of automatic variable */
 #endif
 
+/* Leave spaces between each #include or clang-format will re-order them */
 #include <pipe_test.c>
 
 #include <event_loop_test.c>
 
 #include <read_write_test_handler.c>
-#include <mock_dns_resolver.c>
+
 #include <channel_test.c>
+
+#include <mock_dns_resolver.c>
 
 #if AWS_USE_IO_COMPLETION_PORTS
 #    define EVENT_LOOP_IO_TESTS &event_loop_completion_events
@@ -46,13 +49,7 @@ static int s_run_tests(int argc, char *argv[]) {
         &channel_setup,
         &channel_single_slot_cleans_up,
         &channel_slots_clean_up,
-        &channel_message_passing,
-        &test_default_with_ipv6_lookup,
-        &test_default_with_ipv4_only_lookup,
-        &test_default_with_multiple_lookups,
-        &test_resolver_ttls,
-        &test_resolver_connect_failure_recording,
-        &test_resolver_ttl_refreshes_on_resolve, );
+        &channel_message_passing, );
 }
 
 int main(int argc, char *argv[]) {
