@@ -19,6 +19,7 @@
 #    pragma warning(disable : 4221) /* initialization using address of automatic variable */
 #endif
 
+/* Leave spaces between each #include or clang-format will re-order them */
 #include <pipe_test.c>
 
 #include <event_loop_test.c>
@@ -46,6 +47,8 @@ static int s_run_tests(int argc, char *argv[]) {
         &pipe_read_write_large_buffer,
         &xthread_scheduled_tasks_execute,
         EVENT_LOOP_IO_TESTS,
+        &event_loop_group_setup_and_shutdown,
+        &event_loop_group_counter_overflow,
         &stop_then_restart,
         &channel_setup,
         &channel_single_slot_cleans_up,
