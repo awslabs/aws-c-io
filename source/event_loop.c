@@ -20,8 +20,14 @@
 
 #include <assert.h>
 
-int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc, aws_io_clock_fn *clock,
-                              uint16_t el_count, aws_new_event_loop new_loop_fn, void *new_loop_user_data) {
+int aws_event_loop_group_init(
+    struct aws_event_loop_group *el_group,
+    struct aws_allocator *alloc,
+    aws_io_clock_fn *clock,
+    uint16_t el_count,
+    aws_new_event_loop_fn *new_loop_fn,
+    void *new_loop_user_data) {
+
     assert(new_loop_fn);
 
     el_group->allocator = alloc;
@@ -41,7 +47,6 @@ int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_
         if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
             aws_event_loop_destroy(loop);
             goto cleanup_error;
-
         }
 
         if (aws_event_loop_run(loop)) {
@@ -54,10 +59,13 @@ int aws_event_loop_group_init(struct aws_event_loop_group *el_group, struct aws_
 cleanup_error:
     aws_event_loop_group_clean_up(el_group);
     return AWS_OP_ERR;
-
 }
 
-static struct aws_event_loop *default_new_event_loop(struct aws_allocator *allocator, aws_io_clock_fn *clock, void *user_data) {
+static struct aws_event_loop *default_new_event_loop(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    void *user_data) {
+
     (void)user_data;
     return aws_event_loop_new_default(allocator, clock);
 }
@@ -65,8 +73,8 @@ static struct aws_event_loop *default_new_event_loop(struct aws_allocator *alloc
 int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
     uint16_t cpu_count = (uint16_t)aws_system_info_processor_count();
 
-    return aws_event_loop_group_init(el_group, alloc, aws_high_res_clock_get_ticks, cpu_count,
-                                     default_new_event_loop, NULL);
+    return aws_event_loop_group_init(
+        el_group, alloc, aws_high_res_clock_get_ticks, cpu_count, default_new_event_loop, NULL);
 }
 
 void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
@@ -98,7 +106,6 @@ struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group 
     return loop;
 }
 
-
 static void s_object_removed(void *value) {
     struct aws_event_loop_local_object *object = (struct aws_event_loop_local_object *)value;
     if (object->on_object_removed) {
@@ -126,7 +133,7 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.destroy);
     assert(!aws_event_loop_thread_is_callers_thread(event_loop));
-    
+
     event_loop->vtable.destroy(event_loop);
 }
 
