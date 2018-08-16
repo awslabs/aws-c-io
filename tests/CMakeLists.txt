@@ -19,9 +19,9 @@ else ()
 endif ()
 
 #SSL certificates to use for testing.
-#add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
-#        COMMAND ${CMAKE_COMMAND} -E copy_directory
-#        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
+add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
 
 add_test(pipe_open_close ${TEST_BINARY_NAME} pipe_open_close)
 add_test(pipe_read_write ${TEST_BINARY_NAME} pipe_read_write)
@@ -45,3 +45,13 @@ add_test(test_default_with_multiple_lookups ${TEST_BINARY_NAME} test_default_wit
 add_test(test_resolver_ttls ${TEST_BINARY_NAME} test_resolver_ttls)
 add_test(test_resolver_connect_failure_recording ${TEST_BINARY_NAME} test_resolver_connect_failure_recording)
 add_test(test_resolver_ttl_refreshes_on_resolve ${TEST_BINARY_NAME} test_resolver_ttl_refreshes_on_resolve)
+
+add_test(test_pem_single_cert_parse ${TEST_BINARY_NAME} test_pem_single_cert_parse)
+add_test(test_pem_private_key_parse ${TEST_BINARY_NAME} test_pem_private_key_parse)
+add_test(test_pem_cert_chain_parse ${TEST_BINARY_NAME} test_pem_cert_chain_parse)
+add_test(test_pem_cert_parse_from_file ${TEST_BINARY_NAME} test_pem_cert_parse_from_file)
+add_test(test_pem_private_key_parse_from_file ${TEST_BINARY_NAME} test_pem_private_key_parse_from_file)
+add_test(test_pem_cert_chain_comments_and_whitespace ${TEST_BINARY_NAME} test_pem_cert_chain_comments_and_whitespace)
+add_test(test_pem_invalid_parse ${TEST_BINARY_NAME} test_pem_invalid_parse)
+add_test(test_pem_valid_data_invalid_parse ${TEST_BINARY_NAME} test_pem_valid_data_invalid_parse)
+add_test(test_pem_invalid_in_chain_parse ${TEST_BINARY_NAME} test_pem_invalid_in_chain_parse)

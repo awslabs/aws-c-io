@@ -31,7 +31,7 @@
 
 #include <default_host_resolver_test.c>
 
-#include <file_utils_test.c>
+#include <pki_utils_test.c>
 
 #if AWS_USE_IO_COMPLETION_PORTS
 #    define EVENT_LOOP_IO_TESTS &event_loop_completion_events
@@ -57,7 +57,15 @@ static int s_run_tests(int argc, char *argv[]) {
         &test_resolver_ttls,
         &test_resolver_connect_failure_recording,
         &test_resolver_ttl_refreshes_on_resolve,
-        &test_pem_single_cert_parse );
+        &test_pem_single_cert_parse,
+        &test_pem_cert_chain_parse,
+        &test_pem_private_key_parse,
+        &test_pem_cert_parse_from_file,
+        &test_pem_private_key_parse_from_file,
+        &test_pem_cert_chain_comments_and_whitespace,
+        &test_pem_invalid_parse,
+        &test_pem_valid_data_invalid_parse,
+        &test_pem_invalid_in_chain_parse);
 }
 
 int main(int argc, char *argv[]) {

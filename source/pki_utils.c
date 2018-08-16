@@ -12,7 +12,7 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
-#include <aws/io/file_utils.h>
+#include <aws/io/pki_utils.h>
 
 #include <aws/common/encoding.h>
 #include <stdio.h>
@@ -48,11 +48,11 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
     return aws_raise_error(AWS_IO_FILE_NOT_FOUND);
 }
 
-enum PEM_TO_DER_STATE {
+enum PEM_PARSE_STATE {
     BEGIN,
+    ON_HEADER,
     ON_DATA,
     ON_END_OF_CERT,
-    END_OF_CERT_OR_FINISHED
 };
 
 void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
@@ -64,27 +64,36 @@ void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
             aws_secure_zero(decoded_buffer_ptr->buffer, decoded_buffer_ptr->len);
             aws_byte_buf_clean_up(decoded_buffer_ptr);
         }
-
-        /* remember, we don't own it so we don't free it, just undo whatever mutations we've done at this point. */
-        aws_array_list_clear(buffer_list);
     }
+
+    /* remember, we don't own it so we don't free it, just undo whatever mutations we've done at this point. */
+    aws_array_list_clear(buffer_list);
 }
 
 static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const struct aws_byte_buf *pem,
                                        struct aws_array_list *cert_chain_or_key) {
-    enum PEM_TO_DER_STATE state = BEGIN;
+    enum PEM_PARSE_STATE state = BEGIN;
     struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
 
     size_t begin_offset = 0, end_offset = 0, current_location = 0, written = 0;
     struct aws_byte_buf current_cert;
-    aws_byte_buf_init(allocator,  &current_cert, pem->len);
     struct aws_byte_cursor current_cert_cursor;
+    const char *begin_header = "-----BEGIN";
+    size_t begin_header_len = strlen(begin_header);
+    size_t advance = 1;
 
-    while (pem_cursor.ptr && state < ON_END_OF_CERT) {
+    while (pem_cursor.ptr && current_location < pem->len) {
         switch (state) {
         case BEGIN:
+            if (pem->len - current_location > begin_header_len &&
+                !strncmp((const char *) pem_cursor.ptr, begin_header, begin_header_len)) {
+                state = ON_HEADER;
+                advance = begin_header_len;
+            }
+            break;
+        case ON_HEADER:
             if (*pem_cursor.ptr == '\n') {
-                if (aws_byte_buf_init(allocator,  &current_cert, pem->len - current_location)) {
+                if (aws_byte_buf_init(allocator, &current_cert, pem->len - current_location)) {
                     goto end_of_loop;
                 }
 
@@ -93,49 +102,40 @@ static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const st
                 written = 0;
                 begin_offset = current_location + 1;
                 state = ON_DATA;
-                break;
             }
             break;
         case ON_DATA:
-            if (*pem_cursor.ptr == '\n') {
+            if (*pem_cursor.ptr == '\n' || *pem_cursor.ptr == ' ' || *pem_cursor.ptr == '\t') {
                 end_offset = current_location;
                 aws_byte_cursor_write(&current_cert_cursor, pem->buffer + begin_offset, end_offset - begin_offset);
                 written += end_offset - begin_offset;
                 begin_offset = current_location + 1;
-                break;
-            }
-
-            if (*pem_cursor.ptr == '-') {
+            } else if (*pem_cursor.ptr == '-') {
                 current_cert.len = written;
+
                 if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
+                    aws_secure_zero(&current_cert.buffer, current_cert.len);
                     aws_byte_buf_clean_up(&current_cert);
                     goto end_of_loop;
                 }
 
                 state = ON_END_OF_CERT;
-                break;
             }
             break;
-         /* keep in mind, an entire chain of certs can be in a single PEM file. */
+        /* keep in mind, an entire chain of certs can be in a single PEM file. */
         case ON_END_OF_CERT:
             if (*pem_cursor.ptr == '\n') {
-                state = END_OF_CERT_OR_FINISHED;
-                break;
-            }
-            break;
-        case END_OF_CERT_OR_FINISHED:
-            if (*pem_cursor.ptr == '-') {
                 state = BEGIN;
-                break;
             }
             break;
         }
-        aws_byte_cursor_advance(&pem_cursor, 1);
-        current_location++;
+        aws_byte_cursor_advance(&pem_cursor, advance);
+        current_location += advance;
+        advance = 1;
     }
 
 end_of_loop:
-    if (state >= ON_END_OF_CERT) {
+    if ((state == BEGIN || state == ON_END_OF_CERT) && aws_array_list_length(cert_chain_or_key) > 0) {
         return AWS_OP_SUCCESS;
     }
     else {
@@ -166,6 +166,7 @@ int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
         aws_array_list_get_at_ptr(&base_64_buffer_list, (void **)&byte_buf_ptr, i);
 
         if (aws_base64_compute_decoded_len((const char *)byte_buf_ptr->buffer, byte_buf_ptr->len, &decoded_len)) {
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_output_due_to_error;
         }
 
@@ -176,6 +177,7 @@ int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
         }
 
         if (aws_base64_decode(byte_buf_ptr, &decoded_buffer)) {
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             aws_byte_buf_clean_up(&decoded_buffer);
             goto cleanup_output_due_to_error;
         }
@@ -199,18 +201,7 @@ cleanup_output_due_to_error:
     aws_cert_chain_clean_up(&base_64_buffer_list);
     aws_array_list_clean_up(&base_64_buffer_list);
 
-    for (size_t i = 0; i < aws_array_list_length(cert_chain_or_key); ++i) {
-        struct aws_byte_buf *decoded_buffer_ptr = NULL;
-        aws_array_list_get_at_ptr(cert_chain_or_key, (void **)&decoded_buffer_ptr, i);
-
-        if (decoded_buffer_ptr) {
-            aws_secure_zero(decoded_buffer_ptr->buffer, decoded_buffer_ptr->len);
-            aws_byte_buf_clean_up(decoded_buffer_ptr);
-        }
-
-        /* remember, we don't own it so we don't free it, just undo whatever mutations we've done at this point. */
-        aws_array_list_clear(cert_chain_or_key);
-    }
+    aws_cert_chain_clean_up(cert_chain_or_key);
 
     return AWS_OP_ERR;
 }
