@@ -75,30 +75,11 @@ static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocato
 AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_execute)
 
 #if AWS_USE_IO_COMPLETION_PORTS
-static uint64_t s_hash_combine(uint64_t a, uint64_t b) {
-    return a ^ (b + 0x9e3779b99e3779b9llu + (a << 6) + (a >> 2));
-}
-
-static int s_create_random_pipe_name(char *buffer, size_t buffer_size) {
-    /* Gin up a random number */
-    LARGE_INTEGER timestamp;
-    ASSERT_TRUE(QueryPerformanceCounter(&timestamp));
-    DWORD process_id = GetCurrentProcessId();
-    DWORD thread_id = GetCurrentThreadId();
-
-    uint64_t rand_num = s_hash_combine(timestamp.QuadPart, ((uint64_t)process_id << 32) | process_id);
-    rand_num = s_hash_combine(rand_num, ((uint64_t)thread_id << 32) | thread_id);
-
-    int len = snprintf(buffer, buffer_size, "\\\\.\\pipe\\aws_pipe_%llux", rand_num);
-    ASSERT_TRUE(len > 0);
-
-    return AWS_OP_SUCCESS;
-}
 
 /* Open read/write handles to a pipe with support for async (overlapped) read and write */
 static int s_async_pipe_init(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     char pipe_name[256];
-    ASSERT_SUCCESS(s_create_random_pipe_name(pipe_name, sizeof(pipe_name)));
+    ASSERT_SUCCESS(aws_pipe_get_unique_name(pipe_name, sizeof(pipe_name)));
 
     write_handle->data.handle = CreateNamedPipeA(
         pipe_name,                                                                   /* lpName */
@@ -137,6 +118,8 @@ struct overlapped_completion_data {
     bool signaled;
     struct aws_event_loop *event_loop;
     struct aws_overlapped *overlapped;
+    int status_code;
+    size_t num_bytes_transferred;
 };
 
 static int s_overlapped_completion_data_init(struct overlapped_completion_data *data) {
@@ -151,11 +134,18 @@ static void s_overlapped_completion_data_clean_up(struct overlapped_completion_d
     aws_mutex_clean_up(&data->mutex);
 }
 
-static void s_on_overlapped_operation_complete(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped) {
+static void s_on_overlapped_operation_complete(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred) {
+
     struct overlapped_completion_data *data = overlapped->user_data;
     aws_mutex_lock(&data->mutex);
     data->event_loop = event_loop;
     data->overlapped = overlapped;
+    data->status_code = status_code;
+    data->num_bytes_transferred = num_bytes_transferred;
     data->signaled = true;
     aws_condition_variable_notify_one(&data->condition_variable);
     aws_mutex_unlock(&data->mutex);
@@ -207,10 +197,8 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
     /* Assert that the aws_event_loop_on_completion_fn passed the appropriate args */
     ASSERT_PTR_EQUALS(event_loop, completion_data.event_loop);
     ASSERT_PTR_EQUALS(&overlapped, completion_data.overlapped);
-
-    /* Assert that the OVERLAPPED structure has the expected data for a successful write */
-    ASSERT_INT_EQUALS(0, overlapped.overlapped.Internal);               /* Check status code for I/O operation */
-    ASSERT_INT_EQUALS(sizeof(msg), overlapped.overlapped.InternalHigh); /* Check number of bytes transferred */
+    ASSERT_INT_EQUALS(0, completion_data.status_code); /* Check status code for I/O operation */
+    ASSERT_INT_EQUALS(sizeof(msg), completion_data.num_bytes_transferred);
 
     /* Shut it all down */
     s_overlapped_completion_data_clean_up(&completion_data);
