@@ -178,6 +178,7 @@ static void s_test_pipe_read_write_on_write_complete(
     size_t num_bytes_written,
     void *user_data) {
 
+    (void)write_end;
     struct pipe_state *state = user_data;
     struct buffers_to_copy *buffers = state->test_data;
     int err = 0;
@@ -268,6 +269,7 @@ static void s_test_pipe_read_write_large_buffer_on_write_complete(
     size_t num_bytes_written,
     void *user_data) {
 
+    (void)write_end;
     struct pipe_state *state = user_data;
     struct buffers_to_copy *buffers = state->test_data;
     int err = 0;

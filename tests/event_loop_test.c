@@ -383,8 +383,9 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
 
 AWS_TEST_CASE(stop_then_restart, s_test_stop_then_restart)
 
-static int test_event_loop_group_setup_and_shutdown (struct aws_allocator *allocator, void *user_data) {
+static int test_event_loop_group_setup_and_shutdown (struct aws_allocator *allocator, void *ctx) {
 
+    (void)ctx;
     struct aws_event_loop_group event_loop_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
 
@@ -415,8 +416,9 @@ static int test_event_loop_group_setup_and_shutdown (struct aws_allocator *alloc
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
-static int test_event_loop_group_counter_overflow (struct aws_allocator *allocator, void *user_data) {
+static int test_event_loop_group_counter_overflow (struct aws_allocator *allocator, void *ctx) {
 
+    (void)ctx;
     struct aws_event_loop_group event_loop_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
 
