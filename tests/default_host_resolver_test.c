@@ -13,15 +13,15 @@
 * permissions and limitations under the License.
 */
 
-#include <aws/testing/aws_test_harness.h>
-
-#include <aws/io/host_resolver.h>
-
 #include <aws/common/string.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/thread.h>
+#include <aws/io/host_resolver.h>
+#include <aws/testing/aws_test_harness.h>
 
-#include <mock_dns_resolver.c>
+#include "mock_dns_resolver.h"
+
+#include <mock_dns_resolver.h>
 
 static const uint64_t FORCE_RESOLVE_SLEEP_TIME = 1500000000;
 

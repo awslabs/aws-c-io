@@ -256,6 +256,10 @@ struct socket_connect_args {
 };
 
 void socket_connect_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+
+    (void)event_loop;
+    (void)handle;
+
     struct socket_connect_args *socket_args = (struct socket_connect_args *)user_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE) {
@@ -467,6 +471,9 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
 }
 
 static void socket_accept_event(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events, void *user_data) {
+
+    (void)event_loop;
+
     struct aws_socket *socket = (struct aws_socket *) user_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {

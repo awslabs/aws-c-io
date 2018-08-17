@@ -44,12 +44,18 @@ struct s2n_ctx {
 };
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
+
+    (void)alloc;
+
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
     s2n_init();
 }
 
 void aws_tls_clean_up_static_state(struct aws_allocator *alloc) {
+
+    (void)alloc;
+
     s2n_cleanup();
 }
 
@@ -103,7 +109,7 @@ static int s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
 }
 
 static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
-    int processed = 0;
+    size_t processed = 0;
     while (processed < buf->len) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(handler->slot->channel,
                                                                                AWS_IO_MESSAGE_APPLICATION_DATA,
@@ -311,7 +317,7 @@ static int s2n_handler_process_write_message(struct aws_channel_handler *handler
     s2n_blocked_status blocked;
     ssize_t write_code = s2n_send(s2n_handler->connection, message->message_data.buffer, (ssize_t)message->message_data.len, &blocked);
 
-    size_t message_len = message->message_data.len;
+    ssize_t message_len = (ssize_t)message->message_data.len;
     aws_channel_release_message_to_pool(slot->channel, message);
 
     if (write_code < message_len) {
@@ -377,6 +383,8 @@ static int s2n_handler_increment_read_window(struct aws_channel_handler *handler
 }
 
 static size_t s2n_handler_get_current_window_size (struct aws_channel_handler *handler) {
+    (void)handler;
+
     /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
      * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
      * with it large, and then take the downstream window when it notifies us.*/
