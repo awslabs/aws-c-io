@@ -18,70 +18,114 @@
 #include <aws/io/pki_utils.h>
 
 static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    const char *rsa_1024_sha224_client_crt_pem = "-----BEGIN CERTIFICATE-----\n"
-                                                 "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
-                                                 "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
-                                                 "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
-                                                 "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
-                                                 "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
-                                                 "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
-                                                 "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
-                                                 "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
-                                                 "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
-                                                 "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
-                                                 "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
-                                                 "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
-                                                 "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
-                                                 "YxwtPz26+xvPRWCS\n"
-                                                 "-----END CERTIFICATE-----";
+    (void) ctx;
+    static const char *s_rsa_1024_sha224_client_crt_pem =
+            "-----BEGIN CERTIFICATE-----\n"
+            "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
+            "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
+            "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
+            "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
+            "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
+            "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
+            "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
+            "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
+            "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
+            "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
+            "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
+            "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
+            "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
+            "YxwtPz26+xvPRWCS\n"
+            "-----END CERTIFICATE-----";
 
-    const uint8_t expected[] = {0x30, 0x82, 0x02, 0x78, 0x30, 0x82, 0x01, 0xe1, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x09,
-                              0x00, 0xe6, 0xed, 0xb6, 0x73, 0xca, 0x42, 0x15, 0x65, 0x30, 0x0d, 0x06, 0x09, 0x2a,
-                              0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e, 0x05, 0x00, 0x30, 0x5f, 0x31, 0x0b, 0x30,
-                              0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x0b, 0x30, 0x09,
-                              0x06, 0x03, 0x55, 0x04, 0x08, 0x0c, 0x02, 0x57, 0x41, 0x31, 0x10, 0x30, 0x0e, 0x06, 0x03,
-                              0x55, 0x04, 0x07, 0x0c, 0x07, 0x53, 0x65, 0x61, 0x74, 0x74, 0x6c, 0x65, 0x31, 0x0f,
-                              0x30, 0x0d, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x06, 0x41, 0x6d, 0x61, 0x7a, 0x6f, 0x6e,
-                              0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x0b, 0x0c, 0x03, 0x73, 0x32, 0x6e,
-                              0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x09, 0x6c, 0x6f, 0x63, 0x61,
-                              0x6c, 0x68, 0x6f, 0x73, 0x74, 0x30, 0x20, 0x17, 0x0d, 0x31, 0x37, 0x30, 0x38, 0x30,
-                              0x31, 0x32, 0x32, 0x34, 0x33, 0x33, 0x32, 0x5a, 0x18, 0x0f, 0x32, 0x31, 0x31, 0x37, 0x30,
-                              0x37, 0x30, 0x38, 0x32, 0x32, 0x34, 0x33, 0x33, 0x32, 0x5a, 0x30, 0x5f, 0x31, 0x0b,
-                              0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x0b, 0x30, 0x09,
-                              0x06, 0x03, 0x55, 0x04, 0x08, 0x0c, 0x02, 0x57, 0x41, 0x31, 0x10, 0x30, 0x0e, 0x06,
-                              0x03, 0x55, 0x04, 0x07, 0x0c, 0x07, 0x53, 0x65, 0x61, 0x74, 0x74, 0x6c, 0x65, 0x31, 0x0f,
-                              0x30, 0x0d, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x06, 0x41, 0x6d, 0x61, 0x7a, 0x6f,
-                              0x6e, 0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x0b, 0x0c, 0x03, 0x73, 0x32, 0x6e,
-                              0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x09, 0x6c, 0x6f, 0x63,
-                              0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x30, 0x81, 0x9f, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
-                              0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x81, 0x8d, 0x00, 0x30,
-                              0x81, 0x89, 0x02, 0x81, 0x81, 0x00, 0xa2, 0xb1, 0x1a, 0x17, 0x5d, 0xc4, 0xe1, 0xe1, 0xe8,
-                              0xe7, 0xfe, 0xc5, 0x23, 0x1a, 0x8b, 0x0b, 0x94, 0x4e, 0xc6, 0x96, 0x92, 0xc6, 0xb6,
-                              0xf5, 0x85, 0x10, 0x45, 0xfa, 0x56, 0x5d, 0xe4, 0x95, 0x5a, 0x10, 0x76, 0x4c, 0x9a, 0x6c,
-                              0xb2, 0x07, 0xed, 0xb1, 0xc1, 0xd8, 0xfe, 0xee, 0xca, 0xdf, 0x5b, 0x3f, 0x37, 0xaa,
-                              0xbd, 0x66, 0x23, 0xb9, 0xea, 0x43, 0x05, 0x24, 0x14, 0x51, 0xe6, 0xfa, 0x32, 0x4a, 0x9f,
-                              0xc7, 0x6d, 0xfb, 0x6d, 0x3c, 0xbc, 0x26, 0x15, 0xc8, 0x7e, 0x92, 0x21, 0x6e, 0x09,
-                              0x2c, 0x4e, 0x4e, 0xc8, 0x3f, 0x38, 0x28, 0x5c, 0xb3, 0xe5, 0xd6, 0x83, 0x65, 0xee, 0xe0,
-                              0x7d, 0x1d, 0x06, 0x83, 0x43, 0xb5, 0x0f, 0x95, 0xa2, 0x9b, 0x7e, 0x9d, 0x60, 0x36,
-                              0xfb, 0x3a, 0xb8, 0x63, 0x87, 0xe2, 0xfb, 0xf2, 0x86, 0x12, 0x46, 0x89, 0xb9, 0x4d, 0x24,
-                              0xa9, 0xd5, 0xc3, 0x02, 0x03, 0x01, 0x00, 0x01, 0xa3, 0x3a, 0x30, 0x38, 0x30, 0x0b,
-                              0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x04, 0x30, 0x30, 0x13, 0x06, 0x03,
-                              0x55, 0x1d, 0x25, 0x04, 0x0c, 0x30, 0x0a, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05,
-                              0x07, 0x03, 0x01, 0x30, 0x14, 0x06, 0x03, 0x55, 0x1d, 0x11, 0x04, 0x0d, 0x30, 0x0b, 0x82,
-                              0x09, 0x31, 0x32, 0x37, 0x2e, 0x30, 0x2e, 0x30, 0x2e, 0x31, 0x30, 0x0d, 0x06, 0x09,
-                              0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e, 0x05, 0x00, 0x03, 0x81, 0x81, 0x00,
-                              0x29, 0x5e, 0x1f, 0x8e, 0x0b, 0x49, 0x88, 0x73, 0x1c, 0x76, 0x95, 0xef, 0x45, 0x5b,
-                              0x9c, 0xb6, 0xed, 0x6e, 0xff, 0x13, 0x79, 0xa5, 0x2f, 0xce, 0xcb, 0x45, 0x5b, 0xa6, 0x2f,
-                              0x74, 0xfd, 0x57, 0x9d, 0x92, 0xac, 0xb1, 0x93, 0x5d, 0xbc, 0xc8, 0x68, 0x88, 0xcb,
-                              0x8c, 0x0f, 0x99, 0xf8, 0xd3, 0xf8, 0x8f, 0x6e, 0xff, 0xa0, 0xae, 0xd8, 0xf1, 0x69, 0xc4,
-                              0x50, 0x0a, 0x29, 0xcb, 0x93, 0x54, 0x84, 0x8e, 0x9b, 0x2e, 0xde, 0x5c, 0x3d, 0xd0,
-                              0x3b, 0x34, 0x2a, 0xc7, 0x7f, 0x3d, 0xdb, 0x2f, 0xed, 0xdd, 0x1c, 0x0a, 0x22, 0x64, 0x8d,
-                              0xa7, 0x4e, 0x37, 0xe6, 0x50, 0x10, 0x42, 0x76, 0x14, 0xff, 0xc6, 0xd7, 0xd2, 0x99,
-                              0x17, 0x10, 0xb7, 0x18, 0xb9, 0x3d, 0xb3, 0x12, 0x14, 0x5f, 0x25, 0x16, 0xd1, 0x35, 0xe7,
-                              0x63, 0x1c, 0x2d, 0x3f, 0x3d, 0xba, 0xfb, 0x1b, 0xcf, 0x45, 0x60, 0x92};
+    static const uint8_t s_expected[] = {0x30, 0x82, 0x02, 0x78, 0x30, 0x82, 0x01, 0xe1, 0xa0, 0x03, 0x02, 0x01, 0x02,
+                                         0x02, 0x09,
+                                         0x00, 0xe6, 0xed, 0xb6, 0x73, 0xca, 0x42, 0x15, 0x65, 0x30, 0x0d, 0x06, 0x09,
+                                         0x2a,
+                                         0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e, 0x05, 0x00, 0x30, 0x5f, 0x31,
+                                         0x0b, 0x30,
+                                         0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x0b, 0x30,
+                                         0x09,
+                                         0x06, 0x03, 0x55, 0x04, 0x08, 0x0c, 0x02, 0x57, 0x41, 0x31, 0x10, 0x30, 0x0e,
+                                         0x06, 0x03,
+                                         0x55, 0x04, 0x07, 0x0c, 0x07, 0x53, 0x65, 0x61, 0x74, 0x74, 0x6c, 0x65, 0x31,
+                                         0x0f,
+                                         0x30, 0x0d, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x06, 0x41, 0x6d, 0x61, 0x7a,
+                                         0x6f, 0x6e,
+                                         0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x0b, 0x0c, 0x03, 0x73, 0x32,
+                                         0x6e,
+                                         0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x09, 0x6c, 0x6f,
+                                         0x63, 0x61,
+                                         0x6c, 0x68, 0x6f, 0x73, 0x74, 0x30, 0x20, 0x17, 0x0d, 0x31, 0x37, 0x30, 0x38,
+                                         0x30,
+                                         0x31, 0x32, 0x32, 0x34, 0x33, 0x33, 0x32, 0x5a, 0x18, 0x0f, 0x32, 0x31, 0x31,
+                                         0x37, 0x30,
+                                         0x37, 0x30, 0x38, 0x32, 0x32, 0x34, 0x33, 0x33, 0x32, 0x5a, 0x30, 0x5f, 0x31,
+                                         0x0b,
+                                         0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x0b,
+                                         0x30, 0x09,
+                                         0x06, 0x03, 0x55, 0x04, 0x08, 0x0c, 0x02, 0x57, 0x41, 0x31, 0x10, 0x30, 0x0e,
+                                         0x06,
+                                         0x03, 0x55, 0x04, 0x07, 0x0c, 0x07, 0x53, 0x65, 0x61, 0x74, 0x74, 0x6c, 0x65,
+                                         0x31, 0x0f,
+                                         0x30, 0x0d, 0x06, 0x03, 0x55, 0x04, 0x0a, 0x0c, 0x06, 0x41, 0x6d, 0x61, 0x7a,
+                                         0x6f,
+                                         0x6e, 0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x0b, 0x0c, 0x03, 0x73,
+                                         0x32, 0x6e,
+                                         0x31, 0x12, 0x30, 0x10, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x09, 0x6c, 0x6f,
+                                         0x63,
+                                         0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x30, 0x81, 0x9f, 0x30, 0x0d, 0x06, 0x09,
+                                         0x2a, 0x86,
+                                         0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x81, 0x8d, 0x00,
+                                         0x30,
+                                         0x81, 0x89, 0x02, 0x81, 0x81, 0x00, 0xa2, 0xb1, 0x1a, 0x17, 0x5d, 0xc4, 0xe1,
+                                         0xe1, 0xe8,
+                                         0xe7, 0xfe, 0xc5, 0x23, 0x1a, 0x8b, 0x0b, 0x94, 0x4e, 0xc6, 0x96, 0x92, 0xc6,
+                                         0xb6,
+                                         0xf5, 0x85, 0x10, 0x45, 0xfa, 0x56, 0x5d, 0xe4, 0x95, 0x5a, 0x10, 0x76, 0x4c,
+                                         0x9a, 0x6c,
+                                         0xb2, 0x07, 0xed, 0xb1, 0xc1, 0xd8, 0xfe, 0xee, 0xca, 0xdf, 0x5b, 0x3f, 0x37,
+                                         0xaa,
+                                         0xbd, 0x66, 0x23, 0xb9, 0xea, 0x43, 0x05, 0x24, 0x14, 0x51, 0xe6, 0xfa, 0x32,
+                                         0x4a, 0x9f,
+                                         0xc7, 0x6d, 0xfb, 0x6d, 0x3c, 0xbc, 0x26, 0x15, 0xc8, 0x7e, 0x92, 0x21, 0x6e,
+                                         0x09,
+                                         0x2c, 0x4e, 0x4e, 0xc8, 0x3f, 0x38, 0x28, 0x5c, 0xb3, 0xe5, 0xd6, 0x83, 0x65,
+                                         0xee, 0xe0,
+                                         0x7d, 0x1d, 0x06, 0x83, 0x43, 0xb5, 0x0f, 0x95, 0xa2, 0x9b, 0x7e, 0x9d, 0x60,
+                                         0x36,
+                                         0xfb, 0x3a, 0xb8, 0x63, 0x87, 0xe2, 0xfb, 0xf2, 0x86, 0x12, 0x46, 0x89, 0xb9,
+                                         0x4d, 0x24,
+                                         0xa9, 0xd5, 0xc3, 0x02, 0x03, 0x01, 0x00, 0x01, 0xa3, 0x3a, 0x30, 0x38, 0x30,
+                                         0x0b,
+                                         0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x04, 0x30, 0x30, 0x13,
+                                         0x06, 0x03,
+                                         0x55, 0x1d, 0x25, 0x04, 0x0c, 0x30, 0x0a, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05,
+                                         0x05,
+                                         0x07, 0x03, 0x01, 0x30, 0x14, 0x06, 0x03, 0x55, 0x1d, 0x11, 0x04, 0x0d, 0x30,
+                                         0x0b, 0x82,
+                                         0x09, 0x31, 0x32, 0x37, 0x2e, 0x30, 0x2e, 0x30, 0x2e, 0x31, 0x30, 0x0d, 0x06,
+                                         0x09,
+                                         0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0e, 0x05, 0x00, 0x03, 0x81,
+                                         0x81, 0x00,
+                                         0x29, 0x5e, 0x1f, 0x8e, 0x0b, 0x49, 0x88, 0x73, 0x1c, 0x76, 0x95, 0xef, 0x45,
+                                         0x5b,
+                                         0x9c, 0xb6, 0xed, 0x6e, 0xff, 0x13, 0x79, 0xa5, 0x2f, 0xce, 0xcb, 0x45, 0x5b,
+                                         0xa6, 0x2f,
+                                         0x74, 0xfd, 0x57, 0x9d, 0x92, 0xac, 0xb1, 0x93, 0x5d, 0xbc, 0xc8, 0x68, 0x88,
+                                         0xcb,
+                                         0x8c, 0x0f, 0x99, 0xf8, 0xd3, 0xf8, 0x8f, 0x6e, 0xff, 0xa0, 0xae, 0xd8, 0xf1,
+                                         0x69, 0xc4,
+                                         0x50, 0x0a, 0x29, 0xcb, 0x93, 0x54, 0x84, 0x8e, 0x9b, 0x2e, 0xde, 0x5c, 0x3d,
+                                         0xd0,
+                                         0x3b, 0x34, 0x2a, 0xc7, 0x7f, 0x3d, 0xdb, 0x2f, 0xed, 0xdd, 0x1c, 0x0a, 0x22,
+                                         0x64, 0x8d,
+                                         0xa7, 0x4e, 0x37, 0xe6, 0x50, 0x10, 0x42, 0x76, 0x14, 0xff, 0xc6, 0xd7, 0xd2,
+                                         0x99,
+                                         0x17, 0x10, 0xb7, 0x18, 0xb9, 0x3d, 0xb3, 0x12, 0x14, 0x5f, 0x25, 0x16, 0xd1,
+                                         0x35, 0xe7,
+                                         0x63, 0x1c, 0x2d, 0x3f, 0x3d, 0xba, 0xfb, 0x1b, 0xcf, 0x45, 0x60, 0x92};
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(rsa_1024_sha224_client_crt_pem);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_rsa_1024_sha224_client_crt_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -89,8 +133,8 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected, sizeof(expected), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -101,65 +145,65 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
 AWS_TEST_CASE(test_pem_single_cert_parse, s_test_pem_single_cert_parse)
 
 static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
 
-    const char *rsa_2048_pkcs1_crt_pem = "-----BEGIN CERTIFICATE-----\n"
-                                         "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
-                                         "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
-                                         "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
-                                         "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
-                                         "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
-                                         "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
-                                         "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
-                                         "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
-                                         "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
-                                         "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
-                                         "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
-                                         "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
-                                         "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
-                                         "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
-                                         "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
-                                         "-----END CERTIFICATE-----\n"
-                                         "-----BEGIN CERTIFICATE-----\n"
-                                         "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
-                                         "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
-                                         "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
-                                         "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
-                                         "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
-                                         "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
-                                         "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
-                                         "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
-                                         "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
-                                         "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
-                                         "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
-                                         "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
-                                         "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
-                                         "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
-                                         "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
-                                         "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
-                                         "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
-                                         "-----END CERTIFICATE-----\n"
-                                         "-----BEGIN CERTIFICATE-----\n"
-                                         "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
-                                         "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
-                                         "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
-                                         "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
-                                         "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
-                                         "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
-                                         "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
-                                         "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
-                                         "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
-                                         "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
-                                         "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
-                                         "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
-                                         "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
-                                         "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
-                                         "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
-                                         "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
-                                         "r9IyvfU=\n"
-                                         "-----END CERTIFICATE-----";
+    static const char *s_rsa_2048_pkcs1_crt_pem = "-----BEGIN CERTIFICATE-----\n"
+                                                  "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
+                                                  "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
+                                                  "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
+                                                  "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
+                                                  "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
+                                                  "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
+                                                  "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
+                                                  "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
+                                                  "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
+                                                  "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
+                                                  "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
+                                                  "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
+                                                  "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
+                                                  "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
+                                                  "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
+                                                  "-----END CERTIFICATE-----\n"
+                                                  "-----BEGIN CERTIFICATE-----\n"
+                                                  "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
+                                                  "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
+                                                  "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
+                                                  "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
+                                                  "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
+                                                  "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
+                                                  "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
+                                                  "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
+                                                  "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
+                                                  "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
+                                                  "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
+                                                  "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
+                                                  "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
+                                                  "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
+                                                  "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
+                                                  "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
+                                                  "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
+                                                  "-----END CERTIFICATE-----\n"
+                                                  "-----BEGIN CERTIFICATE-----\n"
+                                                  "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
+                                                  "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
+                                                  "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
+                                                  "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
+                                                  "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
+                                                  "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
+                                                  "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
+                                                  "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
+                                                  "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
+                                                  "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
+                                                  "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
+                                                  "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
+                                                  "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
+                                                  "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
+                                                  "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
+                                                  "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
+                                                  "r9IyvfU=\n"
+                                                  "-----END CERTIFICATE-----";
 
-    const uint8_t expected_intermediate_1[] = {
+    static const uint8_t s_expected_intermediate_1[] = {
             0x30, 0x82, 0x02, 0xad, 0x30, 0x82, 0x01, 0x95, 0x02, 0x02, 0x7d, 0xd5, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
             0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x1e, 0x31, 0x1c, 0x30, 0x1a, 0x06, 0x03, 0x55,
             0x04, 0x03, 0x0c, 0x13, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x6d, 0x65,
@@ -201,56 +245,56 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
             0x4d, 0x0c, 0x03, 0x00, 0x5e
     };
 
-    const uint8_t expected_intermediate_2[] = {
-             0x30, 0x82, 0x03, 0x29, 0x30, 0x82, 0x02, 0x11, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x02, 0x57, 0x16, 0x30,
-             0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x16, 0x31, 0x14,
-             0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74, 0x52, 0x6f,
-             0x6f, 0x74, 0x30, 0x20, 0x17, 0x0d, 0x31, 0x36, 0x30, 0x33, 0x33, 0x30, 0x31, 0x38, 0x35, 0x37, 0x30, 0x39,
-             0x5a, 0x18, 0x0f, 0x32, 0x31, 0x31, 0x36, 0x30, 0x33, 0x30, 0x36, 0x31, 0x38, 0x35, 0x37, 0x30, 0x39, 0x5a,
-             0x30, 0x1e, 0x31, 0x1c, 0x30, 0x1a, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x13, 0x73, 0x32, 0x6e, 0x54, 0x65,
-             0x73, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x6d, 0x65, 0x64, 0x69, 0x61, 0x74, 0x65, 0x30, 0x82, 0x01, 0x22,
-             0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01,
-             0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01, 0x00, 0xcc, 0xfe, 0x2d, 0xde, 0x72, 0x5c, 0x58,
-             0x72, 0xf7, 0x9d, 0x3c, 0x21, 0x27, 0x55, 0xee, 0x80, 0xfc, 0x76, 0x2c, 0x60, 0xf7, 0x8f, 0xd6, 0xa2, 0x81,
-             0x65, 0x08, 0x5b, 0xa6, 0xeb, 0x97, 0xd3, 0xad, 0x63, 0x15, 0x92, 0xb0, 0x95, 0xe7, 0x1b, 0xd1, 0xe6, 0xae,
-             0xd4, 0xf3, 0x91, 0x2d, 0xb7, 0x2c, 0x60, 0xae, 0x34, 0xbb, 0x7c, 0x54, 0xce, 0x80, 0x39, 0xbb, 0xa4, 0x34,
-             0x79, 0xb0, 0xee, 0xa8, 0xf6, 0xea, 0x48, 0x99, 0x02, 0x6b, 0x3b, 0x21, 0xeb, 0xa7, 0x2e, 0xf5, 0x24, 0xe5,
-             0xf2, 0xe6, 0xdb, 0x93, 0xba, 0x08, 0xf0, 0xb2, 0x63, 0x50, 0x91, 0x61, 0x87, 0x2d, 0x89, 0x9a, 0x6f, 0x64,
-             0xad, 0x78, 0x4f, 0xc9, 0x1b, 0x1c, 0x53, 0xe0, 0x97, 0x38, 0x26, 0x76, 0x1b, 0x51, 0xa1, 0x06, 0xa4, 0xc8,
-             0xf1, 0xc8, 0x0c, 0x62, 0x11, 0x15, 0x1f, 0x06, 0xf7, 0xab, 0x2d, 0x44, 0x1e, 0x0e, 0x86, 0xde, 0x7e, 0x16,
-             0x02, 0x35, 0x7e, 0x70, 0xa4, 0x1c, 0x6d, 0x4c, 0xad, 0xab, 0xc0, 0xd1, 0x99, 0x57, 0xb4, 0x6c, 0xd2, 0x71,
-             0x0c, 0xe5, 0xfc, 0x8a, 0xfc, 0xdf, 0x02, 0x9d, 0xe5, 0x50, 0x8c, 0x2e, 0x6f, 0xe2, 0x5f, 0xa7, 0x1a, 0xd6,
-             0x21, 0x48, 0x5b, 0xde, 0x25, 0x46, 0x8f, 0x90, 0x9a, 0xb8, 0x8f, 0x7c, 0x6c, 0xd1, 0x47, 0x4d, 0x6c, 0x18,
-             0xa7, 0xbb, 0x6f, 0x88, 0x82, 0x22, 0xdb, 0x54, 0x3e, 0x2f, 0x79, 0xc4, 0xc4, 0x2c, 0x84, 0xe3, 0x24, 0xd4,
-             0x3f, 0xf9, 0x9e, 0x6c, 0x16, 0x7a, 0xd8, 0x99, 0xdb, 0xbe, 0xc5, 0x92, 0xb3, 0x7a, 0xf7, 0xff, 0xf0, 0x26,
-             0xe5, 0xdf, 0x06, 0xdd, 0x67, 0x58, 0x05, 0x7b, 0x04, 0x46, 0x80, 0xe8, 0x2c, 0x1b, 0xc7, 0x9e, 0xa9, 0x4e,
-             0xfe, 0x8a, 0x38, 0xa6, 0x91, 0x82, 0x44, 0x8e, 0xc6, 0x90, 0x3a, 0xe8, 0x00, 0x28, 0xbf, 0x02, 0x03, 0x01,
-             0x00, 0x01, 0xa3, 0x77, 0x30, 0x75, 0x30, 0x0c, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x05, 0x30, 0x03, 0x01,
-             0x01, 0xff, 0x30, 0x1d, 0x06, 0x03, 0x55, 0x1d, 0x0e, 0x04, 0x16, 0x04, 0x14, 0x6a, 0x94, 0x29, 0x55, 0x95,
-             0x94, 0xbd, 0x37, 0xb0, 0x7b, 0x8e, 0x82, 0x01, 0x40, 0x09, 0xd9, 0x47, 0x72, 0x43, 0xc1, 0x30, 0x46, 0x06,
-             0x03, 0x55, 0x1d, 0x23, 0x04, 0x3f, 0x30, 0x3d, 0x80, 0x14, 0x4d, 0x97, 0x01, 0xb3, 0x43, 0xaf, 0x23, 0x25,
-             0x06, 0x93, 0x0d, 0x23, 0xa0, 0x9e, 0xf7, 0x6e, 0xee, 0x50, 0x5c, 0x13, 0xa1, 0x1a, 0xa4, 0x18, 0x30, 0x16,
-             0x31, 0x14, 0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74,
-             0x52, 0x6f, 0x6f, 0x74, 0x82, 0x09, 0x00, 0xd0, 0xd4, 0x90, 0x7f, 0x94, 0x61, 0xdc, 0xf5, 0x30, 0x0d, 0x06,
-             0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x03, 0x82, 0x01, 0x01, 0x00, 0x37,
-             0x3b, 0x74, 0xbd, 0x55, 0x3d, 0x04, 0x0b, 0x5c, 0x86, 0xe3, 0x1c, 0x8d, 0x35, 0x46, 0x7b, 0xf8, 0x2c, 0xc5,
-             0xb8, 0x50, 0x3a, 0xba, 0x23, 0xb7, 0xf3, 0x28, 0x1c, 0x37, 0x93, 0x73, 0xd6, 0x83, 0x4f, 0xcb, 0x67, 0x90,
-             0x7a, 0xbe, 0xef, 0x62, 0x6a, 0xc7, 0xb6, 0xa3, 0x7a, 0x81, 0x2f, 0xe8, 0xd4, 0x08, 0x39, 0x17, 0xc6, 0xcb,
-             0x44, 0x2a, 0x9e, 0xb9, 0x94, 0xec, 0x38, 0x6f, 0x34, 0x3b, 0x6f, 0x47, 0x90, 0xd8, 0x6c, 0xe7, 0x16, 0x29,
-             0xad, 0xd5, 0x3c, 0xd8, 0x0a, 0x9c, 0x69, 0x6c, 0x04, 0x77, 0x49, 0x03, 0xae, 0x10, 0xb9, 0xac, 0x4b, 0xec,
-             0xe9, 0xf8, 0xf5, 0x27, 0x43, 0x4a, 0x9a, 0x68, 0x5b, 0xa2, 0xf6, 0x31, 0xb8, 0x36, 0xe8, 0x8f, 0x46, 0xbb,
-             0x21, 0xfe, 0xc7, 0x12, 0xa5, 0xf4, 0x36, 0x2c, 0xf2, 0x53, 0x73, 0x37, 0x24, 0xe3, 0x4f, 0x66, 0x06, 0x9d,
-             0x72, 0x16, 0x7e, 0x17, 0x90, 0xe8, 0xb1, 0xab, 0x45, 0xd4, 0x1a, 0x6d, 0xfe, 0x0b, 0x10, 0x47, 0x2d, 0xfc,
-             0xdc, 0x8a, 0x20, 0x43, 0x4f, 0xc5, 0x4b, 0xe8, 0xee, 0x1c, 0x20, 0x9c, 0xe1, 0x52, 0x14, 0x7a, 0x6b, 0xa4,
-             0x61, 0x8d, 0x49, 0xf2, 0x8e, 0x57, 0x76, 0xb1, 0x96, 0xac, 0xf0, 0x41, 0x8a, 0xe7, 0x53, 0x5a, 0xa0, 0xa8,
-             0x6d, 0xef, 0x8d, 0xe7, 0x8d, 0x5b, 0xf9, 0x82, 0xd6, 0x6d, 0xa8, 0xd3, 0xe5, 0x42, 0xb3, 0xbd, 0x2a, 0x89,
-             0x99, 0xca, 0xa9, 0x3d, 0x39, 0xe2, 0x24, 0x67, 0x3d, 0x79, 0x9c, 0x5c, 0xcf, 0x77, 0x02, 0x35, 0xdd, 0xdc,
-             0x29, 0xaf, 0x5b, 0x2b, 0x9d, 0x6c, 0xb4, 0x49, 0xd0, 0x4a, 0x50, 0x3b, 0x3d, 0x05, 0xd8, 0xb3, 0x72, 0xbe,
-             0x4c, 0x3d, 0xc4, 0x99, 0x29, 0xff, 0x1b, 0x6c, 0x7a, 0x1e, 0x67, 0xeb, 0xee, 0x5a, 0xe9, 0x6c, 0x88, 0x44,
-             0x68, 0x3f, 0xb2
+    static const uint8_t s_expected_intermediate_2[] = {
+            0x30, 0x82, 0x03, 0x29, 0x30, 0x82, 0x02, 0x11, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x02, 0x57, 0x16, 0x30,
+            0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x16, 0x31, 0x14,
+            0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74, 0x52, 0x6f,
+            0x6f, 0x74, 0x30, 0x20, 0x17, 0x0d, 0x31, 0x36, 0x30, 0x33, 0x33, 0x30, 0x31, 0x38, 0x35, 0x37, 0x30, 0x39,
+            0x5a, 0x18, 0x0f, 0x32, 0x31, 0x31, 0x36, 0x30, 0x33, 0x30, 0x36, 0x31, 0x38, 0x35, 0x37, 0x30, 0x39, 0x5a,
+            0x30, 0x1e, 0x31, 0x1c, 0x30, 0x1a, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x13, 0x73, 0x32, 0x6e, 0x54, 0x65,
+            0x73, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x6d, 0x65, 0x64, 0x69, 0x61, 0x74, 0x65, 0x30, 0x82, 0x01, 0x22,
+            0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03, 0x82, 0x01,
+            0x0f, 0x00, 0x30, 0x82, 0x01, 0x0a, 0x02, 0x82, 0x01, 0x01, 0x00, 0xcc, 0xfe, 0x2d, 0xde, 0x72, 0x5c, 0x58,
+            0x72, 0xf7, 0x9d, 0x3c, 0x21, 0x27, 0x55, 0xee, 0x80, 0xfc, 0x76, 0x2c, 0x60, 0xf7, 0x8f, 0xd6, 0xa2, 0x81,
+            0x65, 0x08, 0x5b, 0xa6, 0xeb, 0x97, 0xd3, 0xad, 0x63, 0x15, 0x92, 0xb0, 0x95, 0xe7, 0x1b, 0xd1, 0xe6, 0xae,
+            0xd4, 0xf3, 0x91, 0x2d, 0xb7, 0x2c, 0x60, 0xae, 0x34, 0xbb, 0x7c, 0x54, 0xce, 0x80, 0x39, 0xbb, 0xa4, 0x34,
+            0x79, 0xb0, 0xee, 0xa8, 0xf6, 0xea, 0x48, 0x99, 0x02, 0x6b, 0x3b, 0x21, 0xeb, 0xa7, 0x2e, 0xf5, 0x24, 0xe5,
+            0xf2, 0xe6, 0xdb, 0x93, 0xba, 0x08, 0xf0, 0xb2, 0x63, 0x50, 0x91, 0x61, 0x87, 0x2d, 0x89, 0x9a, 0x6f, 0x64,
+            0xad, 0x78, 0x4f, 0xc9, 0x1b, 0x1c, 0x53, 0xe0, 0x97, 0x38, 0x26, 0x76, 0x1b, 0x51, 0xa1, 0x06, 0xa4, 0xc8,
+            0xf1, 0xc8, 0x0c, 0x62, 0x11, 0x15, 0x1f, 0x06, 0xf7, 0xab, 0x2d, 0x44, 0x1e, 0x0e, 0x86, 0xde, 0x7e, 0x16,
+            0x02, 0x35, 0x7e, 0x70, 0xa4, 0x1c, 0x6d, 0x4c, 0xad, 0xab, 0xc0, 0xd1, 0x99, 0x57, 0xb4, 0x6c, 0xd2, 0x71,
+            0x0c, 0xe5, 0xfc, 0x8a, 0xfc, 0xdf, 0x02, 0x9d, 0xe5, 0x50, 0x8c, 0x2e, 0x6f, 0xe2, 0x5f, 0xa7, 0x1a, 0xd6,
+            0x21, 0x48, 0x5b, 0xde, 0x25, 0x46, 0x8f, 0x90, 0x9a, 0xb8, 0x8f, 0x7c, 0x6c, 0xd1, 0x47, 0x4d, 0x6c, 0x18,
+            0xa7, 0xbb, 0x6f, 0x88, 0x82, 0x22, 0xdb, 0x54, 0x3e, 0x2f, 0x79, 0xc4, 0xc4, 0x2c, 0x84, 0xe3, 0x24, 0xd4,
+            0x3f, 0xf9, 0x9e, 0x6c, 0x16, 0x7a, 0xd8, 0x99, 0xdb, 0xbe, 0xc5, 0x92, 0xb3, 0x7a, 0xf7, 0xff, 0xf0, 0x26,
+            0xe5, 0xdf, 0x06, 0xdd, 0x67, 0x58, 0x05, 0x7b, 0x04, 0x46, 0x80, 0xe8, 0x2c, 0x1b, 0xc7, 0x9e, 0xa9, 0x4e,
+            0xfe, 0x8a, 0x38, 0xa6, 0x91, 0x82, 0x44, 0x8e, 0xc6, 0x90, 0x3a, 0xe8, 0x00, 0x28, 0xbf, 0x02, 0x03, 0x01,
+            0x00, 0x01, 0xa3, 0x77, 0x30, 0x75, 0x30, 0x0c, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x05, 0x30, 0x03, 0x01,
+            0x01, 0xff, 0x30, 0x1d, 0x06, 0x03, 0x55, 0x1d, 0x0e, 0x04, 0x16, 0x04, 0x14, 0x6a, 0x94, 0x29, 0x55, 0x95,
+            0x94, 0xbd, 0x37, 0xb0, 0x7b, 0x8e, 0x82, 0x01, 0x40, 0x09, 0xd9, 0x47, 0x72, 0x43, 0xc1, 0x30, 0x46, 0x06,
+            0x03, 0x55, 0x1d, 0x23, 0x04, 0x3f, 0x30, 0x3d, 0x80, 0x14, 0x4d, 0x97, 0x01, 0xb3, 0x43, 0xaf, 0x23, 0x25,
+            0x06, 0x93, 0x0d, 0x23, 0xa0, 0x9e, 0xf7, 0x6e, 0xee, 0x50, 0x5c, 0x13, 0xa1, 0x1a, 0xa4, 0x18, 0x30, 0x16,
+            0x31, 0x14, 0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74,
+            0x52, 0x6f, 0x6f, 0x74, 0x82, 0x09, 0x00, 0xd0, 0xd4, 0x90, 0x7f, 0x94, 0x61, 0xdc, 0xf5, 0x30, 0x0d, 0x06,
+            0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x03, 0x82, 0x01, 0x01, 0x00, 0x37,
+            0x3b, 0x74, 0xbd, 0x55, 0x3d, 0x04, 0x0b, 0x5c, 0x86, 0xe3, 0x1c, 0x8d, 0x35, 0x46, 0x7b, 0xf8, 0x2c, 0xc5,
+            0xb8, 0x50, 0x3a, 0xba, 0x23, 0xb7, 0xf3, 0x28, 0x1c, 0x37, 0x93, 0x73, 0xd6, 0x83, 0x4f, 0xcb, 0x67, 0x90,
+            0x7a, 0xbe, 0xef, 0x62, 0x6a, 0xc7, 0xb6, 0xa3, 0x7a, 0x81, 0x2f, 0xe8, 0xd4, 0x08, 0x39, 0x17, 0xc6, 0xcb,
+            0x44, 0x2a, 0x9e, 0xb9, 0x94, 0xec, 0x38, 0x6f, 0x34, 0x3b, 0x6f, 0x47, 0x90, 0xd8, 0x6c, 0xe7, 0x16, 0x29,
+            0xad, 0xd5, 0x3c, 0xd8, 0x0a, 0x9c, 0x69, 0x6c, 0x04, 0x77, 0x49, 0x03, 0xae, 0x10, 0xb9, 0xac, 0x4b, 0xec,
+            0xe9, 0xf8, 0xf5, 0x27, 0x43, 0x4a, 0x9a, 0x68, 0x5b, 0xa2, 0xf6, 0x31, 0xb8, 0x36, 0xe8, 0x8f, 0x46, 0xbb,
+            0x21, 0xfe, 0xc7, 0x12, 0xa5, 0xf4, 0x36, 0x2c, 0xf2, 0x53, 0x73, 0x37, 0x24, 0xe3, 0x4f, 0x66, 0x06, 0x9d,
+            0x72, 0x16, 0x7e, 0x17, 0x90, 0xe8, 0xb1, 0xab, 0x45, 0xd4, 0x1a, 0x6d, 0xfe, 0x0b, 0x10, 0x47, 0x2d, 0xfc,
+            0xdc, 0x8a, 0x20, 0x43, 0x4f, 0xc5, 0x4b, 0xe8, 0xee, 0x1c, 0x20, 0x9c, 0xe1, 0x52, 0x14, 0x7a, 0x6b, 0xa4,
+            0x61, 0x8d, 0x49, 0xf2, 0x8e, 0x57, 0x76, 0xb1, 0x96, 0xac, 0xf0, 0x41, 0x8a, 0xe7, 0x53, 0x5a, 0xa0, 0xa8,
+            0x6d, 0xef, 0x8d, 0xe7, 0x8d, 0x5b, 0xf9, 0x82, 0xd6, 0x6d, 0xa8, 0xd3, 0xe5, 0x42, 0xb3, 0xbd, 0x2a, 0x89,
+            0x99, 0xca, 0xa9, 0x3d, 0x39, 0xe2, 0x24, 0x67, 0x3d, 0x79, 0x9c, 0x5c, 0xcf, 0x77, 0x02, 0x35, 0xdd, 0xdc,
+            0x29, 0xaf, 0x5b, 0x2b, 0x9d, 0x6c, 0xb4, 0x49, 0xd0, 0x4a, 0x50, 0x3b, 0x3d, 0x05, 0xd8, 0xb3, 0x72, 0xbe,
+            0x4c, 0x3d, 0xc4, 0x99, 0x29, 0xff, 0x1b, 0x6c, 0x7a, 0x1e, 0x67, 0xeb, 0xee, 0x5a, 0xe9, 0x6c, 0x88, 0x44,
+            0x68, 0x3f, 0xb2
     };
 
-    const uint8_t expected_leaf[] = {
+    static const uint8_t s_expected_leaf[] = {
             0x30, 0x82, 0x03, 0x01, 0x30, 0x82, 0x01, 0xe9, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x09, 0x00, 0xd0, 0xd4,
             0x90, 0x7f, 0x94, 0x61, 0xdc, 0xf5, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
             0x0b, 0x05, 0x00, 0x30, 0x16, 0x31, 0x14, 0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32,
@@ -296,7 +340,7 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
             0x4c, 0x93, 0x7b, 0xec, 0x16, 0xf4, 0x45, 0x9a, 0xfc, 0x2c, 0xbf, 0x53, 0xaf, 0xd2, 0x32, 0xbd, 0xf5,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(rsa_2048_pkcs1_crt_pem);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_rsa_2048_pkcs1_crt_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -304,12 +348,14 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_intermediate_1, sizeof(expected_intermediate_1), cert_data->buffer, cert_data->len);
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 1);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_intermediate_2, sizeof(expected_intermediate_2), cert_data->buffer, cert_data->len);
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 2);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_leaf, sizeof(expected_leaf), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_intermediate_1, sizeof(s_expected_intermediate_1), cert_data->buffer,
+                             cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 1);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_intermediate_2, sizeof(s_expected_intermediate_2), cert_data->buffer,
+                             cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 2);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_leaf, sizeof(s_expected_leaf), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -320,36 +366,36 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
 AWS_TEST_CASE(test_pem_cert_chain_parse, s_test_pem_cert_chain_parse)
 
 static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    const char *private_key_pem = "-----BEGIN RSA PRIVATE KEY-----\n"
-                                  "MIIEpAIBAAKCAQEA12pXSPgORAMlQtYRbxuz/Ocaoran3C2Fjyjhu0vucSEZSwxD\n"
-                                  "Jp75TBQEMafSpSEKAQLeDt7xuDRDYn52V4UE6cF+xTWhtzsf7mhN/lHaDPcvR2AS\n"
-                                  "PAEkzkil8KCLY4e6tTxSwQ97splNuEZ099HoJYTTLFaReIfd1D3zZ1EYcSw8w+GZ\n"
-                                  "2SxEUfYUSL2CFmIYSkQjnlsJCIpCoGgDiBAPbIUJO3KWBDX0JgGDbx3Wf3jXG/Y6\n"
-                                  "T63LPsO+AS20RCvcEF0F/rlDINzI5EAHO1TOEd9fKOu+JAK06Pw1m77BgOrE7Ftv\n"
-                                  "IG7kYNVuOEPeInOHkOuqryDisB1PwiyPNIbqdQIDAQABAoIBAESQuI+lRQUo6ydG\n"
-                                  "8+2lp7iL5tJ7yRov8x8KKC9xj8e6fU6B7K3SVA9/H4aeoFGnHoQL4ZpiJBY5rGkh\n"
-                                  "T5Gz6UhuKmejFoI384Xy9UBJ1VnjI81YKvWmd4yhWxAoSbW4chlVxhFlWD4UxcQt\n"
-                                  "yPVIftfSW1T1iQAQXu87eMod6eW7VWlyMKicYkBGB2ohI0hW8chx361z96QcpxhA\n"
-                                  "yBAfnhxuTgKFYSRVfwYSOjHYPOvozmU7Wj0iURT+1MM4iO8YlBDuZEJArs3WAdIe\n"
-                                  "pmCq6snzOAJ6Y9iE0EGti9QGiAo6na/nWAfVlRSMyS/C1GC0oM0MnpRKSLW0tvLV\n"
-                                  "vtJG81ECgYEA7lzGpdlAKwWNKPc2YIbtUNomD/eOr7TzYedYxJ88SG52THjgE3Pu\n"
-                                  "poF3wZFjdtlwx1u4nsxlVe50FBTCN5s2FV4/8YP980zis+HtUC5pWCO3Oy6+DjSj\n"
-                                  "K9st+mGyzYjl3opVqcQZkHj1LPqNxBmvFpDgAtVZfdKSdyuzZpj8s5sCgYEA51rj\n"
-                                  "EFa/ijILp1P5vKn8b3pIfQFSsUsX5NXTy31f/2UwVV491djMyNyhtaRcrXP9CYpq\n"
-                                  "38o1xvUaxe2hlND/jiBjBHfsC13oUOVz8TrAzxDKAzbGLcOT2trgxMFbR8Ez+jur\n"
-                                  "1yQbPnoKZrB7SopAkcVqZv4ks0LLu+BLfEFXYy8CgYEApN8xXDgoRVnCqQpN53iM\n"
-                                  "n/c0iqjOXkTIb/jIksAdv3AAjaayP2JaOXul7RL2fJeshYiw684vbb/RNK6jJDlM\n"
-                                  "sH0Pt6t3tZmB2bC1KFfh7+BMdjg/p63LC6PAasa3GanObh67YADPOfoghCsOcgzd\n"
-                                  "6brt56fRDdHgE2P75ER/zm8CgYEArAxx6bepT3syIWiYww3itYBJofS26zP9++Zs\n"
-                                  "T9rX5hT5IbMo5vwIJqO0+mDVrwQfu9Wc7vnwjhm+pEy4qfPW6Hn7SNppxnY6itZo\n"
-                                  "J4/azOIeaM92B5h3Pv0gxBFK8YyjO8beXurx+79ENuOtfFxd8knOe/Mplcnpurjt\n"
-                                  "SeVJuG8CgYBxEYouOM9UuZlblXQXfudTWWf+x5CEWxyJgKaktHEh3iees1gB7ZPb\n"
-                                  "OewLa8AYVjqbNgS/r/aUFjpBbCov8ICxcy86SuGda10LDFX83sbyMm8XhktfyC3L\n"
-                                  "54irVW5mNUDcA8s9+DloeTlUlJIr8J/RADC9rpqHLaZzcdvpIMhVsw==\n"
-                                  "-----END RSA PRIVATE KEY-----";
+    (void) ctx;
+    static const char *s_private_key_pem = "-----BEGIN RSA PRIVATE KEY-----\n"
+                                           "MIIEpAIBAAKCAQEA12pXSPgORAMlQtYRbxuz/Ocaoran3C2Fjyjhu0vucSEZSwxD\n"
+                                           "Jp75TBQEMafSpSEKAQLeDt7xuDRDYn52V4UE6cF+xTWhtzsf7mhN/lHaDPcvR2AS\n"
+                                           "PAEkzkil8KCLY4e6tTxSwQ97splNuEZ099HoJYTTLFaReIfd1D3zZ1EYcSw8w+GZ\n"
+                                           "2SxEUfYUSL2CFmIYSkQjnlsJCIpCoGgDiBAPbIUJO3KWBDX0JgGDbx3Wf3jXG/Y6\n"
+                                           "T63LPsO+AS20RCvcEF0F/rlDINzI5EAHO1TOEd9fKOu+JAK06Pw1m77BgOrE7Ftv\n"
+                                           "IG7kYNVuOEPeInOHkOuqryDisB1PwiyPNIbqdQIDAQABAoIBAESQuI+lRQUo6ydG\n"
+                                           "8+2lp7iL5tJ7yRov8x8KKC9xj8e6fU6B7K3SVA9/H4aeoFGnHoQL4ZpiJBY5rGkh\n"
+                                           "T5Gz6UhuKmejFoI384Xy9UBJ1VnjI81YKvWmd4yhWxAoSbW4chlVxhFlWD4UxcQt\n"
+                                           "yPVIftfSW1T1iQAQXu87eMod6eW7VWlyMKicYkBGB2ohI0hW8chx361z96QcpxhA\n"
+                                           "yBAfnhxuTgKFYSRVfwYSOjHYPOvozmU7Wj0iURT+1MM4iO8YlBDuZEJArs3WAdIe\n"
+                                           "pmCq6snzOAJ6Y9iE0EGti9QGiAo6na/nWAfVlRSMyS/C1GC0oM0MnpRKSLW0tvLV\n"
+                                           "vtJG81ECgYEA7lzGpdlAKwWNKPc2YIbtUNomD/eOr7TzYedYxJ88SG52THjgE3Pu\n"
+                                           "poF3wZFjdtlwx1u4nsxlVe50FBTCN5s2FV4/8YP980zis+HtUC5pWCO3Oy6+DjSj\n"
+                                           "K9st+mGyzYjl3opVqcQZkHj1LPqNxBmvFpDgAtVZfdKSdyuzZpj8s5sCgYEA51rj\n"
+                                           "EFa/ijILp1P5vKn8b3pIfQFSsUsX5NXTy31f/2UwVV491djMyNyhtaRcrXP9CYpq\n"
+                                           "38o1xvUaxe2hlND/jiBjBHfsC13oUOVz8TrAzxDKAzbGLcOT2trgxMFbR8Ez+jur\n"
+                                           "1yQbPnoKZrB7SopAkcVqZv4ks0LLu+BLfEFXYy8CgYEApN8xXDgoRVnCqQpN53iM\n"
+                                           "n/c0iqjOXkTIb/jIksAdv3AAjaayP2JaOXul7RL2fJeshYiw684vbb/RNK6jJDlM\n"
+                                           "sH0Pt6t3tZmB2bC1KFfh7+BMdjg/p63LC6PAasa3GanObh67YADPOfoghCsOcgzd\n"
+                                           "6brt56fRDdHgE2P75ER/zm8CgYEArAxx6bepT3syIWiYww3itYBJofS26zP9++Zs\n"
+                                           "T9rX5hT5IbMo5vwIJqO0+mDVrwQfu9Wc7vnwjhm+pEy4qfPW6Hn7SNppxnY6itZo\n"
+                                           "J4/azOIeaM92B5h3Pv0gxBFK8YyjO8beXurx+79ENuOtfFxd8knOe/Mplcnpurjt\n"
+                                           "SeVJuG8CgYBxEYouOM9UuZlblXQXfudTWWf+x5CEWxyJgKaktHEh3iees1gB7ZPb\n"
+                                           "OewLa8AYVjqbNgS/r/aUFjpBbCov8ICxcy86SuGda10LDFX83sbyMm8XhktfyC3L\n"
+                                           "54irVW5mNUDcA8s9+DloeTlUlJIr8J/RADC9rpqHLaZzcdvpIMhVsw==\n"
+                                           "-----END RSA PRIVATE KEY-----";
 
-    const uint8_t expected[] = {
+    static const uint8_t s_expected[] = {
             0x30, 0x82, 0x04, 0xa4, 0x02, 0x01, 0x00, 0x02, 0x82, 0x01, 0x01, 0x00, 0xd7, 0x6a, 0x57, 0x48, 0xf8, 0x0e,
             0x44, 0x03, 0x25, 0x42, 0xd6, 0x11, 0x6f, 0x1b, 0xb3, 0xfc, 0xe7, 0x1a, 0xa2, 0xb6, 0xa7, 0xdc, 0x2d, 0x85,
             0x8f, 0x28, 0xe1, 0xbb, 0x4b, 0xee, 0x71, 0x21, 0x19, 0x4b, 0x0c, 0x43, 0x26, 0x9e, 0xf9, 0x4c, 0x14, 0x04,
@@ -419,7 +465,7 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
             0x20, 0xc8, 0x55, 0xb3,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(private_key_pem);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_private_key_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -427,21 +473,22 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected, sizeof(expected), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
+
 AWS_TEST_CASE(test_pem_private_key_parse, s_test_pem_private_key_parse)
 
 
 static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
 
-    const uint8_t expected[] = {
+    static const uint8_t s_expected[] = {
             0x30, 0x82, 0x03, 0xce, 0x30, 0x82, 0x02, 0xb6, 0x02, 0x09, 0x00, 0xa8, 0xce, 0xd3, 0x84, 0x47, 0x8a, 0x4e,
             0x93, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00, 0x30, 0x81,
             0xa8, 0x31, 0x0b, 0x30, 0x09, 0x06, 0x03, 0x55, 0x04, 0x06, 0x13, 0x02, 0x55, 0x53, 0x31, 0x13, 0x30, 0x11,
@@ -506,20 +553,21 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected, sizeof(expected), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
+
 AWS_TEST_CASE(test_pem_cert_parse_from_file, s_test_pem_cert_parse_from_file)
 
 static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
 
-    const uint8_t expected[] = {
+    static const uint8_t s_expected[] = {
             0x30, 0x82, 0x04, 0xa4, 0x02, 0x01, 0x00, 0x02, 0x82, 0x01, 0x01, 0x00, 0xd7, 0x6a, 0x57, 0x48, 0xf8, 0x0e,
             0x44, 0x03, 0x25, 0x42, 0xd6, 0x11, 0x6f, 0x1b, 0xb3, 0xfc, 0xe7, 0x1a, 0xa2, 0xb6, 0xa7, 0xdc, 0x2d, 0x85,
             0x8f, 0x28, 0xe1, 0xbb, 0x4b, 0xee, 0x71, 0x21, 0x19, 0x4b, 0x0c, 0x43, 0x26, 0x9e, 0xf9, 0x4c, 0x14, 0x04,
@@ -596,92 +644,93 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected, sizeof(expected), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
+
 AWS_TEST_CASE(test_pem_private_key_parse_from_file, s_test_pem_private_key_parse_from_file)
 
 static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *allocator, void *ctx) {
     (void) ctx;
 
-    const char *pem_data_str = "# -----Comment\n"
-                           "// Style\n"
-                           "/* from */\n"
-                           "''' multiple\n"
-                           "!* languages\n"
-                           "\n"
-                           "-----BEGIN CERTIFICATE-----\n"
-                           "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
-                           "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
-                           "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
-                           "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
-                           "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
-                           "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
-                           "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
-                           "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
-                           "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
-                           "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
-                           "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
-                           "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
-                           "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
-                           "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
-                           "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
-                           "-----END CERTIFICATE-----               \n"
-                           "\n"
-                           "\n"
-                           "            \n"
-                           "\n"
-                           "\n"
-                           "              \n"
-                           "\n"
-                           "                 \n"
-                           "\n"
-                           "                 \n"
-                           "    -----BEGIN CERTIFICATE-----\n"
-                           "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
-                           "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
-                           "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
-                           "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
-                           "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
-                           "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
-                           "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
-                           "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
-                           "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
-                           "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
-                           "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
-                           "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
-                           "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
-                           "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
-                           "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
-                           "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
-                           "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
-                           "-----END CERTIFICATE-----\n"
-                           "-----BEGIN CERTIFICATE-----\n"
-                           "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
-                           "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
-                           "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
-                           "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
-                           "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
-                           "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
-                           "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
-                           "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
-                           "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
-                           "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
-                           "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
-                           "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
-                           "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
-                           "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
-                           "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
-                           "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
-                           "r9IyvfU=\n"
-                           "-----END CERTIFICATE-----";
+    static const char *s_pem_data_str = "# -----Comment\n"
+                                        "// Style\n"
+                                        "/* from */\n"
+                                        "''' multiple\n"
+                                        "!* languages\n"
+                                        "\n"
+                                        "-----BEGIN CERTIFICATE-----\n"
+                                        "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
+                                        "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
+                                        "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
+                                        "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
+                                        "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
+                                        "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
+                                        "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
+                                        "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
+                                        "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
+                                        "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
+                                        "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
+                                        "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
+                                        "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
+                                        "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
+                                        "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
+                                        "-----END CERTIFICATE-----               \n"
+                                        "\n"
+                                        "\n"
+                                        "            \n"
+                                        "\n"
+                                        "\n"
+                                        "              \n"
+                                        "\n"
+                                        "                 \n"
+                                        "\n"
+                                        "                 \n"
+                                        "    -----BEGIN CERTIFICATE-----\n"
+                                        "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
+                                        "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
+                                        "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
+                                        "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
+                                        "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
+                                        "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
+                                        "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
+                                        "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
+                                        "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
+                                        "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
+                                        "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
+                                        "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
+                                        "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
+                                        "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
+                                        "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
+                                        "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
+                                        "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
+                                        "-----END CERTIFICATE-----\n"
+                                        "-----BEGIN CERTIFICATE-----\n"
+                                        "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
+                                        "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
+                                        "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
+                                        "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
+                                        "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
+                                        "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
+                                        "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
+                                        "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
+                                        "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
+                                        "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
+                                        "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
+                                        "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
+                                        "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
+                                        "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
+                                        "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
+                                        "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
+                                        "r9IyvfU=\n"
+                                        "-----END CERTIFICATE-----";
 
-    const uint8_t expected_intermediate_1[] = {
+    static const uint8_t s_expected_intermediate_1[] = {
             0x30, 0x82, 0x02, 0xad, 0x30, 0x82, 0x01, 0x95, 0x02, 0x02, 0x7d, 0xd5, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
             0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x1e, 0x31, 0x1c, 0x30, 0x1a, 0x06, 0x03, 0x55,
             0x04, 0x03, 0x0c, 0x13, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x6d, 0x65,
@@ -723,7 +772,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
             0x4d, 0x0c, 0x03, 0x00, 0x5e
     };
 
-    const uint8_t expected_intermediate_2[] = {
+    static const uint8_t s_expected_intermediate_2[] = {
             0x30, 0x82, 0x03, 0x29, 0x30, 0x82, 0x02, 0x11, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x02, 0x57, 0x16, 0x30,
             0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05, 0x05, 0x00, 0x30, 0x16, 0x31, 0x14,
             0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32, 0x6e, 0x54, 0x65, 0x73, 0x74, 0x52, 0x6f,
@@ -772,7 +821,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
             0x68, 0x3f, 0xb2
     };
 
-    const uint8_t expected_leaf[] = {
+    static const uint8_t s_expected_leaf[] = {
             0x30, 0x82, 0x03, 0x01, 0x30, 0x82, 0x01, 0xe9, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x09, 0x00, 0xd0, 0xd4,
             0x90, 0x7f, 0x94, 0x61, 0xdc, 0xf5, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01,
             0x0b, 0x05, 0x00, 0x30, 0x16, 0x31, 0x14, 0x30, 0x12, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0c, 0x0b, 0x73, 0x32,
@@ -818,7 +867,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
             0x4c, 0x93, 0x7b, 0xec, 0x16, 0xf4, 0x45, 0x9a, 0xfc, 0x2c, 0xbf, 0x53, 0xaf, 0xd2, 0x32, 0xbd, 0xf5,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(pem_data_str);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_pem_data_str);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -826,41 +875,44 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 0);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_intermediate_1, sizeof(expected_intermediate_1), cert_data->buffer, cert_data->len);
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 1);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_intermediate_2, sizeof(expected_intermediate_2), cert_data->buffer, cert_data->len);
-    aws_array_list_get_at_ptr(&output_list, (void **)&cert_data, 2);
-    ASSERT_BIN_ARRAYS_EQUALS(expected_leaf, sizeof(expected_leaf), cert_data->buffer, cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 0);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_intermediate_1, sizeof(s_expected_intermediate_1), cert_data->buffer,
+                             cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 1);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_intermediate_2, sizeof(s_expected_intermediate_2), cert_data->buffer,
+                             cert_data->len);
+    aws_array_list_get_at_ptr(&output_list, (void **) &cert_data, 2);
+    ASSERT_BIN_ARRAYS_EQUALS(s_expected_leaf, sizeof(s_expected_leaf), cert_data->buffer, cert_data->len);
 
     aws_cert_chain_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
+
 AWS_TEST_CASE(test_pem_cert_chain_comments_and_whitespace, s_test_pem_cert_chain_comments_and_whitespace)
 
 static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
     /* Maintainers note: I removed a '-' from the beginning */
-    const char *invalid_pem = "----BEGIN CERTIFICATE-----\n"
-                              "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
-                              "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
-                              "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
-                              "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
-                              "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
-                              "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
-                              "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
-                              "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
-                              "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
-                              "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
-                              "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
-                              "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
-                              "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
-                              "YxwtPz26+xvPRWCS\n"
-                              "-----END CERTIFICATE-----";
+    static const char *s_invalid_pem = "----BEGIN CERTIFICATE-----\n"
+                                       "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
+                                       "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
+                                       "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
+                                       "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
+                                       "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
+                                       "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
+                                       "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
+                                       "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
+                                       "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
+                                       "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
+                                       "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
+                                       "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
+                                       "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
+                                       "YxwtPz26+xvPRWCS\n"
+                                       "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(invalid_pem);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -875,26 +927,26 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(test_pem_invalid_parse, s_test_pem_invalid_parse)
 
 static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
     /* Maintainers note: I added a character (the 'q') to the end to make the base64 invalid */
-    const char *invalid_data = "-----BEGIN CERTIFICATE-----\n"
-                              "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
-                              "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
-                              "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
-                              "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
-                              "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
-                              "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
-                              "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
-                              "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
-                              "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
-                              "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
-                              "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
-                              "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
-                              "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
-                              "YxwtPz26+xvPRWCSq\n"
-                              "-----END CERTIFICATE-----";
+    static const char *s_invalid_data = "-----BEGIN CERTIFICATE-----\n"
+                                        "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
+                                        "BAYTAlVTMQswCQYDVQQIDAJXQTEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwG\n"
+                                        "QW1hem9uMQwwCgYDVQQLDANzMm4xEjAQBgNVBAMMCWxvY2FsaG9zdDAgFw0xNzA4\n"
+                                        "MDEyMjQzMzJaGA8yMTE3MDcwODIyNDMzMlowXzELMAkGA1UEBhMCVVMxCzAJBgNV\n"
+                                        "BAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNV\n"
+                                        "BAsMA3MybjESMBAGA1UEAwwJbG9jYWxob3N0MIGfMA0GCSqGSIb3DQEBAQUAA4GN\n"
+                                        "ADCBiQKBgQCisRoXXcTh4ejn/sUjGosLlE7GlpLGtvWFEEX6Vl3klVoQdkyabLIH\n"
+                                        "7bHB2P7uyt9bPzeqvWYjuepDBSQUUeb6Mkqfx237bTy8JhXIfpIhbgksTk7IPzgo\n"
+                                        "XLPl1oNl7uB9HQaDQ7UPlaKbfp1gNvs6uGOH4vvyhhJGiblNJKnVwwIDAQABozow\n"
+                                        "ODALBgNVHQ8EBAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwFAYDVR0RBA0wC4IJ\n"
+                                        "MTI3LjAuMC4xMA0GCSqGSIb3DQEBDgUAA4GBACleH44LSYhzHHaV70VbnLbtbv8T\n"
+                                        "eaUvzstFW6YvdP1XnZKssZNdvMhoiMuMD5n40/iPbv+grtjxacRQCinLk1SEjpsu\n"
+                                        "3lw90Ds0Ksd/Pdsv7d0cCiJkjadON+ZQEEJ2FP/G19KZFxC3GLk9sxIUXyUW0TXn\n"
+                                        "YxwtPz26+xvPRWCSq\n"
+                                        "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(invalid_data);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -909,65 +961,65 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
 AWS_TEST_CASE(test_pem_valid_data_invalid_parse, s_test_pem_valid_data_invalid_parse)
 
 static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    (void) ctx;
     /* Maintainers note: I added a character (the 'f') to the end of the 3rd cert to make the base64 invalid */
-    const char *invalid_data = "-----BEGIN CERTIFICATE-----\n"
-                               "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
-                               "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
-                               "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
-                               "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
-                               "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
-                               "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
-                               "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
-                               "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
-                               "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
-                               "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
-                               "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
-                               "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
-                               "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
-                               "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
-                               "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
-                               "-----END CERTIFICATE-----\n"
-                               "-----BEGIN CERTIFICATE-----\n"
-                               "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
-                               "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
-                               "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
-                               "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
-                               "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
-                               "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
-                               "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
-                               "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
-                               "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
-                               "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
-                               "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
-                               "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
-                               "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
-                               "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
-                               "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
-                               "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
-                               "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
-                               "-----END CERTIFICATE-----\n"
-                               "-----BEGIN CERTIFICATE-----\n"
-                               "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
-                               "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
-                               "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
-                               "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
-                               "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
-                               "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
-                               "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
-                               "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
-                               "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
-                               "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
-                               "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
-                               "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
-                               "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
-                               "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
-                               "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
-                               "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
-                               "r9IyvfUf=\n"
-                               "-----END CERTIFICATE-----";
+    static const char *s_invalid_data = "-----BEGIN CERTIFICATE-----\n"
+                                        "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
+                                        "bnRlcm1lZGlhdGUwIBcNMTYwMzMwMTg1NzQzWhgPMjExNjAzMDYxODU3NDNaMBgx\n"
+                                        "FjAUBgNVBAMMDXMyblRlc3RTZXJ2ZXIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAw\n"
+                                        "ggEKAoIBAQDRw6AuYXAeRT0YuptCfJjRB/EDJyyGXnv+8TV2H1WJWhMLk8qND27r\n"
+                                        "79A6EjbVmJaOV9qrokVqpDmXS712Z3BDprJ+1LFMymm3A+AFuK/skeGy0skik+Tg\n"
+                                        "MmFT5XBVvmsw4uB1S9uUqktHauXgjhFPPsfvk4ewL4LulVEN2TEeI1Odj4CaMxAO\n"
+                                        "Iuowm8wI2OHVzRHlrRmyJ9hYGuHHQ2TaTGIjr3WpAFuXi9pHGGMYa0uXAVPmgjdE\n"
+                                        "XZ8t46u/ZKQ9W1uJkZEVKhcijT7G2VBrsBUq0CDiL+TDaGfthnBzUc9zt4fx/S/3\n"
+                                        "qulC2WbKI3xrasQyjrsHTAJ75Md3rK09AgMBAAEwDQYJKoZIhvcNAQEFBQADggEB\n"
+                                        "AHHkXNA9BtgAebZC2zriW4hRfeIkJMOwvfKBXHTuY5iCLD1otis6AZljcCKXM6O9\n"
+                                        "489eHBC4T6mJwVsXhH+/ccEKqNRD2bUfQgOij32PsteV1eOHfHIFqdJmnBVb8tYa\n"
+                                        "jxUvy7UQvXrPqaHbODrHe+7f7r1YCzerujiP5SSHphY3GQq88KemfFczp/4GnYas\n"
+                                        "sE50OYe7DQcB4zvnxmAXp51JIN4ooktUU9oKIM5y2cgEWdmJzeqPANYxf0ZIPlTg\n"
+                                        "ETknKw1Dzf8wlK5mFbbG4LPQh1mkDVcwQV3ogG6kGMRa7neH+6SFkNpAKuPCoje4\n"
+                                        "NAE+WQ5ve1wk7nIRTQwDAF4=\n"
+                                        "-----END CERTIFICATE-----\n"
+                                        "-----BEGIN CERTIFICATE-----\n"
+                                        "MIIDKTCCAhGgAwIBAgICVxYwDQYJKoZIhvcNAQEFBQAwFjEUMBIGA1UEAwwLczJu\n"
+                                        "VGVzdFJvb3QwIBcNMTYwMzMwMTg1NzA5WhgPMjExNjAzMDYxODU3MDlaMB4xHDAa\n"
+                                        "BgNVBAMME3MyblRlc3RJbnRlcm1lZGlhdGUwggEiMA0GCSqGSIb3DQEBAQUAA4IB\n"
+                                        "DwAwggEKAoIBAQDM/i3eclxYcvedPCEnVe6A/HYsYPeP1qKBZQhbpuuX061jFZKw\n"
+                                        "lecb0eau1PORLbcsYK40u3xUzoA5u6Q0ebDuqPbqSJkCazsh66cu9STl8ubbk7oI\n"
+                                        "8LJjUJFhhy2Jmm9krXhPyRscU+CXOCZ2G1GhBqTI8cgMYhEVHwb3qy1EHg6G3n4W\n"
+                                        "AjV+cKQcbUytq8DRmVe0bNJxDOX8ivzfAp3lUIwub+JfpxrWIUhb3iVGj5CauI98\n"
+                                        "bNFHTWwYp7tviIIi21Q+L3nExCyE4yTUP/mebBZ62JnbvsWSs3r3//Am5d8G3WdY\n"
+                                        "BXsERoDoLBvHnqlO/oo4ppGCRI7GkDroACi/AgMBAAGjdzB1MAwGA1UdEwQFMAMB\n"
+                                        "Af8wHQYDVR0OBBYEFGqUKVWVlL03sHuOggFACdlHckPBMEYGA1UdIwQ/MD2AFE2X\n"
+                                        "AbNDryMlBpMNI6Ce927uUFwToRqkGDAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdIIJ\n"
+                                        "ANDUkH+UYdz1MA0GCSqGSIb3DQEBBQUAA4IBAQA3O3S9VT0EC1yG4xyNNUZ7+CzF\n"
+                                        "uFA6uiO38ygcN5Nz1oNPy2eQer7vYmrHtqN6gS/o1Ag5F8bLRCqeuZTsOG80O29H\n"
+                                        "kNhs5xYprdU82AqcaWwEd0kDrhC5rEvs6fj1J0NKmmhbovYxuDboj0a7If7HEqX0\n"
+                                        "NizyU3M3JONPZgadchZ+F5DosatF1Bpt/gsQRy383IogQ0/FS+juHCCc4VIUemuk\n"
+                                        "YY1J8o5XdrGWrPBBiudTWqCobe+N541b+YLWbajT5UKzvSqJmcqpPTniJGc9eZxc\n"
+                                        "z3cCNd3cKa9bK51stEnQSlA7PQXYs3K+TD3EmSn/G2x6Hmfr7lrpbIhEaD+y\n"
+                                        "-----END CERTIFICATE-----\n"
+                                        "-----BEGIN CERTIFICATE-----\n"
+                                        "MIIDATCCAemgAwIBAgIJANDUkH+UYdz1MA0GCSqGSIb3DQEBCwUAMBYxFDASBgNV\n"
+                                        "BAMMC3MyblRlc3RSb290MCAXDTE2MDMzMDE4NTYzOVoYDzIxMTYwMzA2MTg1NjM5\n"
+                                        "WjAWMRQwEgYDVQQDDAtzMm5UZXN0Um9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEP\n"
+                                        "ADCCAQoCggEBAMY5532000oaeed7Jmo3ssx1723ZDLpn3WGz6FxpWM0zsKA/YvdD\n"
+                                        "7J6qXDvfxU6dZlmsCS+bSNAqpARKmKsBEDPTsdLmrN1V1clOxvKm6GvU1eloRTw6\n"
+                                        "xukEUXJ+uxrQMLYvSJBiCBVGI+UYNCK5c6guNMRYBCGdk5/iayjmK0Nxz1918Cx9\n"
+                                        "z4va8HPAgYIz0ogOdYB21O9FQGPdH1mYqRzljcSsZ7EFo1P8HJr8oKK76ZeYi2or\n"
+                                        "pjzMHGnlufHaul508wQPeFAMa1Tku3HyGZRaieRAck6+QcO2NujXxKNyCBlWON23\n"
+                                        "FQTuBjN/CAl74MZtcAM2hVSmpm9t4cWVN5MCAwEAAaNQME4wHQYDVR0OBBYEFE2X\n"
+                                        "AbNDryMlBpMNI6Ce927uUFwTMB8GA1UdIwQYMBaAFE2XAbNDryMlBpMNI6Ce927u\n"
+                                        "UFwTMAwGA1UdEwQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAAXkVvQdXDmozPix\n"
+                                        "uZi1o9cw4Si0syqfJ4sSunrzPbbmw/Qxhth5V7XGrnsQVNxamgnbzpjGhiBF6isM\n"
+                                        "ldj33zQYtke+ojOjFlhEvrPo6eW29RkLBEtJadGs2bkMLztJbf+cbH2u6irzr6S4\n"
+                                        "3OgVOSuB+zG56ksTnEVmum+C/8tSIAyi3eaoStPcgEU8+3/KMrH7uuenmTOCKdD1\n"
+                                        "FvSDHXT9qPgTttVQGXbXzJEr5tGE+Py6yib5uoJ0dJZNtjs7HOQEDk5J0wZaX0DC\n"
+                                        "MShYLiN5qLJAk0qwl+js488BJ18M9dg4TxdBYFkwHSzKXSj9TJN77Bb0RZr8LL9T\n"
+                                        "r9IyvfUf=\n"
+                                        "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(invalid_data);
+    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));

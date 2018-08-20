@@ -174,6 +174,7 @@ end_of_loop:
 int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
                                   const struct aws_byte_buf *pem_buffer,
                                   struct aws_array_list *cert_chain_or_key) {
+    assert(aws_array_list_length(cert_chain_or_key) == 0);
     struct aws_array_list base_64_buffer_list;
 
     if (aws_array_list_init_dynamic(&base_64_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
