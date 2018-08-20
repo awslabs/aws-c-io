@@ -198,7 +198,7 @@ int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
         }
 
         struct aws_byte_buf decoded_buffer;
-        AWS_ZERO_STRUCT(decoded_buffer);
+
         if (aws_byte_buf_init(alloc, &decoded_buffer, decoded_len)) {
             goto cleanup_output_due_to_error;
         }
