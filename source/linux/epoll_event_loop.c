@@ -421,9 +421,8 @@ static void s_on_tasks_to_schedule(
 
         /* several tasks could theoretically have been written (though this should never happen), make sure we drain the
          * eventfd/pipe. */
-        while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1) {
-            continue;
-        }
+        while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1)
+            ;
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);

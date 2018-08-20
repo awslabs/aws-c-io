@@ -50,6 +50,10 @@ static int s_socket_handler_test_client_setup_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
     setup_test_args->channel = channel;
@@ -69,6 +73,10 @@ static int s_socket_handler_test_server_setup_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
     setup_test_args->channel = channel;
@@ -88,6 +96,11 @@ static int s_socket_handler_test_client_shutdown_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
     setup_test_args->shutdown_invoked = true;
@@ -100,6 +113,11 @@ static int s_socket_handler_test_server_shutdown_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
     setup_test_args->shutdown_invoked = true;
@@ -127,6 +145,10 @@ static struct aws_byte_buf s_socket_test_handle_read(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *data_read,
     void *user_data) {
+
+    (void)handler;
+    (void)slot;
+
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
 
     aws_mutex_lock(rw_args->mutex);
@@ -145,11 +167,19 @@ static struct aws_byte_buf s_socket_test_handle_write(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *data_read,
     void *user_data) {
+
+    (void)handler;
+    (void)slot;
+    (void)data_read;
+    (void)user_data;
+
     /*do nothing*/
     return (struct aws_byte_buf){0};
 }
 
-static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *user_data) {
+static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 
@@ -299,7 +329,9 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(socket_handler_echo_and_backpressure, s_socket_echo_and_backpressure_test)
 
-static int s_socket_close_test(struct aws_allocator *allocator, void *user_data) {
+static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 

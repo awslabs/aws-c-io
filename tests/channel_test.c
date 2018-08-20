@@ -336,8 +336,8 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
 
-    struct aws_channel_handler *handler_1 = rw_handler_new(
-        allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_1_args);
+    struct aws_channel_handler *handler_1 =
+        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_1_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
     struct channel_rw_test_args handler_2_args = {
@@ -350,12 +350,12 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
         .condition_variable = NULL,
     };
 
-    struct aws_channel_handler *handler_2 = rw_handler_new(
-        allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_2_args);
+    struct aws_channel_handler *handler_2 =
+        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_2_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_2, handler_2));
 
-    struct aws_channel_handler *handler_3 = rw_handler_new(
-        allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_3_args);
+    struct aws_channel_handler *handler_3 =
+        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_3_args);
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_3, handler_3));
 
     rw_handler_trigger_read(handler_1, slot_1);

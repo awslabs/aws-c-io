@@ -1,28 +1,31 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 
 #include <aws/io/host_resolver.h>
 
 #include <aws/common/string.h>
 
-#include <netdb.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 
-int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_string *host_name,
-                        struct aws_array_list *output_addresses, void *user_data) {
-                            
+int aws_default_dns_resolve(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    struct aws_array_list *output_addresses,
+    void *user_data) {
+
     (void)user_data;
     struct addrinfo *result = NULL;
     struct addrinfo *iter = NULL;
@@ -31,7 +34,7 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
     char address_buffer[max_len];
 
     size_t hostname_len = host_name->len;
-    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);    
+    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
 
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
@@ -62,16 +65,14 @@ int aws_default_dns_resolve(struct aws_allocator *allocator, const struct aws_st
 
         size_t address_len = strlen(address_buffer);
         const struct aws_string *address =
-                aws_string_new_from_array(allocator, (const uint8_t *)address_buffer,
-                                              address_len);
+            aws_string_new_from_array(allocator, (const uint8_t *)address_buffer, address_len);
 
         if (!address) {
             goto clean_up;
         }
 
         const struct aws_string *host_cpy =
-            aws_string_new_from_array(allocator, (const uint8_t *)hostname_cstr,
-                                          hostname_len);
+            aws_string_new_from_array(allocator, (const uint8_t *)hostname_cstr, hostname_len);
 
         if (!host_cpy) {
             aws_string_destroy((void *)address);

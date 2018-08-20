@@ -15,15 +15,13 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
-#include <aws/common/task_scheduler.h>
 #include <aws/common/system_info.h>
+#include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
 
 #include <aws/testing/aws_test_harness.h>
-
-
 
 struct task_args {
     int8_t invoked;
@@ -398,7 +396,7 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
 
 AWS_TEST_CASE(stop_then_restart, s_test_stop_then_restart)
 
-static int s_test_event_loop_group_setup_and_shutdown (struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
@@ -431,7 +429,7 @@ static int s_test_event_loop_group_setup_and_shutdown (struct aws_allocator *all
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, s_test_event_loop_group_setup_and_shutdown)
 
-static int s_test_event_loop_group_counter_overflow (struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_group_counter_overflow(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
@@ -443,9 +441,9 @@ static int s_test_event_loop_group_counter_overflow (struct aws_allocator *alloc
     /*this hurts my feelings to modify the internals of a struct to write a test, but it takes too long to
      * increment UINT32_MAX times. */
     event_loop_group.current_index = UINT32_MAX;
-    struct aws_event_loop *event_loop  = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
-    event_loop  = aws_event_loop_get_next_loop(&event_loop_group);
+    event_loop = aws_event_loop_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
     ASSERT_PTR_EQUALS(first_loop, event_loop);
 

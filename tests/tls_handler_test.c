@@ -56,6 +56,9 @@ static int s_tls_handler_test_client_setup_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     if (!error_code) {
@@ -81,6 +84,9 @@ static int s_tls_handler_test_server_setup_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     aws_mutex_lock(setup_test_args->mutex);
@@ -109,6 +115,11 @@ static int s_tls_handler_test_client_shutdown_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     aws_mutex_lock(setup_test_args->mutex);
@@ -124,6 +135,11 @@ static int s_tls_handler_test_server_shutdown_callback(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+    (void)channel;
+
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     aws_mutex_lock(setup_test_args->mutex);
@@ -138,6 +154,8 @@ static void s_tls_on_negotiated(
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data) {
+
+    (void)slot;
 
     if (!err_code) {
         struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
@@ -170,6 +188,10 @@ static struct aws_byte_buf s_tls_test_handle_read(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *data_read,
     void *user_data) {
+
+    (void)handler;
+    (void)slot;
+
     struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)user_data;
 
     memcpy(rw_args->received_message.buffer + rw_args->received_message.len, data_read->buffer, data_read->len);
@@ -186,11 +208,19 @@ static struct aws_byte_buf s_tls_test_handle_write(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *data_read,
     void *user_data) {
+
+    (void)handler;
+    (void)slot;
+    (void)data_read;
+    (void)user_data;
+
     /*do nothing*/
     return (struct aws_byte_buf){0};
 }
 
-static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *user_data) {
+static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 
