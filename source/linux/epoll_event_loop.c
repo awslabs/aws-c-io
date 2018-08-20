@@ -352,6 +352,8 @@ static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 }
 
 static void s_unsubscribe_cleanup_task(void *arg, enum aws_task_status status) {
+    (void)status;
+
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
@@ -407,6 +409,10 @@ static void s_on_tasks_to_schedule(
     struct aws_io_handle *handle,
     int events,
     void *user_data) {
+
+    (void)handle;
+    (void)user_data;
+
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         uint64_t count_ignore = 0;
@@ -415,9 +421,8 @@ static void s_on_tasks_to_schedule(
 
         /* several tasks could theoretically have been written (though this should never happen), make sure we drain the
          * eventfd/pipe. */
-        while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1) {
-            continue;
-        }
+        while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1)
+            ;
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);

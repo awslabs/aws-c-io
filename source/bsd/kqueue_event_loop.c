@@ -658,7 +658,7 @@ clean_up:
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
     assert(aws_thread_get_detach_state(&impl->thread) == AWS_THREAD_JOINABLE);
-    
+
     return aws_thread_current_thread_id() == aws_thread_get_id(&impl->thread);
 }
 
