@@ -21,6 +21,9 @@
 
 int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
                             struct aws_byte_buf *out_buf) {
+/* yeah yeah, I know and I don't care. */
+#define _CRT_SECURE_NO_DEPRECATE 1
+
     FILE *fp = fopen(filename, "r");
 
     if (fp) {
