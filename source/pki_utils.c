@@ -66,10 +66,10 @@ enum PEM_PARSE_STATE {
     ON_DATA,
 };
 
-void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
-    for (size_t i = 0; i < aws_array_list_length(buffer_list); ++i) {
+void aws_cert_chain_clean_up(struct aws_array_list *cert_chain) {
+    for (size_t i = 0; i < aws_array_list_length(cert_chain); ++i) {
         struct aws_byte_buf *decoded_buffer_ptr = NULL;
-        aws_array_list_get_at_ptr(buffer_list, (void **)&decoded_buffer_ptr, i);
+        aws_array_list_get_at_ptr(cert_chain, (void **)&decoded_buffer_ptr, i);
 
         if (decoded_buffer_ptr) {
             aws_secure_zero(decoded_buffer_ptr->buffer, decoded_buffer_ptr->len);
@@ -78,7 +78,7 @@ void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
     }
 
     /* remember, we don't own it so we don't free it, just undo whatever mutations we've done at this point. */
-    aws_array_list_clear(buffer_list);
+    aws_array_list_clear(cert_chain);
 }
 
 static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const struct aws_byte_buf *pem,
@@ -168,10 +168,9 @@ end_of_loop:
     if (state == BEGIN  && aws_array_list_length(cert_chain_or_key) > 0) {
         return AWS_OP_SUCCESS;
     }
-    else {
-        aws_cert_chain_clean_up(cert_chain_or_key);
-        return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-    }
+
+    aws_cert_chain_clean_up(cert_chain_or_key);
+    return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
 }
 
 int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
