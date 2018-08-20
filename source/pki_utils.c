@@ -16,13 +16,19 @@
 
 #include <aws/common/encoding.h>
 #include <stdio.h>
+#include <string.h>
+#include <ctype.h>
 
 int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
                             struct aws_byte_buf *out_buf) {
     FILE *fp = fopen(filename, "r");
 
     if (fp) {
-        fseek(fp, 0L, SEEK_END);
+        if (fseek(fp, 0L, SEEK_END)) {
+            fclose(fp);
+            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        }
+
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
          * but in this case that doesn't make sense since the user would have to know the length of the file.
          * We'll tell the user that we allocate here and if we succeed they free. */
@@ -31,7 +37,11 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
             return AWS_OP_ERR;
         }
 
-        fseek(fp, 0L, SEEK_SET);
+        if (fseek(fp, 0L, SEEK_SET)) {
+            aws_byte_buf_clean_up(out_buf);
+            fclose(fp);
+            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        }
 
         size_t read = fread(out_buf->buffer, 1, out_buf->capacity, fp);
         fclose(fp);
@@ -50,9 +60,7 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
 
 enum PEM_PARSE_STATE {
     BEGIN,
-    ON_HEADER,
     ON_DATA,
-    ON_END_OF_CERT,
 };
 
 void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
@@ -73,76 +81,94 @@ void aws_cert_chain_clean_up(struct aws_array_list *buffer_list) {
 static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const struct aws_byte_buf *pem,
                                        struct aws_array_list *cert_chain_or_key) {
     enum PEM_PARSE_STATE state = BEGIN;
-    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
 
-    size_t begin_offset = 0, end_offset = 0, current_location = 0, written = 0;
     struct aws_byte_buf current_cert;
     struct aws_byte_cursor current_cert_cursor;
     const char *begin_header = "-----BEGIN";
+    const char *end_header = "-----END";
     size_t begin_header_len = strlen(begin_header);
-    size_t advance = 1;
+    size_t end_header_len = strlen(end_header);
+    bool on_length_calc = true;
 
-    while (pem_cursor.ptr && current_location < pem->len) {
+    struct aws_array_list split_buffers;
+    if (aws_array_list_init_dynamic(&split_buffers, allocator, 16, sizeof(struct aws_byte_cursor))) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_byte_buf_split_on_char((struct aws_byte_buf *)pem, '\n', &split_buffers)) {
+        aws_array_list_clean_up(&split_buffers);
+        return AWS_OP_ERR;
+    }
+
+    size_t split_count = aws_array_list_length(&split_buffers);
+    size_t i = 0;
+    size_t index_of_current_cert_start = 0;
+    size_t current_cert_len = 0;
+
+    while (i < split_count) {
+        struct aws_byte_cursor *current_buf_ptr = NULL;
+        aws_array_list_get_at_ptr(&split_buffers, (void **)&current_buf_ptr, i);
+
+        /* burn off the padding in the buffer first. We'll only have to do this once per cert. */
+        while (current_buf_ptr->len
+               && isspace(*current_buf_ptr->ptr)) aws_byte_cursor_advance(current_buf_ptr, 1);
+
         switch (state) {
         case BEGIN:
-            if (pem->len - current_location > begin_header_len &&
-                !strncmp((const char *) pem_cursor.ptr, begin_header, begin_header_len)) {
-                state = ON_HEADER;
-                advance = begin_header_len;
-            }
-            break;
-        case ON_HEADER:
-            if (*pem_cursor.ptr == '\n') {
-                if (aws_byte_buf_init(allocator, &current_cert, pem->len - current_location)) {
-                    goto end_of_loop;
-                }
-
-                current_cert.len = current_cert.capacity;
-                current_cert_cursor = aws_byte_cursor_from_buf(&current_cert);
-                written = 0;
-                begin_offset = current_location + 1;
+            if (current_buf_ptr->len  > begin_header_len &&
+                !strncmp((const char *) current_buf_ptr->ptr, begin_header, begin_header_len)) {
                 state = ON_DATA;
+                index_of_current_cert_start = i + 1;
             }
+            ++i;
             break;
         case ON_DATA:
-            if (*pem_cursor.ptr == '\n' || *pem_cursor.ptr == ' ' || *pem_cursor.ptr == '\t') {
-                end_offset = current_location;
-                aws_byte_cursor_write(&current_cert_cursor, pem->buffer + begin_offset, end_offset - begin_offset);
-                written += end_offset - begin_offset;
-                begin_offset = current_location + 1;
-            } else if (*pem_cursor.ptr == '-') {
-                current_cert.len = written;
+            if (current_buf_ptr->len > end_header_len &&
+                !strncmp((const char *) current_buf_ptr->ptr, end_header, end_header_len)) {
+                if (on_length_calc) {
+                    on_length_calc = false;
+                    state = ON_DATA;
+                    i = index_of_current_cert_start;
 
-                if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
-                    aws_secure_zero(&current_cert.buffer, current_cert.len);
-                    aws_byte_buf_clean_up(&current_cert);
-                    goto end_of_loop;
+                    if (aws_byte_buf_init(allocator, &current_cert, current_cert_len)) {
+                        goto end_of_loop;
+                    }
+
+                    current_cert.len = current_cert.capacity;
+                    current_cert_cursor = aws_byte_cursor_from_buf(&current_cert);
+                } else {
+                    if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
+                        aws_secure_zero(&current_cert.buffer, current_cert.len);
+                        aws_byte_buf_clean_up(&current_cert);
+                        goto end_of_loop;
+                    }
+                    state = BEGIN;
+                    on_length_calc = true;
+                    current_cert_len = 0;
+                    ++i;
                 }
-
-                state = ON_END_OF_CERT;
-            }
-            break;
-        /* keep in mind, an entire chain of certs can be in a single PEM file. */
-        case ON_END_OF_CERT:
-            if (*pem_cursor.ptr == '\n') {
-                state = BEGIN;
+            } else {
+                if (!on_length_calc) {
+                    aws_byte_cursor_write(&current_cert_cursor, current_buf_ptr->ptr, current_buf_ptr->len);
+                } else {
+                    current_cert_len += current_buf_ptr->len;
+                }
+                ++i;
             }
             break;
         }
-        aws_byte_cursor_advance(&pem_cursor, advance);
-        current_location += advance;
-        advance = 1;
     }
 
 end_of_loop:
-    if ((state == BEGIN || state == ON_END_OF_CERT) && aws_array_list_length(cert_chain_or_key) > 0) {
+    aws_array_list_clean_up(&split_buffers);
+
+    if (state == BEGIN  && aws_array_list_length(cert_chain_or_key) > 0) {
         return AWS_OP_SUCCESS;
     }
     else {
         aws_cert_chain_clean_up(cert_chain_or_key);
         return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
     }
-
 }
 
 int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
