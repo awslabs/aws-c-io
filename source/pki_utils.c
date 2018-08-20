@@ -15,12 +15,11 @@
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/encoding.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 
-int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
-                            struct aws_byte_buf *out_buf) {
+int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf) {
 /* yeah yeah, I know and I don't care. */
 #ifdef _MSC_VER
 #    define _CRT_SECURE_NO_WARNINGS
@@ -37,7 +36,7 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
          * but in this case that doesn't make sense since the user would have to know the length of the file.
          * We'll tell the user that we allocate here and if we succeed they free. */
-        if (aws_byte_buf_init(alloc, out_buf, (size_t) ftell(fp))) {
+        if (aws_byte_buf_init(alloc, out_buf, (size_t)ftell(fp))) {
             fclose(fp);
             return AWS_OP_ERR;
         }
@@ -83,8 +82,10 @@ void aws_cert_chain_clean_up(struct aws_array_list *cert_chain) {
     aws_array_list_clear(cert_chain);
 }
 
-static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const struct aws_byte_buf *pem,
-                                       struct aws_array_list *cert_chain_or_key) {
+static int s_convert_pem_to_raw_base64(
+    struct aws_allocator *allocator,
+    const struct aws_byte_buf *pem,
+    struct aws_array_list *cert_chain_or_key) {
     enum PEM_PARSE_STATE state = BEGIN;
 
     struct aws_byte_buf current_cert;
@@ -115,59 +116,59 @@ static int s_convert_pem_to_raw_base64(struct aws_allocator *allocator, const st
         aws_array_list_get_at_ptr(&split_buffers, (void **)&current_buf_ptr, i);
 
         /* burn off the padding in the buffer first. We'll only have to do this once per cert. */
-        while (current_buf_ptr->len
-               && isspace(*current_buf_ptr->ptr)) aws_byte_cursor_advance(current_buf_ptr, 1);
+        while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr))
+            aws_byte_cursor_advance(current_buf_ptr, 1);
 
         switch (state) {
-        case BEGIN:
-            if (current_buf_ptr->len  > begin_header_len &&
-                !strncmp((const char *) current_buf_ptr->ptr, begin_header, begin_header_len)) {
-                state = ON_DATA;
-                index_of_current_cert_start = i + 1;
-            }
-            ++i;
-            break;
-        case ON_DATA:
-            if (current_buf_ptr->len > end_header_len &&
-                !strncmp((const char *) current_buf_ptr->ptr, end_header, end_header_len)) {
-                if (on_length_calc) {
-                    on_length_calc = false;
+            case BEGIN:
+                if (current_buf_ptr->len > begin_header_len &&
+                    !strncmp((const char *)current_buf_ptr->ptr, begin_header, begin_header_len)) {
                     state = ON_DATA;
-                    i = index_of_current_cert_start;
-
-                    if (aws_byte_buf_init(allocator, &current_cert, current_cert_len)) {
-                        goto end_of_loop;
-                    }
-
-                    current_cert.len = current_cert.capacity;
-                    current_cert_cursor = aws_byte_cursor_from_buf(&current_cert);
-                } else {
-                    if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
-                        aws_secure_zero(&current_cert.buffer, current_cert.len);
-                        aws_byte_buf_clean_up(&current_cert);
-                        goto end_of_loop;
-                    }
-                    state = BEGIN;
-                    on_length_calc = true;
-                    current_cert_len = 0;
-                    ++i;
-                }
-            } else {
-                if (!on_length_calc) {
-                    aws_byte_cursor_write(&current_cert_cursor, current_buf_ptr->ptr, current_buf_ptr->len);
-                } else {
-                    current_cert_len += current_buf_ptr->len;
+                    index_of_current_cert_start = i + 1;
                 }
                 ++i;
-            }
-            break;
+                break;
+            case ON_DATA:
+                if (current_buf_ptr->len > end_header_len &&
+                    !strncmp((const char *)current_buf_ptr->ptr, end_header, end_header_len)) {
+                    if (on_length_calc) {
+                        on_length_calc = false;
+                        state = ON_DATA;
+                        i = index_of_current_cert_start;
+
+                        if (aws_byte_buf_init(allocator, &current_cert, current_cert_len)) {
+                            goto end_of_loop;
+                        }
+
+                        current_cert.len = current_cert.capacity;
+                        current_cert_cursor = aws_byte_cursor_from_buf(&current_cert);
+                    } else {
+                        if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
+                            aws_secure_zero(&current_cert.buffer, current_cert.len);
+                            aws_byte_buf_clean_up(&current_cert);
+                            goto end_of_loop;
+                        }
+                        state = BEGIN;
+                        on_length_calc = true;
+                        current_cert_len = 0;
+                        ++i;
+                    }
+                } else {
+                    if (!on_length_calc) {
+                        aws_byte_cursor_write(&current_cert_cursor, current_buf_ptr->ptr, current_buf_ptr->len);
+                    } else {
+                        current_cert_len += current_buf_ptr->len;
+                    }
+                    ++i;
+                }
+                break;
         }
     }
 
 end_of_loop:
     aws_array_list_clean_up(&split_buffers);
 
-    if (state == BEGIN  && aws_array_list_length(cert_chain_or_key) > 0) {
+    if (state == BEGIN && aws_array_list_length(cert_chain_or_key) > 0) {
         return AWS_OP_SUCCESS;
     }
 
@@ -175,9 +176,10 @@ end_of_loop:
     return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
 }
 
-int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
-                                  const struct aws_byte_buf *pem_buffer,
-                                  struct aws_array_list *cert_chain_or_key) {
+int aws_decode_pem_to_buffer_list(
+    struct aws_allocator *alloc,
+    const struct aws_byte_buf *pem_buffer,
+    struct aws_array_list *cert_chain_or_key) {
     assert(aws_array_list_length(cert_chain_or_key) == 0);
     struct aws_array_list base_64_buffer_list;
 
@@ -227,7 +229,6 @@ cleanup_base64_buffer_list:
 
     return err_code;
 
-
 cleanup_output_due_to_error:
     aws_cert_chain_clean_up(&base_64_buffer_list);
     aws_array_list_clean_up(&base_64_buffer_list);
@@ -237,8 +238,10 @@ cleanup_output_due_to_error:
     return AWS_OP_ERR;
 }
 
-int aws_read_and_decode_pem_file_to_buffer_list(struct aws_allocator *alloc, const char *filename,
-                                           struct aws_array_list *cert_chain_or_key) {
+int aws_read_and_decode_pem_file_to_buffer_list(
+    struct aws_allocator *alloc,
+    const char *filename,
+    struct aws_array_list *cert_chain_or_key) {
     struct aws_byte_buf raw_file_buffer;
     AWS_ZERO_STRUCT(raw_file_buffer);
 
