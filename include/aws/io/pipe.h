@@ -16,8 +16,8 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/io/exports.h>
 #include <aws/common/common.h>
+#include <aws/io/exports.h>
 
 struct aws_io_handle;
 

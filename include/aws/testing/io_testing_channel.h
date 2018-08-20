@@ -15,28 +15,25 @@
  * permissions and limitations under the License.
  */
 #include <aws/common/task_scheduler.h>
-
-#include <aws/io/event_loop.h>
 #include <aws/io/channel.h>
-
-#include <aws/testing/aws_test_harness.h>
+#include <aws/io/event_loop.h>
 
 struct testing_loop {
     struct aws_task_scheduler scheduler;
     bool mock_on_callers_thread;
 };
 
-static int s_testing_loop_run (struct aws_event_loop *event_loop) {
+static int s_testing_loop_run(struct aws_event_loop *event_loop) {
     (void)event_loop;
     return AWS_OP_SUCCESS;
 }
 
-static int s_testing_loop_stop (struct aws_event_loop *event_loop) {
+static int s_testing_loop_stop(struct aws_event_loop *event_loop) {
     (void)event_loop;
     return AWS_OP_SUCCESS;
 }
 
-static int s_testing_loop_wait_for_stop_completion (struct aws_event_loop *event_loop) {
+static int s_testing_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     (void)event_loop;
     return AWS_OP_SUCCESS;
 }
@@ -46,8 +43,12 @@ static int s_testing_loop_schedule_task(struct aws_event_loop *event_loop, struc
     return aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at);
 }
 
-static int s_testing_loop_subscribe_to_io_events (struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
-                               aws_event_loop_on_event on_event, void *user_data) {
+static int s_testing_loop_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event on_event,
+    void *user_data) {
     (void)event_loop;
     (void)handle;
     (void)events;
@@ -103,8 +104,10 @@ struct testing_channel_handler {
     size_t latest_window_update;
 };
 
-static int s_testing_channel_handler_process_read_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                          struct aws_io_message *message) {
+static int s_testing_channel_handler_process_read_message(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
     (void)handler;
     (void)slot;
     (void)message;
@@ -113,8 +116,10 @@ static int s_testing_channel_handler_process_read_message(struct aws_channel_han
     return AWS_OP_ERR;
 }
 
-static int s_testing_channel_handler_process_write_message(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                                           struct aws_io_message *message) {
+static int s_testing_channel_handler_process_write_message(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
     (void)slot;
 
     struct testing_channel_handler *testing_handler = handler->impl;
@@ -122,8 +127,10 @@ static int s_testing_channel_handler_process_write_message(struct aws_channel_ha
     return AWS_OP_SUCCESS;
 }
 
-static int s_testing_channel_handler_increment_read_window(struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot, size_t size) {
+static int s_testing_channel_handler_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     (void)slot;
 
     struct testing_channel_handler *testing_handler = handler->impl;
@@ -131,8 +138,12 @@ static int s_testing_channel_handler_increment_read_window(struct aws_channel_ha
     return AWS_OP_SUCCESS;
 }
 
-static int s_testing_channel_handler_shutdown(struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir,
-                 int error_code, bool free_scarce_resources_immediately) {
+static int s_testing_channel_handler_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool free_scarce_resources_immediately) {
     if (dir == AWS_CHANNEL_DIR_READ) {
         return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
     }
@@ -150,18 +161,19 @@ static void s_testing_channel_handler_destroy(struct aws_channel_handler *handle
     aws_mem_release(handler->alloc, handler);
 }
 
-static struct aws_channel_handler_vtable  s_testing_channel_handler_vtable = {
-        .process_read_message = s_testing_channel_handler_process_read_message,
-        .process_write_message = s_testing_channel_handler_process_write_message,
-        .increment_read_window = s_testing_channel_handler_increment_read_window,
-        .shutdown = s_testing_channel_handler_shutdown,
-        .initial_window_size = s_testing_channel_handler_initial_window_size,
-        .destroy = s_testing_channel_handler_destroy,
+static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
+    .process_read_message = s_testing_channel_handler_process_read_message,
+    .process_write_message = s_testing_channel_handler_process_write_message,
+    .increment_read_window = s_testing_channel_handler_increment_read_window,
+    .shutdown = s_testing_channel_handler_shutdown,
+    .initial_window_size = s_testing_channel_handler_initial_window_size,
+    .destroy = s_testing_channel_handler_destroy,
 };
 
 static struct aws_channel_handler *s_new_testing_channel_handler(struct aws_allocator *allocator) {
     struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
-    struct testing_channel_handler *testing_handler = aws_mem_acquire(allocator, sizeof(struct testing_channel_handler));
+    struct testing_channel_handler *testing_handler =
+        aws_mem_acquire(allocator, sizeof(struct testing_channel_handler));
     aws_linked_list_init(&testing_handler->messages);
     testing_handler->latest_window_update = 0;
     handler->impl = testing_handler;
@@ -189,10 +201,10 @@ static struct aws_channel *new_testing_channel(struct aws_allocator *allocator) 
     struct aws_event_loop *test_event_loop = s_testing_loop_new(allocator, aws_high_res_clock_get_ticks);
 
     struct aws_channel_creation_callbacks callbacks = {
-            .on_setup_completed = s_testing_channel_on_setup_completed,
-            .on_shutdown_completed = s_testing_channel_on_shutdown_completed,
-            .setup_user_data = NULL,
-            .shutdown_user_data = NULL,
+        .on_setup_completed = s_testing_channel_on_setup_completed,
+        .on_shutdown_completed = s_testing_channel_on_shutdown_completed,
+        .setup_user_data = NULL,
+        .shutdown_user_data = NULL,
 
     };
 
@@ -228,7 +240,8 @@ static size_t testing_channel_last_window_update(struct aws_channel *test_channe
     return testing_handler->latest_window_update;
 }
 
-/** When you want to execute any tasks that were scheduled, call this, it will execute the tasks on the current thread. */
+/** When you want to execute any tasks that were scheduled, call this, it will execute the tasks on the current thread.
+ */
 static void testing_channel_execute_queued_tasks(struct aws_channel *test_channel) {
     struct testing_loop *testing_loop = test_channel->loop->impl_data;
     aws_task_scheduler_run_all(&testing_loop->scheduler, NULL);

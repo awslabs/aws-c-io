@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-io)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
+
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
         OFF)
