@@ -25,8 +25,7 @@ extern "C" {
  * It is your responsibility to call 'aws_byte_buf_clean_up()' on it. Otherwise, 'out_buf' remains
  * unused.
  */
-AWS_IO_API int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename,
-                                       struct aws_byte_buf *out_buf);
+AWS_IO_API int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf);
 
 /**
  * Cleans up and securely zeroes out the outputs of 'aws_decode_pem_to_buffer_list()'
@@ -40,9 +39,10 @@ AWS_IO_API void aws_cert_chain_clean_up(struct aws_array_list *cert_chain);
  * is 'struct aws_byte_buf' by value. This code is slow, and it allocates, so please try
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
-AWS_IO_API int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
-                                            const struct aws_byte_buf *pem_buffer,
-                                            struct aws_array_list *cert_chain_or_key);
+AWS_IO_API int aws_decode_pem_to_buffer_list(
+    struct aws_allocator *alloc,
+    const struct aws_byte_buf *pem_buffer,
+    struct aws_array_list *cert_chain_or_key);
 
 /**
  * Decodes a PEM file at 'filename' and adds the results to 'cert_chain_or_key' if successful.
@@ -50,9 +50,10 @@ AWS_IO_API int aws_decode_pem_to_buffer_list(struct aws_allocator *alloc,
  * is 'struct aws_byte_buf' by value. This code is slow, and it allocates, so please try
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
-AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(struct aws_allocator *alloc,
-                                                           const char *filename,
-                                                           struct aws_array_list *cert_chain_or_key);
+AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
+    struct aws_allocator *alloc,
+    const char *filename,
+    struct aws_array_list *cert_chain_or_key);
 
 #ifdef __cplusplus
 }
