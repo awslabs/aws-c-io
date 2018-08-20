@@ -46,8 +46,10 @@ bool aws_tls_is_alpn_available(void) {
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) { /* no op */
+    (void)alloc;
 }
 void aws_tls_clean_up_static_state(struct aws_allocator *alloc) { /* no op */
+    (void)alloc;
 }
 
 struct secure_transport_handler {
@@ -60,7 +62,7 @@ struct secure_transport_handler {
     char server_name_array[256];
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
-    aws_channel_on_message_write_completed latest_message_on_completion;
+    aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     bool negotiation_finished;
 };
@@ -178,6 +180,7 @@ static CFStringRef get_protocol(struct secure_transport_handler *handler) {
 
     return alpn_value;
 #else
+    (void)handler;
     return NULL;
 #endif
 }
@@ -186,6 +189,11 @@ static void set_protocols(
     struct secure_transport_handler *handler,
     struct aws_allocator *alloc,
     const char *alpn_list) {
+
+    (void)handler;
+    (void)alloc;
+    (void)alpn_list;
+
 #if ALPN_AVAILABLE
     struct aws_byte_buf alpn_data = aws_byte_buf_from_c_str(alpn_list);
     struct aws_array_list alpn_list_array;
@@ -466,7 +474,10 @@ static int secure_transport_handler_on_window_update(
             return AWS_OP_ERR;
         }
 
-        struct aws_task task = {.fn = run_read, .arg = handler};
+        struct aws_task task = {
+            .fn = run_read,
+            .arg = handler,
+        };
 
         return aws_channel_schedule_task(slot->channel, &task, now);
     }
@@ -475,6 +486,7 @@ static int secure_transport_handler_on_window_update(
 }
 
 static size_t secure_transport_handler_get_current_window_size(struct aws_channel_handler *handler) {
+    (void)handler;
     /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
      * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
      * with it large, and then take the downstream window when it notifies us.*/
@@ -602,6 +614,8 @@ static struct aws_channel_handler *tls_handler_new(
         // status = SSLSetTrustedRoots(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
         status = SSLSetCertificateAuthorities(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
     }
+
+    (void)status;
 
     aws_linked_list_init(&secure_transport_handler->input_queue);
     secure_transport_handler->parent_slot = slot;
@@ -738,9 +752,9 @@ static int convert_pem_to_raw_base64(uint8_t *pem, size_t len, uint8_t *output, 
 
     if (state == FINISHED) {
         return AWS_OP_SUCCESS;
-    } else {
-        return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
     }
+
+    return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
 }
 
 static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
@@ -793,14 +807,12 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
 
         OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+        (void)status;
         CFRelease(pkcs12_data);
         CFRelease(password);
         CFRelease(dictionary);
 
         CFTypeRef item = (CFTypeRef)CFArrayGetValueAtIndex(items, 0);
-        CFTypeID itemId = CFGetTypeID(item);
-        CFTypeID certTypeId = SecCertificateGetTypeID();
-        CFTypeID dictionaryId = CFDictionaryGetTypeID();
 
         CFTypeRef identity = (CFTypeRef)CFDictionaryGetValue((CFDictionaryRef)item, kSecImportItemIdentity);
         CFTypeRef certs[] = {identity};
@@ -815,6 +827,7 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         if (read_file_to_blob(alloc, options->ca_file, &cert_blob, &cert_len)) {
             goto cleanup_wrapped_allocator;
         }
+        assert(cert_len > 0);
 
         uint8_t raw_cert_base64_blob[cert_len];
         size_t cert_base64_len = 0;

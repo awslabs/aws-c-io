@@ -149,7 +149,7 @@ AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_sock
  * Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is
  * available. `read` is the amount of data read into `buffer`.
  */
-AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *read);
+AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
 
 /**
  * Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be
