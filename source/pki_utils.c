@@ -22,8 +22,8 @@
 int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf) {
 /* yeah yeah, I know and I don't care. */
 #ifdef _MSC_VER
-#    define _CRT_SECURE_NO_WARNINGS
-#endif
+#    pragma warning( disable : 4996 )
+#endif /* _MSC_VER */
 
     FILE *fp = fopen(filename, "r");
 
@@ -116,8 +116,9 @@ static int s_convert_pem_to_raw_base64(
         aws_array_list_get_at_ptr(&split_buffers, (void **)&current_buf_ptr, i);
 
         /* burn off the padding in the buffer first. We'll only have to do this once per cert. */
-        while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr))
+        while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr)) {
             aws_byte_cursor_advance(current_buf_ptr, 1);
+        }
 
         switch (state) {
             case BEGIN:
