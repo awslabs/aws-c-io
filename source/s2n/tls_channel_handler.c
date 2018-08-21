@@ -12,9 +12,10 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/tls_channel_handler.h>
 
 #include <aws/io/channel.h>
-#include <aws/io/tls_channel_handler.h>
+#include <aws/io/pki_utils.h>
 
 #include <aws/common/task_scheduler.h>
 
@@ -522,38 +523,6 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     aws_mem_release(ctx->alloc, ctx);
 }
 
-static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **blob, size_t *len) {
-    FILE *fp = fopen(filename, "r");
-
-    if (fp) {
-        fseek(fp, 0L, SEEK_END);
-        *len = (size_t)ftell(fp);
-
-        fseek(fp, 0L, SEEK_SET);
-        *blob = (uint8_t *)aws_mem_acquire(alloc, *len + 1);
-
-        if (!*blob) {
-            fclose(fp);
-            return AWS_OP_ERR;
-        }
-
-        memset(*blob, 0, *len + 1);
-
-        size_t read = fread(*blob, 1, *len, fp);
-        fclose(fp);
-        if (read < *len) {
-            aws_mem_release(alloc, *blob);
-            *blob = NULL;
-            *len = 0;
-            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-        }
-
-        return 0;
-    }
-
-    return aws_raise_error(AWS_IO_FILE_NOT_FOUND);
-}
-
 struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, s2n_mode mode) {
     struct aws_tls_ctx *ctx = (struct aws_tls_ctx *)aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
 
@@ -578,25 +547,26 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
     s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
 
     if (options->certificate_path && options->private_key_path) {
-        uint8_t *cert_blob = NULL;
-        size_t cert_len = 0;
 
-        if (read_file_to_blob(alloc, options->certificate_path, &cert_blob, &cert_len)) {
+        struct aws_byte_buf certificate_chain, private_key;
+
+        if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
             goto cleanup_s2n_config;
         }
 
-        uint8_t *key_blob = NULL;
-        size_t key_len = 0;
-        if (read_file_to_blob(alloc, options->private_key_path, &key_blob, &key_len)) {
-            aws_mem_release(alloc, cert_blob);
+        if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
+            aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
+            aws_byte_buf_clean_up(&certificate_chain);
             goto cleanup_s2n_config;
         }
 
-        int err_code =
-            s2n_config_add_cert_chain_and_key(s2n_ctx->s2n_config, (const char *)cert_blob, (const char *)key_blob);
+        int err_code = s2n_config_add_cert_chain_and_key(
+            s2n_ctx->s2n_config, (const char *)certificate_chain.buffer, (const char *)private_key.buffer);
 
-        aws_mem_release(alloc, cert_blob);
-        aws_mem_release(alloc, key_blob);
+        aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
+        aws_byte_buf_clean_up(&certificate_chain);
+        aws_secure_zero(private_key.buffer, private_key.len);
+        aws_byte_buf_clean_up(&private_key);
 
         if (err_code != S2N_ERR_T_OK) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);

@@ -1,6 +1,3 @@
-#ifndef READ_WRITE_TEST_HANDLER_C
-#define READ_WRITE_TEST_HANDLER_C
-
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
@@ -227,9 +224,8 @@ struct increment_read_window_task_args {
     struct aws_channel_slot *slot;
 };
 
-static void s_increment_read_window_task(void *arg, enum aws_task_status task_status) {
+void increment_read_window_task(void *arg, enum aws_task_status task_status) {
     (void)task_status;
-
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
     struct rw_test_handler_impl *handler_impl = increment_read_window_task_args->handler->impl;
 
@@ -257,7 +253,7 @@ void rw_handler_trigger_increment_read_window(
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
 
-        struct aws_task task = {.fn = s_increment_read_window_task, .arg = increment_read_window_task_args};
+        struct aws_task task = {.fn = increment_read_window_task, .arg = increment_read_window_task_args};
 
         uint64_t now = 0;
         aws_channel_current_clock_time(slot->channel, &now);
@@ -290,5 +286,3 @@ int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
     return aws_condition_variable_wait_pred(
         &handler_impl->condition_variable, &handler_impl->mutex, s_rw_test_handler_shutdown_predicate, handler_impl);
 }
-
-#endif /* READ_WRITE_TEST_HANDLER_C */

@@ -17,7 +17,6 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
-
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
 
@@ -396,7 +395,7 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
 
 AWS_TEST_CASE(stop_then_restart, s_test_stop_then_restart)
 
-static int s_test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
+static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
@@ -427,9 +426,9 @@ static int s_test_event_loop_group_setup_and_shutdown(struct aws_allocator *allo
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(event_loop_group_setup_and_shutdown, s_test_event_loop_group_setup_and_shutdown)
+AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
-static int s_test_event_loop_group_counter_overflow(struct aws_allocator *allocator, void *ctx) {
+static int test_event_loop_group_counter_overflow(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
@@ -452,4 +451,4 @@ static int s_test_event_loop_group_counter_overflow(struct aws_allocator *alloca
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(event_loop_group_counter_overflow, s_test_event_loop_group_counter_overflow)
+AWS_TEST_CASE(event_loop_group_counter_overflow, test_event_loop_group_counter_overflow)

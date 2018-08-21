@@ -221,6 +221,7 @@ static struct aws_byte_buf s_tls_test_handle_write(
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
+    aws_tls_init_static_state(allocator);
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
 
@@ -467,6 +468,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     aws_tls_ctx_destroy(server_ctx);
 
     aws_event_loop_group_clean_up(&el_group);
+    aws_tls_clean_up_static_state(allocator);
 
     return AWS_OP_SUCCESS;
 }

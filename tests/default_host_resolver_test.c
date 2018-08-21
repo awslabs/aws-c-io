@@ -21,8 +21,6 @@
 
 #include "mock_dns_resolver.h"
 
-#include <mock_dns_resolver.h>
-
 static const uint64_t FORCE_RESOLVE_SLEEP_TIME = 1500000000;
 
 struct default_host_callback_data {

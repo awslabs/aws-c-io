@@ -49,8 +49,8 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE,
         "An ALPN message was received but a handler was not created by the user"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_FILE_NOT_FOUND,
-        "Unable to open file"),
+        AWS_IO_FILE_INVALID_PATH,
+        "Invalid file path."),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_FILE_VALIDATION_FAILURE,
         "A file was read and the input did not match the expected value"),

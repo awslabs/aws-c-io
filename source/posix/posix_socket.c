@@ -229,7 +229,7 @@ static int determine_socket_error(int error) {
         case ENFILE:
             return AWS_IO_MAX_FDS_EXCEEDED;
         case ENOENT:
-            return AWS_IO_FILE_NOT_FOUND;
+            return AWS_IO_FILE_INVALID_PATH;
         case 0:
             return AWS_IO_SOCKET_NOT_CONNECTED;
         default:

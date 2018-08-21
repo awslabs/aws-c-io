@@ -22,39 +22,32 @@ add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
 #DISABLED DUE TO HANG ON WINDOWS add_test_case(channel_message_passing)
-
-add_test_case(local_socket_communication)
-add_test_case(tcp_socket_communication)
-add_test_case(udp_socket_communication)
-add_test_case(connect_timeout)
-add_test_case(outgoing_local_sock_errors)
-add_test_case(incoming_local_sock_errors)
-add_test_case(outgoing_tcp_sock_error)
-add_test_case(incoming_tcp_sock_errors)
-add_test_case(incoming_udp_sock_errors)
-add_test_case(non_connected_read_write_fails)
-
-add_test_case(channel_setup)
-add_test_case(channel_single_slot_cleans_up)
-add_test_case(channel_slots_clean_up)
-add_test_case(channel_message_passing)
-
-add_test_case(socket_handler_echo_and_backpressure)
-add_test_case(socket_handler_close)
-
-#add_test_case(tls_channel_echo_and_backpressure_test)
-#add_test_case(tls_channel_negotiation_error)
-
-add_test_case(alpn_successfully_negotiates)
-add_test_case(alpn_no_protocol_message)
-add_test_case(alpn_error_creating_handler)
-
 add_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_default_with_ipv4_only_lookup)
 add_test_case(test_default_with_multiple_lookups)
 add_test_case(test_resolver_ttls)
 add_test_case(test_resolver_connect_failure_recording)
 add_test_case(test_resolver_ttl_refreshes_on_resolve)
+
+add_test_case(test_pem_single_cert_parse)
+add_test_case(test_pem_private_key_parse)
+add_test_case(test_pem_cert_chain_parse)
+add_test_case(test_pem_cert_parse_from_file)
+add_test_case(test_pem_private_key_parse_from_file)
+add_test_case(test_pem_cert_chain_comments_and_whitespace)
+add_test_case(test_pem_invalid_parse)
+add_test_case(test_pem_valid_data_invalid_parse)
+add_test_case(test_pem_invalid_in_chain_parse)
+
+add_test_case(socket_handler_echo_and_backpressure)
+add_test_case(socket_handler_close)
+
+add_test_case(tls_channel_echo_and_backpressure_test)
+#add_test_case(tls_channel_negotiation_error)
+
+add_test_case(alpn_successfully_negotiates)
+add_test_case(alpn_no_protocol_message)
+add_test_case(alpn_error_creating_handler)
 
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
@@ -63,3 +56,5 @@ generate_test_driver(${TEST_BINARY_NAME})
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
+
+

@@ -365,8 +365,8 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
 
     ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint));
-    ASSERT_TRUE(aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_IO_FILE_NOT_FOUND);
-    ASSERT_TRUE(args.error_code == AWS_IO_SOCKET_CONNECTION_REFUSED || args.error_code == AWS_IO_FILE_NOT_FOUND);
+    ASSERT_TRUE(aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_IO_FILE_INVALID_PATH);
+    ASSERT_TRUE(args.error_code == AWS_IO_SOCKET_CONNECTION_REFUSED || args.error_code == AWS_IO_FILE_INVALID_PATH);
 
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);

@@ -35,18 +35,22 @@ struct aws_channel_handler *rw_handler_new(
     size_t window,
     void *ctx);
 
+enum aws_task_status;
+
 void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer);
 
 void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot);
+
+bool rw_handler_shutdown_called(struct aws_channel_handler *handler);
+
+bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler);
 
 void rw_handler_trigger_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t window_update);
 
-bool rw_handler_shutdown_called(struct aws_channel_handler *handler);
-
-bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler);
+void increment_read_window_task(void *arg, enum aws_task_status task_status);
 
 int rw_handler_last_error_code(struct aws_channel_handler *handler);
 
