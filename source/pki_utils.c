@@ -53,13 +53,20 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return s_translate_and_raise_file_open_error(errno);
         }
 
+        size_t allocation_size = (size_t)ftell(fp) + 1;
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
          * but in this case that doesn't make sense since the user would have to know the length of the file.
          * We'll tell the user that we allocate here and if we succeed they free. */
-        if (aws_byte_buf_init(alloc, out_buf, (size_t)ftell(fp) + 1)) {
+        if (aws_byte_buf_init(alloc, out_buf, allocation_size)) {
             fclose(fp);
             return AWS_OP_ERR;
         }
+
+        /* while WE ban null terminator APIs, unfortunately much of the world is still stuck in the dark ages of
+         * 1970 and we unfortunately have to call into their code on occasion.
+         * Go ahead and add one here, but don't make it part of the length. */
+        out_buf->len = out_buf->capacity - 1;
+        out_buf->buffer[out_buf->len] = 0;
 
         if (fseek(fp, 0L, SEEK_SET)) {
             aws_byte_buf_clean_up(out_buf);
@@ -67,9 +74,6 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return s_translate_and_raise_file_open_error(errno);
         }
 
-        /* add a null character here for apis that expect a string, but don't include it in the length. */
-        out_buf->len = out_buf->capacity - 1;
-        out_buf->buffer[out_buf->len] = 0;
         size_t read = fread(out_buf->buffer, 1, out_buf->len, fp);
         fclose(fp);
         if (read < out_buf->len) {
@@ -77,9 +81,8 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             aws_byte_buf_clean_up(out_buf);
             return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         }
-        out_buf->len = read;
 
-        return 0;
+        return AWS_OP_SUCCESS;
     }
 
     return s_translate_and_raise_file_open_error(errno);
