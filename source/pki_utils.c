@@ -16,8 +16,27 @@
 
 #include <aws/common/encoding.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
+
+static int s_translate_and_raise_file_open_error(int error_no) {
+    switch (error_no) {
+        case EPERM:
+        case EACCES:
+            return aws_raise_error(AWS_IO_NO_PERMISSION);
+        case EISDIR:
+        case ENAMETOOLONG:
+        case ENOENT:
+            return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        case ENFILE:
+            return aws_raise_error(AWS_IO_MAX_FDS_EXCEEDED);
+        case ENOMEM:
+            return aws_raise_error(AWS_ERROR_OOM);
+        default:
+            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    }
+}
 
 int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf) {
 /* yeah yeah, I know and I don't care. */
@@ -30,7 +49,7 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, s
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
             fclose(fp);
-            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            return s_translate_and_raise_file_open_error(errno);
         }
 
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
@@ -44,7 +63,7 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, s
         if (fseek(fp, 0L, SEEK_SET)) {
             aws_byte_buf_clean_up(out_buf);
             fclose(fp);
-            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            return s_translate_and_raise_file_open_error(errno);
         }
 
         size_t read = fread(out_buf->buffer, 1, out_buf->capacity, fp);
@@ -59,7 +78,7 @@ int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, s
         return 0;
     }
 
-    return aws_raise_error(AWS_IO_FILE_NOT_FOUND);
+    return s_translate_and_raise_file_open_error(errno);
 }
 
 enum PEM_PARSE_STATE {
