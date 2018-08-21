@@ -22,7 +22,7 @@
 int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf) {
 /* yeah yeah, I know and I don't care. */
 #ifdef _MSC_VER
-#    pragma warning( disable : 4996 )
+#    pragma warning(disable : 4996)
 #endif /* _MSC_VER */
 
     FILE *fp = fopen(filename, "r");
