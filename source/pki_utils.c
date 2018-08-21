@@ -38,11 +38,11 @@ static int s_translate_and_raise_file_open_error(int error_no) {
     }
 }
 
-int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf) {
+int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocator *alloc, const char *filename) {
 /* yeah yeah, I know and I don't care. */
 #ifdef _MSC_VER
-#    pragma warning(disable : 4996)
-#endif /* _MSC_VER */
+#    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
+#endif                              /* _MSC_VER */
 
     FILE *fp = fopen(filename, "r");
 
@@ -134,7 +134,8 @@ static int s_convert_pem_to_raw_base64(
         struct aws_byte_cursor *current_buf_ptr = NULL;
         aws_array_list_get_at_ptr(&split_buffers, (void **)&current_buf_ptr, i);
 
-        /* burn off the padding in the buffer first. We'll only have to do this once per cert. */
+        /* burn off the padding in the buffer first.
+         * Worst case we'll only have to do this once per line in the buffer. */
         while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr)) {
             aws_byte_cursor_advance(current_buf_ptr, 1);
         }
@@ -148,7 +149,10 @@ static int s_convert_pem_to_raw_base64(
                 }
                 ++i;
                 break;
+            /* this loops through the lines containing data twice. First to figure out the length, a second
+             * time to actually copy the data. */
             case ON_DATA:
+                /* Found end tag. */
                 if (current_buf_ptr->len > end_header_len &&
                     !strncmp((const char *)current_buf_ptr->ptr, end_header, end_header_len)) {
                     if (on_length_calc) {
@@ -173,6 +177,7 @@ static int s_convert_pem_to_raw_base64(
                         current_cert_len = 0;
                         ++i;
                     }
+                    /* actually on a line with data in it. */
                 } else {
                     if (!on_length_calc) {
                         aws_byte_cursor_write(&current_cert_cursor, current_buf_ptr->ptr, current_buf_ptr->len);
@@ -263,9 +268,8 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     const char *filename,
     struct aws_array_list *cert_chain_or_key) {
     struct aws_byte_buf raw_file_buffer;
-    AWS_ZERO_STRUCT(raw_file_buffer);
 
-    if (aws_read_file_to_buffer(alloc, filename, &raw_file_buffer)) {
+    if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
         return AWS_OP_ERR;
     }
 

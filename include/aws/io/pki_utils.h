@@ -25,7 +25,10 @@ extern "C" {
  * It is your responsibility to call 'aws_byte_buf_clean_up()' on it. Otherwise, 'out_buf' remains
  * unused.
  */
-AWS_IO_API int aws_read_file_to_buffer(struct aws_allocator *alloc, const char *filename, struct aws_byte_buf *out_buf);
+AWS_IO_API int aws_byte_buf_init_from_file(
+    struct aws_byte_buf *out_buf,
+    struct aws_allocator *alloc,
+    const char *filename);
 
 /**
  * Cleans up and securely zeroes out the outputs of 'aws_decode_pem_to_buffer_list()'
