@@ -53,7 +53,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return s_translate_and_raise_file_open_error(errno);
         }
 
-        size_t allocation_size = (size_t)ftell(fp);
+        size_t allocation_size = (size_t)ftell(fp) + 1;
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
          * but in this case that doesn't make sense since the user would have to know the length of the file.
          * We'll tell the user that we allocate here and if we succeed they free. */
@@ -82,7 +82,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         }
 
-        return 0;
+        return AWS_OP_SUCCESS;
     }
 
     return s_translate_and_raise_file_open_error(errno);
