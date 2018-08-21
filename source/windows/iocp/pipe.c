@@ -177,7 +177,8 @@ int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
         timestamp.HighPart,
         timestamp.LowPart);
 
-    if (dst_size < (ideal_strlen + 1)) {
+    assert(ideal_strlen > 0);
+    if (dst_size < (size_t)(ideal_strlen + 1)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
 
@@ -365,8 +366,8 @@ int aws_pipe_clean_up_read_end(
         task.arg = read_end;
 
         uint64_t time_now;
-        read_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
-        aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); // TODO: wtf if this fails
+        read_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
+        aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
     }
 
     return AWS_OP_SUCCESS;
@@ -466,8 +467,8 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
     task.arg = read_end;
 
     uint64_t time_now;
-    read_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
-    aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); // TODO: wtf to do if this fails
+    read_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
+    aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
 }
 
 /* Common functionality that needs to run after completion of any async task on the read-end */
@@ -572,7 +573,7 @@ int aws_pipe_subscribe_to_read_events(
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
     read_impl->state = READ_END_STATE_SUBSCRIBING;
@@ -593,7 +594,7 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
-        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
     read_impl->state = READ_END_STATE_OPEN;
@@ -728,8 +729,8 @@ int aws_pipe_clean_up_write_end(
         task.arg = write_end;
 
         uint64_t time_now;
-        write_impl->event_loop->clock(&time_now);                              // TODO: wtf if this fails
-        aws_event_loop_schedule_task(write_impl->event_loop, &task, time_now); // TODO: wtf if this fails
+        write_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
+        aws_event_loop_schedule_task(write_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
     }
 
     return AWS_OP_SUCCESS;
@@ -774,11 +775,11 @@ int aws_pipe_write(
     }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
-        return AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY;
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
     if (src_size > MAXDWORD) {
-        return AWS_ERROR_INVALID_BUFFER_SIZE;
+        return aws_raise_error(AWS_ERROR_INVALID_BUFFER_SIZE);
     }
     DWORD num_bytes_to_write = (DWORD)src_size;
 
