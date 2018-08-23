@@ -484,7 +484,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
     if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
         slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_user_data);
+        slot->channel->on_shutdown_completed(slot->channel, err_code, slot->channel->shutdown_user_data);
     }
 
     return AWS_OP_SUCCESS;

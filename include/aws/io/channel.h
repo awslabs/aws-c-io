@@ -31,7 +31,8 @@ struct aws_message_pool;
 
 typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
-typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, void *user_data);
+/* Callback called when a channel is completely shutdown. error_code refers to the reason the channel was closed. */
+typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
 enum aws_channel_state {
     AWS_CHANNEL_SETTING_UP,
