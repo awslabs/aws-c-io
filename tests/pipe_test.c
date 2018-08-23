@@ -619,7 +619,6 @@ static void s_readable_event_write_once_then_subscribe_task(void *arg, enum aws_
         return;
     }
 
-
     /* schedule task for read-end to subscribe */
     struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
 
@@ -822,7 +821,170 @@ AWS_TEST_CASE(
     pipe_readable_event_sent_on_resubscribe_if_data_present,
     test_pipe_readable_event_sent_on_resubscribe_if_data_present);
 
-// pipe_readable_event_sent_again_after_all_data_read
+static void s_readall_on_write_complete(
+    struct aws_pipe_write_end *write_end,
+    int write_result,
+    size_t num_bytes_written,
+    void *user_data) {
+
+    struct pipe_state *state = user_data;
+    struct readable_event_data *data = state->test_data;
+    int err = 0;
+
+    if (write_result) {
+        err = write_result;
+        goto error;
+    }
+
+    bool is_2nd_write = (data->buffers.num_bytes_written > 0);
+
+    data->buffers.num_bytes_written += num_bytes_written;
+
+    /* Clean up after 2nd write */
+    if (is_2nd_write) {
+        err = aws_pipe_clean_up_write_end(write_end, s_pipe_state_on_write_end_closed, state);
+        if (err) {
+            goto error;
+        }
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state, err);
+}
+
+static void s_readall_write_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    struct readable_event_data *data = state->test_data;
+    struct buffers_to_copy *buffers = &data->buffers;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        s_pipe_state_signal_error(state, status);
+        return;
+    }
+
+    int err = aws_pipe_write(&state->write_end, buffers->src, buffers->size, s_readall_on_write_complete, state);
+    if (err) {
+        s_pipe_state_signal_error(state, err);
+    }
+}
+
+static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events, void *user_data) {
+    struct pipe_state *state = user_data;
+    struct readable_event_data *data = state->test_data;
+    int err = 0;
+
+    /* invoke usual readable callback so the events are logged */
+    s_on_readable_event(read_end, events, user_data);
+    if (state->results.status_code) {
+        return;
+    }
+
+    if (data->event_count == 1) {
+
+        /* After the first write, read data until we're told that further reads would block.
+         * This ensures that the next write is sure to trigger a readable event */
+        while (true) {
+            size_t num_bytes_read = 0;
+            err = aws_pipe_read(read_end, data->buffers.dst, data->buffers.size, &num_bytes_read);
+            data->buffers.num_bytes_read += num_bytes_read;
+
+            if (err) {
+                if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+                    break;
+                } else {
+                    goto error;
+                }
+            }
+        }
+
+        /* Sanity check that we did in fact read something */
+        if (data->buffers.num_bytes_read == 0) {
+            err = -1;
+            goto error;
+        }
+
+        /* Schedule the 2nd write */
+        struct aws_task task;
+        task.fn = s_readall_write_task;
+        task.arg = state;
+
+        struct aws_event_loop *write_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
+
+        uint64_t now;
+        err = aws_event_loop_current_ticks(write_loop, &now);
+        if (err) {
+            goto error;
+        }
+
+        err = aws_event_loop_schedule_task(write_loop, &task, now);
+        if (err) {
+            goto error;
+        }
+
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state, err);
+}
+
+static void s_readall_subscribe_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    int err = 0;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        err = status;
+        goto error;
+    }
+
+    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_readall_on_readable, state);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state, status);
+}
+
+/* Check that the 2nd readable event is sent again in the case of: write 1, read all, write 2 */
+static int test_pipe_readable_event_sent_again_after_all_data_read(struct aws_allocator *allocator, void *arg) {
+    (void)arg;
+
+    /* Init pipe state */
+    struct pipe_state state;
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+
+    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
+    uint8_t dst_array[4] = {0};
+
+    struct readable_event_data data;
+
+    AWS_ZERO_STRUCT(data);
+    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
+    data.close_after_n_events = 2;
+
+    data.buffers.src = src_array;
+    data.buffers.dst = dst_array;
+    data.buffers.size = sizeof(src_array);
+
+    state.test_data = &data;
+
+    /* Run test on event thread */
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_readall_subscribe_task, s_readall_write_task));
+
+    /* Check results */
+    ASSERT_INT_EQUALS(2, data.event_count);
+
+    /* Clean up */
+    s_pipe_state_clean_up(&state);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    pipe_readable_event_sent_again_after_all_data_read,
+    test_pipe_readable_event_sent_again_after_all_data_read);
 // pipe_readable_event_not_sent_again_until_all_data_read
 // pipe_closed_event_sent_after_write_end_cleaned_up
 // pipe_clean_up_cancels_pending_writes
