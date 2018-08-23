@@ -90,9 +90,10 @@ static bool s_alpn_test_shutdown_predicate(void *arg) {
     return test_args->shutdown_finished;
 }
 
-static void s_on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
 
     (void)channel;
+    (void)error_code;
 
     struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)user_data;
 

@@ -229,10 +229,10 @@ error:
     aws_mem_release(connection_args->bootstrap->allocator, connection_args);
 }
 
-static void on_client_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+static void on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
 
-    connection_args->shutdown_callback(connection_args->bootstrap, AWS_OP_SUCCESS, channel, connection_args->user_data);
+    connection_args->shutdown_callback(connection_args->bootstrap, error_code, channel, connection_args->user_data);
     aws_channel_clean_up(channel);
     aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
 }
@@ -566,7 +566,8 @@ error:
     aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
 }
 
-static void s_on_server_channel_on_shutdown(struct aws_channel *channel, void *user_data) {
+static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
+
     struct server_channel_data *channel_data = (struct server_channel_data *)user_data;
 
     void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
@@ -574,7 +575,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, void *u
     struct aws_allocator *allocator = server_bootstrap->allocator;
 
     channel_data->server_connection_args->shutdown_callback(
-        server_bootstrap, AWS_OP_SUCCESS, channel, server_shutdown_user_data);
+        server_bootstrap, error_code, channel, server_shutdown_user_data);
     aws_channel_clean_up(channel);
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, (void *)channel_data->socket);
