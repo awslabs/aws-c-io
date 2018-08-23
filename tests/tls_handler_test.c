@@ -267,8 +267,13 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         .ca_file = NULL,
 #ifdef __APPLE__
         .pkcs12_path = "./unittests.p12",
-        .pkcs12_password = "Reformed",
+        .pkcs12_password = "1234",
+        .private_key_path = NULL,
+        .certificate_path = NULL,
+
 #else
+        .pkcs12_path = NULL,
+        .pkcs12_password = NULL,
         .private_key_path = "./unittests.key",
         .certificate_path = "./unittests.crt",
 #endif
@@ -295,11 +300,14 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         .ca_path = NULL,
         .ca_file = "./unittests.crt",
         .minimum_tls_version = AWS_IO_TLSv1_1,
-#ifdef __APPLE__
-        .verify_peer = false,
-        .pkcs12_path = NULL,
-#else
         .verify_peer = true,
+
+#ifdef __APPLE__
+        .pkcs12_path = NULL,
+        .private_key_path = NULL,
+        .certificate_path = NULL,
+#else
+        .pkcs12_path = NULL,
         .private_key_path = NULL,
         .certificate_path = NULL,
 #endif

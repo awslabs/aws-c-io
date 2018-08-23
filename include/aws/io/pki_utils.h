@@ -59,6 +59,23 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
     const char *filename,
     struct aws_array_list *cert_chain_or_key);
 
+#ifdef __MACH__
+#include <CoreFoundation/CoreFoundation.h>
+
+int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, CFAllocatorRef cf_alloc,
+                                                   struct aws_byte_buf* public_cert_chain, struct aws_byte_buf* private_key, CFArrayRef *identity);
+
+int aws_import_pkcs12_to_identity(CFAllocatorRef cf_alloc, struct aws_byte_buf* pkcs12_buffer, struct aws_byte_buf* password, CFArrayRef *identity);
+
+int aws_import_trusted_certificates(struct aws_allocator *alloc, CFAllocatorRef cf_alloc, struct aws_byte_buf *certificates_blob, CFArrayRef *certs);
+
+void aws_release_identity(CFArrayRef identity);
+
+void aws_release_certificates(CFArrayRef certs);
+
+
+#endif /* __MACH__ */
+
 #ifdef __cplusplus
 }
 #endif

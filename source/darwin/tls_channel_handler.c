@@ -21,6 +21,7 @@
 #include <Security/SecCertificate.h>
 #include <Security/SecureTransport.h>
 #include <Security/Security.h>
+#include <aws/io/pki_utils.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
@@ -64,7 +65,9 @@ struct secure_transport_handler {
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
+    CFArrayRef ca_certs;
     bool negotiation_finished;
+    bool verify_peer;
 };
 
 static OSStatus aws_tls_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -236,11 +239,24 @@ static void set_protocols(
 #endif
 }
 
+static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
+    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+
+    if (secure_transport_handler->options.on_negotiation_result) {
+        secure_transport_handler->options.on_negotiation_result(
+                handler,
+                secure_transport_handler->parent_slot,
+                err_code,
+                secure_transport_handler->options.user_data);
+    }
+}
+
 static int drive_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
 
+    /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
         secure_transport_handler->negotiation_finished = true;
         size_t name_len = 0;
@@ -287,26 +303,52 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             }
         }
 
-        if (secure_transport_handler->options.on_negotiation_result) {
-            secure_transport_handler->options.on_negotiation_result(
-                handler,
-                secure_transport_handler->parent_slot,
-                AWS_OP_SUCCESS,
-                secure_transport_handler->options.user_data);
+        s_invoke_negotiation_callback(handler, AWS_OP_SUCCESS);
+
+    /* this branch gets hit only when verification is disabled,
+     * or a custom CA bundle is being used. */
+    } else if (status == errSSLPeerAuthCompleted) {
+
+        if (secure_transport_handler->verify_peer) {
+            if (!secure_transport_handler->ca_certs) {
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            SecTrustRef trust;
+            status = SSLCopyPeerTrust(secure_transport_handler->ctx, &trust);
+
+            if (status != errSecSuccess) {
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
+
+            if (status != errSecSuccess) {
+                CFRelease(trust);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            SecTrustResultType trust_eval = 0;
+            status = SecTrustEvaluate(trust, &trust_eval);
+            CFRelease(trust);
+
+            if (status == errSecSuccess && (trust_eval == kSecTrustResultProceed || trust_eval == kSecTrustResultUnspecified)) {
+                return drive_negotiation(handler);
+            }
+
+            return AWS_OP_ERR;
         }
-    } else if (status != errSSLWouldBlock && status != errSSLPeerAuthCompleted) {
+        return AWS_OP_SUCCESS;
+    /* if this is here, everything went wrong. */
+    } else if (status != errSSLWouldBlock) {
         secure_transport_handler->negotiation_finished = false;
 
         aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
-        if (secure_transport_handler->options.on_negotiation_result) {
-            secure_transport_handler->options.on_negotiation_result(
-                handler,
-                secure_transport_handler->parent_slot,
-                AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
-                secure_transport_handler->options.user_data);
-        }
-
+        s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         return AWS_OP_ERR;
     }
 
@@ -518,7 +560,7 @@ struct secure_transport_ctx {
     struct aws_allocator *allocator;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
-    SecCertificateRef ca_cert;
+    CFArrayRef ca_cert;
     aws_tls_versions minimum_version;
     const char *server_name;
     const char *alpn_list;
@@ -597,22 +639,25 @@ static struct aws_channel_handler *tls_handler_new(
     }
 
     OSStatus status = noErr;
+    secure_transport_handler->verify_peer = secure_transport_ctx->veriify_peer;
 
-    if (!secure_transport_ctx->veriify_peer) {
-        SSLSetAllowsAnyRoot(secure_transport_handler->ctx, true);
-    }
-
-    if (!options->verify_peer) {
-        status = SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnClientAuth, true);
+    if (!secure_transport_ctx->veriify_peer && protocol_side == kSSLClientSide) {
+        SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
     if (secure_transport_ctx->certs) {
         status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
     }
 
-    if (secure_transport_ctx->ca_cert && protocol_side == kSSLServerSide) {
-        // status = SSLSetTrustedRoots(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
-        status = SSLSetCertificateAuthorities(secure_transport_handler->ctx, secure_transport_ctx->ca_cert, true);
+    secure_transport_handler->ca_certs = NULL;
+    if (secure_transport_ctx->ca_cert) {
+        secure_transport_handler->ca_certs = secure_transport_ctx->ca_cert;
+        if (protocol_side == kSSLServerSide && secure_transport_ctx->veriify_peer) {
+            SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnClientAuth, true);
+        }
+        else if (secure_transport_ctx->veriify_peer) {
+            SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
+        }
     }
 
     (void)status;
@@ -680,83 +725,6 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return tls_handler_new(allocator, ctx, options, slot, kSSLServerSide);
 }
 
-static int read_file_to_blob(struct aws_allocator *alloc, const char *filename, uint8_t **blob, size_t *len) {
-    FILE *fp = fopen(filename, "r");
-
-    if (fp) {
-        fseek(fp, 0L, SEEK_END);
-        *len = (size_t)ftell(fp);
-
-        fseek(fp, 0L, SEEK_SET);
-        *blob = (uint8_t *)aws_mem_acquire(alloc, *len + 1);
-
-        if (!*blob) {
-            fclose(fp);
-            return AWS_OP_ERR;
-        }
-
-        memset(*blob, 0, *len + 1);
-
-        size_t read = fread(*blob, 1, *len, fp);
-        fclose(fp);
-        if (read < *len) {
-            aws_mem_release(alloc, *blob);
-            *blob = NULL;
-            *len = 0;
-            return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-        }
-
-        return 0;
-    }
-
-    return aws_raise_error(AWS_IO_FILE_NOT_FOUND);
-}
-
-typedef enum PEM_TO_DER_STATE {
-    BEGIN,
-    ON_DATA,
-    FINISHED
-
-} PEM_TO_DER_STATE;
-
-static int convert_pem_to_raw_base64(uint8_t *pem, size_t len, uint8_t *output, size_t *output_len) {
-    uint8_t current_char = *pem;
-    PEM_TO_DER_STATE state = BEGIN;
-    size_t i = 0;
-
-    while (current_char && i < len && state < FINISHED) {
-        switch (state) {
-            case BEGIN:
-                if (current_char == '\n') {
-                    state = ON_DATA;
-                    break;
-                }
-                break;
-            case ON_DATA:
-                if (current_char == '\n') {
-                    break;
-                }
-                if (current_char == '-') {
-                    state = FINISHED;
-                    break;
-                }
-                output[i++] = current_char;
-                break;
-            case FINISHED:
-                break;
-        }
-        current_char = *++pem;
-    }
-
-    *output_len = i;
-
-    if (state == FINISHED) {
-        return AWS_OP_SUCCESS;
-    }
-
-    return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-}
-
 static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
     struct aws_tls_ctx *ctx = (struct aws_tls_ctx *)aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
 
@@ -786,66 +754,63 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->allocator = alloc;
 
-    if (options->pkcs12_path) {
-        assert(options->pkcs12_password);
+    if (options->certificate_path && options->private_key_path) {
 
-        uint8_t *cert_blob = NULL;
-        size_t cert_len = 0;
+        struct aws_byte_buf cert_chain;
+        struct aws_byte_buf private_key;
 
-        if (read_file_to_blob(alloc, options->pkcs12_path, &cert_blob, &cert_len)) {
+        if (aws_byte_buf_init_from_file(&cert_chain, secure_transport_ctx->allocator, options->certificate_path)) {
             goto cleanup_wrapped_allocator;
         }
 
-        CFDataRef pkcs12_data = CFDataCreate(secure_transport_ctx->wrapped_allocator, cert_blob, cert_len);
-        aws_mem_release(alloc, cert_blob);
-        CFArrayRef items = NULL;
+        if (aws_byte_buf_init_from_file(&private_key, secure_transport_ctx->allocator, options->private_key_path)) {
+            goto cleanup_wrapped_allocator;
+        }
 
-        CFMutableDictionaryRef dictionary =
-            CFDictionaryCreateMutable(secure_transport_ctx->wrapped_allocator, 0, NULL, NULL);
-        CFStringRef password = CFStringCreateWithCString(
-            secure_transport_ctx->wrapped_allocator, options->pkcs12_password, kCFStringEncodingUTF8);
-        CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
+        void *identity = NULL;
+        if (aws_import_public_and_private_keys_to_identity(secure_transport_ctx->allocator, secure_transport_ctx->wrapped_allocator, &cert_chain, &private_key,
+                                                           &secure_transport_ctx->certs)) {
+            goto cleanup_wrapped_allocator;
+        }
+    }
+    else if (options->pkcs12_path) {
+        struct aws_byte_buf pkcs12_blob;
 
-        OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
-        (void)status;
-        CFRelease(pkcs12_data);
-        CFRelease(password);
-        CFRelease(dictionary);
+        if (aws_byte_buf_init_from_file(&pkcs12_blob, secure_transport_ctx->allocator, options->pkcs12_path)) {
+            goto cleanup_wrapped_allocator;
+        }
 
-        CFTypeRef item = (CFTypeRef)CFArrayGetValueAtIndex(items, 0);
+        struct aws_byte_buf password = {.buffer = NULL, .len = 0, .allocator = NULL, .capacity = 0 };
 
-        CFTypeRef identity = (CFTypeRef)CFDictionaryGetValue((CFDictionaryRef)item, kSecImportItemIdentity);
-        CFTypeRef certs[] = {identity};
-        secure_transport_ctx->certs =
-            CFArrayCreate(secure_transport_ctx->wrapped_allocator, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
+        if (options->pkcs12_password) {
+            password = aws_byte_buf_from_c_str(options->pkcs12_password);
+        }
+
+        void *identity = NULL;
+        if (aws_import_pkcs12_to_identity(secure_transport_ctx->wrapped_allocator, &pkcs12_blob, &password,
+                                                           &secure_transport_ctx->certs)) {
+            aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
+            aws_byte_buf_clean_up(&pkcs12_blob);
+            goto cleanup_wrapped_allocator;
+        }
+        aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
+        aws_byte_buf_clean_up(&pkcs12_blob);
     }
 
     if (options->ca_file) {
-        uint8_t *cert_blob = NULL;
-        size_t cert_len = 0;
+        struct aws_byte_buf ca_blob;
 
-        if (read_file_to_blob(alloc, options->ca_file, &cert_blob, &cert_len)) {
+        if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
             goto cleanup_wrapped_allocator;
         }
-        assert(cert_len > 0);
 
-        uint8_t raw_cert_base64_blob[cert_len];
-        size_t cert_base64_len = 0;
-        convert_pem_to_raw_base64(cert_blob, cert_len, raw_cert_base64_blob, &cert_base64_len);
-        size_t decoded_len = 0;
-        aws_base64_compute_decoded_len((const char *)raw_cert_base64_blob, cert_base64_len, &decoded_len);
-        uint8_t cert_der[decoded_len];
-        struct aws_byte_buf to_decode = aws_byte_buf_from_array(raw_cert_base64_blob, cert_base64_len);
-        struct aws_byte_buf decoded = aws_byte_buf_from_array(cert_der, decoded_len);
-        aws_base64_decode(&to_decode, &decoded);
+        if (aws_import_trusted_certificates(alloc, secure_transport_ctx->wrapped_allocator, &ca_blob, &secure_transport_ctx->ca_cert)) {
+            aws_byte_buf_clean_up(&ca_blob);
+            goto cleanup_wrapped_allocator;
+        }
 
-        CFDataRef cert_data_ref = CFDataCreate(secure_transport_ctx->wrapped_allocator, decoded.buffer, decoded.len);
-        aws_mem_release(alloc, cert_blob);
-        SecCertificateRef cert = SecCertificateCreateWithData(secure_transport_ctx->wrapped_allocator, cert_data_ref);
-        CFRelease(cert_data_ref);
-        secure_transport_ctx->ca_cert = cert;
+        aws_byte_buf_clean_up(&ca_blob);
     }
-
     ctx->alloc = alloc;
     ctx->impl = secure_transport_ctx;
 
@@ -875,11 +840,11 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     struct secure_transport_ctx *secure_transport_ctx = (struct secure_transport_ctx *)ctx->impl;
 
     if (secure_transport_ctx->certs) {
-        CFRelease(secure_transport_ctx->certs);
+        aws_release_identity(secure_transport_ctx->certs);
     }
 
     if (secure_transport_ctx->ca_cert) {
-        CFRelease(secure_transport_ctx->ca_cert);
+        aws_release_certificates(secure_transport_ctx->ca_cert);
     }
 
     CFRelease(secure_transport_ctx->wrapped_allocator);
