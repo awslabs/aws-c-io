@@ -279,6 +279,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
         return AWS_OP_ERR;
     }
+    assert(raw_file_buffer.buffer);
 
     if (aws_decode_pem_to_buffer_list(alloc, &raw_file_buffer, cert_chain_or_key)) {
         aws_secure_zero(raw_file_buffer.buffer, raw_file_buffer.len);
