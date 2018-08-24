@@ -1005,5 +1005,79 @@ AWS_TEST_CASE(
     pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed,
     test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed);
 
-// pipe_writes_are_fifo
+static void s_close_write_end_after_all_writes_complete(
+    struct aws_pipe_write_end *write_end,
+    int write_result,
+    size_t num_bytes_written,
+    void *user_data) {
+
+    struct pipe_state *state = user_data;
+
+    if (write_result) {
+        goto error;
+    }
+
+    if (num_bytes_written == 0) {
+        goto error;
+    }
+
+    state->buffers.num_bytes_written += num_bytes_written;
+
+    if (state->buffers.num_bytes_written == state->buffers.size) {
+        int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+        if (err) {
+            goto error;
+        }
+    }
+
+    return;
+error:
+    s_signal_error(state);
+}
+
+static void s_write_in_simultaneous_chunks_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    int err;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+
+    /* Write the whole buffer via several successive writes */
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_array(state->buffers.src, state->buffers.size);
+    const size_t chunk_size = cursor.len / 8;
+    while (cursor.len > 0) {
+        size_t bytes_to_write = (chunk_size < cursor.len) ? chunk_size : cursor.len;
+
+        err = aws_pipe_write(
+            &state->write_end, cursor.ptr, bytes_to_write, s_close_write_end_after_all_writes_complete, state);
+        if (err) {
+            goto error;
+        }
+
+        aws_byte_cursor_advance(&cursor, bytes_to_write);
+    }
+
+    return;
+error:
+    s_signal_error(state);
+}
+
+static int test_pipe_writes_are_fifo(struct aws_allocator *allocator, void *arg) {
+    (void)arg;
+
+    struct pipe_state state;
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, GIANT_BUFFER_SIZE));
+
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_read_everything_task, s_write_in_simultaneous_chunks_task));
+
+    ASSERT_SUCCESS(s_pipe_state_check_copied_data(&state));
+
+    s_pipe_state_clean_up(&state);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(pipe_writes_are_fifo, test_pipe_writes_are_fifo);
+
 // pipe_clean_up_cancels_pending_writes
+// all tests on 1 loop and 2
