@@ -20,15 +20,18 @@
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 
-/* State for pipe testing. Since most pipe operations must be performed on the event-loop thread,
- * the `results` struct is used to signal the main thread that the tests are finished. */
+/* Used for tracking state in the pipe tests. */
 struct pipe_state {
-    struct aws_event_loop *event_loop;
-    struct aws_event_loop *event_loop2;
+    struct aws_allocator *alloc;
 
     struct aws_pipe_read_end read_end;
     struct aws_pipe_write_end write_end;
 
+    struct aws_event_loop *read_loop;
+    struct aws_event_loop *write_loop;
+
+    /* Since most pipe operations must be performed on the event-loop thread,
+     * the `results` struct is used to signal the main thread that the tests are finished. */
     struct {
         struct aws_mutex mutex;
         struct aws_condition_variable condvar;
@@ -37,7 +40,21 @@ struct pipe_state {
         int status_code; /* Set to non-zero if something goes wrong on the thread. */
     } results;
 
-    void *test_data;
+    struct {
+        uint8_t *src;
+        uint8_t *dst;
+        size_t size;
+        size_t num_bytes_written;
+        size_t num_bytes_read;
+    } buffers;
+
+    struct {
+        int monitoring_mask;               /* contains aws_io_event_type flags */
+        int count;                         /* count of events that matched the mask */
+        int close_read_end_after_n_events; /* if set, close read end when count reaches N */
+    } events;
+
+    void *test_data; /* If a test needs special data */
 };
 
 enum pipe_loop_setup {
@@ -45,42 +62,74 @@ enum pipe_loop_setup {
     DIFFERENT_EVENT_LOOPS,
 };
 
-static int s_pipe_state_init(struct pipe_state *state, struct aws_allocator *alloc, enum pipe_loop_setup loop_setup) {
+enum {
+    SMALL_BUFFER_SIZE = 4,
+    GIANT_BUFFER_SIZE = 1024 * 1024 * 32, /* 32MB */
+};
+
+static int s_pipe_state_init(
+    struct pipe_state *state,
+    struct aws_allocator *alloc,
+    enum pipe_loop_setup loop_setup,
+    size_t buffer_size) {
+
     AWS_ZERO_STRUCT(*state);
 
-    state->event_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
-    ASSERT_NOT_NULL(state->event_loop);
-    ASSERT_SUCCESS(aws_event_loop_run(state->event_loop));
+    state->alloc = alloc;
 
-    struct aws_event_loop *write_loop;
+    state->read_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
+    ASSERT_NOT_NULL(state->read_loop);
+    ASSERT_SUCCESS(aws_event_loop_run(state->read_loop));
+
     if (loop_setup == DIFFERENT_EVENT_LOOPS) {
-        state->event_loop2 = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
-        ASSERT_NOT_NULL(state->event_loop2);
-        ASSERT_SUCCESS(aws_event_loop_run(state->event_loop2));
-        write_loop = state->event_loop2;
+        state->write_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
+        ASSERT_NOT_NULL(state->write_loop);
+        ASSERT_SUCCESS(aws_event_loop_run(state->write_loop));
     } else {
-        write_loop = state->event_loop;
+        state->write_loop = state->read_loop;
     }
 
-    ASSERT_SUCCESS(aws_pipe_init(&state->read_end, state->event_loop, &state->write_end, write_loop, alloc));
+    ASSERT_SUCCESS(aws_pipe_init(&state->read_end, state->read_loop, &state->write_end, state->write_loop, alloc));
 
     ASSERT_SUCCESS(aws_mutex_init(&state->results.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&state->results.condvar));
 
+    /* Fill src buffer with random content */
+    ASSERT_NOT_NULL(state->buffers.src = aws_mem_acquire(alloc, buffer_size));
+    for (size_t i = 0; i < buffer_size; ++i) {
+        state->buffers.src[i] = rand() % 256;
+    }
+
+    /* Zero out dst buffer */
+    ASSERT_NOT_NULL(state->buffers.dst = aws_mem_acquire(alloc, buffer_size));
+    memset(state->buffers.dst, 0, buffer_size);
+
+    state->buffers.size = buffer_size;
+
     return AWS_OP_SUCCESS;
 }
 
+/* Assumes the pipe's read-end and write-end are already cleaned up */
 static void s_pipe_state_clean_up(struct pipe_state *state) {
     aws_condition_variable_clean_up(&state->results.condvar);
     aws_mutex_clean_up(&state->results.mutex);
-    aws_event_loop_destroy(state->event_loop);
-    if (state->event_loop2) {
-        aws_event_loop_destroy(state->event_loop2);
+    aws_event_loop_destroy(state->read_loop);
+    if (state->write_loop != state->read_loop) {
+        aws_event_loop_destroy(state->write_loop);
     }
+
+    if (state->buffers.src) {
+        aws_mem_release(state->alloc, state->buffers.src);
+    }
+    if (state->buffers.dst) {
+        aws_mem_release(state->alloc, state->buffers.dst);
+    }
+
+    AWS_ZERO_STRUCT(*state);
 }
 
 /* Checking if work on thread is done */
-static bool s_pipe_state_done_pred(void *user_data) {
+static bool s_done_pred(void *user_data) {
     struct pipe_state *state = user_data;
 
     if (state->results.status_code != 0) {
@@ -95,14 +144,14 @@ static bool s_pipe_state_done_pred(void *user_data) {
 }
 
 /* Signal that work is done, due to an unexpected error */
-static void s_pipe_state_signal_error(struct pipe_state *state) {
+static void s_signal_error(struct pipe_state *state) {
     aws_mutex_lock(&state->results.mutex);
     state->results.status_code = -1;
     aws_condition_variable_notify_all(&state->results.condvar);
     aws_mutex_unlock(&state->results.mutex);
 }
 
-static void s_pipe_state_on_read_end_closed(struct aws_pipe_read_end *read_end, void *user_data) {
+static void s_signal_done_on_read_end_closed(struct aws_pipe_read_end *read_end, void *user_data) {
     (void)read_end;
     struct pipe_state *state = user_data;
 
@@ -113,7 +162,7 @@ static void s_pipe_state_on_read_end_closed(struct aws_pipe_read_end *read_end, 
     aws_mutex_unlock(&state->results.mutex);
 }
 
-static void s_pipe_state_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
+static void s_signal_done_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
     (void)write_end;
     struct pipe_state *state = user_data;
 
@@ -122,6 +171,13 @@ static void s_pipe_state_on_write_end_closed(struct aws_pipe_write_end *write_en
     state->results.write_end_closed = true;
     aws_condition_variable_notify_all(&state->results.condvar);
     aws_mutex_unlock(&state->results.mutex);
+}
+
+static int s_pipe_state_check_copied_data(struct pipe_state *state) {
+    ASSERT_UINT_EQUALS(state->buffers.size, state->buffers.num_bytes_written);
+    ASSERT_UINT_EQUALS(state->buffers.size, state->buffers.num_bytes_read);
+    ASSERT_INT_EQUALS(0, memcmp(state->buffers.src, state->buffers.dst, state->buffers.size));
+    return AWS_OP_SUCCESS;
 }
 
 /* Schedule function to run on the event-loop thread, and wait for pipe_state to indicate that it's done.
@@ -134,9 +190,8 @@ static int s_pipe_state_run_test(struct pipe_state *state, aws_task_fn *read_end
         task.fn = read_end_fn;
         task.arg = state;
 
-        struct aws_event_loop *event_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
-        ASSERT_SUCCESS(aws_event_loop_current_ticks(event_loop, &now));
-        ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+        ASSERT_SUCCESS(aws_event_loop_current_ticks(state->read_loop, &now));
+        ASSERT_SUCCESS(aws_event_loop_schedule_task(state->read_loop, &task, now));
     }
 
     if (write_end_fn) {
@@ -144,20 +199,19 @@ static int s_pipe_state_run_test(struct pipe_state *state, aws_task_fn *read_end
         task.fn = write_end_fn;
         task.arg = state;
 
-        struct aws_event_loop *event_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
-        ASSERT_SUCCESS(aws_event_loop_current_ticks(event_loop, &now));
-        ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+        ASSERT_SUCCESS(aws_event_loop_current_ticks(state->write_loop, &now));
+        ASSERT_SUCCESS(aws_event_loop_schedule_task(state->write_loop, &task, now));
     }
 
     ASSERT_SUCCESS(aws_mutex_lock(&state->results.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &state->results.condvar, &state->results.mutex, s_pipe_state_done_pred, state));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&state->results.condvar, &state->results.mutex, s_done_pred, state));
     ASSERT_SUCCESS(aws_mutex_unlock(&state->results.mutex));
 
     return state->results.status_code;
 }
 
-static void s_pipe_state_clean_up_read_end_task(void *arg, enum aws_task_status status) {
+static void s_clean_up_read_end_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
     int err;
 
@@ -165,7 +219,7 @@ static void s_pipe_state_clean_up_read_end_task(void *arg, enum aws_task_status 
         goto error;
     }
 
-    err = aws_pipe_clean_up_read_end(&state->read_end, s_pipe_state_on_read_end_closed, state);
+    err = aws_pipe_clean_up_read_end(&state->read_end, s_signal_done_on_read_end_closed, state);
     if (err) {
         goto error;
     }
@@ -173,10 +227,10 @@ static void s_pipe_state_clean_up_read_end_task(void *arg, enum aws_task_status 
     return;
 
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
-static void s_pipe_state_clean_up_write_end_task(void *arg, enum aws_task_status status) {
+static void s_clean_up_write_end_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
     int err;
 
@@ -184,7 +238,7 @@ static void s_pipe_state_clean_up_write_end_task(void *arg, enum aws_task_status
         goto error;
     }
 
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_pipe_state_on_write_end_closed, state);
+    err = aws_pipe_clean_up_write_end(&state->write_end, s_signal_done_on_write_end_closed, state);
     if (err) {
         goto error;
     }
@@ -192,7 +246,7 @@ static void s_pipe_state_clean_up_write_end_task(void *arg, enum aws_task_status
     return;
 
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 /* Just test the pipe being opened and closed */
@@ -200,10 +254,9 @@ static int test_pipe_open_close(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
 
-    ASSERT_SUCCESS(
-        s_pipe_state_run_test(&state, s_pipe_state_clean_up_read_end_task, s_pipe_state_clean_up_write_end_task));
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_clean_up_read_end_task, s_clean_up_write_end_task));
 
     s_pipe_state_clean_up(&state);
 
@@ -212,229 +265,77 @@ static int test_pipe_open_close(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(pipe_open_close, test_pipe_open_close);
 
-struct buffers_to_copy {
-    uint8_t *src;
-    uint8_t *dst;
-    size_t size;
-    size_t num_bytes_written;
-    size_t num_bytes_read;
-};
-
-static void s_test_pipe_read_write_read_and_clean_up(void *arg, enum aws_task_status status) {
-    struct pipe_state *state = arg;
-    struct buffers_to_copy *buffers = state->test_data;
-    int err = 0;
-
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto error;
-    }
-
-    /* Read all bytes */
-    err = aws_pipe_read(&state->read_end, buffers->dst, buffers->num_bytes_written, &buffers->num_bytes_read);
-    if (err) {
-        goto error;
-    }
-
-    /* Close pipe */
-    err = aws_pipe_clean_up_read_end(&state->read_end, s_pipe_state_on_read_end_closed, state);
-    if (err) {
-        goto error;
-    }
-
-    return;
-error:
-    s_pipe_state_signal_error(state);
-}
-
-static void s_test_pipe_read_write_on_write_complete(
+void s_clean_up_write_end_on_write_complete(
     struct aws_pipe_write_end *write_end,
     int write_result,
     size_t num_bytes_written,
     void *user_data) {
 
-    (void)write_end;
-    struct pipe_state *state = user_data;
-    struct buffers_to_copy *buffers = state->test_data;
-    int err = 0;
-
-    if (write_result != 0) {
-        err = write_result;
-        goto error;
-    }
-
-    buffers->num_bytes_written = num_bytes_written;
-
-    /* All done with write-end of pipe */
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_pipe_state_on_write_end_closed, state);
-    if (err) {
-        goto error;
-    }
-
-    /* Schedule task for read-end of pipe */
-    struct aws_task task;
-    task.fn = s_test_pipe_read_write_read_and_clean_up;
-    task.arg = state;
-    struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
-
-    uint64_t now;
-    err = aws_event_loop_current_ticks(read_loop, &now);
-    if (err) {
-        goto error;
-    }
-
-    err = aws_event_loop_schedule_task(read_loop, &task, now);
-    if (err) {
-        goto error;
-    }
-
-    return;
-error:
-    s_pipe_state_signal_error(state);
-}
-
-static void s_test_pipe_read_write_initial_task(void *arg, enum aws_task_status status) {
-    (void)status;
-
-    struct pipe_state *state = arg;
-    struct buffers_to_copy *buffers = state->test_data;
-
-    int err =
-        aws_pipe_write(&state->write_end, buffers->src, buffers->size, s_test_pipe_read_write_on_write_complete, state);
-    if (err) {
-        goto error;
-    }
-
-    return;
-error:
-    s_pipe_state_signal_error(state);
-}
-
-/* Test that a small buffer can be sent through the pipe */
-static int s_test_pipe_read_write_common(struct aws_allocator *allocator, enum pipe_loop_setup loop_setup) {
-
-    /* Init pipe state */
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, loop_setup));
-
-    /* Set up buffers to copy */
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
-
-    struct buffers_to_copy buffers;
-    AWS_ZERO_STRUCT(buffers);
-    buffers.src = src_array;
-    buffers.dst = dst_array;
-    buffers.size = sizeof(src_array);
-
-    state.test_data = &buffers;
-
-    /* Run test on event thread */
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_test_pipe_read_write_initial_task));
-
-    /* Check results */
-    ASSERT_UINT_EQUALS(buffers.size, buffers.num_bytes_written);
-    ASSERT_UINT_EQUALS(buffers.size, buffers.num_bytes_read);
-    ASSERT_INT_EQUALS(0, memcmp(buffers.src, buffers.dst, buffers.size));
-
-    s_pipe_state_clean_up(&state);
-    return AWS_OP_SUCCESS;
-}
-
-static int test_pipe_read_write(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_pipe_read_write_common(allocator, SAME_EVENT_LOOP);
-}
-
-AWS_TEST_CASE(pipe_read_write, test_pipe_read_write);
-
-static int test_pipe_read_write_across_event_loops(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_pipe_read_write_common(allocator, DIFFERENT_EVENT_LOOPS);
-}
-
-AWS_TEST_CASE(pipe_read_write_across_event_loops, test_pipe_read_write_across_event_loops);
-
-static void s_test_pipe_read_write_large_buffer_on_write_complete(
-    struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
-    void *user_data) {
+    (void)write_result;
 
     struct pipe_state *state = user_data;
-    struct buffers_to_copy *buffers = state->test_data;
-    int err = 0;
 
-    if (write_result != 0) {
-        goto error;
+    state->buffers.num_bytes_written += num_bytes_written;
+
+    int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+    if (err) {
+        s_signal_error(state);
     }
-
-    buffers->num_bytes_written = num_bytes_written;
-
-    /* If the read has completed, then close the pipe */
-    if (buffers->num_bytes_read == buffers->size) {
-        err = aws_pipe_clean_up_read_end(&state->read_end, s_pipe_state_on_read_end_closed, state);
-        if (err) {
-            goto error;
-        }
-
-        err = aws_pipe_clean_up_write_end(write_end, s_pipe_state_on_write_end_closed, state);
-        if (err) {
-            goto error;
-        }
-    }
-
-    return;
-error:
-    s_pipe_state_signal_error(state);
 }
 
-static void s_test_pipe_read_write_large_buffer_read_task(void *arg, enum aws_task_status status) {
+/* Write everything in the buffer, clean up write-end when write completes*/
+static void s_write_once_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
-    struct buffers_to_copy *buffers = state->test_data;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
 
-    size_t num_bytes_remaining = buffers->size - buffers->num_bytes_read;
-    size_t num_bytes_read;
-    int err =
-        aws_pipe_read(&state->read_end, buffers->dst + buffers->num_bytes_read, num_bytes_remaining, &num_bytes_read);
+    int err = aws_pipe_write(
+        &state->write_end, state->buffers.src, state->buffers.size, s_clean_up_write_end_on_write_complete, state);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_signal_error(state);
+}
+
+/* Task tries to read as much data as possible.
+ * Task repeatedly reschedules itself until read-buffer is full, then it cleans up the read-end */
+static void s_read_everything_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+    size_t num_bytes_remaining = state->buffers.size - state->buffers.num_bytes_read;
+    size_t num_bytes_read = 0;
+    uint8_t *dst_cur = state->buffers.dst + state->buffers.num_bytes_read;
+    int err = aws_pipe_read(&state->read_end, dst_cur, num_bytes_remaining, &num_bytes_read);
+
+    state->buffers.num_bytes_read += num_bytes_read;
 
     /* AWS_IO_READ_WOULD_BLOCK is an acceptable error, it just means the data's not ready yet */
     if (err && (aws_last_error() != AWS_IO_READ_WOULD_BLOCK)) {
         goto error;
     }
 
-    buffers->num_bytes_read += num_bytes_read;
-
-    if (buffers->num_bytes_read == buffers->size) {
-        /* Done reading!
-         * If the write has completed, then close the pipe */
-        if (buffers->num_bytes_written > 0) {
-            err = aws_pipe_clean_up_read_end(&state->read_end, s_pipe_state_on_read_end_closed, state);
-            if (err) {
-                goto error;
-            }
-
-            err = aws_pipe_clean_up_write_end(&state->write_end, s_pipe_state_on_write_end_closed, state);
-            if (err) {
-                goto error;
-            }
-        }
-    } else {
-        /* Haven't read everything yet, schedule this read task to run again. */
+    if (num_bytes_read < num_bytes_remaining) {
         uint64_t now;
-        err = state->event_loop->clock(&now);
+        err = aws_event_loop_current_ticks(state->read_loop, &now);
         if (err) {
             goto error;
         }
 
         struct aws_task task;
+        task.fn = s_read_everything_task;
         task.arg = state;
-        task.fn = s_test_pipe_read_write_large_buffer_read_task;
 
-        err = aws_event_loop_schedule_task(state->event_loop, &task, now);
+        err = aws_event_loop_schedule_task(state->read_loop, &task, now);
+    } else {
+        err = aws_pipe_clean_up_read_end(&state->read_end, s_signal_done_on_read_end_closed, state);
         if (err) {
             goto error;
         }
@@ -442,99 +343,65 @@ static void s_test_pipe_read_write_large_buffer_read_task(void *arg, enum aws_ta
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
-static void s_test_pipe_read_write_large_buffer_initial_task(void *arg, enum aws_task_status status) {
-    struct pipe_state *state = arg;
-    struct buffers_to_copy *buffers = state->test_data;
+static int s_test_pipe_read_write(
+    struct aws_allocator *allocator,
+    enum pipe_loop_setup loop_setup,
+    size_t buffer_size) {
 
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto error;
-    }
-
-    /* Kick off one big async write */
-    int err = aws_pipe_write(
-        &state->write_end, buffers->src, buffers->size, s_test_pipe_read_write_large_buffer_on_write_complete, state);
-    if (err) {
-        goto error;
-    }
-
-    /* Manually run the read task, which will repeatedly reschedule itself until the whole buffer is read */
-    s_test_pipe_read_write_large_buffer_read_task(state, AWS_TASK_STATUS_RUN_READY);
-
-    return;
-error:
-    s_pipe_state_signal_error(state);
-}
-
-/* Test that a large buffer can be sent through the pipe. */
-static int test_pipe_read_write_large_buffer(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, loop_setup, buffer_size));
 
-    /* Set up buffers to copy */
-    struct buffers_to_copy buffers;
-    AWS_ZERO_STRUCT(buffers);
-    buffers.size = 1024 * 1024 * 32; /* 32MB */
-    buffers.src = aws_mem_acquire(allocator, buffers.size);
-    buffers.dst = aws_mem_acquire(allocator, buffers.size);
-    ASSERT_NOT_NULL(buffers.src);
-    ASSERT_NOT_NULL(buffers.dst);
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_read_everything_task, s_write_once_task));
 
-    state.test_data = &buffers;
+    ASSERT_SUCCESS(s_pipe_state_check_copied_data(&state));
 
-    /* Fill source buffer with random bytes */
-    for (size_t i = 0; i < buffers.size; ++i) {
-        buffers.src[i] = (uint8_t)rand();
-    }
-
-    /* Run test on event thread */
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_test_pipe_read_write_large_buffer_initial_task));
-
-    /* Check results */
-    ASSERT_UINT_EQUALS(buffers.size, buffers.num_bytes_written);
-    ASSERT_UINT_EQUALS(buffers.size, buffers.num_bytes_read);
-    ASSERT_INT_EQUALS(0, memcmp(buffers.src, buffers.dst, buffers.size));
-
-    /* Clean up */
-    aws_mem_release(allocator, buffers.src);
-    aws_mem_release(allocator, buffers.dst);
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
+/* Test that a small buffer can be sent through the pipe */
+static int test_pipe_read_write(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_pipe_read_write(allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE);
+}
+
+AWS_TEST_CASE(pipe_read_write, test_pipe_read_write);
+
+static int test_pipe_read_write_across_event_loops(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_pipe_read_write(allocator, DIFFERENT_EVENT_LOOPS, SMALL_BUFFER_SIZE);
+}
+
+AWS_TEST_CASE(pipe_read_write_across_event_loops, test_pipe_read_write_across_event_loops);
+
+/* Test that a large buffer can be sent through the pipe. */
+static int test_pipe_read_write_large_buffer(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_pipe_read_write(allocator, SAME_EVENT_LOOP, GIANT_BUFFER_SIZE);
+}
+
 AWS_TEST_CASE(pipe_read_write_large_buffer, test_pipe_read_write_large_buffer);
-
-struct readable_event_data {
-    struct buffers_to_copy buffers;
-
-    int monitoring_event;
-    int event_count;
-    int close_after_n_events;
-};
 
 static void s_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
 
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
 
-    if (events & data->monitoring_event) {
-        data->event_count++;
+    if (events & state->events.monitoring_mask) {
+        state->events.count++;
 
-        if (data->event_count == data->close_after_n_events) {
-            int err = aws_pipe_clean_up_read_end(read_end, s_pipe_state_on_read_end_closed, state);
+        if (state->events.count == state->events.close_read_end_after_n_events) {
+            int err = aws_pipe_clean_up_read_end(read_end, s_signal_done_on_read_end_closed, state);
             if (err) {
-                s_pipe_state_signal_error(state);
+                s_signal_error(state);
             }
         }
     }
 }
 
-static void s_readable_event_subscribe_task(void *arg, enum aws_task_status status) {
+static void s_subscribe_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -548,10 +415,28 @@ static void s_readable_event_subscribe_task(void *arg, enum aws_task_status stat
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
-void s_readable_event_clean_up_on_write_complete(
+static int test_pipe_readable_event_sent_after_write(struct aws_allocator *allocator, void *arg) {
+    (void)arg;
+
+    struct pipe_state state;
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state.events.close_read_end_after_n_events = 1;
+
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_subscribe_task, s_write_once_task));
+
+    ASSERT_INT_EQUALS(1, state.events.count);
+
+    s_pipe_state_clean_up(&state);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(pipe_readable_event_sent_after_write, test_pipe_readable_event_sent_after_write);
+
+void s_subscribe_on_write_complete(
     struct aws_pipe_write_end *write_end,
     int write_result,
     size_t num_bytes_written,
@@ -560,73 +445,38 @@ void s_readable_event_clean_up_on_write_complete(
     (void)write_result;
 
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
 
-    data->buffers.num_bytes_written += num_bytes_written;
+    state->buffers.num_bytes_written += num_bytes_written;
 
-    int err = aws_pipe_clean_up_write_end(write_end, s_pipe_state_on_write_end_closed, state);
+    int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
     if (err) {
-        s_pipe_state_signal_error(state);
-    }
-}
-
-static void s_readable_event_write_once_task(void *arg, enum aws_task_status status) {
-    struct pipe_state *state = arg;
-    struct readable_event_data *data = state->test_data;
-
-    if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
 
-    int err = aws_pipe_write(
-        &state->write_end, data->buffers.src, data->buffers.size, s_readable_event_clean_up_on_write_complete, state);
+    /* Tell read end to subscribe */
+    uint64_t now;
+    err = aws_event_loop_current_ticks(state->read_loop, &now);
+    if (err) {
+        goto error;
+    }
+
+    struct aws_task task;
+    task.fn = s_subscribe_task;
+    task.arg = state;
+
+    err = aws_event_loop_schedule_task(state->read_loop, &task, now);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
-static int test_pipe_readable_event_sent_after_write(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
-
-    /* Init pipe state */
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
-
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
-
-    struct readable_event_data data;
-
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
-    data.close_after_n_events = 1;
-
-    data.buffers.src = src_array;
-    data.buffers.dst = dst_array;
-    data.buffers.size = sizeof(src_array);
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_readable_event_subscribe_task, s_readable_event_write_once_task));
-
-    /* Check results */
-    ASSERT_INT_EQUALS(1, data.event_count);
-
-    /* Clean up */
-    s_pipe_state_clean_up(&state);
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(pipe_readable_event_sent_after_write, test_pipe_readable_event_sent_after_write);
-
-static void s_readable_event_write_once_then_subscribe_task(void *arg, enum aws_task_status status) {
+/* Write all data. When write completes, write-end cleans up and tells the read-end to subscribe */
+static void s_write_once_then_subscribe_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -635,63 +485,28 @@ static void s_readable_event_write_once_then_subscribe_task(void *arg, enum aws_
 
     /* write date */
     err = aws_pipe_write(
-        &state->write_end, data->buffers.src, data->buffers.size, s_readable_event_clean_up_on_write_complete, state);
-    if (err) {
-        goto error;
-    }
-
-    /* schedule task for read-end to subscribe */
-    struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
-
-    uint64_t now;
-    err = aws_event_loop_current_ticks(read_loop, &now);
-    if (err) {
-        goto error;
-    }
-
-    struct aws_task task;
-    task.fn = s_readable_event_subscribe_task;
-    task.arg = state;
-
-    err = aws_event_loop_schedule_task(read_loop, &task, now);
+        &state->write_end, state->buffers.src, state->buffers.size, s_subscribe_on_write_complete, state);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static int test_pipe_readable_event_sent_on_subscribe_if_data_present(struct aws_allocator *allocator, void *arg) {
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state.events.close_read_end_after_n_events = 1;
 
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_write_once_then_subscribe_task));
 
-    struct readable_event_data data;
+    ASSERT_INT_EQUALS(1, state.events.count);
 
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
-    data.close_after_n_events = 1;
-
-    data.buffers.src = src_array;
-    data.buffers.dst = dst_array;
-    data.buffers.size = sizeof(src_array);
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_readable_event_write_once_then_subscribe_task));
-
-    /* Check results */
-    ASSERT_INT_EQUALS(1, data.event_count);
-
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
@@ -702,8 +517,9 @@ AWS_TEST_CASE(
 
 static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
+
+    int prev_events_count = state->events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -711,7 +527,7 @@ static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, 
         return;
     }
 
-    if (data->event_count == 1) {
+    if ((state->events.count == 1) && (prev_events_count == 0)) {
         /* unsubscribe and resubscribe */
         err = aws_pipe_unsubscribe_from_read_events(&state->read_end);
         if (err) {
@@ -726,7 +542,7 @@ static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, 
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_resubscribe_1_task(void *arg, enum aws_task_status status) {
@@ -745,12 +561,11 @@ static void s_resubscribe_1_task(void *arg, enum aws_task_status status) {
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_resubscribe_write_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -759,16 +574,14 @@ static void s_resubscribe_write_task(void *arg, enum aws_task_status status) {
 
     /* write date */
     err = aws_pipe_write(
-        &state->write_end, data->buffers.src, data->buffers.size, s_readable_event_clean_up_on_write_complete, state);
+        &state->write_end, state->buffers.src, state->buffers.size, s_clean_up_write_end_on_write_complete, state);
     if (err) {
         goto error;
     }
 
     /* schedule task for read-end to perform 1st subscribe */
-    struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
-
     uint64_t now;
-    err = aws_event_loop_current_ticks(read_loop, &now);
+    err = aws_event_loop_current_ticks(state->read_loop, &now);
     if (err) {
         goto error;
     }
@@ -777,45 +590,28 @@ static void s_resubscribe_write_task(void *arg, enum aws_task_status status) {
     task.fn = s_resubscribe_1_task;
     task.arg = state;
 
-    err = aws_event_loop_schedule_task(read_loop, &task, now);
+    err = aws_event_loop_schedule_task(state->read_loop, &task, now);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static int test_pipe_readable_event_sent_on_resubscribe_if_data_present(struct aws_allocator *allocator, void *arg) {
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state.events.close_read_end_after_n_events = 2;
 
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
-
-    struct readable_event_data data;
-
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
-    data.close_after_n_events = 2;
-
-    data.buffers.src = src_array;
-    data.buffers.dst = dst_array;
-    data.buffers.size = sizeof(src_array);
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
     ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_resubscribe_write_task));
 
-    /* Check results */
-    ASSERT_INT_EQUALS(2, data.event_count);
+    ASSERT_INT_EQUALS(2, state.events.count);
 
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
@@ -831,20 +627,19 @@ static void s_readall_on_write_complete(
     void *user_data) {
 
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
 
     if (write_result) {
         goto error;
     }
 
-    bool is_2nd_write = (data->buffers.num_bytes_written > 0);
+    bool is_2nd_write = (state->buffers.num_bytes_written > 0);
 
-    data->buffers.num_bytes_written += num_bytes_written;
+    state->buffers.num_bytes_written += num_bytes_written;
 
     /* Clean up after 2nd write */
     if (is_2nd_write) {
-        err = aws_pipe_clean_up_write_end(write_end, s_pipe_state_on_write_end_closed, state);
+        err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
         if (err) {
             goto error;
         }
@@ -852,32 +647,32 @@ static void s_readall_on_write_complete(
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_readall_write_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
-    struct readable_event_data *data = state->test_data;
-    struct buffers_to_copy *buffers = &data->buffers;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
 
-    int err = aws_pipe_write(&state->write_end, buffers->src, buffers->size, s_readall_on_write_complete, state);
+    int err =
+        aws_pipe_write(&state->write_end, state->buffers.src, state->buffers.size, s_readall_on_write_complete, state);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events, void *user_data) {
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
+
+    int prev_event_count = state->events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -885,14 +680,13 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
         return;
     }
 
-    if (data->event_count == 1) {
-
+    if ((state->events.count == 1) && (prev_event_count == 0)) {
         /* After the first write, read data until we're told that further reads would block.
          * This ensures that the next write is sure to trigger a readable event */
         while (true) {
             size_t num_bytes_read = 0;
-            err = aws_pipe_read(read_end, data->buffers.dst, data->buffers.size, &num_bytes_read);
-            data->buffers.num_bytes_read += num_bytes_read;
+            err = aws_pipe_read(read_end, state->buffers.dst, state->buffers.size, &num_bytes_read);
+            state->buffers.num_bytes_read += num_bytes_read;
 
             if (err) {
                 if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
@@ -904,7 +698,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
         }
 
         /* Sanity check that we did in fact read something */
-        if (data->buffers.num_bytes_read == 0) {
+        if (state->buffers.num_bytes_read == 0) {
             goto error;
         }
 
@@ -913,15 +707,13 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
         task.fn = s_readall_write_task;
         task.arg = state;
 
-        struct aws_event_loop *write_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
-
         uint64_t now;
-        err = aws_event_loop_current_ticks(write_loop, &now);
+        err = aws_event_loop_current_ticks(state->write_loop, &now);
         if (err) {
             goto error;
         }
 
-        err = aws_event_loop_schedule_task(write_loop, &task, now);
+        err = aws_event_loop_schedule_task(state->write_loop, &task, now);
         if (err) {
             goto error;
         }
@@ -929,7 +721,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_readall_subscribe_task(void *arg, enum aws_task_status status) {
@@ -947,7 +739,7 @@ static void s_readall_subscribe_task(void *arg, enum aws_task_status status) {
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 /* Check that the 2nd readable event is sent again in the case of: subscribe, write 1, read all, write 2
@@ -955,32 +747,15 @@ error:
 static int test_pipe_readable_event_sent_again_after_all_data_read(struct aws_allocator *allocator, void *arg) {
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state.events.close_read_end_after_n_events = 2;
 
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
-
-    struct readable_event_data data;
-
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
-    data.close_after_n_events = 2;
-
-    data.buffers.src = src_array;
-    data.buffers.dst = dst_array;
-    data.buffers.size = sizeof(src_array);
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
     ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_readall_subscribe_task, s_readall_write_task));
 
-    /* Check results */
-    ASSERT_INT_EQUALS(2, data.event_count);
+    ASSERT_INT_EQUALS(2, state.events.count);
 
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
@@ -991,8 +766,9 @@ AWS_TEST_CASE(
 
 static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int events, void *user_data) {
     struct pipe_state *state = user_data;
-    struct readable_event_data *data = state->test_data;
     int err = 0;
+
+    int prev_events_count = state->events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -1000,19 +776,24 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
         return; /* bail if callback signaled error */
     }
 
-    if (data->event_count == 1) {
+    /* if this wasn't an event we're tracking, bail */
+    if (state->events.count == prev_events_count) {
+        return;
+    }
+
+    if (state->events.count == 1) {
         /* After the first write, read just some of the data.
          * Further writes shouldn't trigger the readable event */
         size_t num_bytes_read = 0;
-        err = aws_pipe_read(read_end, data->buffers.dst, 1, &num_bytes_read);
-        data->buffers.num_bytes_read += num_bytes_read;
+        err = aws_pipe_read(read_end, state->buffers.dst, 1, &num_bytes_read);
+        state->buffers.num_bytes_read += num_bytes_read;
 
         if (err) {
             goto error;
         }
 
         /* Sanity check that we did in fact read something */
-        if (data->buffers.num_bytes_read == 0) {
+        if (state->buffers.num_bytes_read == 0) {
             goto error;
         }
 
@@ -1021,44 +802,40 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
         task.fn = s_readall_write_task; /* re-use this write task, which cleans up after its 2nd run */
         task.arg = state;
 
-        struct aws_event_loop *write_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
-
         uint64_t now;
-        err = aws_event_loop_current_ticks(write_loop, &now);
+        err = aws_event_loop_current_ticks(state->write_loop, &now);
         if (err) {
             goto error;
         }
 
-        err = aws_event_loop_schedule_task(write_loop, &task, now);
+        err = aws_event_loop_schedule_task(state->write_loop, &task, now);
         if (err) {
             goto error;
         }
 
         /* Schedule a task, in the near-future, that shuts down the read-end.
          * We need the subscribed read-end to just hang out for a while to ensure no further events come in. */
-        struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(read_end);
-
-        err = aws_event_loop_current_ticks(read_loop, &now);
+        err = aws_event_loop_current_ticks(state->read_loop, &now);
         if (err) {
             goto error;
         }
 
-        task.fn = s_pipe_state_clean_up_read_end_task;
+        task.fn = s_clean_up_read_end_task;
         task.arg = state;
         uint64_t future = now + aws_timestamp_convert(2, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-        err = aws_event_loop_schedule_task(read_loop, &task, future);
+        err = aws_event_loop_schedule_task(state->read_loop, &task, future);
         if (err) {
             goto error;
         }
 
-    } else if (data->event_count > 1) {
+    } else if (state->events.count > 1) {
         /* There should only be 1 readable event */
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_readsome_subscribe_task(void *arg, enum aws_task_status status) {
@@ -1076,7 +853,7 @@ static void s_readsome_subscribe_task(void *arg, enum aws_task_status status) {
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 /* Test that only 1 readable event is sent in the case of: subscribe, write 1, read some but not all data, write 2.
@@ -1084,35 +861,20 @@ error:
 static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct aws_allocator *allocator, void *arg) {
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
 
-    uint8_t src_array[4] = {0x11, 0x22, 0x33, 0x44};
-    uint8_t dst_array[4] = {0};
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
 
-    struct readable_event_data data;
+    /* not setting close_read_end_after_n_events because we manually shut down read-end in this test */
 
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_READABLE;
-    /* not setting close_after_n_events because we manually shut down read-end in this test */
-
-    data.buffers.src = src_array;
-    data.buffers.dst = dst_array;
-    data.buffers.size = sizeof(src_array);
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
     ASSERT_SUCCESS(s_pipe_state_run_test(
         &state,
         s_readsome_subscribe_task,
         s_readall_write_task /* re-use this write task, which shuts down the 2nd time it's run */));
 
-    /* Check results */
-    ASSERT_INT_EQUALS(1, data.event_count);
+    ASSERT_INT_EQUALS(1, state.events.count);
 
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
@@ -1135,83 +897,70 @@ static void s_subscribe_and_schedule_write_end_clean_up_task(void *arg, enum aws
     }
 
     /* schedule write end to clean up */
-    struct aws_event_loop *write_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
-
     uint64_t now;
-    err = aws_event_loop_current_ticks(write_loop, &now);
+    err = aws_event_loop_current_ticks(state->write_loop, &now);
     if (err) {
         goto error;
     }
 
     struct aws_task task;
-    task.fn = s_pipe_state_clean_up_write_end_task;
+    task.fn = s_clean_up_write_end_task;
     task.arg = state;
 
-    err = aws_event_loop_schedule_task(write_loop, &task, now);
+    err = aws_event_loop_schedule_task(state->write_loop, &task, now);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static int test_pipe_hangup_event_sent_after_write_end_closed(struct aws_allocator *allocator, void *arg) {
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
 
-    struct readable_event_data data;
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    state.events.close_read_end_after_n_events = 1;
 
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    data.close_after_n_events = 1;
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
     ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_subscribe_and_schedule_write_end_clean_up_task, NULL));
 
-    /* Check results */
-    ASSERT_INT_EQUALS(1, data.event_count);
+    ASSERT_INT_EQUALS(1, state.events.count);
 
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, test_pipe_hangup_event_sent_after_write_end_closed);
 
-static void s_schedule_subscribe_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
+static void s_subscribe_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
     struct pipe_state *state = user_data;
     int err;
 
     /* Invoke the usual on-closed callback */
-    s_pipe_state_on_write_end_closed(write_end, user_data);
-
-    struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
+    s_signal_done_on_write_end_closed(write_end, user_data);
 
     uint64_t now;
-    err = aws_event_loop_current_ticks(read_loop, &now);
+    err = aws_event_loop_current_ticks(state->read_loop, &now);
     if (err) {
         goto error;
     }
 
     struct aws_task task;
-    task.fn = s_readable_event_subscribe_task;
+    task.fn = s_subscribe_task;
     task.arg = state;
 
-    err = aws_event_loop_schedule_task(read_loop, &task, now);
+    err = aws_event_loop_schedule_task(state->read_loop, &task, now);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static void s_clean_up_write_end_then_schedule_subscribe_task(void *arg, enum aws_task_status status) {
@@ -1222,14 +971,14 @@ static void s_clean_up_write_end_then_schedule_subscribe_task(void *arg, enum aw
         goto error;
     }
 
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_schedule_subscribe_on_write_end_closed, state);
+    err = aws_pipe_clean_up_write_end(&state->write_end, s_subscribe_on_write_end_closed, state);
     if (err) {
         goto error;
     }
 
     return;
 error:
-    s_pipe_state_signal_error(state);
+    s_signal_error(state);
 }
 
 static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
@@ -1238,25 +987,16 @@ static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
 
     (void)arg;
 
-    /* Init pipe state */
     struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
 
-    struct readable_event_data data;
+    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    state.events.close_read_end_after_n_events = 1;
 
-    AWS_ZERO_STRUCT(data);
-    data.monitoring_event = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    data.close_after_n_events = 1;
-
-    state.test_data = &data;
-
-    /* Run test on event thread */
     ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_clean_up_write_end_then_schedule_subscribe_task));
 
-    /* Check results */
-    ASSERT_INT_EQUALS(1, data.event_count);
+    ASSERT_INT_EQUALS(1, state.events.count);
 
-    /* Clean up */
     s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
@@ -1265,4 +1005,5 @@ AWS_TEST_CASE(
     pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed,
     test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed);
 
+// pipe_writes_are_fifo
 // pipe_clean_up_cancels_pending_writes

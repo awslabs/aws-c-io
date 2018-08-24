@@ -337,6 +337,7 @@ int aws_pipe_clean_up_read_end(
     struct aws_pipe_read_end *read_end,
     aws_pipe_on_read_end_closed_fn *on_closed,
     void *user_data) {
+
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
@@ -572,6 +573,7 @@ int aws_pipe_subscribe_to_read_events(
     struct aws_pipe_read_end *read_end,
     aws_pipe_on_read_event_fn *on_read_event,
     void *user_data) {
+
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
