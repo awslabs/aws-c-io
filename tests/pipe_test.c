@@ -700,28 +700,28 @@ AWS_TEST_CASE(
     pipe_readable_event_sent_on_subscribe_if_data_present,
     test_pipe_readable_event_sent_on_subscribe_if_data_present);
 
-static void s_resubscribe_2_task(void *arg, enum aws_task_status status) {
-    struct pipe_state *state = arg;
+static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
+    struct pipe_state *state = user_data;
     struct readable_event_data *data = state->test_data;
     int err = 0;
 
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        goto error;
+    /* invoke usual readable callback so the events are logged */
+    s_on_readable_event(read_end, events, user_data);
+    if (state->results.status_code) { /* bail out if anything went wrong */
+        return;
     }
 
-    if (data->event_count != 1) {
-        goto error;
-    }
+    if (data->event_count == 1) {
+        /* unsubscribe and resubscribe */
+        err = aws_pipe_unsubscribe_from_read_events(&state->read_end);
+        if (err) {
+            goto error;
+        }
 
-    /* unsubscribe and resubscribe */
-    err = aws_pipe_unsubscribe_from_read_events(&state->read_end);
-    if (err) {
-        goto error;
-    }
-
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
-    if (err) {
-        goto error;
+        err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+        if (err) {
+            goto error;
+        }
     }
 
     return;
@@ -738,26 +738,10 @@ static void s_resubscribe_1_task(void *arg, enum aws_task_status status) {
     }
 
     /* subscribe */
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_resubscribe_on_readable_event, state);
     if (err) {
         goto error;
     }
-
-    /* schedule a future event that will unsubsribe/resubscribe */
-    struct aws_event_loop *loop = aws_pipe_get_read_end_event_loop(&state->read_end);
-
-    uint64_t time_ns;
-    err = aws_event_loop_current_ticks(loop, &time_ns);
-    if (err) {
-        goto error;
-    }
-    time_ns += aws_timestamp_convert(2, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-    struct aws_task task;
-    task.fn = s_resubscribe_2_task;
-    task.arg = state;
-
-    err = aws_event_loop_schedule_task(loop, &task, time_ns);
 
     return;
 error:
@@ -1050,7 +1034,8 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
             goto error;
         }
 
-        /* Schedule a task, in the near-future, that shuts down the read-end */
+        /* Schedule a task, in the near-future, that shuts down the read-end.
+         * We need the subscribed read-end to just hang out for a while to ensure no further events come in. */
         struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(read_end);
 
         err = aws_event_loop_current_ticks(read_loop, &now);
@@ -1135,5 +1120,149 @@ static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct aw
 AWS_TEST_CASE(
     pipe_readable_event_not_sent_again_until_all_data_read,
     test_pipe_readable_event_not_sent_again_until_all_data_read);
-// pipe_closed_event_sent_after_write_end_cleaned_up
+
+static void s_subscribe_and_schedule_write_end_clean_up_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    int err;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+
+    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+    if (err) {
+        goto error;
+    }
+
+    /* schedule write end to clean up */
+    struct aws_event_loop *write_loop = aws_pipe_get_write_end_event_loop(&state->write_end);
+
+    uint64_t now;
+    err = aws_event_loop_current_ticks(write_loop, &now);
+    if (err) {
+        goto error;
+    }
+
+    struct aws_task task;
+    task.fn = s_pipe_state_clean_up_write_end_task;
+    task.arg = state;
+
+    err = aws_event_loop_schedule_task(write_loop, &task, now);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state);
+}
+
+static int test_pipe_hangup_event_sent_after_write_end_closed(struct aws_allocator *allocator, void *arg) {
+    (void)arg;
+
+    /* Init pipe state */
+    struct pipe_state state;
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+
+    struct readable_event_data data;
+
+    AWS_ZERO_STRUCT(data);
+    data.monitoring_event = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    data.close_after_n_events = 1;
+
+    state.test_data = &data;
+
+    /* Run test on event thread */
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_subscribe_and_schedule_write_end_clean_up_task, NULL));
+
+    /* Check results */
+    ASSERT_INT_EQUALS(1, data.event_count);
+
+    /* Clean up */
+    s_pipe_state_clean_up(&state);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, test_pipe_hangup_event_sent_after_write_end_closed);
+
+static void s_schedule_subscribe_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
+    struct pipe_state *state = user_data;
+    int err;
+
+    /* Invoke the usual on-closed callback */
+    s_pipe_state_on_write_end_closed(write_end, user_data);
+
+    struct aws_event_loop *read_loop = aws_pipe_get_read_end_event_loop(&state->read_end);
+
+    uint64_t now;
+    err = aws_event_loop_current_ticks(read_loop, &now);
+    if (err) {
+        goto error;
+    }
+
+    struct aws_task task;
+    task.fn = s_readable_event_subscribe_task;
+    task.arg = state;
+
+    err = aws_event_loop_schedule_task(read_loop, &task, now);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state);
+}
+
+static void s_clean_up_write_end_then_schedule_subscribe_task(void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    int err;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+
+    err = aws_pipe_clean_up_write_end(&state->write_end, s_schedule_subscribe_on_write_end_closed, state);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_pipe_state_signal_error(state);
+}
+
+static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
+    struct aws_allocator *allocator,
+    void *arg) {
+
+    (void)arg;
+
+    /* Init pipe state */
+    struct pipe_state state;
+    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP));
+
+    struct readable_event_data data;
+
+    AWS_ZERO_STRUCT(data);
+    data.monitoring_event = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    data.close_after_n_events = 1;
+
+    state.test_data = &data;
+
+    /* Run test on event thread */
+    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_clean_up_write_end_then_schedule_subscribe_task));
+
+    /* Check results */
+    ASSERT_INT_EQUALS(1, data.event_count);
+
+    /* Clean up */
+    s_pipe_state_clean_up(&state);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed,
+    test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed);
+
 // pipe_clean_up_cancels_pending_writes

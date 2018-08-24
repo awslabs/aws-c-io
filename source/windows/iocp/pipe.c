@@ -164,7 +164,8 @@ int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
 
     LARGE_INTEGER timestamp;
     bool success = QueryPerformanceCounter(&timestamp);
-    assert(success); (void)success; /* QueryPerformanceCounter() always succeeds on XP and later */
+    assert(success);
+    (void)success; /* QueryPerformanceCounter() always succeeds on XP and later */
 
     /* snprintf() returns number of characters (not including '\0') which would have written if dst_size was ignored */
     int ideal_strlen = snprintf(
@@ -460,7 +461,15 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
      * We schedule this as a task so the callback doesn't happen before the user expects it.
      * We also set the state to SUBSCRIBE_ERROR so we don't keep trying to monitor the file. */
     read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
-    read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
+
+    DWORD win_err = GetLastError();
+    switch (win_err) {
+        case ERROR_BROKEN_PIPE:
+            read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+            break;
+        default:
+            read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
+    }
 
     struct aws_task task;
     task.fn = s_read_end_report_error_task;
@@ -538,10 +547,17 @@ static void s_read_end_on_zero_byte_read_completion(
             read_impl->monitoring_request_reasons &= ~MONITORING_BECAUSE_WAITING_FOR_DATA;
 
         } else {
-            events = AWS_IO_EVENT_TYPE_ERROR;
-
             /* Move pipe to SUBSCRIBE_ERROR state so we don't keep monitoring */
             read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
+
+            switch (status_code) {
+                case 0xC000014B: /* STATUS_PIPE_BROKEN */
+                    /* The pipe operation has failed because the other end of the pipe has been closed. */
+                    events = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+                    break;
+                default:
+                    events = AWS_IO_EVENT_TYPE_ERROR;
+            }
         }
 
         if (read_impl->on_read_event_user_callback) {
@@ -692,7 +708,7 @@ int aws_pipe_clean_up_write_end(
     void *user_data) {
 
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl); // TOOD: replace impl asserts in public functions with AWS_ERROR_IO_NOT_OPEN?
+    assert(write_impl);
 
     if (write_impl->state == WRITE_END_STATE_CLOSING) {
         return aws_raise_error(AWS_ERROR_IO_CLOSING);
