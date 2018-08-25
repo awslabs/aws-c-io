@@ -20,8 +20,23 @@
 #include <aws/io/pipe.h>
 #include <aws/testing/aws_test_harness.h>
 
+enum pipe_loop_setup {
+    SAME_EVENT_LOOP,
+    DIFFERENT_EVENT_LOOPS,
+};
+
+enum {
+    SMALL_BUFFER_SIZE = 4,
+    GIANT_BUFFER_SIZE = 1024 * 1024 * 32, /* 32MB */
+};
+
 /* Used for tracking state in the pipe tests. */
 struct pipe_state {
+    /* Begin setup parameters */
+    enum pipe_loop_setup loop_setup;
+    size_t buffer_size;
+    /* End setup parameters */
+
     struct aws_allocator *alloc;
 
     struct aws_pipe_read_end read_end;
@@ -57,60 +72,58 @@ struct pipe_state {
     void *test_data; /* If a test needs special data */
 };
 
-enum pipe_loop_setup {
-    SAME_EVENT_LOOP,
-    DIFFERENT_EVENT_LOOPS,
-};
+static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
+    struct pipe_state *state = ctx;
+    int err;
 
-enum {
-    SMALL_BUFFER_SIZE = 4,
-    GIANT_BUFFER_SIZE = 1024 * 1024 * 32, /* 32MB */
-};
+    state->alloc = allocator;
 
-static int s_pipe_state_init(
-    struct pipe_state *state,
-    struct aws_allocator *alloc,
-    enum pipe_loop_setup loop_setup,
-    size_t buffer_size) {
+    state->read_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    assert(state->read_loop);
+    err = aws_event_loop_run(state->read_loop);
+    assert(!err);
 
-    AWS_ZERO_STRUCT(*state);
+    if (state->loop_setup == DIFFERENT_EVENT_LOOPS) {
+        state->write_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+        assert(state->write_loop);
 
-    state->alloc = alloc;
-
-    state->read_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
-    ASSERT_NOT_NULL(state->read_loop);
-    ASSERT_SUCCESS(aws_event_loop_run(state->read_loop));
-
-    if (loop_setup == DIFFERENT_EVENT_LOOPS) {
-        state->write_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks);
-        ASSERT_NOT_NULL(state->write_loop);
-        ASSERT_SUCCESS(aws_event_loop_run(state->write_loop));
+        err = aws_event_loop_run(state->write_loop);
+        assert(!err);
     } else {
         state->write_loop = state->read_loop;
     }
 
-    ASSERT_SUCCESS(aws_pipe_init(&state->read_end, state->read_loop, &state->write_end, state->write_loop, alloc));
+    err = aws_pipe_init(&state->read_end, state->read_loop, &state->write_end, state->write_loop, allocator);
+    assert(!err);
 
-    ASSERT_SUCCESS(aws_mutex_init(&state->results.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_init(&state->results.condvar));
+    err = aws_mutex_init(&state->results.mutex);
+    assert(!err);
+
+    err = aws_condition_variable_init(&state->results.condvar);
+    assert(!err);
 
     /* Fill src buffer with random content */
-    ASSERT_NOT_NULL(state->buffers.src = aws_mem_acquire(alloc, buffer_size));
-    for (size_t i = 0; i < buffer_size; ++i) {
-        state->buffers.src[i] = rand() % 256;
+    if (state->buffer_size > 0) {
+
+        state->buffers.src = aws_mem_acquire(allocator, state->buffer_size);
+        assert(state->buffers.src);
+
+        for (size_t i = 0; i < state->buffer_size; ++i) {
+            state->buffers.src[i] = rand() % 256;
+        }
+
+        /* Zero out dst buffer */
+        state->buffers.dst = aws_mem_acquire(allocator, state->buffer_size);
+        assert(state->buffers.dst);
+
+        memset(state->buffers.dst, 0, state->buffer_size);
     }
-
-    /* Zero out dst buffer */
-    ASSERT_NOT_NULL(state->buffers.dst = aws_mem_acquire(alloc, buffer_size));
-    memset(state->buffers.dst, 0, buffer_size);
-
-    state->buffers.size = buffer_size;
-
-    return AWS_OP_SUCCESS;
 }
 
 /* Assumes the pipe's read-end and write-end are already cleaned up */
-static void s_pipe_state_clean_up(struct pipe_state *state) {
+static void s_fixture_after(struct aws_allocator *allocator, void *ctx) {
+    struct pipe_state *state = ctx;
+
     aws_condition_variable_clean_up(&state->results.condvar);
     aws_mutex_clean_up(&state->results.mutex);
     aws_event_loop_destroy(state->read_loop);
@@ -119,14 +132,53 @@ static void s_pipe_state_clean_up(struct pipe_state *state) {
     }
 
     if (state->buffers.src) {
-        aws_mem_release(state->alloc, state->buffers.src);
+        aws_mem_release(allocator, state->buffers.src);
     }
     if (state->buffers.dst) {
-        aws_mem_release(state->alloc, state->buffers.dst);
+        aws_mem_release(allocator, state->buffers.dst);
     }
 
     AWS_ZERO_STRUCT(*state);
 }
+
+/* Macro for declaring pipe tests.
+ * Add pipe tests to CMakeLists.txt like so: add_pipe_test_case(NAME)
+ *
+/* Each pipe test is run in 2 different configurations:
+ * 1) both ends of the pipe use the same event-loop
+ * 2) each end of the pipe is on its own event-loop
+ *
+ * For each test with NAME, write a function with the following signature:
+ * int test_NAME(struct pipe_state *state) {...}
+ */
+#define PIPE_TEST_CASE(NAME, BUFFER_SIZE)                                                                              \
+    static struct pipe_state NAME##_pipe_state_same_loop = {                                                           \
+        .loop_setup = SAME_EVENT_LOOP,                                                                                 \
+        .buffer_size = (BUFFER_SIZE),                                                                                  \
+    };                                                                                                                 \
+    static int test_##NAME##_same_loop(struct aws_allocator *allocator, void *ctx) {                                   \
+        (void)allocator;                                                                                               \
+        struct pipe_state *state = ctx;                                                                                \
+        return test_##NAME(state);                                                                                     \
+    }                                                                                                                  \
+    AWS_TEST_CASE_FIXTURE(                                                                                             \
+        NAME, s_fixture_before, test_##NAME##_same_loop, s_fixture_after, &NAME##_pipe_state_same_loop)                \
+                                                                                                                       \
+    static struct pipe_state NAME##_pipe_state_different_loops = {                                                     \
+        .loop_setup = DIFFERENT_EVENT_LOOPS,                                                                           \
+        .buffer_size = (BUFFER_SIZE),                                                                                  \
+    };                                                                                                                 \
+    static int test_##NAME##_different_loops(struct aws_allocator *allocator, void *ctx) {                             \
+        (void)allocator;                                                                                               \
+        struct pipe_state *state = ctx;                                                                                \
+        return test_##NAME(state);                                                                                     \
+    }                                                                                                                  \
+    AWS_TEST_CASE_FIXTURE(                                                                                             \
+        NAME##_2loops,                                                                                                 \
+        s_fixture_before,                                                                                              \
+        test_##NAME##_different_loops,                                                                                 \
+        s_fixture_after,                                                                                               \
+        &NAME##_pipe_state_different_loops)
 
 /* Checking if work on thread is done */
 static bool s_done_pred(void *user_data) {
@@ -174,9 +226,9 @@ static void s_signal_done_on_write_end_closed(struct aws_pipe_write_end *write_e
 }
 
 static int s_pipe_state_check_copied_data(struct pipe_state *state) {
-    ASSERT_UINT_EQUALS(state->buffers.size, state->buffers.num_bytes_written);
-    ASSERT_UINT_EQUALS(state->buffers.size, state->buffers.num_bytes_read);
-    ASSERT_INT_EQUALS(0, memcmp(state->buffers.src, state->buffers.dst, state->buffers.size));
+    ASSERT_UINT_EQUALS(state->buffer_size, state->buffers.num_bytes_written);
+    ASSERT_UINT_EQUALS(state->buffer_size, state->buffers.num_bytes_read);
+    ASSERT_INT_EQUALS(0, memcmp(state->buffers.src, state->buffers.dst, state->buffer_size));
     return AWS_OP_SUCCESS;
 }
 
@@ -250,20 +302,13 @@ error:
 }
 
 /* Just test the pipe being opened and closed */
-static int test_pipe_open_close(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_clean_up_read_end_task, s_clean_up_write_end_task));
-
-    s_pipe_state_clean_up(&state);
+static int test_pipe_open_close(struct pipe_state *state) {
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_clean_up_read_end_task, s_clean_up_write_end_task));
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_open_close, test_pipe_open_close);
+PIPE_TEST_CASE(pipe_open_close, SMALL_BUFFER_SIZE);
 
 void s_clean_up_write_end_on_write_complete(
     struct aws_pipe_write_end *write_end,
@@ -292,7 +337,7 @@ static void s_write_once_task(void *arg, enum aws_task_status status) {
     }
 
     int err = aws_pipe_write(
-        &state->write_end, state->buffers.src, state->buffers.size, s_clean_up_write_end_on_write_complete, state);
+        &state->write_end, state->buffers.src, state->buffer_size, s_clean_up_write_end_on_write_complete, state);
     if (err) {
         goto error;
     }
@@ -310,7 +355,7 @@ static void s_read_everything_task(void *arg, enum aws_task_status status) {
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
-    size_t num_bytes_remaining = state->buffers.size - state->buffers.num_bytes_read;
+    size_t num_bytes_remaining = state->buffer_size - state->buffers.num_bytes_read;
     size_t num_bytes_read = 0;
     uint8_t *dst_cur = state->buffers.dst + state->buffers.num_bytes_read;
     int err = aws_pipe_read(&state->read_end, dst_cur, num_bytes_remaining, &num_bytes_read);
@@ -346,44 +391,28 @@ error:
     s_signal_error(state);
 }
 
-static int s_test_pipe_read_write(
-    struct aws_allocator *allocator,
-    enum pipe_loop_setup loop_setup,
-    size_t buffer_size) {
+/* common function used by small-buffer test and large-buffer test */
+static int s_test_pipe_read_write(struct pipe_state *state) {
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_read_everything_task, s_write_once_task));
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, loop_setup, buffer_size));
+    ASSERT_SUCCESS(s_pipe_state_check_copied_data(state));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_read_everything_task, s_write_once_task));
-
-    ASSERT_SUCCESS(s_pipe_state_check_copied_data(&state));
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
 /* Test that a small buffer can be sent through the pipe */
-static int test_pipe_read_write(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_pipe_read_write(allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE);
+static int test_pipe_read_write(struct pipe_state *state) {
+    return s_test_pipe_read_write(state);
 }
 
-AWS_TEST_CASE(pipe_read_write, test_pipe_read_write);
-
-static int test_pipe_read_write_across_event_loops(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_pipe_read_write(allocator, DIFFERENT_EVENT_LOOPS, SMALL_BUFFER_SIZE);
-}
-
-AWS_TEST_CASE(pipe_read_write_across_event_loops, test_pipe_read_write_across_event_loops);
+PIPE_TEST_CASE(pipe_read_write, SMALL_BUFFER_SIZE);
 
 /* Test that a large buffer can be sent through the pipe. */
-static int test_pipe_read_write_large_buffer(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_pipe_read_write(allocator, SAME_EVENT_LOOP, GIANT_BUFFER_SIZE);
+static int test_pipe_read_write_large_buffer(struct pipe_state *state) {
+    return s_test_pipe_read_write(state);
 }
 
-AWS_TEST_CASE(pipe_read_write_large_buffer, test_pipe_read_write_large_buffer);
+PIPE_TEST_CASE(pipe_read_write_large_buffer, GIANT_BUFFER_SIZE);
 
 static void s_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
 
@@ -418,23 +447,18 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_readable_event_sent_after_write(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_readable_event_sent_after_write(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state->events.close_read_end_after_n_events = 1;
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state.events.close_read_end_after_n_events = 1;
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_subscribe_task, s_write_once_task));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_subscribe_task, s_write_once_task));
+    ASSERT_INT_EQUALS(1, state->events.count);
 
-    ASSERT_INT_EQUALS(1, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_readable_event_sent_after_write, test_pipe_readable_event_sent_after_write);
+PIPE_TEST_CASE(pipe_readable_event_sent_after_write, SMALL_BUFFER_SIZE);
 
 void s_subscribe_on_write_complete(
     struct aws_pipe_write_end *write_end,
@@ -484,8 +508,8 @@ static void s_write_once_then_subscribe_task(void *arg, enum aws_task_status sta
     }
 
     /* write date */
-    err = aws_pipe_write(
-        &state->write_end, state->buffers.src, state->buffers.size, s_subscribe_on_write_complete, state);
+    err =
+        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_subscribe_on_write_complete, state);
     if (err) {
         goto error;
     }
@@ -495,25 +519,18 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_readable_event_sent_on_subscribe_if_data_present(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_readable_event_sent_on_subscribe_if_data_present(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state->events.close_read_end_after_n_events = 1;
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state.events.close_read_end_after_n_events = 1;
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, NULL, s_write_once_then_subscribe_task));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_write_once_then_subscribe_task));
+    ASSERT_INT_EQUALS(1, state->events.count);
 
-    ASSERT_INT_EQUALS(1, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    pipe_readable_event_sent_on_subscribe_if_data_present,
-    test_pipe_readable_event_sent_on_subscribe_if_data_present);
+PIPE_TEST_CASE(pipe_readable_event_sent_on_subscribe_if_data_present, SMALL_BUFFER_SIZE);
 
 static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
     struct pipe_state *state = user_data;
@@ -574,7 +591,7 @@ static void s_resubscribe_write_task(void *arg, enum aws_task_status status) {
 
     /* write date */
     err = aws_pipe_write(
-        &state->write_end, state->buffers.src, state->buffers.size, s_clean_up_write_end_on_write_complete, state);
+        &state->write_end, state->buffers.src, state->buffer_size, s_clean_up_write_end_on_write_complete, state);
     if (err) {
         goto error;
     }
@@ -600,25 +617,18 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_readable_event_sent_on_resubscribe_if_data_present(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_readable_event_sent_on_resubscribe_if_data_present(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state->events.close_read_end_after_n_events = 2;
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state.events.close_read_end_after_n_events = 2;
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, NULL, s_resubscribe_write_task));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_resubscribe_write_task));
+    ASSERT_INT_EQUALS(2, state->events.count);
 
-    ASSERT_INT_EQUALS(2, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    pipe_readable_event_sent_on_resubscribe_if_data_present,
-    test_pipe_readable_event_sent_on_resubscribe_if_data_present);
+PIPE_TEST_CASE(pipe_readable_event_sent_on_resubscribe_if_data_present, SMALL_BUFFER_SIZE);
 
 static void s_readall_on_write_complete(
     struct aws_pipe_write_end *write_end,
@@ -658,7 +668,7 @@ static void s_readall_write_task(void *arg, enum aws_task_status status) {
     }
 
     int err =
-        aws_pipe_write(&state->write_end, state->buffers.src, state->buffers.size, s_readall_on_write_complete, state);
+        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_readall_on_write_complete, state);
     if (err) {
         goto error;
     }
@@ -685,7 +695,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
          * This ensures that the next write is sure to trigger a readable event */
         while (true) {
             size_t num_bytes_read = 0;
-            err = aws_pipe_read(read_end, state->buffers.dst, state->buffers.size, &num_bytes_read);
+            err = aws_pipe_read(read_end, state->buffers.dst, state->buffer_size, &num_bytes_read);
             state->buffers.num_bytes_read += num_bytes_read;
 
             if (err) {
@@ -744,25 +754,18 @@ error:
 
 /* Check that the 2nd readable event is sent again in the case of: subscribe, write 1, read all, write 2
  * Short name for test is: readall */
-static int test_pipe_readable_event_sent_again_after_all_data_read(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_readable_event_sent_again_after_all_data_read(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state->events.close_read_end_after_n_events = 2;
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state.events.close_read_end_after_n_events = 2;
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_readall_subscribe_task, s_readall_write_task));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_readall_subscribe_task, s_readall_write_task));
+    ASSERT_INT_EQUALS(2, state->events.count);
 
-    ASSERT_INT_EQUALS(2, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    pipe_readable_event_sent_again_after_all_data_read,
-    test_pipe_readable_event_sent_again_after_all_data_read);
+PIPE_TEST_CASE(pipe_readable_event_sent_again_after_all_data_read, SMALL_BUFFER_SIZE);
 
 static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int events, void *user_data) {
     struct pipe_state *state = user_data;
@@ -858,30 +861,22 @@ error:
 
 /* Test that only 1 readable event is sent in the case of: subscribe, write 1, read some but not all data, write 2.
  * Short name for test is: readsome */
-static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
-
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
-
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
 
     /* not setting close_read_end_after_n_events because we manually shut down read-end in this test */
 
     ASSERT_SUCCESS(s_pipe_state_run_test(
-        &state,
+        state,
         s_readsome_subscribe_task,
         s_readall_write_task /* re-use this write task, which shuts down the 2nd time it's run */));
 
-    ASSERT_INT_EQUALS(1, state.events.count);
+    ASSERT_INT_EQUALS(1, state->events.count);
 
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    pipe_readable_event_not_sent_again_until_all_data_read,
-    test_pipe_readable_event_not_sent_again_until_all_data_read);
+PIPE_TEST_CASE(pipe_readable_event_not_sent_again_until_all_data_read, SMALL_BUFFER_SIZE);
 
 static void s_subscribe_and_schedule_write_end_clean_up_task(void *arg, enum aws_task_status status) {
     struct pipe_state *state = arg;
@@ -917,24 +912,18 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_hangup_event_sent_after_write_end_closed(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_hangup_event_sent_after_write_end_closed(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    state->events.close_read_end_after_n_events = 1;
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_subscribe_and_schedule_write_end_clean_up_task, NULL));
 
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    state.events.close_read_end_after_n_events = 1;
+    ASSERT_INT_EQUALS(1, state->events.count);
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_subscribe_and_schedule_write_end_clean_up_task, NULL));
-
-    ASSERT_INT_EQUALS(1, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, test_pipe_hangup_event_sent_after_write_end_closed);
+PIPE_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, SMALL_BUFFER_SIZE);
 
 static void s_subscribe_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
     struct pipe_state *state = user_data;
@@ -981,29 +970,18 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
-    struct aws_allocator *allocator,
-    void *arg) {
+static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(struct pipe_state *state) {
+    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+    state->events.close_read_end_after_n_events = 1;
 
-    (void)arg;
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, NULL, s_clean_up_write_end_then_schedule_subscribe_task));
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, SMALL_BUFFER_SIZE));
+    ASSERT_INT_EQUALS(1, state->events.count);
 
-    state.events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    state.events.close_read_end_after_n_events = 1;
-
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, NULL, s_clean_up_write_end_then_schedule_subscribe_task));
-
-    ASSERT_INT_EQUALS(1, state.events.count);
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(
-    pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed,
-    test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed);
+PIPE_TEST_CASE(pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed, SMALL_BUFFER_SIZE);
 
 static void s_close_write_end_after_all_writes_complete(
     struct aws_pipe_write_end *write_end,
@@ -1023,7 +1001,7 @@ static void s_close_write_end_after_all_writes_complete(
 
     state->buffers.num_bytes_written += num_bytes_written;
 
-    if (state->buffers.num_bytes_written == state->buffers.size) {
+    if (state->buffers.num_bytes_written == state->buffer_size) {
         int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
         if (err) {
             goto error;
@@ -1044,7 +1022,7 @@ static void s_write_in_simultaneous_chunks_task(void *arg, enum aws_task_status 
     }
 
     /* Write the whole buffer via several successive writes */
-    struct aws_byte_cursor cursor = aws_byte_cursor_from_array(state->buffers.src, state->buffers.size);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_array(state->buffers.src, state->buffer_size);
     const size_t chunk_size = cursor.len / 8;
     while (cursor.len > 0) {
         size_t bytes_to_write = (chunk_size < cursor.len) ? chunk_size : cursor.len;
@@ -1063,21 +1041,15 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_writes_are_fifo(struct aws_allocator *allocator, void *arg) {
-    (void)arg;
+static int test_pipe_writes_are_fifo(struct pipe_state *state) {
+    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_read_everything_task, s_write_in_simultaneous_chunks_task));
 
-    struct pipe_state state;
-    ASSERT_SUCCESS(s_pipe_state_init(&state, allocator, SAME_EVENT_LOOP, GIANT_BUFFER_SIZE));
+    ASSERT_SUCCESS(s_pipe_state_check_copied_data(state));
 
-    ASSERT_SUCCESS(s_pipe_state_run_test(&state, s_read_everything_task, s_write_in_simultaneous_chunks_task));
-
-    ASSERT_SUCCESS(s_pipe_state_check_copied_data(&state));
-
-    s_pipe_state_clean_up(&state);
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(pipe_writes_are_fifo, test_pipe_writes_are_fifo);
+PIPE_TEST_CASE(pipe_writes_are_fifo, GIANT_BUFFER_SIZE);
 
 // pipe_clean_up_cancels_pending_writes
 // all tests on 1 loop and 2
