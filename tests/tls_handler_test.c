@@ -261,24 +261,14 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
-    struct aws_tls_ctx_options server_ctx_options = {
-        .alpn_list = "h2;http/1.1",
-        .server_name = "localhost",
-        .verify_peer = false,
-        .ca_path = NULL,
-        .ca_file = NULL,
+    struct aws_tls_ctx_options server_ctx_options;
 #ifdef __APPLE__
-        .pkcs12_path = "./unittests.p12",
-        .pkcs12_password = "1234",
-        .private_key_path = NULL,
-        .certificate_path = NULL,
+    aws_tls_ctx_options_init_server_pkcs12(&server_ctx_options, "./unittests.p12", "1234", "localhost");
 #else
-        .pkcs12_path = NULL,
-        .pkcs12_password = NULL,
-        .private_key_path = "./unittests.key",
-        .certificate_path = "./unittests.crt",
-#endif
-    };
+    aws_tls_ctx_options_init_default_server(&server_ctx_options, "./unittests.crt", "./unittests.key", "localhost");
+#endif /* __APPLE__ */
+
+    aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
     ASSERT_NOT_NULL(server_ctx);
@@ -294,24 +284,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         .shutdown_finished = false,
     };
 
-    struct aws_tls_ctx_options client_ctx_options = {
-        .alpn_list = "h2;http/1.1",
-        /* temporary find a way to use trusted certs on apple and windows tests.*/
-        .server_name = NULL,
-        .ca_path = NULL,
-        .ca_file = "./unittests.crt",
-        .minimum_tls_version = AWS_IO_TLSv1_1,
-        .verify_peer = true,
-#ifdef __APPLE__
-        .pkcs12_path = NULL,
-        .private_key_path = NULL,
-        .certificate_path = NULL,
-#else
-        .pkcs12_path = NULL,
-        .private_key_path = NULL,
-        .certificate_path = NULL,
-#endif
-    };
+    struct aws_tls_ctx_options client_ctx_options;
+
+    aws_tls_ctx_options_init_default_client(&client_ctx_options);
+    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
+    aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, NULL, "./unittests.crt");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -326,23 +303,14 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         .shutdown_finished = false,
     };
 
-    struct aws_tls_connection_options tls_server_conn_options = {.server_name = NULL,
-                                                                 .verify_peer = false,
-                                                                 .alpn_list = NULL,
-                                                                 .on_data_read = NULL,
-                                                                 .on_negotiation_result = s_tls_on_negotiated,
-                                                                 .on_error = NULL,
-                                                                 .advertise_alpn_message = false,
-                                                                 .user_data = &incoming_args};
+    struct aws_tls_connection_options tls_server_conn_options;
+    aws_tls_connection_options_init_from_ctx_options(&tls_server_conn_options, &server_ctx_options);
+    aws_tls_connection_options_set_callbacks(&tls_server_conn_options, s_tls_on_negotiated, NULL, NULL, &incoming_args);
 
-    struct aws_tls_connection_options tls_client_conn_options = {.verify_peer = true,
-                                                                 .alpn_list = NULL,
-                                                                 .on_data_read = NULL,
-                                                                 .on_negotiation_result = s_tls_on_negotiated,
-                                                                 .on_error = NULL,
-                                                                 .server_name = "localhost",
-                                                                 .advertise_alpn_message = false,
-                                                                 .user_data = &outgoing_args};
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+    aws_tls_connection_options_set_server_name(&tls_client_conn_options, "localhost");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -544,28 +512,17 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-    struct aws_tls_connection_options tls_client_conn_options = {
-            .verify_peer = true,
-            .alpn_list = NULL,
-            .on_data_read = NULL,
-            .on_negotiation_result = s_tls_on_negotiated,
-            .on_error = NULL,
-            .server_name = (const char *)aws_string_bytes(host_name),
-            .advertise_alpn_message = false
-    };
-
-    struct aws_tls_ctx_options client_ctx_options = {
-            .alpn_list = NULL,
-            .verify_peer = true,
-            .server_name = (const char *)aws_string_bytes(host_name),
-            .ca_path = "/etc/ssl/certs",
-            .ca_file = NULL,
-            .pkcs12_path = NULL,
-            .private_key_path = NULL,
-            .certificate_path = NULL,
-    };
+    struct aws_tls_ctx_options client_ctx_options;
+    aws_tls_ctx_options_init_default_client(&client_ctx_options);
+    aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, "/etc/ssl/certs", NULL);
+    aws_tls_ctx_options_set_server_name(&client_ctx_options, (const char *)aws_string_bytes(host_name));
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
+
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
+    aws_tls_connection_options_set_server_name(&tls_client_conn_options, (const char *)aws_string_bytes(host_name));
 
     struct tls_test_args outgoing_args = {
             .mutex = &mutex,
@@ -731,31 +688,19 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
             .shutdown_finished = false,
     };
 
-    struct aws_tls_connection_options tls_client_conn_options = {
-            .verify_peer = true,
-            .alpn_list = "h2;http/1.1",
-            .on_data_read = NULL,
-            .on_negotiation_result = s_tls_on_negotiated,
-            .on_error = NULL,
-            .server_name = (const char *)aws_string_bytes(host_name),
-            .advertise_alpn_message = false,
-            .user_data = &outgoing_args,
-    };
-
-    struct aws_tls_ctx_options client_ctx_options = {
-            .alpn_list = "h2;http/1.1",
-            .verify_peer = true,
-            .server_name = (const char *)aws_string_bytes(host_name),
-            .ca_path = "/etc/ssl/certs",
-            .ca_file = NULL,
-            .pkcs12_path = NULL,
-            .private_key_path = NULL,
-            .certificate_path = NULL,
-    };
+    struct aws_tls_ctx_options client_ctx_options;
+    aws_tls_ctx_options_init_default_client(&client_ctx_options);
+    aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, "/etc/ssl/certs", NULL);
+    aws_tls_ctx_options_set_server_name(&client_ctx_options, (const char *)aws_string_bytes(host_name));
+    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
-
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+    aws_tls_connection_options_set_server_name(&tls_client_conn_options, (const char *)aws_string_bytes(host_name));
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, "h2;http/1.1");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);

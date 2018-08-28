@@ -62,9 +62,9 @@ struct client_channel_data {
     struct aws_socket socket;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated on_protocol_negotiated;
-    aws_tls_on_data_read user_on_data_read;
-    aws_tls_on_negotiation_result user_on_negotiation_result;
-    aws_tls_on_error user_on_error;
+    aws_tls_on_data_read_fn *user_on_data_read;
+    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
+    aws_tls_on_error_fn *user_on_error;
     void *tls_user_data;
     bool use_tls;
 };
@@ -405,9 +405,9 @@ struct server_connection_args {
     aws_channel_server_channel_shutdown_callback shutdown_callback;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated on_protocol_negotiated;
-    aws_tls_on_data_read user_on_data_read;
-    aws_tls_on_negotiation_result user_on_negotiation_result;
-    aws_tls_on_error user_on_error;
+    aws_tls_on_data_read_fn *user_on_data_read;
+    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
+    aws_tls_on_error_fn *user_on_error;
     void *tls_user_data;
     void *user_data;
     bool use_tls;
