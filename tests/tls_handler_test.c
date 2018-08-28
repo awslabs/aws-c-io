@@ -230,7 +230,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot");
+    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot.");
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("I'm a big teapot");
 
     uint8_t incoming_received_message[128] = {0};
