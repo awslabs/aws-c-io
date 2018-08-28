@@ -143,7 +143,7 @@ static bool s_socket_test_read_predicate(void *user_data) {
 
 static bool s_socket_test_full_read_predicate(void *user_data) {
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
-    return rw_args->amount_read == rw_args->expected_read;
+    return rw_args->invocation_happened && rw_args->amount_read == rw_args->expected_read;
 }
 
 static struct aws_byte_buf s_socket_test_handle_read(

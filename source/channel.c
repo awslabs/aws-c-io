@@ -419,7 +419,7 @@ int aws_channel_slot_send_message(
         assert(slot->adj_right->handler);
 
         if (slot->adj_right->window_size >= message->message_data.len) {
-            slot->window_size -= message->message_data.len;
+            slot->adj_right->window_size -= message->message_data.len;
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
