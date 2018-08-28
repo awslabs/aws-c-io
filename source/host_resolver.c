@@ -12,6 +12,7 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/host_resolver.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
@@ -21,7 +22,6 @@
 #include <aws/common/rw_lock.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
-#include <aws/io/host_resolver.h>
 
 const uint64_t NS_PER_SEC = 1000000000;
 

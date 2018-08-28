@@ -43,6 +43,14 @@ add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 
 add_test_case(tls_channel_echo_and_backpressure_test)
+add_test_case(tls_client_channel_negotiation_error_expired)
+add_test_case(tls_client_channel_negotiation_error_wrong_host)
+add_test_case(tls_client_channel_negotiation_error_self_signed)
+add_test_case(tls_client_channel_negotiation_error_untrusted_root)
+#track these down in s2n and find out why that aren't failing.
+#add_test_case(tls_client_channel_negotiation_error_revoked)
+#add_test_case(tls_client_channel_negotiation_error_pinning)
+add_test_case(tls_client_channel_negotiation_success)
 #add_test_case(tls_channel_negotiation_error)
 
 add_test_case(alpn_successfully_negotiates)

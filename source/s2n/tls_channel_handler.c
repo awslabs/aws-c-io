@@ -205,6 +205,8 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             break;
         }
         if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
+            const char *err_str = s2n_strerror_debug(s2n_error, NULL);
+            (void)err_str;
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -250,7 +252,7 @@ static int s2n_handler_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+    struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
@@ -267,7 +269,11 @@ static int s2n_handler_process_read_message(
     }
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
-    size_t downstream_window = aws_channel_slot_downstream_read_window(slot);
+    size_t downstream_window = SIZE_MAX;
+    if (slot->adj_right) {
+        downstream_window = aws_channel_slot_downstream_read_window(slot);
+    }
+
     size_t processed = 0;
 
     while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
