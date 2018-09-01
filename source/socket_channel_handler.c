@@ -350,14 +350,7 @@ struct aws_channel_handler *aws_socket_handler_new(
     handler->impl = impl;
     handler->vtable = vtable;
 
-    if (aws_event_loop_subscribe_to_io_events(
-            event_loop,
-            &socket->io_handle,
-            AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE,
-            on_socket_event,
-            handler)) {
-        goto cleanup_impl;
-    }
+    aws_socket_assign_to_event_loop(socket, event_loop);    
 
     return handler;
 

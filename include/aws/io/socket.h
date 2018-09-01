@@ -48,6 +48,9 @@ struct aws_socket_creation_args {
     void *user_data;
 };
 
+typedef void(aws_socket_on_data_written_fn)(struct aws_socket *socket, int error_code, struct aws_byte_cursor *data_written, void *user_data);
+typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
+
 struct aws_socket_endpoint {
     char address[48];
     char socket_name[108];
@@ -61,8 +64,9 @@ struct aws_socket {
     struct aws_socket_options options;
     struct aws_io_handle io_handle;
     struct aws_socket_creation_args creation_args;
-    struct aws_event_loop *connection_loop;
+    struct aws_event_loop *event_loop;
     int state;
+    void *impl;
 };
 
 struct aws_byte_buf;
@@ -79,7 +83,6 @@ AWS_IO_API int aws_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     struct aws_socket_options *options,
-    struct aws_event_loop *connection_loop,
     struct aws_socket_creation_args *creation_args);
 
 /**
@@ -98,7 +101,7 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful
  * return.
  */
-AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint);
+AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *event_loop);
 
 /**
  * Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In
@@ -116,7 +119,7 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
  * TCP and LOCAL only. The socket will begin accepting new connections. This is an asynchronous operation. New
  * connections will arrive via the `on_incoming_connection()` callback.
  */
-AWS_IO_API int aws_socket_start_accept(struct aws_socket *socket);
+AWS_IO_API int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *accept_loop);
 
 /**
  * TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after
@@ -145,6 +148,13 @@ AWS_IO_API struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *soc
  */
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
 
+AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_io_event_loop *event_loop);
+
+AWS_IO_API struct aws_io_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
+
+
+AWS_IO_API int aws_socket_subscribe_to_readable_event(struct aws_socket *socket,
+    aws_socket_on_readable_fn *on_readable, void *user_data);
 /**
  * Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is
  * available. `read` is the amount of data read into `buffer`.
@@ -155,7 +165,8 @@ AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *b
  * Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be
  * written. `written` is the amount of data read from `buffer` and successfully written to `socket`.
  */
-AWS_IO_API int aws_socket_write(struct aws_socket *socket, const struct aws_byte_cursor *cursor, size_t *written);
+AWS_IO_API int aws_socket_write(struct aws_socket *socket, struct aws_byte_cursor *cursor, 
+    aws_socket_on_data_written_fn *written_fn, void *user_data);
 
 /**
  * Gets the latest error from the socket. If no error has occurred AWS_OP_SUCCESS will be returned. This function does

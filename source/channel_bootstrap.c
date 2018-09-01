@@ -74,7 +74,6 @@ struct client_connection_args {
     aws_channel_client_setup_callback setup_callback;
     aws_channel_client_shutdown_callback shutdown_callback;
     struct client_channel_data channel_data;
-    struct aws_event_loop *loop;
     void *user_data;
 };
 
@@ -198,7 +197,7 @@ static void on_client_channel_on_setup_completed(struct aws_channel *channel, in
             connection_args->bootstrap->allocator,
             &connection_args->channel_data.socket,
             socket_slot,
-            connection_args->loop,
+            aws_socket_get_event_loop(&connection_args->channel_data.socket),
             AWS_SOCKET_HANDLER_DEFAULT_MAX_RW);
 
         if (!socket_channel_handler) {
@@ -242,8 +241,6 @@ static void on_client_connection_established(struct aws_socket *socket, void *us
 
     int err_code = AWS_OP_SUCCESS;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(connection_args->bootstrap->event_loop_group);
-    connection_args->loop = event_loop;
     struct aws_channel_creation_callbacks channel_callbacks = {
         .on_setup_completed = on_client_channel_on_setup_completed,
         .setup_user_data = connection_args,
@@ -254,7 +251,7 @@ static void on_client_connection_established(struct aws_socket *socket, void *us
     if (aws_channel_init(
             &connection_args->channel_data.channel,
             connection_args->bootstrap->allocator,
-            event_loop,
+            aws_socket_get_event_loop(socket),
             &channel_callbacks)) {
         err_code = aws_last_error();
         goto error;
@@ -345,7 +342,7 @@ static inline int new_client_channel(
         return AWS_OP_ERR;
     }
 
-    if (aws_socket_connect(&client_connection_args->channel_data.socket, endpoint)) {
+    if (aws_socket_connect(&client_connection_args->channel_data.socket, endpoint, connection_loop)) {
         aws_socket_clean_up(&client_connection_args->channel_data.socket);
         aws_mem_release(bootstrap->allocator, (void *)client_connection_args);
         return AWS_OP_ERR;
@@ -705,7 +702,7 @@ static inline struct aws_socket *server_add_socket_listener(
         goto cleanup_listener;
     }
 
-    if (aws_socket_start_accept(&server_connection_args->listener)) {
+    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop)) {
         goto cleanup_listener;
     }
 
