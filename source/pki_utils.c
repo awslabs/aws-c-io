@@ -45,7 +45,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 #endif                              /* _MSC_VER */
 
     AWS_ZERO_STRUCT(*out_buf);
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen(filename, "rb");
 
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
@@ -145,6 +145,11 @@ static int s_convert_pem_to_raw_base64(
          * Worst case we'll only have to do this once per line in the buffer. */
         while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr)) {
             aws_byte_cursor_advance(current_buf_ptr, 1);
+        }
+
+        /* handle CRLF on Windows by burning '\r' off the end of the buffer */
+        if (current_buf_ptr->len && (current_buf_ptr->ptr[current_buf_ptr->len - 1] == '\r')) {
+            current_buf_ptr->len--;
         }
 
         switch (state) {
