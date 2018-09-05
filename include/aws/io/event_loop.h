@@ -321,7 +321,7 @@ AWS_IO_API
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
 
 /**
- * Gets the current timestamp for the event loop's clock. This function is thread-safe.
+ * Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
  */
 AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);

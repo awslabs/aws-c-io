@@ -177,7 +177,7 @@ AWS_IO_API
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel);
 
 /**
- * Fetches the current timestamp from the event-loop's clock.
+ * Fetches the current timestamp from the event-loop's clock, in nanoseconds.
  */
 AWS_IO_API
 int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *time_nanos);
