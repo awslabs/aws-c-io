@@ -10,7 +10,7 @@ mkdir build
 cd build
 cmake %CMAKE_ARGS% -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=../../install ../ || goto error
 cmake --build . --config Release || goto error
-ctest -V
+ctest -V || goto error
 
 goto :EOF
 

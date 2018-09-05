@@ -45,7 +45,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 #endif                              /* _MSC_VER */
 
     AWS_ZERO_STRUCT(*out_buf);
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen(filename, "rb");
 
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
@@ -53,13 +53,20 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return s_translate_and_raise_file_open_error(errno);
         }
 
+        size_t allocation_size = (size_t)ftell(fp) + 1;
         /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
          * but in this case that doesn't make sense since the user would have to know the length of the file.
          * We'll tell the user that we allocate here and if we succeed they free. */
-        if (aws_byte_buf_init(alloc, out_buf, (size_t)ftell(fp))) {
+        if (aws_byte_buf_init(alloc, out_buf, allocation_size)) {
             fclose(fp);
             return AWS_OP_ERR;
         }
+
+        /* while WE ban null terminator APIs, unfortunately much of the world is still stuck in the dark ages of
+         * 1970 and we unfortunately have to call into their code on occasion.
+         * Go ahead and add one here, but don't make it part of the length. */
+        out_buf->len = out_buf->capacity - 1;
+        out_buf->buffer[out_buf->len] = 0;
 
         if (fseek(fp, 0L, SEEK_SET)) {
             aws_byte_buf_clean_up(out_buf);
@@ -67,16 +74,15 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             return s_translate_and_raise_file_open_error(errno);
         }
 
-        size_t read = fread(out_buf->buffer, 1, out_buf->capacity, fp);
+        size_t read = fread(out_buf->buffer, 1, out_buf->len, fp);
         fclose(fp);
-        if (read < out_buf->capacity) {
+        if (read < out_buf->len) {
             aws_secure_zero(out_buf->buffer, out_buf->len);
             aws_byte_buf_clean_up(out_buf);
             return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         }
-        out_buf->len = read;
 
-        return 0;
+        return AWS_OP_SUCCESS;
     }
 
     return s_translate_and_raise_file_open_error(errno);
@@ -139,6 +145,11 @@ static int s_convert_pem_to_raw_base64(
          * Worst case we'll only have to do this once per line in the buffer. */
         while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr)) {
             aws_byte_cursor_advance(current_buf_ptr, 1);
+        }
+
+        /* handle CRLF on Windows by burning '\r' off the end of the buffer */
+        if (current_buf_ptr->len && (current_buf_ptr->ptr[current_buf_ptr->len - 1] == '\r')) {
+            current_buf_ptr->len--;
         }
 
         switch (state) {
