@@ -328,8 +328,6 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     assert(impl);
     assert(task);
 
-    task->timestamp = run_at_nanos;
-
     /* If we're on the event-thread, just schedule it directly */
     if (s_is_event_thread(event_loop)) {
         if (run_at_nanos == 0) {
@@ -341,6 +339,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     }
 
     /* Otherwise, add it to synced_data.tasks_to_schedule and signal the event-thread to process it */
+    task->timestamp = run_at_nanos;
     bool should_signal_thread = false;
 
     { /* Begin critical section */
@@ -348,8 +347,10 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         aws_linked_list_push_back(&impl->synced_data.tasks_to_schedule, &task->node);
 
         /* Signal thread that synced_data has changed (unless it's been signaled already) */
-        should_signal_thread = !impl->synced_data.thread_signaled;
-        impl->synced_data.thread_signaled = true;
+        if (!impl->synced_data.thread_signaled) {
+            should_signal_thread = true;
+            impl->synced_data.thread_signaled = true;
+        }
 
         aws_mutex_unlock(&impl->synced_data.mutex);
     } /* End critical section */
@@ -441,7 +442,6 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
             impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
         }
 
-        /* Swapping the contents of the two lists is the fastest and safest way to move this data. */
         aws_linked_list_swap_contents(&impl->synced_data.tasks_to_schedule, &tasks_to_schedule);
 
         aws_mutex_unlock(&impl->synced_data.mutex);
@@ -507,28 +507,32 @@ static void s_event_thread_main(void *user_data) {
         }
 
         /* Run scheduled tasks */
-        bool use_default_timeout = false;
         uint64_t now_ns = 0;
-        int err = event_loop->clock(&now_ns);
+        event_loop->clock(&now_ns); /* If clock fails, 0 is passed to scheduler, and tasks scheduled for a specific time
+                                       will not be run. */
+        aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
+
+        /* Set timeout for next GetQueuedCompletionStatus() call.
+         * If clock fails, or scheduler has no tasks, use default timeout */
+        bool use_default_timeout = false;
+
+        err = event_loop->clock(&now_ns);
         if (err) {
-            assert(0); /* Failed to query current time, tasks scheduled for a specific time will not be run. */
             use_default_timeout = true;
         }
 
-        aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
-
-        /* Set timeout for next GetQueuedCompletionStatus() call */
         uint64_t next_run_time_ns;
         if (!aws_task_scheduler_has_tasks(&impl->thread_data.scheduler, &next_run_time_ns)) {
             use_default_timeout = true;
         }
 
-        if (!use_default_timeout) {
+        if (use_default_timeout) {
+            timeout_ms = DEFAULT_TIMEOUT_MS;
+        } else {
+            /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
             uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
             uint64_t timeout_ms64 = aws_timestamp_convert(AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, timeout_ns, NULL);
             timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
-        } else {
-            timeout_ms = DEFAULT_TIMEOUT_MS;
         }
     }
 }
