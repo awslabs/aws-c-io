@@ -776,8 +776,8 @@ static void s_event_thread_main(void *user_data) {
 
         /* Run scheduled tasks */
         uint64_t now_ns = 0;
-        event_loop->clock(&now_ns); /* If clock fails, 0 is passed to scheduler, and tasks scheduled for a specific time
-                                       will not be run. */
+        event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
+                                       will not be run. That's ok, we'll handle them next time around. */
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
         /* Set timeout for next kevent() call.
@@ -805,7 +805,7 @@ static void s_event_thread_main(void *user_data) {
             uint64_t timeout_sec =
                 aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, &timeout_remainder_ns);
 
-            if (timeout_sec > LONG_MAX) { /* Check for overflow. On Darwin, these values are stored in longs */
+            if (timeout_sec > LONG_MAX) { /* Check for overflow. On Darwin, these values are stored as longs */
                 timeout_sec = LONG_MAX;
                 timeout_remainder_ns = 0;
             }

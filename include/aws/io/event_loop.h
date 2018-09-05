@@ -65,7 +65,7 @@ struct aws_event_loop_vtable {
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
     void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
-    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 #if AWS_USE_IO_COMPLETION_PORTS
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #else

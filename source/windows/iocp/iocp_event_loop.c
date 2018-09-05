@@ -508,8 +508,8 @@ static void s_event_thread_main(void *user_data) {
 
         /* Run scheduled tasks */
         uint64_t now_ns = 0;
-        event_loop->clock(&now_ns); /* If clock fails, 0 is passed to scheduler, and tasks scheduled for a specific time
-                                       will not be run. */
+        event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
+                                       will not be run. That's ok, we'll handle them next time around. */
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
         /* Set timeout for next GetQueuedCompletionStatus() call.
