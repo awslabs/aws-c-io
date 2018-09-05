@@ -136,7 +136,7 @@ static void s_write_end_finish_closing_task(void *write_end, aws_task_status tas
 static int s_translate_windows_error(DWORD win_error) {
     switch (win_error) {
         case ERROR_INVALID_HANDLE:
-            return AWS_IO_FILE_NOT_FOUND;
+            return AWS_IO_FILE_INVALID_PATH;
         case ERROR_BROKEN_PIPE:
             return AWS_IO_BROKEN_PIPE;
         default:

@@ -67,15 +67,31 @@ static bool s_connection_completed_predicate(void *arg) {
 }
 
 static void s_local_outgoing_connection(struct aws_socket *socket, void *user_data) {
+    (void)socket;
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
-
-    aws_condition_variable_notify_one(outgoing_args->condition_variable);
-
+    
     outgoing_args->connect_invoked = true;
+    aws_condition_variable_notify_one(outgoing_args->condition_variable);
+}
 
-    if (socket->options.domain != AWS_SOCKET_LOCAL) {
-        aws_mutex_unlock(outgoing_args->mutex);
-    }
+struct socket_io_args {
+    struct aws_byte_cursor *written_data;
+    int error_code;
+    struct aws_condition_variable condition_variable;
+};
+
+static void s_on_written(struct aws_socket *socket, int error_code, struct aws_byte_cursor *data_written, void *user_data) {
+    (void)socket;
+    struct socket_io_args *write_args = user_data;
+    write_args->error_code = error_code;
+    write_args->written_data = data_written;
+    aws_condition_variable_notify_one(&write_args->condition_variable);
+}
+
+static bool s_write_completed_predicate(void *arg) {
+    struct socket_io_args *io_args = arg;
+
+    return io_args->written_data != NULL;
 }
 
 static void s_local_outgoing_connection_error(struct aws_socket *socket, int error_code, void *user_data) {
@@ -115,13 +131,13 @@ static int s_test_socket(
     };
 
     struct aws_socket listener;
-    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options, event_loop, &listener_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options, &listener_creation_args));
 
     ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
     if (options->type != AWS_SOCKET_DGRAM) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-        ASSERT_SUCCESS(aws_socket_start_accept(&listener));
+        ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop));
     }
 
     struct local_outgoing_args outgoing_args = {
@@ -134,8 +150,8 @@ static int s_test_socket(
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options, event_loop, &outgoing_creation_args));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint));
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options, &outgoing_creation_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop));
 
     if (options->type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(
@@ -156,6 +172,8 @@ static int s_test_socket(
         ASSERT_INT_EQUALS(options->type, listener_args.incoming->options.type);
     }
 
+    aws_socket_assign_to_event_loop(server_sock, event_loop);
+
     /* now test the read and write across the connection. */
     const char read_data[] = "I'm a little teapot";
     char write_data[sizeof(read_data)] = {0};
@@ -166,13 +184,19 @@ static int s_test_socket(
 
     struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
 
-    size_t data_len = 0;
-    ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_cursor, &data_len));
-    ASSERT_INT_EQUALS(read_cursor.len, data_len);
+    struct socket_io_args io_args = {
+        .written_data = NULL,
+        .error_code = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_cursor, s_on_written, &io_args));
+    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
+    ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
     size_t read = 0;
     while (read < read_buffer.len) {
-        data_len = 0;
+        size_t data_len = 0;
         if (aws_socket_read(server_sock, &write_buffer, &data_len)) {
             ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
         }
@@ -185,18 +209,22 @@ static int s_test_socket(
     write_buffer.len = 0;
 
     if (options->type == AWS_SOCKET_STREAM) {
-        ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, &data_len));
-        ASSERT_INT_EQUALS(read_buffer.len, data_len);
+        io_args.error_code = 0;
+        io_args.written_data = NULL;
+        ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, s_on_written, &io_args));
+        aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
+        ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
+
         read = 0;
         write_buffer.len = 0;
         while (read < read_buffer.len) {
-            data_len = 0;
+            size_t data_len = 0;
             if (aws_socket_read(&outgoing, &write_buffer, &data_len)) {
                 ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
             }
             read += data_len;
         }
-        ASSERT_INT_EQUALS(read_buffer.len, data_len);
+        //ASSERT_INT_EQUALS(read_buffer.len, data_len);
 
         ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
     }
@@ -305,9 +333,9 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
                                                               .user_data = &outgoing_args};
 
     struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, &outgoing_creation_args));
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop));
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
 
@@ -362,9 +390,9 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, &outgoing_creation_args));
 
-    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint, event_loop));
     ASSERT_TRUE(aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_IO_FILE_INVALID_PATH);
     ASSERT_TRUE(args.error_code == AWS_IO_SOCKET_CONNECTION_REFUSED || args.error_code == AWS_IO_FILE_INVALID_PATH);
 
@@ -400,7 +428,7 @@ static int s_test_incoming_local_sock_errors(struct aws_allocator *allocator, vo
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, event_loop, &incoming_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
 
     aws_socket_clean_up(&incoming);
@@ -440,10 +468,10 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, event_loop, &outgoing_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options, &outgoing_creation_args));
     /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
@@ -479,7 +507,7 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, event_loop, &incoming_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
 
     aws_socket_clean_up(&incoming);
@@ -513,7 +541,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, event_loop, &incoming_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
 
     aws_socket_clean_up(&incoming);
@@ -547,10 +575,10 @@ static int s_test_non_connected_read_write_fails(struct aws_allocator *allocator
         .on_connection_established = s_null_sock_connection, .on_error = s_null_sock_error_handler, .user_data = &args};
 
     struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, event_loop, &incoming_creation_args));
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
     ASSERT_ERROR(AWS_IO_SOCKET_NOT_CONNECTED, aws_socket_read(&incoming, NULL, NULL));
-    ASSERT_ERROR(AWS_IO_SOCKET_NOT_CONNECTED, aws_socket_write(&incoming, NULL, NULL));
+    ASSERT_ERROR(AWS_IO_SOCKET_NOT_CONNECTED, aws_socket_write(&incoming, NULL, NULL, NULL));
 
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);

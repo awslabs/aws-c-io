@@ -66,15 +66,26 @@ struct aws_socket {
     struct aws_socket_creation_args creation_args;
     struct aws_event_loop *event_loop;
     int state;
+    aws_socket_on_readable_fn *readable_fn;
+    void *readable_user_data;
     void *impl;
 };
 
 struct aws_byte_buf;
 struct aws_byte_cursor;
 
+/* these are purposely not exported. These functions only get called internally. */
+#ifdef _WIN32
+typedef void(*aws_ms_fn_ptr)(void);
+void aws_check_and_init_winsock(void);
+aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
+aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 /**
  * Initializes a socket object with socket options, an event loop to use for non-blocking operations, and callbacks to
  invoke upon completion of asynchronous operations. If you are using UDP or LOCAL, `connection_loop` may be `NULL`.
@@ -148,12 +159,11 @@ AWS_IO_API struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *soc
  */
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
 
-AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_io_event_loop *event_loop);
+AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop);
 
-AWS_IO_API struct aws_io_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
+AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
-
-AWS_IO_API int aws_socket_subscribe_to_readable_event(struct aws_socket *socket,
+AWS_IO_API int aws_socket_subscribe_to_readable_events(struct aws_socket *socket,
     aws_socket_on_readable_fn *on_readable, void *user_data);
 /**
  * Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is

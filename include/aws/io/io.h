@@ -71,6 +71,11 @@ struct aws_io_message {
      */
     size_t copy_mark;
 
+    /** 
+     * The channel that the message is bound to. 
+     */
+    struct aws_channel *owning_channel;
+
     /**
      * Invoked by the channel once the entire message has been written to the data sink.
      */

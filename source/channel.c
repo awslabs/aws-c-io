@@ -251,7 +251,12 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     enum aws_io_message_type message_type,
     size_t size_hint) {
 
-    return aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    struct aws_io_message *message = aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    if (AWS_LIKELY(message)) {
+        message->owning_channel = channel;
+    }
+
+    return message;
 }
 
 void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message) {

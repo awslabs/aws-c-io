@@ -130,8 +130,8 @@ struct socket_test_rw_args {
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
     struct aws_byte_buf received_message;
-    int amount_read;
-    int expected_read;
+    size_t amount_read;
+    size_t expected_read;
     bool invocation_happened;
     bool shutdown_finished;
 };
