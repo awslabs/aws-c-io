@@ -430,9 +430,9 @@ store is of type `void *`. This function is NOT thread safe, and it expects the 
 the caller must first schedule a task on the event loop to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`. 
 It is the removers responsibility to free the memory pointed to by item. If it is NULL, the default deallocation strategy for the event loop will be used.
 
-    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
+    int aws_event_loop_current_clock_time ( struct aws_event_loop *, uint64_t *time_nanos);
 
-Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+Gets the current timestamp for the event loop's clock. This function is thread-safe.
 
 #### V-Table Shims
 The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
