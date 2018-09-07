@@ -224,14 +224,11 @@ static int s_test_socket(
             }
             read += data_len;
         }
-        //ASSERT_INT_EQUALS(read_buffer.len, data_len);
-
         ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
     }
 
-    aws_socket_clean_up(server_sock);
-
     if (listener_args.incoming) {
+        aws_socket_clean_up(listener_args.incoming);
         aws_mem_release(allocator, listener_args.incoming);
     }
 
@@ -302,7 +299,6 @@ static void s_timeout_error_handler(struct aws_socket *socket, int err_code, voi
     outgoing_args->error_invoked = true;
     outgoing_args->last_error = err_code;
     aws_condition_variable_notify_one(outgoing_args->condition_variable);
-    aws_mutex_unlock(outgoing_args->mutex);
 }
 
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
@@ -458,7 +454,6 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    /* hit a endpoint that will not send me a SYN packet. */
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "8567"};
 
     struct error_test_args args = {
@@ -532,7 +527,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
     options.domain = AWS_SOCKET_IPV4;
 
     /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "80"};
+    struct aws_socket_endpoint endpoint = {.address = "127.0", .port = "80"};
 
     struct error_test_args args = {
         .error_code = 0, .mutex = AWS_MUTEX_INIT, .condition_variable = AWS_CONDITION_VARIABLE_INIT};
@@ -542,7 +537,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
-    ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_bind(&incoming, &endpoint));
 
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);
@@ -566,7 +561,7 @@ static int s_test_non_connected_read_write_fails(struct aws_allocator *allocator
     options.domain = AWS_SOCKET_IPV4;
 
     /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "80"};
+    struct aws_socket_endpoint endpoint = {.address = "127.0", .port = "80"};
 
     struct error_test_args args = {
         .error_code = 0, .mutex = AWS_MUTEX_INIT, .condition_variable = AWS_CONDITION_VARIABLE_INIT};
@@ -576,7 +571,8 @@ static int s_test_non_connected_read_write_fails(struct aws_allocator *allocator
 
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
-    ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_bind(&incoming, &endpoint));
+    aws_socket_assign_to_event_loop(&incoming, event_loop);
     ASSERT_ERROR(AWS_IO_SOCKET_NOT_CONNECTED, aws_socket_read(&incoming, NULL, NULL));
     ASSERT_ERROR(AWS_IO_SOCKET_NOT_CONNECTED, aws_socket_write(&incoming, NULL, NULL, NULL));
 

@@ -89,8 +89,7 @@ void aws_overlapped_init(
 }
 
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
-    assert(overlapped);
-
+    assert(overlapped);    
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 

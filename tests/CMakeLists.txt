@@ -19,6 +19,12 @@ add_test_case(event_loop_group_setup_and_shutdown)
 add_test_case(event_loop_group_counter_overflow)
 
 add_test_case(tcp_socket_communication)
+add_test_case(udp_socket_communication)
+add_test_case(connect_timeout)
+add_test_case(outgoing_tcp_sock_error)
+add_test_case(incoming_tcp_sock_errors)
+add_test_case(incoming_udp_sock_errors)
+add_test_case(non_connected_read_write_fails)
 
 add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)

@@ -51,6 +51,7 @@ struct aws_overlapped {
     OVERLAPPED overlapped;
     aws_event_loop_on_completion_fn *on_completion;
     void *user_data;
+    struct aws_allocator *alloc;
 };
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
