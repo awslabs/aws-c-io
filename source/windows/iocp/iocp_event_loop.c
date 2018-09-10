@@ -516,7 +516,7 @@ static void s_event_thread_main(void *user_data) {
          * If clock fails, or scheduler has no tasks, use default timeout */
         bool use_default_timeout = false;
 
-        err = event_loop->clock(&now_ns);
+        int err = event_loop->clock(&now_ns);
         if (err) {
             use_default_timeout = true;
         }
