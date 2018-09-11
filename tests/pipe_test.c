@@ -916,6 +916,7 @@ static void s_clean_up_write_end_then_schedule_subscribe_task(
     struct aws_task *task,
     void *arg,
     enum aws_task_status status) {
+
     struct pipe_state *state = arg;
     int err;
 
@@ -1024,14 +1025,65 @@ static int test_pipe_writes_are_fifo(struct pipe_state *state) {
 
 PIPE_TEST_CASE(pipe_writes_are_fifo, GIANT_BUFFER_SIZE);
 
-#if 0
-static void s_write_then_clean_up_task(struct aws_task *task, )
+static void s_cancelled_on_write_complete(
+    struct aws_pipe_write_end *write_end,
+    int write_result,
+    size_t num_bytes_written,
+    void *user_data) {
 
+    (void)write_end;
+    struct pipe_state *state = user_data;
+
+    int *write_status_code = state->test_data;
+    *write_status_code = write_result;
+
+    state->buffers.num_bytes_written += num_bytes_written;
+
+    s_schedule_read_end_task(state, s_clean_up_read_end_task);
+}
+
+static void s_write_then_clean_up_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct pipe_state *state = arg;
+    int err;
+
+    aws_mem_release(state->alloc, task);
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto error;
+    }
+
+    err =
+        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_cancelled_on_write_complete, state);
+    if (err) {
+        goto error;
+    }
+
+    err = aws_pipe_clean_up_write_end(&state->write_end, s_signal_done_on_write_end_closed, state);
+    if (err) {
+        goto error;
+    }
+
+    return;
+error:
+    s_signal_error(state);
+}
+
+/* Perform an enormous write that can't possibly complete without a bit of reading.
+ * After kicking off the write operation, close the write-end.
+ * The write operation chould complete with a "cancelled" status */
 static int test_pipe_clean_up_cancels_pending_writes(struct pipe_state *state) {
-    ASSERT_SUCCESS(s_pipe_state_run_test(state, s_clean_up_read_end_task, s_write_then_clean_up_task));
+    /* capture the status code from the on-write-complete callback */
+    int write_status_code = 0;
+    state->test_data = &write_status_code;
+
+    s_schedule_write_end_task(state, s_write_then_clean_up_task);
+
+    ASSERT_SUCCESS(s_wait_for_results(state));
+
+    ASSERT_INT_EQUALS(AWS_ERROR_IO_OPERATION_CANCELLED, write_status_code);
+    ASSERT_UINT_EQUALS(0, state->buffers.num_bytes_written);
 
     return AWS_OP_SUCCESS;
 }
 
 PIPE_TEST_CASE(pipe_clean_up_cancels_pending_writes, GIANT_BUFFER_SIZE);
-#endif

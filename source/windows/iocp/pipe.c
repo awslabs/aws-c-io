@@ -143,6 +143,10 @@ static int s_translate_windows_error(DWORD win_error) {
     switch (win_error) {
         case ERROR_BROKEN_PIPE:
             return AWS_IO_BROKEN_PIPE;
+        case 0xC000014B: /* STATUS_PIPE_BROKEN */
+            return AWS_IO_BROKEN_PIPE;
+        case 0xC0000120: /* STATUS_CANCELLED */
+            return AWS_ERROR_IO_OPERATION_CANCELLED;
         default:
             return AWS_IO_SYS_CALL_FAILURE;
     }

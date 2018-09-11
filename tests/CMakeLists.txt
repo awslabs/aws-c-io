@@ -22,6 +22,8 @@ add_pipe_test_case(pipe_readable_event_not_sent_again_until_all_data_read)
 add_pipe_test_case(pipe_hangup_event_sent_after_write_end_closed)
 add_pipe_test_case(pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed)
 add_pipe_test_case(pipe_writes_are_fifo)
+add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
+
 add_test_case(xthread_scheduled_tasks_execute)
 if (USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)

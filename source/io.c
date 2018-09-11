@@ -67,6 +67,9 @@ static struct aws_error_info s_errors[] = {
         AWS_ERROR_IO_NOT_SUBSCRIBED,
         "Not subscribed to receive events"),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_ERROR_IO_OPERATION_CANCELLED,
+        "Operation cancelled before it could complete"),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_READ_WOULD_BLOCK,
         "Read operation would block, try again later"),
     AWS_DEFINE_ERROR_INFO_IO(
