@@ -177,10 +177,10 @@ AWS_IO_API
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel);
 
 /**
- * Fetches the current timestamp from the event-loop's clock.
+ * Fetches the current timestamp from the event-loop's clock, in nanoseconds.
  */
 AWS_IO_API
-int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *ticks);
+int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *time_nanos);
 
 /**
  * Retrieves an object by key from the event loop's local storage.
@@ -227,11 +227,25 @@ AWS_IO_API
 void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message);
 
 /**
- * Schedules a task to run on the event loop. This is the ideal way to move a task into the correct thread. It's also
- * handy for context switches. task is copied. This function is safe to call from any thread.
+ * Schedules a task to run on the event loop as soon as possible.
+ * This is the ideal way to move a task into the correct thread. It's also handy for context switches.
+ * This function is safe to call from any thread.
+ *
+ * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-int aws_channel_schedule_task(struct aws_channel *channel, struct aws_task *task, uint64_t run_at);
+void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task *task);
+
+/**
+ * Schedules a task to run on the event loop at the specified time.
+ * This is the ideal way to move a task into the correct thread. It's also handy for context switches.
+ * Use aws_channel_current_clock_time() to get the current time in nanoseconds.
+ * This function is safe to call from any thread.
+ *
+ * The task should not be cleaned up or modified until its function is executed.
+ */
+AWS_IO_API
+void aws_channel_schedule_task_future(struct aws_channel *channel, struct aws_task *task, uint64_t run_at_nanos);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use

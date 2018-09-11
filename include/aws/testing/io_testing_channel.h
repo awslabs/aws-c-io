@@ -38,9 +38,18 @@ static int s_testing_loop_wait_for_stop_completion(struct aws_event_loop *event_
     return AWS_OP_SUCCESS;
 }
 
-static int s_testing_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
+static void s_testing_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct testing_loop *testing_loop = event_loop->impl_data;
-    return aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at);
+    return aws_task_scheduler_schedule_now(&testing_loop->scheduler, task);
+}
+
+static void s_testing_loop_schedule_task_future(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos) {
+
+    struct testing_loop *testing_loop = event_loop->impl_data;
+    return aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
 }
 
 static int s_testing_loop_subscribe_to_io_events(
@@ -79,7 +88,8 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
     .destroy = s_testing_loop_destroy,
     .is_on_callers_thread = s_testing_loop_is_on_callers_thread,
     .run = s_testing_loop_run,
-    .schedule_task = s_testing_loop_schedule_task,
+    .schedule_task_now = s_testing_loop_schedule_task_now,
+    .schedule_task_future = s_testing_loop_schedule_task_future,
     .stop = s_testing_loop_stop,
     .subscribe_to_io_events = s_testing_loop_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_testing_loop_unsubscribe_from_io_events,
@@ -91,7 +101,7 @@ static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator
     aws_event_loop_init_base(event_loop, allocator, clock);
 
     struct testing_loop *testing_loop = aws_mem_acquire(allocator, sizeof(struct testing_loop));
-    aws_task_scheduler_init(&testing_loop->scheduler, allocator, clock);
+    aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
     event_loop->impl_data = testing_loop;
     event_loop->vtable = s_testing_loop_vtable;
@@ -211,7 +221,9 @@ static struct aws_channel *new_testing_channel(struct aws_allocator *allocator) 
     aws_channel_init(channel, allocator, test_event_loop, &callbacks);
     struct testing_loop *testing_loop = test_event_loop->impl_data;
     /* run the task scheduler, so the callbacks get invoked (all on this thread). */
-    aws_task_scheduler_run_all(&testing_loop->scheduler, NULL);
+    uint64_t now = 0;
+    aws_event_loop_current_clock_time(&test_event_loop, &now);
+    aws_task_scheduler_run_all(&testing_loop->scheduler, now);
 
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
     struct aws_channel_handler *handler = s_new_testing_channel_handler(allocator);
@@ -244,7 +256,9 @@ static size_t testing_channel_last_window_update(struct aws_channel *test_channe
  */
 static void testing_channel_execute_queued_tasks(struct aws_channel *test_channel) {
     struct testing_loop *testing_loop = test_channel->loop->impl_data;
-    aws_task_scheduler_run_all(&testing_loop->scheduler, NULL);
+    uint64_t now = 0;
+    aws_event_loop_current_clock_time(test_channel->loop, &now);
+    aws_task_scheduler_run_all(&testing_loop->scheduler, now);
 }
 
 /** When you want to force the  "not on channel thread path" for your handler, set 'on_users_thread' to false.
