@@ -535,7 +535,7 @@ static void s_event_thread_main(void *user_data) {
         } else {
             /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
             uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
-            uint64_t timeout_ms64 = aws_timestamp_convert(AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, timeout_ns, NULL);
+            uint64_t timeout_ms64 = aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
             timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
         }
     }

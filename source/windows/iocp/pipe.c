@@ -72,6 +72,9 @@ struct read_end_impl {
      * pending while the user is re-subscribing. */
     bool is_async_operation_pending;
 
+    /* Used when we want to invoke a function, but not at this exact moment */
+    struct aws_task delay_task;
+
     aws_pipe_on_read_end_closed_fn *on_closed_user_callback;
     void *on_closed_user_data;
 
@@ -109,6 +112,9 @@ struct write_end_impl {
     /* List of currently active write_requests */
     struct aws_linked_list write_list;
 
+    /* Used when we want to invoke a function, but not at this exact moment */
+    struct aws_task delay_task;
+
     aws_pipe_on_write_end_closed_fn *on_closed_user_fn;
     void *on_closed_user_data;
 };
@@ -123,20 +129,18 @@ static void s_read_end_on_zero_byte_read_completion(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred);
-static void s_read_end_report_error_task(void *user_data, aws_task_status status);
-static void s_read_end_finish_closing_task(void *read_end, aws_task_status task_status);
+static void s_read_end_report_error_task(struct aws_task *task, void *user_data, enum aws_task_status status);
+static void s_read_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status);
 static void s_write_end_on_write_completion(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred);
-static void s_write_end_finish_closing_task(void *write_end, aws_task_status task_status);
+static void s_write_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status);
 
 /* Translate Windows errors into aws_pipe errors */
 static int s_translate_windows_error(DWORD win_error) {
     switch (win_error) {
-        case ERROR_INVALID_HANDLE:
-            return AWS_IO_FILE_NOT_FOUND;
         case ERROR_BROKEN_PIPE:
             return AWS_IO_BROKEN_PIPE;
         default:
@@ -363,13 +367,8 @@ int aws_pipe_clean_up_read_end(
      * If no async operations are pending, we schedule a task to clean up, even though we could clean up immediately.
      * We do this because it's weird to invoke user callbacks before the function that sets them can return. */
     if (!read_impl->is_async_operation_pending) {
-        struct aws_task task;
-        task.fn = s_read_end_finish_closing_task;
-        task.arg = read_end;
-
-        uint64_t time_now;
-        read_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
-        aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
+        aws_task_init(&read_impl->delay_task, s_read_end_finish_closing_task, read_end);
+        aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->delay_task);
     }
 
     return AWS_OP_SUCCESS;
@@ -395,8 +394,10 @@ static void s_read_end_finish_closing(struct aws_pipe_read_end *read_end) {
     }
 }
 
-static void s_read_end_finish_closing_task(void *read_end, aws_task_status task_status) {
-    (void)task_status;
+static void s_read_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_pipe_read_end *read_end = user_data;
     s_read_end_finish_closing(read_end);
 }
 
@@ -472,13 +473,8 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
             read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
     }
 
-    struct aws_task task;
-    task.fn = s_read_end_report_error_task;
-    task.arg = read_end;
-
-    uint64_t time_now;
-    read_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
-    aws_event_loop_schedule_task(read_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
+    aws_task_init(&read_impl->delay_task, s_read_end_report_error_task, read_end);
+    aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->delay_task);
 }
 
 /* Common functionality that needs to run after completion of any async task on the read-end */
@@ -499,7 +495,8 @@ static void s_read_end_complete_async_operation(struct aws_pipe_read_end *read_e
     }
 }
 
-static void s_read_end_report_error_task(void *user_data, aws_task_status status) {
+static void s_read_end_report_error_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
     (void)status; /* Do same work whether or not this is a "cancelled" task */
 
     struct aws_pipe_read_end *read_end = user_data;
@@ -742,13 +739,8 @@ int aws_pipe_clean_up_write_end(
     } else {
         /* Even though we could close immediately, schedule the shutdown to complete on the event-loop thread.
          * We do this because it's weird to invoke user callbacks before the function that sets them can return. */
-        struct aws_task task;
-        task.fn = s_write_end_finish_closing_task;
-        task.arg = write_end;
-
-        uint64_t time_now;
-        write_impl->event_loop->clock(&time_now);                              /* TODO: wtf if this fails */
-        aws_event_loop_schedule_task(write_impl->event_loop, &task, time_now); /* TODO: wtf if this fails */
+        aws_task_init(&write_impl->delay_task, s_write_end_finish_closing_task, write_end);
+        aws_event_loop_schedule_task_now(write_impl->event_loop, &write_impl->delay_task);
     }
 
     return AWS_OP_SUCCESS;
@@ -773,8 +765,11 @@ static void s_write_end_finish_closing(struct aws_pipe_write_end *write_end) {
     }
 }
 
-static void s_write_end_finish_closing_task(void *write_end, aws_task_status task_status) {
-    (void)task_status;
+static void s_write_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct aws_pipe_write_end *write_end = user_data;
     s_write_end_finish_closing(write_end);
 }
 
