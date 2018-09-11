@@ -20,7 +20,7 @@ int mock_dns_resolver_init(struct mock_dns_resolver *resolver, size_t max_resolv
     resolver->index = 0;
     resolver->max_resolves = max_resolves;
     resolver->resolve_count = 0;
-    return aws_array_list_init_dynamic(&resolver->address_list, allocator, 2, sizeof(struct aws_host_address));
+    return aws_array_list_init_dynamic(&resolver->address_list, allocator, 2, sizeof(struct aws_array_list));
 }
 
 void mock_dns_resolver_clean_up(struct mock_dns_resolver *resolver) {

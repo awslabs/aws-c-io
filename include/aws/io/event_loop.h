@@ -68,7 +68,8 @@ struct aws_event_loop_vtable {
     int (*run)(struct aws_event_loop *event_loop);
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
-    int (*schedule_task)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+    void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 #if AWS_USE_IO_COMPLETION_PORTS
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #else
@@ -251,14 +252,28 @@ AWS_IO_API
 int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
 
 /**
- * The event loop will schedule the task and run it on the event loop thread.
+ * The event loop will schedule the task and run it on the event loop thread as soon as possible.
  * Note that cancelled tasks will execute outside the event loop thread.
  * This function may be called from outside or inside the event loop thread.
  *
- * Task is copied.
+ * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+
+/**
+ * The event loop will schedule the task and run it at the specified time.
+ * Use aws_event_loop_current_clock_time() to query the current time in nanoseconds.
+ * Note that cancelled tasks will execute outside the event loop thread.
+ * This function may be called from outside or inside the event loop thread.
+ *
+ * The task should not be cleaned up or modified until its function is executed.
+ */
+AWS_IO_API
+void aws_event_loop_schedule_task_future(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos);
 
 #if AWS_USE_IO_COMPLETION_PORTS
 
@@ -309,10 +324,10 @@ AWS_IO_API
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
 
 /**
- * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+ * Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
  */
 AWS_IO_API
-int aws_event_loop_current_ticks(struct aws_event_loop *event_loop, uint64_t *ticks);
+int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 #ifdef __cplusplus
 }
