@@ -23,10 +23,6 @@
 #include <stdio.h>
 
 enum read_end_state {
-    /* Pipe is in the process of closing.
-     * If the user was subscribed, they no longer receive events */
-    READ_END_STATE_CLOSING,
-
     /* Pipe is open. */
     READ_END_STATE_OPEN,
 
@@ -55,6 +51,19 @@ enum monitoring_reason {
     MONITORING_BECAUSE_ERROR_SUSPECTED = 4,
 };
 
+/* Async operations live in their own allocations.
+ * This allows the pipe to be cleaned up without waiting for all outstanding operations to complete.  */
+struct async_operation {
+    union {
+        struct aws_overlapped overlapped;
+        struct aws_task task;
+    } op;
+
+    struct aws_allocator *alloc;
+    bool is_active;
+    bool is_read_end_cleaned_up;
+};
+
 struct read_end_impl {
     struct aws_allocator *alloc;
 
@@ -64,19 +73,14 @@ struct read_end_impl {
 
     struct aws_event_loop *event_loop;
 
-    /* Overlapped struct for use by async zero-byte-read operation (used for async monitoring of pipe status). */
-    struct aws_overlapped overlapped;
+    /* Async overlapped operation for monitoring pipe status.
+     * This operation is re-used each time monitoring resumes.
+     * Note that rapidly subscribing/unsubscribing could lead to the monitoring operation from a previous subscribe
+     * still pending while the user is re-subscribing. */
+    struct async_operation *async_monitoring;
 
-    /* True while async monitoring-operation, or error-reporting task, is outstanding.
-     * Note that rapidly subscribing/unsubscribing could lead to async operations from a previous subscribe still
-     * pending while the user is re-subscribing. */
-    bool is_async_operation_pending;
-
-    /* Used when we want to invoke a function, but not at this exact moment */
-    struct aws_task delay_task;
-
-    aws_pipe_on_read_end_closed_fn *on_closed_user_callback;
-    void *on_closed_user_data;
+    /* Async task operation used to deliver error reports. */
+    struct async_operation *async_error_report;
 
     aws_pipe_on_read_event_fn *on_read_event_user_callback;
     void *on_read_event_user_data;
@@ -99,8 +103,10 @@ enum write_end_state {
 struct write_request {
     aws_pipe_on_write_complete_fn *user_callback;
     void *user_data;
+    struct aws_allocator *alloc;
     struct aws_overlapped overlapped;
     struct aws_linked_list_node list_node;
+    bool is_write_end_cleaned_up;
 };
 
 struct write_end_impl {
@@ -112,11 +118,8 @@ struct write_end_impl {
     /* List of currently active write_requests */
     struct aws_linked_list write_list;
 
-    /* Used when we want to invoke a function, but not at this exact moment */
-    struct aws_task delay_task;
-
-    aws_pipe_on_write_end_closed_fn *on_closed_user_fn;
-    void *on_closed_user_data;
+    /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated write_request around
+     * and re-using it whenever possible */
 };
 
 enum {
@@ -130,7 +133,6 @@ static void s_read_end_on_zero_byte_read_completion(
     int status_code,
     size_t num_bytes_transferred);
 static void s_read_end_report_error_task(struct aws_task *task, void *user_data, enum aws_task_status status);
-static void s_read_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status);
 static void s_write_end_on_write_completion(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,
@@ -277,7 +279,6 @@ int aws_pipe_init(
     read_impl->alloc = allocator;
     read_impl->state = READ_END_STATE_OPEN;
     read_impl->handle.data.handle = INVALID_HANDLE_VALUE;
-    aws_overlapped_init(&read_impl->overlapped, s_read_end_on_zero_byte_read_completion, read_end);
 
     read_impl->handle.data.handle = CreateFileA(
         pipe_name,     /*lpFileName*/
@@ -300,6 +301,25 @@ int aws_pipe_init(
 
     read_impl->event_loop = read_end_event_loop;
 
+    /* Init the read-end's async operations */
+    read_impl->async_monitoring = aws_mem_acquire(allocator, sizeof(struct async_operation));
+    if (!read_impl->async_monitoring) {
+        goto clean_up;
+    }
+
+    AWS_ZERO_STRUCT(*read_impl->async_monitoring);
+    read_impl->async_monitoring->alloc = allocator;
+    aws_overlapped_init(&read_impl->async_monitoring->op.overlapped, s_read_end_on_zero_byte_read_completion, read_end);
+
+    read_impl->async_error_report = aws_mem_acquire(allocator, sizeof(struct async_operation));
+    if (!read_impl->async_error_report) {
+        goto clean_up;
+    }
+
+    AWS_ZERO_STRUCT(*read_impl->async_error_report);
+    read_impl->async_error_report->alloc = allocator;
+    aws_task_init(&read_impl->async_error_report->op.task, s_read_end_report_error_task, read_end);
+
     /* Success */
     write_end->impl_data = write_impl;
     read_end->impl_data = read_impl;
@@ -318,6 +338,14 @@ clean_up:
     if (read_impl) {
         if (read_impl->handle.data.handle != INVALID_HANDLE_VALUE) {
             CloseHandle(read_impl->handle.data.handle);
+        }
+
+        if (read_impl->async_monitoring) {
+            aws_mem_release(allocator, read_impl->async_monitoring);
+        }
+
+        if (read_impl->async_error_report) {
+            aws_mem_release(allocator, read_impl->async_error_report);
         }
 
         aws_mem_release(allocator, read_impl);
@@ -341,68 +369,35 @@ struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_w
     return write_impl->event_loop;
 }
 
-int aws_pipe_clean_up_read_end(
-    struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_end_closed_fn *on_closed,
-    void *user_data) {
+int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
-
-    if (read_impl->state == READ_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_IO_CLOSING);
-    }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    read_impl->state = READ_END_STATE_CLOSING;
-    read_impl->on_closed_user_callback = on_closed;
-    read_impl->on_closed_user_data = user_data;
-
     CloseHandle(read_impl->handle.data.handle);
 
-    /* Can't finish clean up until all async operations complete.
-     *
-     * If there are any async operations pending, s_read_end_complete_async_operation() will finish cleaning up when
-     * the operation completes. If a zero-byte-read is pending, it will complete soon due to the handle being closed.
-     *
-     * If no async operations are pending, we schedule a task to clean up, even though we could clean up immediately.
-     * We do this because it's weird to invoke user callbacks before the function that sets them can return. */
-    if (!read_impl->is_async_operation_pending) {
-        aws_task_init(&read_impl->delay_task, s_read_end_finish_closing_task, read_end);
-        aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->delay_task);
+    /* If the async operations are inactive they can be deleted now.
+     * Otherwise, inform the operations of the clean-up so they can delete themselves upon completion. */
+    if (!read_impl->async_monitoring->is_active) {
+        aws_mem_release(read_impl->alloc, read_impl->async_monitoring);
+    } else {
+        read_impl->async_monitoring->is_read_end_cleaned_up = true;
     }
 
-    return AWS_OP_SUCCESS;
-}
-
-static void s_read_end_finish_closing(struct aws_pipe_read_end *read_end) {
-
-    struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
-    assert(read_impl->state == READ_END_STATE_CLOSING);
-    assert(!read_impl->is_async_operation_pending);
-    assert(aws_event_loop_thread_is_callers_thread(read_impl->event_loop));
-
-    /* Save off callback so we can invoke it last */
-    aws_pipe_on_read_end_closed_fn *on_closed_user_callback = read_impl->on_closed_user_callback;
-    void *on_closed_user_data = read_impl->on_closed_user_data;
+    if (!read_impl->async_error_report->is_active) {
+        aws_mem_release(read_impl->alloc, read_impl->async_error_report);
+    } else {
+        read_impl->async_error_report->is_read_end_cleaned_up = true;
+    }
 
     aws_mem_release(read_impl->alloc, read_impl);
     AWS_ZERO_STRUCT(*read_end);
 
-    if (on_closed_user_callback) {
-        on_closed_user_callback(read_end, on_closed_user_data);
-    }
-}
-
-static void s_read_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
-    (void)status;
-    struct aws_pipe_read_end *read_end = user_data;
-    s_read_end_finish_closing(read_end);
+    return AWS_OP_SUCCESS;
 }
 
 /* Return whether a user is subscribed to receive read events */
@@ -436,7 +431,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
     /* We can only have one monitoring operation active at a time. Save off
      * the reason for the request. When the current operation completes,
      * if this reason is still valid, we'll re-launch async monitoring */
-    if (read_impl->is_async_operation_pending) {
+    if (read_impl->async_monitoring->is_active) {
         read_impl->monitoring_request_reasons |= request_reason;
         return;
     }
@@ -444,11 +439,10 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
     assert(read_impl->error_events_to_report == 0);
 
     read_impl->monitoring_request_reasons = 0;
-    read_impl->is_async_operation_pending = true;
     read_impl->state = READ_END_STATE_SUBSCRIBED;
 
     /* aws_overlapped must be reset before each use */
-    aws_overlapped_reset(&read_impl->overlapped);
+    aws_overlapped_reset(&read_impl->async_monitoring->op.overlapped);
 
     int fake_buffer;
     bool success = ReadFile(
@@ -456,10 +450,11 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
         &fake_buffer,
         0,    /*nNumberOfBytesToRead*/
         NULL, /*lpNumberOfBytesRead: NULL for an overlapped operation*/
-        &read_impl->overlapped.overlapped);
+        &read_impl->async_monitoring->op.overlapped.overlapped);
 
     if (success || (GetLastError() == ERROR_IO_PENDING)) {
         /* Success launching zero-byte-read, aka async monitoring operation */
+        read_impl->async_monitoring->is_active = true;
         return;
     }
 
@@ -477,40 +472,29 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
             read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
     }
 
-    aws_task_init(&read_impl->delay_task, s_read_end_report_error_task, read_end);
-    aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->delay_task);
-}
-
-/* Common functionality that needs to run after completion of any async task on the read-end */
-static void s_read_end_complete_async_operation(struct aws_pipe_read_end *read_end) {
-    struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
-    assert(read_impl->is_async_operation_pending);
-
-    read_impl->is_async_operation_pending = false;
-
-    if (read_impl->state == READ_END_STATE_CLOSING) {
-        s_read_end_finish_closing(read_end);
-    } else {
-        /* Check if there's a reason to relaunch async monitoring */
-        if (read_impl->monitoring_request_reasons != 0) {
-            s_read_end_request_async_monitoring(read_end, read_impl->monitoring_request_reasons);
-        }
-    }
+    read_impl->async_error_report->is_active = true;
+    aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->async_error_report->op.task);
 }
 
 static void s_read_end_report_error_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
     (void)status; /* Do same work whether or not this is a "cancelled" task */
+
+    struct async_operation *async_op = AWS_CONTAINER_OF(task, struct async_operation, op);
+    assert(async_op->is_active);
+    async_op->is_active = false;
+
+    /* If the read end has been cleaned up, don't report the error, just free the task's memory. */
+    if (async_op->is_read_end_cleaned_up) {
+        aws_mem_release(async_op->alloc, async_op);
+        return;
+    }
 
     struct aws_pipe_read_end *read_end = user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
-    assert(read_impl->is_async_operation_pending);
 
     /* Only report the error if we're still in the SUBSCRIBE_ERROR state.
-     * If the user closed or unsubscribed since this task was queued, then
-     * we'd be in a different state. */
+     * If the user unsubscribed since this task was queued, then we'd be in a different state. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBE_ERROR) {
         assert(read_impl->error_events_to_report != 0);
 
@@ -519,8 +503,6 @@ static void s_read_end_report_error_task(struct aws_task *task, void *user_data,
                 read_end, read_impl->error_events_to_report, read_impl->on_read_event_user_data);
         }
     }
-
-    s_read_end_complete_async_operation(read_end);
 }
 
 static void s_read_end_on_zero_byte_read_completion(
@@ -532,11 +514,19 @@ static void s_read_end_on_zero_byte_read_completion(
     (void)event_loop;
     (void)num_bytes_transferred;
 
+    struct async_operation *async_op = AWS_CONTAINER_OF(overlapped, struct async_operation, op);
+
+    /* If the read-end has been cleaned up, simply free the operation's memory and return. */
+    if (async_op->is_read_end_cleaned_up) {
+        aws_mem_release(async_op->alloc, async_op);
+        return;
+    }
+
     struct aws_pipe_read_end *read_end = overlapped->user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    /* Only report events to user, and only continue async monitoring, when in the SUBSCRIBED state.
+    /* Only report events to user when in the SUBSCRIBED state.
      * If in the SUBSCRIBING state, this completion is from an operation begun during a previous subscription. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBED) {
         int events;
@@ -545,11 +535,11 @@ static void s_read_end_on_zero_byte_read_completion(
 
             /* Clear out the "waiting for data" reason to restart zero-byte-read, since we're about to tell the user
              * that the pipe is readable. If the user consumes all the data, the "waiting for data" reason will get set
-             * again and async-monitoring will be realaunched at the end of s_read_end_complete_async_operation()  */
+             * again and async-monitoring will be relaunched at the end of this function. */
             read_impl->monitoring_request_reasons &= ~MONITORING_BECAUSE_WAITING_FOR_DATA;
 
         } else {
-            /* Move pipe to SUBSCRIBE_ERROR state so we don't keep monitoring */
+            /* Move pipe to SUBSCRIBE_ERROR state to prevent further monitoring */
             read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
 
             switch (status_code) {
@@ -567,7 +557,17 @@ static void s_read_end_on_zero_byte_read_completion(
         }
     }
 
-    s_read_end_complete_async_operation(read_end);
+    /* Note that the user callback might have invoked aws_pipe_clean_up_read_end().
+     * If so, clean up the operation's memory.
+     * Otherwise, relaunch the monitoring operation if there's a reason to do so */
+    assert(async_op->is_active);
+    async_op->is_active = false;
+
+    if (async_op->is_read_end_cleaned_up) {
+        aws_mem_release(async_op->alloc, async_op);
+    } else if (read_impl->monitoring_request_reasons != 0) {
+        s_read_end_request_async_monitoring(read_end, read_impl->monitoring_request_reasons);
+    }
 }
 
 int aws_pipe_subscribe_to_read_events(
@@ -580,10 +580,7 @@ int aws_pipe_subscribe_to_read_events(
 
     if (read_impl->state != READ_END_STATE_OPEN) {
         /* Return specific error about why user can't subscribe */
-        if (read_impl->state == READ_END_STATE_CLOSING) {
-            return aws_raise_error(AWS_ERROR_IO_CLOSING);
-
-        } else if (s_read_end_is_subscribed(read_end)) {
+        if (s_read_end_is_subscribed(read_end)) {
             return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
         }
 
@@ -626,7 +623,7 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
      * s_read_end_on_zero_byte_read_completion() will see status code
      * ERROR_OPERATION_ABORTED, but won't pass the event to the user
      * because we're not in the SUBSCRIBED state anymore. */
-    if (read_impl->is_async_operation_pending) {
+    if (read_impl->async_monitoring->is_active) {
         CancelIo(read_impl->handle.data.handle);
     }
 
@@ -640,10 +637,6 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
 
     if (amount_read) {
         *amount_read = 0;
-    }
-
-    if (read_impl->state == READ_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_IO_CLOSING);
     }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
@@ -705,76 +698,28 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_clean_up_write_end(
-    struct aws_pipe_write_end *write_end,
-    aws_pipe_on_write_end_closed_fn *on_closed,
-    void *user_data) {
+int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
 
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
-
-    if (write_impl->state == WRITE_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_IO_CLOSING);
-    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    write_impl->state = WRITE_END_STATE_CLOSING;
-    write_impl->on_closed_user_fn = on_closed;
-    write_impl->on_closed_user_data = user_data;
-
     CloseHandle(write_impl->handle.data.handle);
 
-    /* Can't clean up until all async operations complete.
-     *
-     * If there are pending writes, closing the handle will cause them to complete with status code ERROR_BROKEN_PIPE,
-     * and s_write_end_on_write_completion() will finish cleaning up the pipe when the last write completes.
-     *
-     * If there are no pending writes, schedule the shutdown to complete on the event-loop thread. Though we could clean
-     * up immediately, it would be weird to invoke user callbacks before the function that sets them can return. */
-    if (!aws_linked_list_empty(&write_impl->write_list)) {
-        /* Cancel any pending writes. s_write_end_on_write_completion() will
-         * see status code ERROR_OPERATION_ABORTED. The pipe will finish
-         * closing when the last write operation completes */
-        CancelIo(write_impl->handle.data.handle);
-
-    } else {
-        /* Even though we could close immediately, schedule the shutdown to complete on the event-loop thread.
-         * We do this because it's weird to invoke user callbacks before the function that sets them can return. */
-        aws_task_init(&write_impl->delay_task, s_write_end_finish_closing_task, write_end);
-        aws_event_loop_schedule_task_now(write_impl->event_loop, &write_impl->delay_task);
+    /* Inform outstanding writes about the clean up. */
+    while (!aws_linked_list_empty(&write_impl->write_list)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
+        struct write_request *write_req = AWS_CONTAINER_OF(node, struct write_request, list_node);
+        write_req->is_write_end_cleaned_up = true;
     }
-
-    return AWS_OP_SUCCESS;
-}
-
-static void s_write_end_finish_closing(struct aws_pipe_write_end *write_end) {
-    struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
-    assert(write_impl->state == WRITE_END_STATE_CLOSING);
-    assert(aws_linked_list_empty(&write_impl->write_list));
-    assert(aws_event_loop_thread_is_callers_thread(write_impl->event_loop));
-
-    /* Save off callback so we can invoke it last */
-    aws_pipe_on_write_end_closed_fn *on_closed_user_fn = write_impl->on_closed_user_fn;
-    void *on_closed_user_data = write_impl->on_closed_user_data;
 
     aws_mem_release(write_impl->alloc, write_impl);
     AWS_ZERO_STRUCT(*write_end);
 
-    if (on_closed_user_fn) {
-        on_closed_user_fn(write_end, on_closed_user_data);
-    }
-}
-
-static void s_write_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
-    (void)status;
-
-    struct aws_pipe_write_end *write_end = user_data;
-    s_write_end_finish_closing(write_end);
+    return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_write(
@@ -786,10 +731,6 @@ int aws_pipe_write(
 
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
-
-    if (write_impl->state == WRITE_END_STATE_CLOSING) {
-        return aws_raise_error(AWS_ERROR_IO_CLOSING);
-    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -808,6 +749,7 @@ int aws_pipe_write(
     AWS_ZERO_STRUCT(*write);
     write->user_callback = on_complete;
     write->user_data = user_data;
+    write->alloc = write_impl->alloc;
     aws_overlapped_init(&write->overlapped, s_write_end_on_write_completion, write_end);
 
     bool write_success = WriteFile(
@@ -836,30 +778,29 @@ void s_write_end_on_write_completion(
 
     (void)event_loop;
 
-    struct aws_pipe_write_end *write_end = overlapped->user_data;
-    struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
-
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
-    assert(write_request);
+    struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
+
+    aws_pipe_on_write_complete_fn *on_write_user_callback = write_request->user_callback;
+    void *on_write_user_data = write_request->user_data;
+
+    /* Clean up write-request.
+     * Note that write-end might have been cleaned up before this executes. */
+    if (!write_request->is_write_end_cleaned_up) {
+        aws_linked_list_remove(&write_request->list_node);
+    }
+
+    aws_mem_release(write_request->alloc, write_request);
 
     /* Report outcome to user */
-    if (write_request->user_callback) {
+    if (on_write_user_callback) {
+
         int write_result = AWS_ERROR_SUCCESS;
         if (status_code != 0) {
             write_result = s_translate_windows_error(status_code);
         }
 
-        write_request->user_callback(write_end, write_result, num_bytes_transferred, write_request->user_data);
-    }
-
-    /* Clean up write-request*/
-    aws_linked_list_remove(&write_request->list_node);
-    aws_mem_release(write_impl->alloc, write_request);
-
-    /* If pipe is closing, and this was the last pending write request, finish closing pipe. */
-    if (write_impl->state == WRITE_END_STATE_CLOSING && aws_linked_list_empty(&write_impl->write_list)) {
-
-        s_write_end_finish_closing(write_end);
+        /* Note that user may choose to clean up write-end in this callback */
+        on_write_user_callback(write_end, write_result, num_bytes_transferred, on_write_user_data);
     }
 }

@@ -203,10 +203,7 @@ static void s_signal_error(struct pipe_state *state) {
     aws_mutex_unlock(&state->results.mutex);
 }
 
-static void s_signal_done_on_read_end_closed(struct aws_pipe_read_end *read_end, void *user_data) {
-    (void)read_end;
-    struct pipe_state *state = user_data;
-
+static void s_signal_done_on_read_end_closed(struct pipe_state *state) {
     /* Signal that work might be done */
     aws_mutex_lock(&state->results.mutex);
     state->results.read_end_closed = true;
@@ -214,10 +211,7 @@ static void s_signal_done_on_read_end_closed(struct aws_pipe_read_end *read_end,
     aws_mutex_unlock(&state->results.mutex);
 }
 
-static void s_signal_done_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
-    (void)write_end;
-    struct pipe_state *state = user_data;
-
+static void s_signal_done_on_write_end_closed(struct pipe_state *state) {
     /* Signal that work might be done */
     aws_mutex_lock(&state->results.mutex);
     state->results.write_end_closed = true;
@@ -274,11 +268,12 @@ static void s_clean_up_read_end_task(struct aws_task *task, void *arg, enum aws_
         goto error;
     }
 
-    err = aws_pipe_clean_up_read_end(&state->read_end, s_signal_done_on_read_end_closed, state);
+    err = aws_pipe_clean_up_read_end(&state->read_end);
     if (err) {
         goto error;
     }
 
+    s_signal_done_on_read_end_closed(state);
     return;
 
 error:
@@ -295,10 +290,12 @@ static void s_clean_up_write_end_task(struct aws_task *task, void *arg, enum aws
         goto error;
     }
 
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_signal_done_on_write_end_closed, state);
+    err = aws_pipe_clean_up_write_end(&state->write_end);
     if (err) {
         goto error;
     }
+
+    s_signal_done_on_write_end_closed(state);
 
     return;
 
@@ -330,10 +327,16 @@ void s_clean_up_write_end_on_write_complete(
 
     state->buffers.num_bytes_written += num_bytes_written;
 
-    int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+    int err = aws_pipe_clean_up_write_end(write_end);
     if (err) {
-        s_signal_error(state);
+        goto error;
     }
+
+    s_signal_done_on_write_end_closed(state);
+
+    return;
+error:
+    s_signal_error(state);
 }
 
 /* Write everything in the buffer, clean up write-end when write completes*/
@@ -382,10 +385,11 @@ static void s_read_everything_task(struct aws_task *task, void *arg, enum aws_ta
     if (num_bytes_read < num_bytes_remaining) {
         s_schedule_read_end_task(state, s_read_everything_task);
     } else {
-        err = aws_pipe_clean_up_read_end(&state->read_end, s_signal_done_on_read_end_closed, state);
+        err = aws_pipe_clean_up_read_end(&state->read_end);
         if (err) {
             goto error;
         }
+        s_signal_done_on_read_end_closed(state);
     }
 
     return;
@@ -427,12 +431,17 @@ static void s_on_readable_event(struct aws_pipe_read_end *read_end, int events, 
         state->events.count++;
 
         if (state->events.count == state->events.close_read_end_after_n_events) {
-            int err = aws_pipe_clean_up_read_end(read_end, s_signal_done_on_read_end_closed, state);
+            int err = aws_pipe_clean_up_read_end(read_end);
             if (err) {
-                s_signal_error(state);
+                goto error;
             }
+            s_signal_done_on_read_end_closed(state);
         }
     }
+
+    return;
+error:
+    s_signal_error(state);
 }
 
 static void s_subscribe_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -482,10 +491,11 @@ void s_subscribe_on_write_complete(
 
     state->buffers.num_bytes_written += num_bytes_written;
 
-    int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+    int err = aws_pipe_clean_up_write_end(write_end);
     if (err) {
         goto error;
     }
+    s_signal_done_on_write_end_closed(state);
 
     /* Tell read end to subscribe */
     s_schedule_read_end_task(state, s_subscribe_task);
@@ -643,10 +653,11 @@ static void s_readall_on_write_complete(
 
     /* Clean up after 2nd write */
     if (is_2nd_write) {
-        err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+        err = aws_pipe_clean_up_write_end(write_end);
         if (err) {
             goto error;
         }
+        s_signal_done_on_write_end_closed(state);
     }
 
     return;
@@ -903,15 +914,6 @@ static int test_pipe_hangup_event_sent_after_write_end_closed(struct pipe_state 
 
 PIPE_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, SMALL_BUFFER_SIZE);
 
-static void s_subscribe_on_write_end_closed(struct aws_pipe_write_end *write_end, void *user_data) {
-    struct pipe_state *state = user_data;
-
-    /* Invoke the usual on-closed callback */
-    s_signal_done_on_write_end_closed(write_end, user_data);
-
-    s_schedule_read_end_task(state, s_subscribe_task);
-}
-
 static void s_clean_up_write_end_then_schedule_subscribe_task(
     struct aws_task *task,
     void *arg,
@@ -926,10 +928,13 @@ static void s_clean_up_write_end_then_schedule_subscribe_task(
         goto error;
     }
 
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_subscribe_on_write_end_closed, state);
+    err = aws_pipe_clean_up_write_end(&state->write_end);
     if (err) {
         goto error;
     }
+    s_signal_done_on_write_end_closed(state);
+
+    s_schedule_read_end_task(state, s_subscribe_task);
 
     return;
 error:
@@ -970,10 +975,11 @@ static void s_close_write_end_after_all_writes_complete(
     state->buffers.num_bytes_written += num_bytes_written;
 
     if (state->buffers.num_bytes_written == state->buffer_size) {
-        int err = aws_pipe_clean_up_write_end(write_end, s_signal_done_on_write_end_closed, state);
+        int err = aws_pipe_clean_up_write_end(write_end);
         if (err) {
             goto error;
         }
+        s_signal_done_on_write_end_closed(state);
     }
 
     return;
@@ -1058,10 +1064,11 @@ static void s_write_then_clean_up_task(struct aws_task *task, void *arg, enum aw
         goto error;
     }
 
-    err = aws_pipe_clean_up_write_end(&state->write_end, s_signal_done_on_write_end_closed, state);
+    err = aws_pipe_clean_up_write_end(&state->write_end);
     if (err) {
         goto error;
     }
+    s_signal_done_on_write_end_closed(state);
 
     return;
 error:

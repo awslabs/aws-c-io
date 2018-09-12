@@ -58,9 +58,6 @@ static struct aws_error_info s_errors[] = {
         AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY,
         "Attempt to perform operation that must be run inside the event loop thread"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_ERROR_IO_CLOSING,
-        "Operation not supported while closing"),
-    AWS_DEFINE_ERROR_INFO_IO(
         AWS_ERROR_IO_ALREADY_SUBSCRIBED,
         "Already subscribed to receive events"),
     AWS_DEFINE_ERROR_INFO_IO(
