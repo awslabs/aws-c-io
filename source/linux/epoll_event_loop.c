@@ -15,13 +15,14 @@
 
 #include <aws/io/event_loop.h>
 
-#include <aws/common/condition_variable.h>
+#include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 #include <sys/epoll.h>
 
 #include <errno.h>
+#include <limits.h>
 #include <unistd.h>
 
 #if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 8
@@ -40,7 +41,8 @@ static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
-static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -57,7 +59,8 @@ static struct aws_event_loop_vtable s_vtable = {
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
-    .schedule_task = s_schedule_task,
+    .schedule_task_now = s_schedule_task_now,
+    .schedule_task_future = s_schedule_task_future,
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .is_on_callers_thread = s_is_on_callers_thread,
@@ -73,12 +76,7 @@ struct epoll_loop {
     struct aws_linked_list cleanup_list;
     int epoll_fd;
     bool should_continue;
-};
-
-struct task_data {
-    struct aws_task task;
-    uint64_t timestamp;
-    struct aws_linked_list_node queue_handle;
+    struct aws_task stop_task;
 };
 
 struct epoll_event_data {
@@ -86,7 +84,7 @@ struct epoll_event_data {
     struct aws_io_handle *handle;
     aws_event_loop_on_event_fn *on_event;
     void *user_data;
-    struct aws_linked_list_node list_handle;
+    struct aws_task cleanup_task;
 };
 
 /* default timeout is 100 seconds */
@@ -113,6 +111,8 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     if (!epoll_loop) {
         goto clean_up_loop;
     }
+
+    AWS_ZERO_STRUCT(*epoll_loop);
 
     aws_linked_list_init(&epoll_loop->task_pre_queue);
     epoll_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
@@ -144,7 +144,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
 #endif
 
-    if (aws_task_scheduler_init(&epoll_loop->scheduler, alloc, loop->clock)) {
+    if (aws_task_scheduler_init(&epoll_loop->scheduler, alloc)) {
         goto clean_up_pipe;
     }
 
@@ -220,8 +220,9 @@ static int s_run(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_stop_task(void *args, enum aws_task_status status) {
+static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status status) {
 
+    (void)task;
     struct aws_event_loop *event_loop = args;
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
@@ -234,17 +235,10 @@ static void s_stop_task(void *args, enum aws_task_status status) {
 }
 
 static int s_stop(struct aws_event_loop *event_loop) {
-    struct aws_task task = {
-        .arg = event_loop,
-        .fn = s_stop_task,
-    };
+    struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    uint64_t timestamp = 0;
-    event_loop->clock(&timestamp);
-
-    if (s_schedule_task(event_loop, &task, timestamp)) {
-        return AWS_OP_ERR;
-    }
+    aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop);
+    s_schedule_task_now(event_loop, &epoll_loop->stop_task);
 
     return AWS_OP_SUCCESS;
 }
@@ -254,42 +248,45 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return aws_thread_join(&epoll_loop->thread);
 }
 
-static int s_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
+static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     /* if event loop and the caller are the same thread, just schedule and be done with it. */
     if (s_is_on_callers_thread(event_loop)) {
-        return aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, run_at);
+        if (run_at_nanos == 0) {
+            /* zero denotes "now" task */
+            aws_task_scheduler_schedule_now(&epoll_loop->scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, run_at_nanos);
+        }
+        return;
     }
 
-    struct task_data *task_data = aws_mem_acquire(event_loop->alloc, sizeof(struct task_data));
-
-    if (!task_data) {
-        return AWS_OP_ERR;
-    }
-
-    task_data->task = *task;
-    task_data->timestamp = run_at;
+    task->timestamp = run_at_nanos;
     aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
 
     uint64_t counter = 1;
 
-    /* if the list is not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
-    if (aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
+    bool is_first_task = aws_linked_list_empty(&epoll_loop->task_pre_queue);
+
+    aws_linked_list_push_back(&epoll_loop->task_pre_queue, &task->node);
+
+    /* if the list was not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
+    if (is_first_task) {
         /* If the write fails because the buffer is full, we don't actually care because that means there's a pending
          * read on the pipe/eventfd and thus the event loop will end up checking to see if something has been queued.*/
-        if (AWS_UNLIKELY(
-                write(epoll_loop->write_task_handle.data.fd, (void *)&counter, sizeof(counter)) != sizeof(counter) &&
-                errno != EAGAIN)) {
-            aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
-            return AWS_OP_ERR;
-        }
+        write(epoll_loop->write_task_handle.data.fd, (void *)&counter, sizeof(counter));
     }
 
-    aws_linked_list_push_back(&epoll_loop->task_pre_queue, &task_data->queue_handle);
     aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+}
 
-    return AWS_OP_SUCCESS;
+static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
+    s_schedule_task_common(event_loop, task, 0 /* zero denotes "now" task */);
+}
+
+static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+    s_schedule_task_common(event_loop, task, run_at_nanos);
 }
 
 static int s_subscribe_to_io_events(
@@ -308,12 +305,11 @@ static int s_subscribe_to_io_events(
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    AWS_ZERO_STRUCT(*epoll_event_data);
     epoll_event_data->alloc = event_loop->alloc;
     epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
-    epoll_event_data->list_handle.next = NULL;
-    epoll_event_data->list_handle.prev = NULL;
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
@@ -346,45 +342,36 @@ static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
     while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
-        struct epoll_event_data *event_data = AWS_CONTAINER_OF(node, struct epoll_event_data, list_handle);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+        struct epoll_event_data *event_data = AWS_CONTAINER_OF(task, struct epoll_event_data, cleanup_task);
         aws_mem_release(event_data->alloc, (void *)event_data);
     }
 }
 
-static void s_unsubscribe_cleanup_task(void *arg, enum aws_task_status status) {
-    (void)status;
-
+static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
+    struct epoll_event_data *additional_handle_data = handle->additional_data;
 
     struct epoll_event compat_event = {
-        .data = {.ptr = handle->additional_data},
+        .data = {.ptr = additional_handle_data},
         .events = 0,
     };
 
     /* We can't clean up yet, because we have schedule tasks and more events to process, add it to the cleanup list
      * and we'll process it after everything is finished for this event loop tick. */
-    if (s_is_on_callers_thread(event_loop) && handle->additional_data) {
-        aws_linked_list_push_back(
-            &epoll_loop->cleanup_list, &((struct epoll_event_data *)handle->additional_data)->list_handle);
-    } else if (handle->additional_data) {
-        struct aws_task task = {
-            .arg = handle->additional_data,
-            .fn = s_unsubscribe_cleanup_task,
-        };
+    if (s_is_on_callers_thread(event_loop) && additional_handle_data) {
+        aws_linked_list_push_back(&epoll_loop->cleanup_list, &additional_handle_data->cleanup_task.node);
 
-        uint64_t timestamp = 0;
-        if (event_loop->clock(&timestamp)) {
-            return AWS_OP_ERR;
-        }
+    } else if (additional_handle_data) {
+        aws_task_init(&additional_handle_data->cleanup_task, s_unsubscribe_cleanup_task, additional_handle_data);
 
-        if (s_schedule_task(event_loop, &task, timestamp)) {
-            return AWS_OP_ERR;
-        }
+        s_schedule_task_now(event_loop, &additional_handle_data->cleanup_task);
     }
 
     handle->additional_data = NULL;
@@ -426,12 +413,10 @@ static void s_on_tasks_to_schedule(
 
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
-            struct task_data *task_data = AWS_CONTAINER_OF(node, struct task_data, queue_handle);
-            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, &task_data->task, task_data->timestamp);
-            aws_mem_release(event_loop->alloc, task_data);
+            struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, task->timestamp);
         }
 
-        aws_linked_list_init(&epoll_loop->task_pre_queue);
         aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
     }
 }
@@ -491,28 +476,34 @@ static void s_main_loop(void *args) {
             event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
         }
 
-        /* timeout should be the next scheduled task time if that time is closer than the default timeout. */
-        uint64_t next_run_time = 0;
-        aws_task_scheduler_run_all(&epoll_loop->scheduler, &next_run_time);
+        /* run scheduled tasks */
+        uint64_t now_ns = 0;
+        event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
+                                       will not be run. That's ok, we'll handle them next time around. */
+        aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
+
         s_process_unsubscribe_cleanup_list(epoll_loop);
 
-        if (next_run_time) {
-            uint64_t offset = 0;
-            event_loop->clock(&offset);
+        /* set timeout for next epoll_wait() call.
+         * if clock fails, or scheduler has no tasks, use default timeout */
+        bool use_default_timeout = false;
 
-            if (offset >= next_run_time) {
-                timeout = 0;
-            } else {
-                next_run_time -= offset;
-                int scheduler_timeout = (int)(next_run_time / NANO_TO_MILLIS);
-                /* this conversion is lossy, 0 means the task is scheduled within the millisecond,
-                 * but not quite ready. so just sleep one ms*/
-                timeout = scheduler_timeout > 0
-                              ? scheduler_timeout < DEFAULT_TIMEOUT ? scheduler_timeout : DEFAULT_TIMEOUT
-                              : 1;
-            }
-        } else {
+        if (event_loop->clock(&now_ns)) {
+            use_default_timeout = true;
+        }
+
+        uint64_t next_run_time_ns;
+        if (!aws_task_scheduler_has_tasks(&epoll_loop->scheduler, &next_run_time_ns)) {
+            use_default_timeout = true;
+        }
+
+        if (use_default_timeout) {
             timeout = DEFAULT_TIMEOUT;
+        } else {
+            /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
+            uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
+            uint64_t timeout_ms64 = aws_timestamp_convert(AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, timeout_ns, NULL);
+            timeout = timeout_ms64 > INT_MAX ? INT_MAX : (int)timeout_ms64;
         }
     }
 
