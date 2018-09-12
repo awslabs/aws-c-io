@@ -21,6 +21,12 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
 
+#ifdef _WIN32
+#define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
+#else
+#define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
+#endif
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -252,7 +258,7 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     return s_test_socket(allocator, &options, &endpoint);
 }

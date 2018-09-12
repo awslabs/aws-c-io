@@ -29,6 +29,8 @@ struct socket_handler {
     struct aws_channel_slot *slot;
     struct aws_linked_list write_queue;
     size_t max_rw_size;
+    struct aws_task read_task_storage;
+    struct aws_task shutdown_task_storage;
     int shutdown_err_code;
     bool shutdown_in_progress;
 };
@@ -86,7 +88,7 @@ static int s_socket_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
-static void s_read_task(void *arg, aws_task_status status);
+static void s_read_task(struct aws_task *task, void *arg, aws_task_status status);
 
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data);
 
@@ -124,16 +126,11 @@ static void s_do_read(struct socket_handler *socket_handler) {
         }
         /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
          * again. */
-        if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size) {
-            struct aws_task task = {
-                .fn = s_read_task,
-                .arg = socket_handler,
-            };
+        if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size && !socket_handler->read_task_storage.fn) {
+            socket_handler->read_task_storage.fn = s_read_task;
+            socket_handler->read_task_storage.arg = socket_handler;
 
-            uint64_t now = 0;
-            if (!aws_channel_current_clock_time(socket_handler->slot->channel, &now)) {
-                aws_channel_schedule_task(socket_handler->slot->channel, &task, now);
-            }
+            aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
         }
     }
 }
@@ -150,36 +147,32 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
     }
 }
 
-static void s_read_task(void *arg, aws_task_status status) {
+static void s_read_task(struct aws_task *task, void *arg, aws_task_status status) {
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_handler *socket_handler = (struct socket_handler *)arg;
         s_do_read(socket_handler);
     }
+    task->fn = NULL;
+    task->arg = NULL;
 }
 
 int socket_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    if (!socket_handler->shutdown_in_progress) {
-        struct aws_task task = {
-            .fn = s_read_task,
-            .arg = socket_handler,
-        };
-
-        uint64_t now = 0;
-        if (!aws_channel_current_clock_time(slot->channel, &now)) {
-            return aws_channel_schedule_task(slot->channel, &task, now);
-        }
-
-        return AWS_OP_ERR;
+    if (!socket_handler->shutdown_in_progress && !socket_handler->read_task_storage.fn) {
+        socket_handler->read_task_storage.fn = s_read_task;
+        socket_handler->read_task_storage.arg = socket_handler;
+        aws_channel_schedule_task_now(slot->channel, &socket_handler->read_task_storage); 
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static void s_shutdown_task(void *arg, aws_task_status status) {
+static void s_shutdown_task(struct aws_task *task, void *arg, aws_task_status status) {
     (void)status;
+    (void)task;
+
     struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
@@ -200,7 +193,6 @@ static int s_socket_shutdown(
     socket_handler->shutdown_in_progress = true;
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (abort && aws_socket_is_open(socket_handler->socket)) {
-            //aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop, &socket_handler->socket->io_handle);
             if (aws_socket_shutdown(socket_handler->socket)) {
                 return AWS_OP_ERR;
             }
@@ -221,7 +213,6 @@ static int s_socket_shutdown(
     }
 
     if (aws_socket_is_open(socket_handler->socket)) {
-        //aws_event_loop_unsubscribe_from_io_events(socket_handler->event_loop, &socket_handler->socket->io_handle);
         aws_socket_shutdown(socket_handler->socket);
     }
 
@@ -229,15 +220,13 @@ static int s_socket_shutdown(
      * pending, if abort is true, we've mitigated the worries that the socket is still being abused by a hostile peer.
      * But the final shutdown notification needs to happen after we've done the socket shutdown to make sure we don't
      * pick up an errant events and crash. */
-    struct aws_task task = {.fn = s_shutdown_task, .arg = handler};
+    socket_handler->shutdown_task_storage.fn = s_shutdown_task;
+    socket_handler->shutdown_task_storage.arg = handler;
 
-    uint64_t now = 0;
-    if (aws_channel_current_clock_time(slot->channel, &now)) {
-        return AWS_OP_ERR;
-    }
 
     socket_handler->shutdown_err_code = error_code;
-    return aws_channel_schedule_task(slot->channel, &task, now);
+    aws_channel_schedule_task_now(slot->channel, &socket_handler->shutdown_task_storage);
+    return AWS_OP_SUCCESS;
 }
 
 size_t socket_get_current_window_size(struct aws_channel_handler *handler) {

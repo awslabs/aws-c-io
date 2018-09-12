@@ -19,18 +19,20 @@
 #include <aws/io/channel.h>
 #include <aws/io/io.h>
 
-typedef enum aws_socket_domain {
+enum aws_socket_domain {
     AWS_SOCKET_IPV4,
     AWS_SOCKET_IPV6,
     AWS_SOCKET_LOCAL,
+};
 
-} aws_socket_domain;
-
-typedef enum aws_socket_type { AWS_SOCKET_STREAM, AWS_SOCKET_DGRAM } aws_socket_type;
+enum aws_socket_type {
+    AWS_SOCKET_STREAM,
+    AWS_SOCKET_DGRAM,
+};
 
 struct aws_socket_options {
-    aws_socket_type type;
-    aws_socket_domain domain;
+    enum aws_socket_type type;
+    enum aws_socket_domain domain;
     uint32_t linger_time;
     uint32_t read_timeout;
     uint32_t send_timeout;
@@ -74,9 +76,42 @@ struct aws_socket {
 struct aws_byte_buf;
 struct aws_byte_cursor;
 
-/* these are purposely not exported. These functions only get called internally. */
+/* These are hacks for working around headers and functions we need for IO work but aren't directly includable or linkable.
+   these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are just in case
+   someone includes this header somewhere they were able to get these definitions included. */
 #ifdef _WIN32
+struct aws_FILE_BASIC_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    DWORD FileAttributes;
+};
+
+struct aws_FILE_COMPLETION_INFORMATION {
+    HANDLE Port;
+    PVOID Key;
+};
+
+struct aws_IO_STATUS_BLOCK {
+    union {
+        NTSTATUS Status;
+        PVOID Pointer;
+    } status_block;
+
+    ULONG_PTR Information;
+};
+
+typedef enum aws_FILE_INFORMATION_CLASS {
+    AWS_FileReplaceCompletionInformation = 0x3D,
+} aws_FILE_INFORMATION_CLASS;
+
+typedef NTSTATUS(NTAPI aws_NTSetInformationFile_fn)(HANDLE file_handle, struct aws_IO_STATUS_BLOCK *io_status_block, 
+    void *file_information, ULONG length, enum aws_FILE_INFORMATION_CLASS file_information_class);
+
 typedef void(*aws_ms_fn_ptr)(void);
+
+aws_NTSetInformationFile_fn *aws_get_set_information_file_fn(void);
 void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
