@@ -569,6 +569,10 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
         int err_code = s2n_config_add_cert_chain_and_key(
             s2n_ctx->s2n_config, (const char *)certificate_chain.buffer, (const char *)private_key.buffer);
 
+        if (mode == S2N_CLIENT) {
+            s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
+        }
+
         aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
         aws_byte_buf_clean_up(&certificate_chain);
         aws_secure_zero(private_key.buffer, private_key.len);
@@ -618,7 +622,7 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
         }
 
         int protocols_list_len = (int)aws_array_list_length(&alpn_list);
-        if (protocols_list_len <= 1) {
+        if (protocols_list_len < 1) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
