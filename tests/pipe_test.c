@@ -144,7 +144,7 @@ static void s_fixture_after(struct aws_allocator *allocator, void *ctx) {
 /* Macro for declaring pipe tests.
  * Add pipe tests to CMakeLists.txt like so: add_pipe_test_case(NAME)
  *
-/* Each pipe test is run in 2 different configurations:
+ * Each pipe test is run in 2 different configurations:
  * 1) both ends of the pipe use the same event-loop
  * 2) each end of the pipe is on its own event-loop
  *
@@ -708,9 +708,8 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
             if (err) {
                 if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
                     break;
-                } else {
-                    goto error;
                 }
+                goto error;
             }
         }
 
