@@ -18,7 +18,6 @@
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/pipe.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -228,6 +227,45 @@ AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else  /* !AWS_USE_IO_COMPLETION_PORTS */
 
+#include <fcntl.h>
+#include <unistd.h>
+
+/* Define simple pipe for testing. */
+int simple_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    AWS_ZERO_STRUCT(*read_handle);
+    AWS_ZERO_STRUCT(*write_handle);
+
+    int pipe_fds[2];
+    ASSERT_SUCCESS(pipe(pipe_fds));
+
+    for (int i = 0; i < 2; ++i) {
+        int flags = fcntl(pipe_fds[i], F_GETFL);
+        flags |= O_NONBLOCK | O_CLOEXEC;
+        fcntl(pipe_fds[i], F_SETFL, flags);
+    }
+
+    read_handle->data.fd = pipe_fds[0];
+    write_handle->data.fd = pipe_fds[1];
+
+    return AWS_OP_SUCCESS;
+}
+void simple_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    close(read_handle->data.fd);
+    close(write_handle->data.fd);
+}
+
+/* return number of bytes written */
+size_t simple_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size) {
+    ssize_t write_val = write(handle->data.fd, src, src_size);
+    return (write_val < 0) ? 0 : write_val;
+}
+
+/* return number of bytes read */
+size_t simple_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size) {
+    ssize_t read_val = read(handle->data.fd, dst, dst_size);
+    return (read_val < 0) ? 0 : read_val;
+}
+
 struct pipe_data {
     struct aws_byte_buf buf;
     size_t bytes_processed;
@@ -249,9 +287,8 @@ static void s_on_pipe_readable(
         struct pipe_data *data = user_data;
 
         aws_mutex_lock(&data->mutex);
-        size_t data_read = 0;
-        aws_pipe_read(
-            handle, data->buf.buffer + data->bytes_processed, data->buf.len - data->bytes_processed, &data_read);
+        size_t bytes_remaining = data->buf.len - data->bytes_processed;
+        size_t data_read = simple_pipe_read(handle, data->buf.buffer + data->bytes_processed, bytes_remaining);
         data->bytes_processed += data_read;
         data->invoked += 1;
         aws_condition_variable_notify_one(&data->condition_variable);
@@ -295,7 +332,7 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
     struct aws_io_handle read_handle = {{0}};
     struct aws_io_handle write_handle = {{0}};
 
-    ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle), "Pipe open failed");
+    ASSERT_SUCCESS(simple_pipe_open(&read_handle, &write_handle), "Pipe open failed");
 
     uint8_t read_buffer[1024] = {0};
     struct pipe_data read_data = {.buf = aws_byte_buf_from_array(read_buffer, sizeof(read_buffer)),
@@ -321,15 +358,12 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
     memset(write_buffer + 512, 2, 512);
 
     ASSERT_SUCCESS(aws_mutex_lock(&read_data.mutex), "read mutex lock failed.");
-    size_t written = 0;
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, write_buffer, 512, &written), "Pipe write failed");
-    ASSERT_UINT_EQUALS(512, written);
+    ASSERT_UINT_EQUALS(512, simple_pipe_write(&write_handle, write_buffer, 512));
 
     read_data.expected_invocations = 1;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &read_data.condition_variable, &read_data.mutex, s_invocation_predicate, &read_data));
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, write_buffer + 512, 512, &written), "Pipe write failed");
-    ASSERT_UINT_EQUALS(512, written);
+    ASSERT_UINT_EQUALS(512, simple_pipe_write(&write_handle, write_buffer + 512, 512));
 
     read_data.expected_invocations = 2;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -346,7 +380,7 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
         aws_event_loop_unsubscribe_from_io_events(event_loop, &write_handle),
         "write unsubscribe from event loop failed");
 
-    ASSERT_SUCCESS(aws_pipe_close(&read_handle, &write_handle), "Pipe close failed");
+    simple_pipe_close(&read_handle, &write_handle);
 
     aws_event_loop_destroy(event_loop);
 
