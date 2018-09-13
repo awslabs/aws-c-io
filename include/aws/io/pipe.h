@@ -29,18 +29,6 @@ struct aws_pipe_write_end {
 };
 
 /**
- * Called when the read-end is finished cleaning up.
- * This call is always made on the read-end's event-loop thread.
- */
-typedef void(aws_pipe_on_read_end_closed_fn)(struct aws_pipe_read_end *read_end, void *user_data);
-
-/**
- * Called when the write-end is finished cleaning up.
- * This call is always made on the write-end's event-loop thread.
- */
-typedef void(aws_pipe_on_write_end_closed_fn)(struct aws_pipe_write_end *write_end, void *user_data);
-
-/**
  * Called when events occur on the read end of the pipe.
  * `events` contains flags corresponding to `aws_io_event_type` values.
  * `user_data` corresponds to the `user_data` passed into aws_pipe_subscribe_to_read_events().
@@ -50,6 +38,8 @@ typedef void(aws_pipe_on_read_event_fn)(struct aws_pipe_read_end *read_end, int 
 
 /**
  * Called when the write initialized by aws_pipe_write() completes.
+ * `write_end` corresponds to the write-end passed to aws_pipe_write(),
+ * but will be NULL if the write-end was cleaned up before this callback could be invoked.
  * `write_result` contains AWS_ERROR_SUCCESS or a code corresponding to the error.
  * `num_bytes_written` contains the number of bytes successfully transferred.
  * `user_data` corresponds to the `user_data` passed into aws_pipe_write().
@@ -83,20 +73,14 @@ int aws_pipe_init(
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_clean_up_read_end(
-    struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_end_closed_fn *on_closed,
-    void *user_data);
+int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end);
 
 /**
  * Clean up the write-end of the pipe.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_clean_up_write_end(
-    struct aws_pipe_write_end *write_end,
-    aws_pipe_on_write_end_closed_fn *on_closed,
-    void *user_data);
+int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end);
 
 /**
  * Get the event-loop connected to the read-end of the pipe.
