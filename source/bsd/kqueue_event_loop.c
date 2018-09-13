@@ -19,7 +19,6 @@
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/pipe.h>
 #include <sys/event.h>
 
 #include <assert.h>
@@ -49,13 +48,17 @@ enum event_thread_state {
     EVENT_THREAD_STATE_STOPPING,
 };
 
+enum pipe_fd_index {
+    READ_FD,
+    WRITE_FD,
+};
+
 struct kqueue_loop {
     struct aws_thread thread;
     int kq_fd; /* kqueue file descriptor */
 
-    /* Pipe for signaling to event-thread that cross_thread_data has changed */
-    struct aws_io_handle cross_thread_signal_pipe_read;
-    struct aws_io_handle cross_thread_signal_pipe_write;
+    /* Pipe for signaling to event-thread that cross_thread_data has changed. */
+    int cross_thread_signal_pipe[2];
 
     /* cross_thread_data holds things that must be communicated across threads.
      * When the event-thread is running, the mutex must be locked while anyone touches anything in cross_thread_data.
@@ -145,7 +148,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
     clean_up_kqueue = true;
 
-    err = aws_pipe_open(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
+    err = pipe(impl->cross_thread_signal_pipe);
     if (err) {
         goto clean_up;
     }
@@ -155,7 +158,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     struct kevent thread_signal_kevent;
     EV_SET(
         &thread_signal_kevent,
-        impl->cross_thread_signal_pipe_read.data.fd,
+        impl->cross_thread_signal_pipe[READ_FD],
         EVFILT_READ /*filter*/,
         EV_ADD /*flags*/,
         0 /*fflags*/,
@@ -225,7 +228,8 @@ clean_up:
             NULL /*timeout*/);
     }
     if (clean_up_signal_pipe) {
-        aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
+        close(impl->cross_thread_signal_pipe[READ_FD]);
+        close(impl->cross_thread_signal_pipe[WRITE_FD]);
     }
     if (clean_up_kqueue) {
         close(impl->kq_fd);
@@ -276,7 +280,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     struct kevent thread_signal_kevent;
     EV_SET(
         &thread_signal_kevent,
-        impl->cross_thread_signal_pipe_read.data.fd,
+        impl->cross_thread_signal_pipe[READ_FD],
         EVFILT_READ /*filter*/,
         EV_DELETE /*flags*/,
         0 /*fflags*/,
@@ -291,7 +295,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         0 /*nevents*/,
         NULL /*timeout*/);
 
-    aws_pipe_close(&impl->cross_thread_signal_pipe_read, &impl->cross_thread_signal_pipe_write);
+    close(impl->cross_thread_signal_pipe[READ_FD]);
+    close(impl->cross_thread_signal_pipe[WRITE_FD]);
     close(impl->kq_fd);
     aws_thread_clean_up(&impl->thread);
     aws_mem_release(event_loop->alloc, impl);
@@ -330,7 +335,7 @@ void signal_cross_thread_data_changed(struct aws_event_loop *event_loop) {
      * If the pipe is full and the write fails, that's fine, the event-thread will get the signal from some previous
      * write */
     uint32_t write_whatever = 0xC0FFEE;
-    write(impl->cross_thread_signal_pipe_write.data.fd, &write_whatever, sizeof(write_whatever));
+    write(impl->cross_thread_signal_pipe[WRITE_FD], &write_whatever, sizeof(write_whatever));
 }
 
 static int s_stop(struct aws_event_loop *event_loop) {
@@ -736,7 +741,7 @@ static void s_event_thread_main(void *user_data) {
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
-            if (kevent->ident == impl->cross_thread_signal_pipe_read.data.fd) {
+            if (kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
                 should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */
