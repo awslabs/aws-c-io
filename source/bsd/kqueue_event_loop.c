@@ -42,6 +42,8 @@ static bool s_is_event_thread(struct aws_event_loop *event_loop);
 
 static void s_event_thread_main(void *user_data);
 
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
+
 enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
     EVENT_THREAD_STATE_RUNNING,
@@ -148,7 +150,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
     clean_up_kqueue = true;
 
-    err = pipe(impl->cross_thread_signal_pipe);
+    err = aws_open_nonblocking_posix_pipe(impl->cross_thread_signal_pipe);
     if (err) {
         goto clean_up;
     }
