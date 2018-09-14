@@ -320,6 +320,9 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval = 1000;
+    options.keep_alive_timeout = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 

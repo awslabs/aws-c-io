@@ -14,6 +14,7 @@
 */
 #include <WS2tcpip.h>
 #include <MSWSock.h>
+#include <Mstcpip.h>
 
 #include <aws/io/socket.h>
 
@@ -1203,19 +1204,18 @@ int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options 
     int reuse = 1;
     setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int));
 
-    if (socket->options.send_timeout) {
-        int send_timeout = (int)socket->options.send_timeout;
-        setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_SNDTIMEO, (char *)&send_timeout, sizeof(int));
-    }
-
-    if (socket->options.read_timeout) {
-        int read_timeout = (int)socket->options.read_timeout;
-        setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_RCVTIMEO, (char *)&read_timeout, sizeof(int));
-    }
-
-    if (socket->options.keepalive) {
+    if (socket->options.keepalive && !(socket->options.keep_alive_interval && socket->options.keep_alive_timeout)) {
         int keep_alive = 1;
         setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive, sizeof(int));
+    } else if (socket->options.keepalive) {
+        struct tcp_keepalive keepalive_args = {
+            .onoff = 1,
+            .keepalivetime = socket->options.keep_alive_timeout,
+            .keepaliveinterval = socket->options.keep_alive_interval,
+        };
+        DWORD bytes_returned = 0;
+        WSAIoctl((SOCKET)socket->io_handle.data.handle, SIO_KEEPALIVE_VALS, &keepalive_args, sizeof(keepalive_args), 
+            NULL, 0, &bytes_returned, NULL, NULL);
     }
 
     if (socket->options.linger_time) {

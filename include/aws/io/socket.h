@@ -34,8 +34,8 @@ struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
     uint32_t linger_time;
-    uint32_t read_timeout;
-    uint32_t send_timeout;
+    uint16_t keep_alive_interval;
+    uint16_t keep_alive_timeout;
     uint32_t connect_timeout;
     bool keepalive;
 };
