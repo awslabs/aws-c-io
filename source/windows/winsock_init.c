@@ -10,7 +10,6 @@
 
 static LPFN_CONNECTEX s_connect_ex_fn = NULL;
 static LPFN_ACCEPTEX s_accept_ex_fn = NULL;
-aws_NTSetInformationFile_fn *s_set_info_fn = NULL;
 static bool s_winsock_init = false;
 
 void aws_check_and_init_winsock(void) {
@@ -44,29 +43,11 @@ void aws_check_and_init_winsock(void) {
         if (rc) {
             assert(0);
             exit(-1);
-        }
-
-        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
-
-        if (!ntdll) {
-            assert(0);
-            exit(-1);
-        }
-
-        s_set_info_fn = (aws_NTSetInformationFile_fn *)GetProcAddress(ntdll, "NtSetInformationFile");
-        if (!s_set_info_fn) {
-            assert(0);
-            exit(-1);
-        }
+        }        
 
         closesocket(dummy_socket);
         s_winsock_init = true;
     }
-}
-
-aws_NTSetInformationFile_fn *aws_get_set_information_file_fn(void) {
-    aws_check_and_init_winsock();
-    return s_set_info_fn;
 }
 
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void) {

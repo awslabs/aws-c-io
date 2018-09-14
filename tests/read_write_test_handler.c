@@ -225,6 +225,8 @@ struct increment_read_window_task_args {
 };
 
 static void s_increment_read_window_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+    (void)task;
+    (void)task_status;
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
     struct rw_test_handler_impl *handler_impl = increment_read_window_task_args->handler->impl;
 
@@ -251,7 +253,7 @@ void rw_handler_trigger_increment_read_window(
         increment_read_window_task_args->handler = handler;
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
-        aws_task_init(increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
+        aws_task_init(&increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
 
         aws_channel_schedule_task_now(slot->channel, &increment_read_window_task_args->task);
     }

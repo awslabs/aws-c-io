@@ -24,6 +24,12 @@
 
 #include <read_write_test_handler.h>
 
+#ifdef _WIN32
+#define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
+#else
+#define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
+#endif
+
 struct socket_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -42,7 +48,8 @@ static bool s_channel_setup_predicate(void *user_data) {
 
 static bool s_channel_shutdown_predicate(void *user_data) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-    return setup_test_args->shutdown_invoked;
+    bool finished = setup_test_args->shutdown_invoked;
+    return finished;
 }
 
 static int s_socket_handler_test_client_setup_callback(
@@ -102,9 +109,12 @@ static int s_socket_handler_test_client_shutdown_callback(
     (void)channel;
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_invoked = true;
+    aws_mutex_unlock(setup_test_args->mutex);
+
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
+
     return 0;
 }
 
@@ -119,8 +129,10 @@ static int s_socket_handler_test_server_shutdown_callback(
     (void)channel;
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_invoked = true;
+    aws_mutex_unlock(setup_test_args->mutex);
+
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 
     return 0;
@@ -260,7 +272,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -324,8 +336,8 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     ASSERT_BIN_ARRAYS_EQUALS(
         read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer, outgoing_rw_args.received_message.len);
 
+    /* only shut down one side, this should cause the other side to shutdown as well.*/
     ASSERT_SUCCESS(aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS));
-    ASSERT_SUCCESS(aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS));
 
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &incoming_args));
@@ -400,7 +412,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), "testsock%llu.sock", (long long unsigned)timestamp);
+    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -432,9 +444,6 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_setup_predicate, &outgoing_args));
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
-
-    ASSERT_SUCCESS(rw_handler_wait_on_shutdown(outgoing_args.rw_handler));
-    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, rw_handler_last_error_code(outgoing_args.rw_handler));
 
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &incoming_args));

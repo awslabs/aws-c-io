@@ -273,6 +273,8 @@ struct aws_channel_handler *aws_socket_handler_new(
     impl->socket = socket;
     impl->slot = slot;
     impl->max_rw_size = max_rw_size;
+    impl->read_task_storage.fn = NULL;
+    impl->read_task_storage.arg = NULL;
     impl->shutdown_in_progress = false;
     aws_linked_list_init(&impl->write_queue);
 

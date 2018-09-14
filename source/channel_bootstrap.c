@@ -572,7 +572,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     channel_data->server_connection_args->shutdown_callback(
         server_bootstrap, error_code, channel, server_shutdown_user_data);
     aws_channel_clean_up(channel);
-    aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, (void *)channel_data->socket);
     aws_mem_release(allocator, channel_data);
 }

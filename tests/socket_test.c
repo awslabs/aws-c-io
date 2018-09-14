@@ -16,6 +16,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/task_scheduler.h>
 #include <aws/common/condition_variable.h>
 
 #include <aws/io/event_loop.h>
@@ -81,7 +82,12 @@ static void s_local_outgoing_connection(struct aws_socket *socket, void *user_da
 }
 
 struct socket_io_args {
+    struct aws_socket *socket;
+    struct aws_byte_cursor *to_write;
+    struct aws_byte_buf *to_read;
+    struct aws_byte_buf *read_data;
     struct aws_byte_cursor *written_data;
+    size_t amount_read;
     int error_code;
     struct aws_condition_variable condition_variable;
 };
@@ -106,6 +112,41 @@ static void s_local_outgoing_connection_error(struct aws_socket *socket, int err
 
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
     outgoing_args->error_invoked = true;
+}
+
+static void s_write_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct socket_io_args *io_args = args;
+    aws_socket_write(io_args->socket, io_args->to_write, s_on_written, io_args);
+}
+
+static void s_read_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct socket_io_args *io_args = args;
+    size_t read = 0;
+    while (read < io_args->to_read->len) {
+        size_t data_len = 0;
+        if (aws_socket_read(io_args->socket, io_args->read_data, &data_len)) {
+            if (AWS_IO_READ_WOULD_BLOCK == aws_last_error()) {
+                continue;
+            }
+            break;
+        }
+        read += data_len;
+    }
+    io_args->amount_read = read;
+
+    aws_condition_variable_notify_one(&io_args->condition_variable);
+}
+
+static void s_on_readable(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    (void)user_data;
+    (void)error_code;
 }
 
 static int s_test_socket(
@@ -141,7 +182,7 @@ static int s_test_socket(
 
     ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
-    if (options->type != AWS_SOCKET_DGRAM) {
+    if (options->type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop));
     }
@@ -179,6 +220,8 @@ static int s_test_socket(
     }
 
     aws_socket_assign_to_event_loop(server_sock, event_loop);
+    aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
+    aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 
     /* now test the read and write across the connection. */
     const char read_data[] = "I'm a little teapot";
@@ -191,45 +234,51 @@ static int s_test_socket(
     struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
 
     struct socket_io_args io_args = {
+        .socket = &outgoing,
+        .to_write = &read_cursor,
+        .to_read = &read_buffer,
+        .read_data = &write_buffer,
+        .amount_read = 0,
         .written_data = NULL,
         .error_code = 0,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
     };
 
-    ASSERT_SUCCESS(aws_socket_write(&outgoing, &read_cursor, s_on_written, &io_args));
+    struct aws_task write_task = {
+        .fn = s_write_task,
+        .arg = &io_args
+    };
+
+    aws_event_loop_schedule_task_now(event_loop, &write_task);
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
-    size_t read = 0;
-    while (read < read_buffer.len) {
-        size_t data_len = 0;
-        if (aws_socket_read(server_sock, &write_buffer, &data_len)) {
-            ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
-        }
-        read += data_len;
-    }
+    io_args.socket = server_sock;
+    struct aws_task read_task = {
+        .fn = s_read_task,
+        .arg = &io_args
+    };
 
+    aws_event_loop_schedule_task_now(event_loop, &read_task);
+    aws_condition_variable_wait(&io_args.condition_variable, &mutex);
+    ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
     ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
 
-    memset((void *)write_data, 0, sizeof(write_data));
-    write_buffer.len = 0;
+    if (options->type != AWS_SOCKET_DGRAM) {
+        memset((void *)write_data, 0, sizeof(write_data));
+        write_buffer.len = 0;
 
-    if (options->type == AWS_SOCKET_STREAM) {
         io_args.error_code = 0;
         io_args.written_data = NULL;
-        ASSERT_SUCCESS(aws_socket_write(server_sock, &read_cursor, s_on_written, &io_args));
+        io_args.socket = server_sock;
+        aws_event_loop_schedule_task_now(event_loop, &write_task);
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
         ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
-        read = 0;
-        write_buffer.len = 0;
-        while (read < read_buffer.len) {
-            size_t data_len = 0;
-            if (aws_socket_read(&outgoing, &write_buffer, &data_len)) {
-                ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
-            }
-            read += data_len;
-        }
+        io_args.socket = &outgoing;
+        aws_event_loop_schedule_task_now(event_loop, &read_task);
+        aws_condition_variable_wait(&io_args.condition_variable, &mutex);
+        ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
         ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
     }
 
@@ -382,7 +431,6 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
-    /* hit a endpoint that will not send me a SYN packet. */
     struct aws_socket_endpoint endpoint = {.socket_name = ""};
 
     struct error_test_args args = {
@@ -420,8 +468,7 @@ static int s_test_incoming_local_sock_errors(struct aws_allocator *allocator, vo
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
-    /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {.socket_name = "/usr/blah"};
+    struct aws_socket_endpoint endpoint = {.socket_name = ""};
 
     struct error_test_args args = {
         .error_code = 0, .mutex = AWS_MUTEX_INIT, .condition_variable = AWS_CONDITION_VARIABLE_INIT};
@@ -431,7 +478,9 @@ static int s_test_incoming_local_sock_errors(struct aws_allocator *allocator, vo
 
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
-    ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+    ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
+    int error = aws_last_error();
+    ASSERT_TRUE(error == AWS_IO_NO_PERMISSION || error == AWS_IO_FILE_INVALID_PATH);
 
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);

@@ -80,9 +80,8 @@ struct aws_event_loop_vtable {
         int events,
         aws_event_loop_on_event_fn *on_event,
         void *user_data);
-
-    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #endif
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -309,14 +308,14 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
+
 /**
 * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
 * This function may be called from outside or inside the event loop thread.
 */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
  * Returns true if the event loop's thread is the same thread that called this function, otherwise false.
