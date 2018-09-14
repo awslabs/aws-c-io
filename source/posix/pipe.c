@@ -138,8 +138,8 @@ int aws_pipe_init(
     assert(write_end_event_loop);
     assert(allocator);
 
-    AWS_ZERO_STRUCT(read_end);
-    AWS_ZERO_STRUCT(write_end);
+    AWS_ZERO_STRUCT(*read_end);
+    AWS_ZERO_STRUCT(*write_end);
 
     struct read_end_impl *read_impl = NULL;
     struct write_end_impl *write_impl = NULL;
@@ -158,6 +158,7 @@ int aws_pipe_init(
         goto error;
     }
 
+    AWS_ZERO_STRUCT(*read_impl);
     read_impl->alloc = allocator;
     read_impl->handle.data.fd = pipe_fds[0];
     read_impl->event_loop = read_end_event_loop;
@@ -168,6 +169,7 @@ int aws_pipe_init(
         goto error;
     }
 
+    AWS_ZERO_STRUCT(*write_impl)
     write_impl->alloc = allocator;
     write_impl->handle.data.fd = pipe_fds[1];
     write_impl->event_loop = write_end_event_loop;
@@ -245,12 +247,12 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
 
     ssize_t read_val = read(read_impl->handle.data.fd, dst, dst_size);
 
-    if (read_val == EAGAIN || read_val == EWOULDBLOCK) {
-        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-    }
 
     if (read_val < 0) {
-        return s_raise_posix_error(read_val);
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        return s_raise_posix_error(errno);
     }
 
     if (num_bytes_read) {
@@ -377,15 +379,15 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
         if (request->cursor.len > 0) {
             ssize_t write_val = write(write_impl->handle.data.fd, request->cursor.ptr, request->cursor.len);
 
-            if (write_val == EAGAIN || write_val == EWOULDBLOCK) {
-                /* The pipe is no longer writable. Bail out */
-                write_impl->is_writable = false;
-                return;
-            }
-
             if (write_val < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    /* The pipe is no longer writable. Bail out */
+                    write_impl->is_writable = false;
+                    return;
+                }
+
                 /* A non-recoverable error occurred during this write */
-                completed_write_status = s_translate_posix_error(write_val);
+                completed_write_status = s_translate_posix_error(errno);
 
             } else {
                 request->num_bytes_written += write_val;
