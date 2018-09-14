@@ -88,28 +88,9 @@ static int s_raise_posix_error(int err) {
     return aws_raise_error(err);
 }
 
-int aws_pipe_init(
-    struct aws_pipe_read_end *read_end,
-    struct aws_event_loop *read_end_event_loop,
-    struct aws_pipe_write_end *write_end,
-    struct aws_event_loop *write_end_event_loop,
-    struct aws_allocator *allocator) {
-
-    assert(read_end);
-    assert(read_end_event_loop);
-    assert(write_end);
-    assert(write_end_event_loop);
-    assert(allocator);
-
-    AWS_ZERO_STRUCT(read_end);
-    AWS_ZERO_STRUCT(write_end);
-
-    struct read_end_impl *read_impl = NULL;
-    struct write_end_impl *write_impl = NULL;
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
     int err;
 
-    /* Open pipe */
-    int pipe_fds[2];
 #if HAVE_PIPE2
     err = pipe2(pipe_fds, O_NONBLOCK | O_CLOEXEC);
     if (err) {
@@ -135,6 +116,41 @@ int aws_pipe_init(
         }
     }
 #endif
+
+    return AWS_OP_SUCCESS;
+
+error:
+    close(pipe_fds[0]);
+    close(pipe_fds[1]);
+    return AWS_OP_ERR;
+}
+
+int aws_pipe_init(
+    struct aws_pipe_read_end *read_end,
+    struct aws_event_loop *read_end_event_loop,
+    struct aws_pipe_write_end *write_end,
+    struct aws_event_loop *write_end_event_loop,
+    struct aws_allocator *allocator) {
+
+    assert(read_end);
+    assert(read_end_event_loop);
+    assert(write_end);
+    assert(write_end_event_loop);
+    assert(allocator);
+
+    AWS_ZERO_STRUCT(read_end);
+    AWS_ZERO_STRUCT(write_end);
+
+    struct read_end_impl *read_impl = NULL;
+    struct write_end_impl *write_impl = NULL;
+    int err;
+
+    /* Open pipe */
+    int pipe_fds[2];
+    err = aws_open_nonblocking_posix_pipe(pipe_fds);
+    if (err) {
+        return s_raise_posix_error(err);
+    }
 
     /* Init read-end */
     read_impl = aws_mem_acquire(allocator, sizeof(struct read_end_impl));

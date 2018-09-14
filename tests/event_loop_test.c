@@ -227,8 +227,9 @@ AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else  /* !AWS_USE_IO_COMPLETION_PORTS */
 
-#include <fcntl.h>
 #include <unistd.h>
+
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Define simple pipe for testing. */
 int simple_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
@@ -236,13 +237,7 @@ int simple_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *wr
     AWS_ZERO_STRUCT(*write_handle);
 
     int pipe_fds[2];
-    ASSERT_SUCCESS(pipe(pipe_fds));
-
-    for (int i = 0; i < 2; ++i) {
-        int flags = fcntl(pipe_fds[i], F_GETFL);
-        flags |= O_NONBLOCK | O_CLOEXEC;
-        fcntl(pipe_fds[i], F_SETFL, flags);
-    }
+    ASSERT_SUCCESS(aws_open_nonblocking_posix_pipe(pipe_fds));
 
     read_handle->data.fd = pipe_fds[0];
     write_handle->data.fd = pipe_fds[1];
