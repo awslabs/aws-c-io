@@ -16,7 +16,7 @@
 #include <aws/io/channel.h>
 
 #include <aws/common/condition_variable.h>
-#include <aws/common/task_scheduler.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
 
@@ -120,11 +120,10 @@ int aws_channel_init(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
+    AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
-    channel->loop = event_loop;
-    channel->first = NULL;
-    channel->msg_pool = NULL;
+    channel->loop = event_loop;   
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
@@ -447,6 +446,15 @@ int aws_channel_slot_shutdown(
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 
+static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
+        struct aws_channel *channel = arg;
+        channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
+    }
+}
+
 int aws_channel_slot_on_handler_shutdown_complete(
     struct aws_channel_slot *slot,
     enum aws_channel_direction dir,
@@ -472,9 +480,14 @@ int aws_channel_slot_on_handler_shutdown_complete(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
 
-    if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
+    if (slot->channel->first == slot) {
         slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        slot->channel->on_shutdown_completed(slot->channel, err_code, slot->channel->shutdown_user_data);
+        if (slot->channel->on_shutdown_completed) {
+            slot->channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
+            slot->channel->shutdown_notify_task.task.arg = slot->channel;
+            slot->channel->shutdown_notify_task.error_code = err_code;
+            aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+        }
     }
 
     return AWS_OP_SUCCESS;

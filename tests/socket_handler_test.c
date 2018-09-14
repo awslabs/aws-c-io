@@ -37,6 +37,7 @@ struct socket_test_args {
     struct aws_channel *channel;
     struct aws_channel_handler *rw_handler;
     struct aws_channel_slot *rw_slot;
+    int error_code;
     bool shutdown_invoked;
     bool error_invoked;
 };
@@ -105,12 +106,12 @@ static int s_socket_handler_test_client_shutdown_callback(
     void *user_data) {
 
     (void)bootstrap;
-    (void)error_code;
     (void)channel;
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_invoked = true;
+    setup_test_args->error_code = error_code;
     aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
@@ -131,6 +132,7 @@ static int s_socket_handler_test_server_shutdown_callback(
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_invoked = true;
+    setup_test_args->error_code = error_code;
     aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
@@ -249,6 +251,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         .condition_variable = &condition_variable,
         .error_invoked = false,
         .shutdown_invoked = false,
+        .error_code = 0,
         .rw_handler = incoming_rw_handler,
     };
 
@@ -258,6 +261,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         .condition_variable = &condition_variable,
         .error_invoked = false,
         .shutdown_invoked = false,
+        .error_code = 0,
         .rw_handler = outgoing_rw_handler,
     };
 
@@ -338,12 +342,13 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     /* only shut down one side, this should cause the other side to shutdown as well.*/
     ASSERT_SUCCESS(aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS));
+    ASSERT_SUCCESS(aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS));
 
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
-
+    
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
     aws_event_loop_group_clean_up(&el_group);
@@ -391,6 +396,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
                                              .error_invoked = false,
                                              .shutdown_invoked = false,
                                              .rw_handler = incoming_rw_handler,
+                                             .error_code = 0,
                                              .rw_slot = NULL};
 
     struct socket_test_args outgoing_args = {.mutex = &mutex,
@@ -399,6 +405,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
                                              .error_invoked = false,
                                              .shutdown_invoked = false,
                                              .rw_handler = outgoing_rw_handler,
+                                             .error_code = 0,
                                              .rw_slot = NULL};
 
     struct aws_socket_options options;
@@ -449,6 +456,9 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
+
+    ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, outgoing_args.error_code);
 
     ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
     aws_event_loop_group_clean_up(&el_group);

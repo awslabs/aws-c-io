@@ -382,8 +382,10 @@ static int s_determine_socket_error(int error) {
     case IO_STATUS_CONNECTION_REFUSED:
         return AWS_IO_SOCKET_CONNECTION_REFUSED;
     case WSAETIMEDOUT:
-    case IO_STATUS_TIMEOUT:
+    case IO_STATUS_TIMEOUT:        
         return AWS_IO_SOCKET_TIMEOUT;
+    case IO_PIPE_BROKEN:
+        return AWS_IO_SOCKET_CLOSED;
     case WSAENETUNREACH:
     case IO_NETWORK_UNREACHABLE:
     case IO_HOST_UNREACHABLE:
@@ -1228,7 +1230,7 @@ int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options 
 
 static int s_socket_close(struct aws_socket *socket) {
     if (socket->io_handle.data.handle != INVALID_HANDLE_VALUE) { 
-        CancelIo(socket->io_handle.data.handle);
+        shutdown((SOCKET)socket->io_handle.data.handle, SD_BOTH);
         closesocket((SOCKET)socket->io_handle.data.handle);  
         socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
     }
@@ -1239,7 +1241,6 @@ static int s_socket_close(struct aws_socket *socket) {
 static int s_local_close(struct aws_socket *socket) {
     if (socket->io_handle.data.handle != INVALID_HANDLE_VALUE) {
         aws_socket_stop_accept(socket);
-        CancelIo(socket->io_handle.data.handle);
         CloseHandle(socket->io_handle.data.handle);
         socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
     }
@@ -1301,8 +1302,8 @@ static void s_stream_readable_event(struct aws_event_loop *event_loop, struct aw
     socket->state = socket->state & ~WAITING_ON_READABLE;
 
     int err_code = AWS_OP_SUCCESS;
-    if (status_code) {
-        err_code = s_determine_socket_error(WSAGetLastError());
+    if (status_code != ERROR_IO_PENDING) {
+        err_code = s_determine_socket_error(status_code);
     }
 
     socket->readable_fn(socket, err_code, socket->readable_user_data);
@@ -1323,11 +1324,8 @@ static void s_dgram_readable_event(struct aws_event_loop *event_loop, struct aws
     socket->state = socket->state & ~WAITING_ON_READABLE;
 
     int err_code = AWS_OP_SUCCESS;
-    if (status_code) {
-        int wsa_error = WSAGetLastError();
-        if (wsa_error == ERROR_IO_PENDING) {
-            err_code = s_determine_socket_error(WSAGetLastError());
-        }
+    if (status_code !=  ERROR_IO_PENDING) {
+        err_code = s_determine_socket_error(status_code);
     }
 
     socket->readable_fn(socket, err_code , socket->readable_user_data);

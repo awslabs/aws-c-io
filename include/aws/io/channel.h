@@ -17,6 +17,8 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/task_scheduler.h>
+
 enum aws_channel_direction {
     AWS_CHANNEL_DIR_READ,
     AWS_CHANNEL_DIR_WRITE,
@@ -41,12 +43,18 @@ enum aws_channel_state {
     AWS_CHANNEL_SHUT_DOWN,
 };
 
+struct aws_shutdown_notification_task {
+    struct aws_task task;
+    int error_code;
+};
+
 struct aws_channel {
     struct aws_allocator *alloc;
     struct aws_event_loop *loop;
     struct aws_channel_slot *first;
     struct aws_message_pool *msg_pool;
     enum aws_channel_state channel_state;
+    struct aws_shutdown_notification_task shutdown_notify_task;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
 };
