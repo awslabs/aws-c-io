@@ -374,7 +374,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     options.domain = AWS_SOCKET_IPV4;
 
     /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {.address = "216.58.217.46", .port = "81"};
+    struct aws_socket_endpoint endpoint = {.address = "172.217.15.110", .port = "81"};
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;

@@ -264,22 +264,26 @@ static void s_socket_connect_event(
         int events,
         void *user_data) {
 
-    (void)event_loop;
-    (void)handle;
+    (void) event_loop;
+    (void) handle;
 
-    struct socket_connect_args *socket_args = (struct socket_connect_args *)user_data;
+    struct socket_connect_args *socket_args = (struct socket_connect_args *) user_data;
 
-    if (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        if (socket_args->socket) {
+    if (socket_args->socket) {
+
+        if (!(events & AWS_IO_EVENT_TYPE_ERROR || events & AWS_IO_EVENT_TYPE_CLOSED)
+            && (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE)) {
             struct aws_socket *socket = socket_args->socket;
             socket_args->socket = NULL;
             s_on_connection_success(socket);
         }
         return;
+
+        int aws_error = s_determine_socket_error(errno);
+        aws_raise_error(aws_error);
+        s_on_connection_error(socket_args->socket, aws_error);
+        socket_args->socket = NULL;
     }
-    int aws_error = s_determine_socket_error(errno);
-    aws_raise_error(aws_error);
-    s_on_connection_error(socket_args->socket, aws_error);
 }
 
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
@@ -295,10 +299,8 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             aws_socket_shutdown(socket_args->socket);
             aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
 
-            if (socket_args->socket->creation_args.on_error) {
-                socket_args->socket->creation_args.on_error(
-                    socket_args->socket, AWS_IO_SOCKET_TIMEOUT, socket_args->socket->creation_args.user_data);
-            }
+            s_on_connection_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT);
+            socket_args->socket = NULL;
         }
     }
 
