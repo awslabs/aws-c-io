@@ -340,7 +340,6 @@ int aws_socket_connect(struct aws_socket *socket,
 
     sock_args->task.fn = s_handle_socket_timeout;
     sock_args->task.arg = sock_args;
-    socket->event_loop = event_loop;
 
     int error_code = -1;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
@@ -369,6 +368,8 @@ int aws_socket_connect(struct aws_socket *socket,
         goto err_clean_up;
     }
 
+    socket->event_loop = event_loop;
+
     if (!error_code) {
         sock_args->task.fn = s_run_connect_success;
         aws_event_loop_schedule_task_now(event_loop, &sock_args->task);
@@ -377,12 +378,15 @@ int aws_socket_connect(struct aws_socket *socket,
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
-            uint64_t timeout = 0;
-            aws_event_loop_current_clock_time(event_loop, &timeout);
             if (aws_event_loop_subscribe_to_io_events(event_loop, &socket->io_handle,
-                                                      AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE, s_socket_connect_event, sock_args)) {
+                                                      AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE,
+                                                      s_socket_connect_event, sock_args)) {
                 goto err_clean_up;
             }
+
+            uint64_t timeout = 0;
+            aws_event_loop_current_clock_time(event_loop, &timeout);
+
             timeout += aws_timestamp_convert(socket->options.connect_timeout,
                     AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
             aws_event_loop_schedule_task_future(event_loop, &sock_args->task, timeout);
