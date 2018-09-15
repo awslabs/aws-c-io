@@ -276,8 +276,8 @@ static void s_socket_connect_event(
             struct aws_socket *socket = socket_args->socket;
             socket_args->socket = NULL;
             s_on_connection_success(socket);
+            return;
         }
-        return;
 
         int aws_error = s_determine_socket_error(errno);
         aws_raise_error(aws_error);
@@ -302,6 +302,17 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             s_on_connection_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT);
             socket_args->socket = NULL;
         }
+    }
+
+    aws_mem_release(socket_args->allocator, task);
+    aws_mem_release(socket_args->allocator, socket_args);
+}
+
+static void s_run_connect_success(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct socket_connect_args *socket_args = (struct socket_connect_args *)arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        s_on_connection_success(socket_args->socket);
     }
 
     aws_mem_release(socket_args->allocator, task);
@@ -335,11 +346,6 @@ int aws_socket_connect(struct aws_socket *socket,
 
     timeout_task->fn = s_handle_socket_timeout;
     timeout_task->arg = sock_args;
-
-    if (aws_event_loop_subscribe_to_io_events(event_loop, &socket->io_handle,
-            AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE, s_socket_connect_event, sock_args)) {
-        goto err_clean_up;
-    }
     socket->event_loop = event_loop;
 
     int error_code = -1;
@@ -369,25 +375,30 @@ int aws_socket_connect(struct aws_socket *socket,
         goto err_clean_up;
     }
 
-    /* if it happened synchronous, we'll still get the notification, so just go ahead and ignore that case
-     * and force async flow. */
-    uint64_t timeout = 0;
-    aws_event_loop_current_clock_time(event_loop, &timeout);
+    if (!error_code) {
+        timeout_task->fn = s_run_connect_success;
+        aws_event_loop_schedule_task_now(event_loop, timeout_task);
+    }
 
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
+            uint64_t timeout = 0;
+            aws_event_loop_current_clock_time(event_loop, &timeout);
+            if (aws_event_loop_subscribe_to_io_events(event_loop, &socket->io_handle,
+                                                      AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE, s_socket_connect_event, sock_args)) {
+                goto err_clean_up;
+            }
             timeout += aws_timestamp_convert(socket->options.connect_timeout,
                     AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
         }
         else {
-            aws_mem_release(socket->allocator, sock_args);
             int aws_error = s_determine_socket_error(error_code);
             aws_raise_error(aws_error);
             goto err_clean_up;
         }
     }
-    aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
     return AWS_OP_SUCCESS;
 
 err_clean_up:
