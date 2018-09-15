@@ -115,14 +115,14 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
             goto error;
         }
     }
-#endif
-
-    return AWS_OP_SUCCESS;
+    return AWS_OP_SUCCESS
 
 error:
     close(pipe_fds[0]);
     close(pipe_fds[1]);
     return AWS_OP_ERR;
+#endif
+    return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_init(

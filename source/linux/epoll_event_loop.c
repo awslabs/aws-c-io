@@ -350,6 +350,7 @@ static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
 
 static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
+    (void)status;
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
