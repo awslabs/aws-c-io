@@ -254,6 +254,7 @@ static void s_on_connection_error(struct aws_socket *socket, int error) {
 }
 
 struct socket_connect_args {
+    struct aws_task task;
     struct aws_allocator *allocator;
     struct aws_socket *socket;
 };
@@ -287,6 +288,7 @@ static void s_socket_connect_event(
 }
 
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
+    (void)task;
     struct socket_connect_args *socket_args = (struct socket_connect_args *)args;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -304,18 +306,17 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
         }
     }
 
-    aws_mem_release(socket_args->allocator, task);
     aws_mem_release(socket_args->allocator, socket_args);
 }
 
 static void s_run_connect_success(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
     struct socket_connect_args *socket_args = (struct socket_connect_args *)arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         s_on_connection_success(socket_args->socket);
     }
 
-    aws_mem_release(socket_args->allocator, task);
     aws_mem_release(socket_args->allocator, socket_args);
 }
 
@@ -337,15 +338,8 @@ int aws_socket_connect(struct aws_socket *socket,
     sock_args->socket = socket;
     sock_args->allocator = socket->allocator;
 
-    struct aws_task *timeout_task = aws_mem_acquire(socket->allocator, sizeof(struct aws_task));
-
-    if (!timeout_task) {
-        aws_mem_release(socket->allocator, sock_args);
-        return AWS_OP_ERR;
-    }
-
-    timeout_task->fn = s_handle_socket_timeout;
-    timeout_task->arg = sock_args;
+    sock_args->task.fn = s_handle_socket_timeout;
+    sock_args->task.arg = sock_args;
     socket->event_loop = event_loop;
 
     int error_code = -1;
@@ -376,8 +370,8 @@ int aws_socket_connect(struct aws_socket *socket,
     }
 
     if (!error_code) {
-        timeout_task->fn = s_run_connect_success;
-        aws_event_loop_schedule_task_now(event_loop, timeout_task);
+        sock_args->task.fn = s_run_connect_success;
+        aws_event_loop_schedule_task_now(event_loop, &sock_args->task);
     }
 
     if (error_code) {
@@ -391,7 +385,7 @@ int aws_socket_connect(struct aws_socket *socket,
             }
             timeout += aws_timestamp_convert(socket->options.connect_timeout,
                     AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-            aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
+            aws_event_loop_schedule_task_future(event_loop, &sock_args->task, timeout);
         }
         else {
             int aws_error = s_determine_socket_error(error_code);
@@ -403,7 +397,6 @@ int aws_socket_connect(struct aws_socket *socket,
 
 err_clean_up:
     aws_mem_release(socket->allocator, sock_args);
-    aws_mem_release(socket->allocator, timeout_task);
     return AWS_OP_ERR;
 }
 
