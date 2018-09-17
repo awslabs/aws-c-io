@@ -94,6 +94,8 @@ static int s_determine_socket_error(int error) {
         return AWS_IO_SOCKET_NETWORK_DOWN;
     case ECONNABORTED:
         return AWS_IO_SOCKET_CONNECT_ABORTED;
+    case EADDRINUSE:
+        return AWS_IO_SOCKET_ADDRESS_IN_USE;
     case ENOBUFS:
     case ENOMEM:
         return AWS_ERROR_OOM;
@@ -101,9 +103,12 @@ static int s_determine_socket_error(int error) {
     case ENFILE:
         return AWS_IO_MAX_FDS_EXCEEDED;
     case ENOENT:
+    case EINVAL:
         return AWS_IO_FILE_INVALID_PATH;
-    case 0:
-        return AWS_IO_SOCKET_NOT_CONNECTED;
+    case EAFNOSUPPORT:
+         return AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY;
+    case EACCES:
+         return AWS_IO_NO_PERMISSION;
     default:
         return AWS_IO_SOCKET_NOT_CONNECTED;
     }
@@ -286,7 +291,7 @@ static void s_socket_connect_event(
             return;
         }
 
-        int aws_error = s_determine_socket_error(errno);
+        int aws_error = aws_socket_get_error(socket_args->socket);
         aws_raise_error(aws_error);
         s_on_connection_error(socket_args->socket, aws_error);
         socket_args->socket = NULL;
@@ -506,7 +511,7 @@ static void socket_accept_event(
                     break;
                 }
 
-                int aws_error = s_determine_socket_error(error);
+                int aws_error = aws_socket_get_error(socket);
                 aws_raise_error(aws_error);
                 s_on_connection_error(socket, aws_error);
                 continue;
