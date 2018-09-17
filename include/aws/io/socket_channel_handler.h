@@ -37,6 +37,7 @@ AWS_IO_API struct aws_channel_handler *aws_socket_handler_new(
     struct aws_socket *socket,
     struct aws_channel_slot *slot,
     size_t max_rw_size);
+
 #ifdef __cplusplus
 }
 #endif

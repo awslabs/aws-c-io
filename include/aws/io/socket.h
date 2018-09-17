@@ -22,6 +22,7 @@
 enum aws_socket_domain {
     AWS_SOCKET_IPV4,
     AWS_SOCKET_IPV6,
+    /* Unix domain sockets (or at least something like them) */
     AWS_SOCKET_LOCAL,
 };
 
@@ -44,17 +45,38 @@ struct aws_socket;
 struct aws_event_loop;
 
 struct aws_socket_creation_args {
+    /**
+     * Called in server mode when an incoming connection has been received. new_socket will need to be assigned
+     * to an event loop before IO operations can be used.
+     */
     void (*on_incoming_connection)(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data);
+    /**
+     * Called in client mode when an outgoing connection has succeeded. In this case socket has already been assigned
+     * to the event loop specified in aws_socket_connect().
+     */
     void (*on_connection_established)(struct aws_socket *socket, void *user_data);
+    /**
+     * Called for connection level errors, either in client in server mode. This will never be invoked once IO operations
+     * have begun.
+     */
     void (*on_error)(struct aws_socket *socket, int err_code, void *user_data);
     void *user_data;
 };
 
-typedef void(aws_socket_on_data_written_fn)(struct aws_socket *socket, int error_code, struct aws_byte_cursor *data_written, void *user_data);
+/**
+ * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
+ * On success, error_code will be AWS_OP_SUCCESS.
+ */
+typedef void(aws_socket_on_data_written_fn)(struct aws_socket *socket, int error_code,
+        struct aws_byte_cursor *data_written, void *user_data);
+/**
+ * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
+ * readable, error_code will be AWS_OP_SUCCESS.
+ */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
 struct aws_socket_endpoint {
-    char address[48];
+    char address[40];
     char socket_name[108];
     char port[10];
 };
@@ -80,8 +102,6 @@ struct aws_byte_cursor;
    these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are just in case
    someone includes this header somewhere they were able to get these definitions included. */
 #ifdef _WIN32
-
-
 typedef void(*aws_ms_fn_ptr)(void);
 
 void aws_check_and_init_winsock(void);
@@ -166,21 +186,49 @@ AWS_IO_API struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *soc
  */
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
 
+/**
+ * Assigns the socket to the event-loop. The socket will begin receiving read/write/error notifications after this call.
+ *
+ * Note: If you called connect for TCP or Unix Domain Sockets and received a connection_success callback, this has already
+ * happened. You only need to call this function when:
+ *
+ * a.) This socket is a server socket (e.g. a result of a call to start_accept())
+ * b.) This socket is a UDP socket.
+ */
 AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop);
 
+/**
+ * Gets the event-loop the socket is assigned to.
+ */
 AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
+/**
+ * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved in
+ * the callback.
+ *
+ * Note! This function is technically not thread safe, but we do not enforce which thread you call from.
+ * It's your responsibility to either call this in safely (e.g. just don't call it in parallel from multiple threads) or
+ * schedule a task to call it. If you call it before your first call to read, it will be fine.
+ */
 AWS_IO_API int aws_socket_subscribe_to_readable_events(struct aws_socket *socket,
     aws_socket_on_readable_fn *on_readable, void *user_data);
+
 /**
  * Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is
  * available. `read` is the amount of data read into `buffer`.
+ *
+ * Use aws_socket_subscribe_to_readable_events() to receive notifications of when the socket goes readable.
+ *
+ * NOTE! This function must be called from the event-loop used in aws_socket_assign_to_event_loop
  */
 AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
 
 /**
- * Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be
- * written. `written` is the amount of data read from `buffer` and successfully written to `socket`.
+ * Writes to the socket. This call is non-blocking and will attempt to write as much as it can, but will queue any remaining
+ * portion of the data for write when available. written_fn will be invoked once the entire cursor has been written, or
+ * the write failed or was cancelled.
+ *
+ * NOTE! This function must be called from the event-loop used in aws_socket_assign_to_event_loop
  */
 AWS_IO_API int aws_socket_write(struct aws_socket *socket, struct aws_byte_cursor *cursor, 
     aws_socket_on_data_written_fn *written_fn, void *user_data);

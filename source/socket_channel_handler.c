@@ -12,10 +12,12 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/socket_channel_handler.h>
+
 #include <aws/common/task_scheduler.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
-#include <aws/io/socket_channel_handler.h>
 
 #include <assert.h>
 
@@ -27,7 +29,6 @@ struct socket_handler {
     struct aws_socket *socket;
     struct aws_event_loop *event_loop;
     struct aws_channel_slot *slot;
-    struct aws_linked_list write_queue;
     size_t max_rw_size;
     struct aws_task read_task_storage;
     struct aws_task shutdown_task_storage;
@@ -48,11 +49,7 @@ static int s_socket_process_read_message(
     return aws_raise_error(AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT);
 }
 
-struct socket_write_args {
-    struct socket_handler *handler;
-    struct aws_io_message *message;
-};
-
+/* invoked by the socket when a write has completed or failed. */
 static void s_on_socket_write_complete(struct aws_socket *socket, int error_code, struct aws_byte_cursor *data_written, void *user_data) {
     (void)data_written;
     (void)socket;
@@ -92,7 +89,19 @@ static void s_read_task(struct aws_task *task, void *arg, aws_task_status status
 
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data);
 
+/* Ok this next function is VERY important for how back pressure works. Here's what it's supposed to be doing:
+ *
+ * See how much data downstream is willing to accept.
+ * See how much we're actually willing to read per event loop tick (usually 16 kb).
+ * Take the minimum of those two.
+ * Try and read as much as possible up to the calculated max read.
+ * If we didn't read up to the max_read, we go back to waiting on the event loop to tell us we can read more.
+ * If we did read up to the max_read, we stop reading immediately and wait for either for a window update,
+ * or schedule a task to enforce fairness for other sockets in the event loop if we read up to the max
+ * read per event loop tick.
+ */
 static void s_do_read(struct socket_handler *socket_handler) {
+
     size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
@@ -126,7 +135,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
         }
         /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
          * again. */
-        if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size && !socket_handler->read_task_storage.fn) {
+        if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size
+            && !socket_handler->read_task_storage.fn) {
             socket_handler->read_task_storage.fn = s_read_task;
             socket_handler->read_task_storage.arg = socket_handler;
 
@@ -135,6 +145,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
     }
 }
 
+/* the socket is either readable or errored out. If it's readable, kick of s_do_read() to do its thing.
+ * If an error, start the channel shutdown process. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
     (void)socket;
 
@@ -147,6 +159,7 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
     }
 }
 
+/* Either the result of a context switch (for fairness in the event loop), or a window update. */
 static void s_read_task(struct aws_task *task, void *arg, aws_task_status status) {
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_handler *socket_handler = (struct socket_handler *)arg;
@@ -199,17 +212,6 @@ static int s_socket_shutdown(
         }
 
         return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort);
-    }
-
-    while (!aws_linked_list_empty(&socket_handler->write_queue)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_handler->write_queue);
-        struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-
-        if (message->on_completion) {
-            message->on_completion(slot->channel, message, AWS_IO_SOCKET_CLOSED, message->user_data);
-        }
-
-        aws_channel_release_message_to_pool(slot->channel, message);
     }
 
     if (aws_socket_is_open(socket_handler->socket)) {
@@ -276,7 +278,6 @@ struct aws_channel_handler *aws_socket_handler_new(
     impl->read_task_storage.fn = NULL;
     impl->read_task_storage.arg = NULL;
     impl->shutdown_in_progress = false;
-    aws_linked_list_init(&impl->write_queue);
 
     handler->alloc = allocator;
     handler->impl = impl;
