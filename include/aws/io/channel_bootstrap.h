@@ -38,7 +38,7 @@ struct aws_client_bootstrap;
 typedef int (*aws_channel_client_setup_callback)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
-    struct aws_channel *,
+    struct aws_channel *channel,
     void *user_data);
 
 /**
@@ -47,7 +47,7 @@ typedef int (*aws_channel_client_setup_callback)(
 typedef int (*aws_channel_client_shutdown_callback)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
-    struct aws_channel *,
+    struct aws_channel *channel,
     void *user_data);
 
 /**
@@ -59,7 +59,6 @@ typedef struct aws_channel_handler *(*aws_channel_on_protocol_negotiated)(
     struct aws_byte_buf *protocol,
     void *user_data);
 
-struct aws_tls_ctx;
 struct aws_tls_connection_options;
 
 struct aws_event_loop_group;

@@ -40,7 +40,7 @@
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 
-/* due to the windows' team aparenl lack of ability to handle header ordering properly
+/* due to the windows' team apparently lack of ability to handle header ordering properly
    we can't include ntstatus.h. Just define this, it's used for Connect and Accept callbacks. 
    it maps directly to nt's STATUS_CANCELLED */
 #define IO_OPERATION_CANCELLED 0xC0000120
@@ -581,7 +581,7 @@ void s_socket_connection_completion(struct aws_event_loop *event_loop, struct aw
 /* outgoing tcp connection. If this task runs before `s_socket_connection_completion()`, then the
    connection is considered timedout. */
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
-    struct socket_connect_args *socket_args = (struct socket_connect_args *)args;
+    struct socket_connect_args *socket_args = args;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (socket_args->socket) {

@@ -82,7 +82,7 @@ static void tls_client_on_negotiation_result(
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     if (connection_args->channel_data.user_on_negotiation_result) {
         connection_args->channel_data.user_on_negotiation_result(
@@ -108,7 +108,7 @@ static void tls_client_on_data_read(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
     void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     if (connection_args->channel_data.user_on_data_read) {
         connection_args->channel_data.user_on_data_read(
@@ -124,7 +124,7 @@ static void tls_client_on_error(
     int err,
     const char *message,
     void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     if (connection_args->channel_data.user_on_error) {
         connection_args->channel_data.user_on_error(
@@ -182,7 +182,7 @@ static inline int setup_client_tls(struct client_connection_args *connection_arg
 }
 
 static void on_client_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
     int err_code = error_code;
 
     if (!err_code) {
@@ -228,7 +228,7 @@ error:
 }
 
 static void on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     connection_args->shutdown_callback(connection_args->bootstrap, error_code, channel, connection_args->user_data);
     aws_channel_clean_up(channel);
@@ -236,7 +236,7 @@ static void on_client_channel_on_shutdown(struct aws_channel *channel, int error
 }
 
 static void on_client_connection_established(struct aws_socket *socket, void *user_data) {
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     int err_code = AWS_OP_SUCCESS;
 
@@ -266,7 +266,7 @@ error:
 
 static void on_client_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
     (void)socket;
-    struct client_connection_args *connection_args = (struct client_connection_args *)user_data;
+    struct client_connection_args *connection_args = user_data;
 
     connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
     aws_socket_clean_up(&connection_args->channel_data.socket);
@@ -285,7 +285,7 @@ static inline int new_client_channel(
     assert(shutdown_callback);
 
     struct client_connection_args *client_connection_args =
-        (struct client_connection_args *)aws_mem_acquire(bootstrap->allocator, sizeof(struct client_connection_args));
+        aws_mem_acquire(bootstrap->allocator, sizeof(struct client_connection_args));
 
     if (!client_connection_args) {
         return AWS_OP_ERR;
@@ -420,7 +420,7 @@ static void tls_server_on_negotiation_result(
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data) {
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
+    struct server_connection_args *connection_args = user_data;
 
     if (connection_args->user_on_negotiation_result) {
         connection_args->user_on_negotiation_result(handler, slot, err_code, connection_args->tls_user_data);
@@ -442,7 +442,7 @@ static void tls_server_on_data_read(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
     void *user_data) {
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
+    struct server_connection_args *connection_args = user_data;
 
     if (connection_args->user_on_data_read) {
         connection_args->user_on_data_read(handler, slot, buffer, connection_args->tls_user_data);
@@ -457,7 +457,7 @@ static void tls_server_on_error(
     int err,
     const char *message,
     void *user_data) {
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
+    struct server_connection_args *connection_args = user_data;
 
     if (connection_args->user_on_error) {
         connection_args->user_on_error(handler, slot, err, message, connection_args->tls_user_data);
@@ -508,7 +508,7 @@ static inline int setup_server_tls(struct server_connection_args *connection_arg
 }
 
 static void on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    struct server_channel_data *channel_data = (struct server_channel_data *)user_data;
+    struct server_channel_data *channel_data = user_data;
 
     int err_code = error_code;
     if (!err_code) {
@@ -563,7 +563,7 @@ error:
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
 
-    struct server_channel_data *channel_data = (struct server_channel_data *)user_data;
+    struct server_channel_data *channel_data = user_data;
 
     void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
     struct aws_server_bootstrap *server_bootstrap = channel_data->server_connection_args->bootstrap;
@@ -578,10 +578,10 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
 
 void on_server_connection_established(struct aws_socket *socket, struct aws_socket *new_socket, void *user_data) {
     (void)socket;
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
+    struct server_connection_args *connection_args = user_data;
 
-    struct server_channel_data *channel_data = (struct server_channel_data *)aws_mem_acquire(
-        connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
+    struct server_channel_data *channel_data =
+            aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
 
     if (!channel_data) {
         goto error_cleanup;
@@ -620,7 +620,7 @@ error_cleanup:
 
 void on_server_connection_error(struct aws_socket *socket, int err_code, void *user_data) {
     (void)socket;
-    struct server_connection_args *connection_args = (struct server_connection_args *)user_data;
+    struct server_connection_args *connection_args = user_data;
 
     connection_args->incoming_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
     aws_server_bootstrap_remove_socket_listener(connection_args->bootstrap, &connection_args->listener);
@@ -638,7 +638,7 @@ static inline struct aws_socket *server_add_socket_listener(
     assert(shutdown_callback);
 
     struct server_connection_args *server_connection_args =
-        (struct server_connection_args *)aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
+            aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
 
     if (!server_connection_args) {
         goto cleanup_server_connection_args;
