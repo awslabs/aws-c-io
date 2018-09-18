@@ -33,7 +33,11 @@ struct aws_task;
 #if AWS_USE_IO_COMPLETION_PORTS
 struct aws_overlapped;
 
-typedef void(aws_event_loop_on_completion_fn)(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped);
+typedef void(aws_event_loop_on_completion_fn)(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred);
 
 /**
  * Use aws_overlapped when a handle connected to the event loop needs an OVERLAPPED struct.
@@ -47,6 +51,7 @@ struct aws_overlapped {
     OVERLAPPED overlapped;
     aws_event_loop_on_completion_fn *on_completion;
     void *user_data;
+    struct aws_allocator *alloc;
 };
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
@@ -64,7 +69,8 @@ struct aws_event_loop_vtable {
     int (*run)(struct aws_event_loop *event_loop);
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
-    int (*schedule_task)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+    void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 #if AWS_USE_IO_COMPLETION_PORTS
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #else
@@ -74,9 +80,8 @@ struct aws_event_loop_vtable {
         int events,
         aws_event_loop_on_event_fn *on_event,
         void *user_data);
-
-    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #endif
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -247,27 +252,40 @@ AWS_IO_API
 int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
 
 /**
- * The event loop will schedule the task and run it on the event loop thread.
+ * The event loop will schedule the task and run it on the event loop thread as soon as possible.
  * Note that cancelled tasks will execute outside the event loop thread.
  * This function may be called from outside or inside the event loop thread.
  *
- * Task is copied.
+ * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+
+/**
+ * The event loop will schedule the task and run it at the specified time.
+ * Use aws_event_loop_current_clock_time() to query the current time in nanoseconds.
+ * Note that cancelled tasks will execute outside the event loop thread.
+ * This function may be called from outside or inside the event loop thread.
+ *
+ * The task should not be cleaned up or modified until its function is executed.
+ */
+AWS_IO_API
+void aws_event_loop_schedule_task_future(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos);
 
 #if AWS_USE_IO_COMPLETION_PORTS
 
 /**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
- * The handle must use aws_overlapped for any calls requiring an OVERLAPPED struct.
- * When an aws_overlapped operation completes, its on_completion function
- * will run on the event loop thread.
  *
- * The handle must be disconnected via aws_event_loop_disconnect_handle_from_io_completion_port()
- * before the event loop must be called before the event loop can be stopped, destroyed, or cleaned up.
- * Once disconnected, a handle cannot be re-connected.
+ * The handle must use aws_overlapped for all async operations requiring an OVERLAPPED struct.
+ * When the operation completes, the aws_overlapped's completion function will run on the event loop thread.
+ * Note that completion functions will not be invoked while the event loop is stopped. Users should wait for all async
+ * operations on connected handles to complete before cleaning up or destroying the event loop.
  *
+ * A handle may only be connected to one event loop in its lifetime.
  */
 AWS_IO_API
 int aws_event_loop_connect_handle_to_io_completion_port(
@@ -293,9 +311,9 @@ int aws_event_loop_subscribe_to_io_events(
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
- * Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
- * This function may be called from outside or inside the event loop thread.
- */
+* Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
+* This function may be called from outside or inside the event loop thread.
+*/
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
@@ -306,10 +324,10 @@ AWS_IO_API
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
 
 /**
- * Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+ * Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
  */
 AWS_IO_API
-int aws_event_loop_current_ticks(struct aws_event_loop *event_loop, uint64_t *ticks);
+int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 #ifdef __cplusplus
 }

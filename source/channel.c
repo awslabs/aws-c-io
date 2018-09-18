@@ -16,7 +16,7 @@
 #include <aws/io/channel.h>
 
 #include <aws/common/condition_variable.h>
-#include <aws/common/task_scheduler.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
 
@@ -37,6 +37,7 @@ struct channel_setup_args {
     struct aws_channel *channel;
     aws_channel_on_setup_completed_fn *on_setup_completed;
     void *user_data;
+    struct aws_task task;
 };
 
 static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
@@ -47,7 +48,9 @@ static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
     aws_mem_release(alloc, object);
 }
 
-static void s_on_channel_setup_complete(void *arg, enum aws_task_status task_status) {
+static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+
+    (void)task;
     struct channel_setup_args *setup_args = (struct channel_setup_args *)arg;
     struct aws_message_pool *message_pool = NULL;
     struct aws_event_loop_local_object *local_object = NULL;
@@ -117,11 +120,10 @@ int aws_channel_init(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
+    AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
-    channel->loop = event_loop;
-    channel->first = NULL;
-    channel->msg_pool = NULL;
+    channel->loop = event_loop;   
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
@@ -136,21 +138,8 @@ int aws_channel_init(
     setup_args->on_setup_completed = callbacks->on_setup_completed;
     setup_args->user_data = callbacks->setup_user_data;
 
-    struct aws_task task = {
-        .fn = s_on_channel_setup_complete,
-        .arg = setup_args,
-    };
-
-    uint64_t current_time = 0;
-    if (aws_event_loop_current_ticks(event_loop, &current_time)) {
-        aws_mem_release(alloc, (void *)setup_args);
-        return AWS_OP_ERR;
-    }
-
-    if (aws_event_loop_schedule_task(event_loop, &task, current_time)) {
-        aws_mem_release(alloc, (void *)setup_args);
-        return AWS_OP_ERR;
-    }
+    aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args);
+    aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
 
     return AWS_OP_SUCCESS;
 }
@@ -193,9 +182,12 @@ struct channel_shutdown_task_args {
     struct aws_channel *channel;
     struct aws_allocator *alloc;
     int error_code;
+    struct aws_task task;
 };
 
-static void s_shutdown_task(void *arg, enum aws_task_status status) {
+static void s_shutdown_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+
+    (void)task;
     struct channel_shutdown_task_args *task_args = (struct channel_shutdown_task_args *)arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -226,21 +218,9 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
         task_args->channel = channel;
         task_args->error_code = error_code;
         task_args->alloc = channel->alloc;
+        aws_task_init(&task_args->task, s_shutdown_task, task_args);
 
-        uint64_t now;
-        if (aws_channel_current_clock_time(channel, &now)) {
-            aws_mem_release(channel->alloc, (void *)task_args);
-        }
-
-        struct aws_task task = {
-            .fn = s_shutdown_task,
-            .arg = task_args,
-        };
-
-        if (aws_channel_schedule_task(channel, &task, now)) {
-            aws_mem_release(channel->alloc, (void *)task_args);
-            return AWS_OP_ERR;
-        }
+        aws_channel_schedule_task_now(channel, &task_args->task);
     }
 
     return AWS_OP_SUCCESS;
@@ -251,7 +231,12 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     enum aws_io_message_type message_type,
     size_t size_hint) {
 
-    return aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    struct aws_io_message *message = aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    if (AWS_LIKELY(message)) {
+        message->owning_channel = channel;
+    }
+
+    return message;
 }
 
 void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message) {
@@ -279,8 +264,8 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     return new_slot;
 }
 
-int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *ticks) {
-    return aws_event_loop_current_ticks(channel->loop, ticks);
+int aws_channel_current_clock_time(struct aws_channel *channel, uint64_t *time_nanos) {
+    return aws_event_loop_current_clock_time(channel->loop, time_nanos);
 }
 
 int aws_channel_fetch_local_object(
@@ -307,8 +292,12 @@ int aws_channel_remove_local_object(
     return aws_event_loop_remove_local_object(channel->loop, (void *)key, removed_obj);
 }
 
-int aws_channel_schedule_task(struct aws_channel *channel, struct aws_task *task, uint64_t run_at) {
-    return aws_event_loop_schedule_task(channel->loop, task, run_at);
+void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task *task) {
+    aws_event_loop_schedule_task_now(channel->loop, task);
+}
+
+void aws_channel_schedule_task_future(struct aws_channel *channel, struct aws_task *task, uint64_t run_at_nanos) {
+    aws_event_loop_schedule_task_future(channel->loop, task, run_at_nanos);
 }
 
 bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
@@ -457,6 +446,15 @@ int aws_channel_slot_shutdown(
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 
+static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
+        struct aws_channel *channel = arg;
+        channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
+    }
+}
+
 int aws_channel_slot_on_handler_shutdown_complete(
     struct aws_channel_slot *slot,
     enum aws_channel_direction dir,
@@ -482,9 +480,14 @@ int aws_channel_slot_on_handler_shutdown_complete(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
 
-    if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
+    if (slot->channel->first == slot) {
         slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        slot->channel->on_shutdown_completed(slot->channel, err_code, slot->channel->shutdown_user_data);
+        if (slot->channel->on_shutdown_completed) {
+            slot->channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
+            slot->channel->shutdown_notify_task.task.arg = slot->channel;
+            slot->channel->shutdown_notify_task.error_code = err_code;
+            aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+        }
     }
 
     return AWS_OP_SUCCESS;

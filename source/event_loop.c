@@ -209,9 +209,20 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return event_loop->vtable.wait_for_stop_completion(event_loop);
 }
 
-int aws_event_loop_schedule_task(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
-    assert(event_loop->vtable.schedule_task);
-    return event_loop->vtable.schedule_task(event_loop, task, run_at);
+void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
+    assert(event_loop->vtable.schedule_task_now);
+    assert(task);
+    event_loop->vtable.schedule_task_now(event_loop, task);
+}
+
+void aws_event_loop_schedule_task_future(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos) {
+
+    assert(event_loop->vtable.schedule_task_future);
+    assert(task);
+    event_loop->vtable.schedule_task_future(event_loop, task, run_at_nanos);
 }
 
 #if AWS_USE_IO_COMPLETION_PORTS
@@ -236,20 +247,19 @@ int aws_event_loop_subscribe_to_io_events(
     assert(event_loop->vtable.subscribe_to_io_events);
     return event_loop->vtable.subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     assert(event_loop->vtable.unsubscribe_from_io_events);
     return event_loop->vtable.unsubscribe_from_io_events(event_loop, handle);
 }
 
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
-
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.is_on_callers_thread);
     return event_loop->vtable.is_on_callers_thread(event_loop);
 }
 
-int aws_event_loop_current_ticks(struct aws_event_loop *event_loop, uint64_t *ticks) {
+int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {
     assert(event_loop->clock);
-    return event_loop->clock(ticks);
+    return event_loop->clock(time_nanos);
 }

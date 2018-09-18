@@ -28,7 +28,8 @@ struct task_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void s_test_task(void *user_data, enum aws_task_status status) {
+static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
     (void)status;
     struct task_args *args = user_data;
 
@@ -56,13 +57,26 @@ static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocato
     struct task_args task_args = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
 
-    struct aws_task task = {.fn = s_test_task, .arg = &task_args};
+    struct aws_task task;
+    aws_task_init(&task, s_test_task, &task_args);
 
+    /* Test "future" tasks */
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
     uint64_t now;
-    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
-    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+    aws_event_loop_schedule_task_future(event_loop, &task, now);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+    ASSERT_INT_EQUALS(1, task_args.invoked);
+    aws_mutex_unlock(&task_args.mutex);
+
+    /* Test "now" tasks */
+    task_args.invoked = 0;
+    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+
+    aws_event_loop_schedule_task_now(event_loop, &task);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
@@ -77,30 +91,11 @@ static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocato
 AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_execute)
 
 #if AWS_USE_IO_COMPLETION_PORTS
-static uint64_t s_hash_combine(uint64_t a, uint64_t b) {
-    return a ^ (b + 0x9e3779b99e3779b9llu + (a << 6) + (a >> 2));
-}
-
-static int s_create_random_pipe_name(char *buffer, size_t buffer_size) {
-    /* Gin up a random number */
-    LARGE_INTEGER timestamp;
-    ASSERT_TRUE(QueryPerformanceCounter(&timestamp));
-    DWORD process_id = GetCurrentProcessId();
-    DWORD thread_id = GetCurrentThreadId();
-
-    uint64_t rand_num = s_hash_combine(timestamp.QuadPart, ((uint64_t)process_id << 32) | process_id);
-    rand_num = s_hash_combine(rand_num, ((uint64_t)thread_id << 32) | thread_id);
-
-    int len = snprintf(buffer, buffer_size, "\\\\.\\pipe\\aws_pipe_%llux", rand_num);
-    ASSERT_TRUE(len > 0);
-
-    return AWS_OP_SUCCESS;
-}
 
 /* Open read/write handles to a pipe with support for async (overlapped) read and write */
 static int s_async_pipe_init(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     char pipe_name[256];
-    ASSERT_SUCCESS(s_create_random_pipe_name(pipe_name, sizeof(pipe_name)));
+    ASSERT_SUCCESS(aws_pipe_get_unique_name(pipe_name, sizeof(pipe_name)));
 
     write_handle->data.handle = CreateNamedPipeA(
         pipe_name,                                                                   /* lpName */
@@ -139,6 +134,8 @@ struct overlapped_completion_data {
     bool signaled;
     struct aws_event_loop *event_loop;
     struct aws_overlapped *overlapped;
+    int status_code;
+    size_t num_bytes_transferred;
 };
 
 static int s_overlapped_completion_data_init(struct overlapped_completion_data *data) {
@@ -153,11 +150,18 @@ static void s_overlapped_completion_data_clean_up(struct overlapped_completion_d
     aws_mutex_clean_up(&data->mutex);
 }
 
-static void s_on_overlapped_operation_complete(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped) {
+static void s_on_overlapped_operation_complete(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred) {
+
     struct overlapped_completion_data *data = overlapped->user_data;
     aws_mutex_lock(&data->mutex);
     data->event_loop = event_loop;
     data->overlapped = overlapped;
+    data->status_code = status_code;
+    data->num_bytes_transferred = num_bytes_transferred;
     data->signaled = true;
     aws_condition_variable_notify_one(&data->condition_variable);
     aws_mutex_unlock(&data->mutex);
@@ -209,10 +213,8 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
     /* Assert that the aws_event_loop_on_completion_fn passed the appropriate args */
     ASSERT_PTR_EQUALS(event_loop, completion_data.event_loop);
     ASSERT_PTR_EQUALS(&overlapped, completion_data.overlapped);
-
-    /* Assert that the OVERLAPPED structure has the expected data for a successful write */
-    ASSERT_INT_EQUALS(0, overlapped.overlapped.Internal);               /* Check status code for I/O operation */
-    ASSERT_INT_EQUALS(sizeof(msg), overlapped.overlapped.InternalHigh); /* Check number of bytes transferred */
+    ASSERT_INT_EQUALS(0, completion_data.status_code); /* Check status code for I/O operation */
+    ASSERT_INT_EQUALS(sizeof(msg), completion_data.num_bytes_transferred);
 
     /* Shut it all down */
     s_overlapped_completion_data_clean_up(&completion_data);
@@ -225,6 +227,40 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else  /* !AWS_USE_IO_COMPLETION_PORTS */
+
+#include <unistd.h>
+
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
+
+/* Define simple pipe for testing. */
+int simple_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    AWS_ZERO_STRUCT(*read_handle);
+    AWS_ZERO_STRUCT(*write_handle);
+
+    int pipe_fds[2];
+    ASSERT_SUCCESS(aws_open_nonblocking_posix_pipe(pipe_fds));
+
+    read_handle->data.fd = pipe_fds[0];
+    write_handle->data.fd = pipe_fds[1];
+
+    return AWS_OP_SUCCESS;
+}
+void simple_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    close(read_handle->data.fd);
+    close(write_handle->data.fd);
+}
+
+/* return number of bytes written */
+size_t simple_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size) {
+    ssize_t write_val = write(handle->data.fd, src, src_size);
+    return (write_val < 0) ? 0 : write_val;
+}
+
+/* return number of bytes read */
+size_t simple_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size) {
+    ssize_t read_val = read(handle->data.fd, dst, dst_size);
+    return (read_val < 0) ? 0 : read_val;
+}
 
 struct pipe_data {
     struct aws_byte_buf buf;
@@ -247,9 +283,8 @@ static void s_on_pipe_readable(
         struct pipe_data *data = user_data;
 
         aws_mutex_lock(&data->mutex);
-        size_t data_read = 0;
-        aws_pipe_read(
-            handle, data->buf.buffer + data->bytes_processed, data->buf.len - data->bytes_processed, &data_read);
+        size_t bytes_remaining = data->buf.len - data->bytes_processed;
+        size_t data_read = simple_pipe_read(handle, data->buf.buffer + data->bytes_processed, bytes_remaining);
         data->bytes_processed += data_read;
         data->invoked += 1;
         aws_condition_variable_notify_one(&data->condition_variable);
@@ -293,7 +328,7 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
     struct aws_io_handle read_handle = {{0}};
     struct aws_io_handle write_handle = {{0}};
 
-    ASSERT_SUCCESS(aws_pipe_open(&read_handle, &write_handle), "Pipe open failed");
+    ASSERT_SUCCESS(simple_pipe_open(&read_handle, &write_handle), "Pipe open failed");
 
     uint8_t read_buffer[1024] = {0};
     struct pipe_data read_data = {.buf = aws_byte_buf_from_array(read_buffer, sizeof(read_buffer)),
@@ -319,15 +354,12 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
     memset(write_buffer + 512, 2, 512);
 
     ASSERT_SUCCESS(aws_mutex_lock(&read_data.mutex), "read mutex lock failed.");
-    size_t written = 0;
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, write_buffer, 512, &written), "Pipe write failed");
-    ASSERT_UINT_EQUALS(512, written);
+    ASSERT_UINT_EQUALS(512, simple_pipe_write(&write_handle, write_buffer, 512));
 
     read_data.expected_invocations = 1;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &read_data.condition_variable, &read_data.mutex, s_invocation_predicate, &read_data));
-    ASSERT_SUCCESS(aws_pipe_write(&write_handle, write_buffer + 512, 512, &written), "Pipe write failed");
-    ASSERT_UINT_EQUALS(512, written);
+    ASSERT_UINT_EQUALS(512, simple_pipe_write(&write_handle, write_buffer + 512, 512));
 
     read_data.expected_invocations = 2;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -344,7 +376,7 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
         aws_event_loop_unsubscribe_from_io_events(event_loop, &write_handle),
         "write unsubscribe from event loop failed");
 
-    ASSERT_SUCCESS(aws_pipe_close(&read_handle, &write_handle), "Pipe close failed");
+    simple_pipe_close(&read_handle, &write_handle);
 
     aws_event_loop_destroy(event_loop);
 
@@ -364,13 +396,12 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
     struct task_args task_args = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
 
-    struct aws_task task = {.fn = s_test_task, .arg = &task_args};
+    struct aws_task task;
+    aws_task_init(&task, s_test_task, &task_args);
 
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
-    uint64_t now;
-    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
-    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+    aws_event_loop_schedule_task_now(event_loop, &task);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
@@ -380,8 +411,7 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
     ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&now));
-    ASSERT_SUCCESS(aws_event_loop_schedule_task(event_loop, &task, now));
+    aws_event_loop_schedule_task_now(event_loop, &task);
 
     task_args.invoked = 0;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(

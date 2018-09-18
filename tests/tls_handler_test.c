@@ -27,6 +27,10 @@
 #include <read_write_test_handler.h>
 #include <aws/common/string.h>
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* sprintf */
+#endif
+
 struct tls_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;

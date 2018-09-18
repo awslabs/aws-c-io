@@ -74,7 +74,6 @@ struct client_connection_args {
     aws_channel_client_setup_callback setup_callback;
     aws_channel_client_shutdown_callback shutdown_callback;
     struct client_channel_data channel_data;
-    struct aws_event_loop *loop;
     void *user_data;
 };
 
@@ -198,7 +197,6 @@ static void on_client_channel_on_setup_completed(struct aws_channel *channel, in
             connection_args->bootstrap->allocator,
             &connection_args->channel_data.socket,
             socket_slot,
-            connection_args->loop,
             AWS_SOCKET_HANDLER_DEFAULT_MAX_RW);
 
         if (!socket_channel_handler) {
@@ -242,8 +240,6 @@ static void on_client_connection_established(struct aws_socket *socket, void *us
 
     int err_code = AWS_OP_SUCCESS;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(connection_args->bootstrap->event_loop_group);
-    connection_args->loop = event_loop;
     struct aws_channel_creation_callbacks channel_callbacks = {
         .on_setup_completed = on_client_channel_on_setup_completed,
         .setup_user_data = connection_args,
@@ -254,7 +250,7 @@ static void on_client_connection_established(struct aws_socket *socket, void *us
     if (aws_channel_init(
             &connection_args->channel_data.channel,
             connection_args->bootstrap->allocator,
-            event_loop,
+            aws_socket_get_event_loop(socket),
             &channel_callbacks)) {
         err_code = aws_last_error();
         goto error;
@@ -340,12 +336,12 @@ static inline int new_client_channel(
     };
 
     if (aws_socket_init(
-            &client_connection_args->channel_data.socket, bootstrap->allocator, options, connection_loop, &args)) {
+            &client_connection_args->channel_data.socket, bootstrap->allocator, options, &args)) {
         aws_mem_release(bootstrap->allocator, (void *)client_connection_args);
         return AWS_OP_ERR;
     }
 
-    if (aws_socket_connect(&client_connection_args->channel_data.socket, endpoint)) {
+    if (aws_socket_connect(&client_connection_args->channel_data.socket, endpoint, connection_loop)) {
         aws_socket_clean_up(&client_connection_args->channel_data.socket);
         aws_mem_release(bootstrap->allocator, (void *)client_connection_args);
         return AWS_OP_ERR;
@@ -527,7 +523,6 @@ static void on_server_channel_on_setup_completed(struct aws_channel *channel, in
             channel_data->server_connection_args->bootstrap->allocator,
             channel_data->socket,
             socket_slot,
-            channel->loop,
             AWS_SOCKET_HANDLER_DEFAULT_MAX_RW);
 
         if (!socket_channel_handler) {
@@ -577,7 +572,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     channel_data->server_connection_args->shutdown_callback(
         server_bootstrap, error_code, channel, server_shutdown_user_data);
     aws_channel_clean_up(channel);
-    aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, (void *)channel_data->socket);
     aws_mem_release(allocator, channel_data);
 }
@@ -605,6 +599,8 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
         .shutdown_user_data = channel_data,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
     };
+
+    aws_socket_assign_to_event_loop(new_socket, event_loop);
 
     if (aws_channel_init(
             &channel_data->channel, connection_args->bootstrap->allocator, event_loop, &channel_callbacks)) {
@@ -693,7 +689,7 @@ static inline struct aws_socket *server_add_socket_listener(
         .on_incoming_connection = on_server_connection_established,
     };
 
-    if (aws_socket_init(&server_connection_args->listener, bootstrap->allocator, options, connection_loop, &args)) {
+    if (aws_socket_init(&server_connection_args->listener, bootstrap->allocator, options, &args)) {
         goto cleanup_server_connection_args;
     }
 
@@ -705,7 +701,7 @@ static inline struct aws_socket *server_add_socket_listener(
         goto cleanup_listener;
     }
 
-    if (aws_socket_start_accept(&server_connection_args->listener)) {
+    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop)) {
         goto cleanup_listener;
     }
 

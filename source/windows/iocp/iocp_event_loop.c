@@ -12,11 +12,43 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/event_loop.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/event_loop.h>
+
+struct FILE_BASIC_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    DWORD FileAttributes;
+};
+
+struct FILE_COMPLETION_INFORMATION {
+    HANDLE Port;
+    PVOID Key;
+};
+
+struct IO_STATUS_BLOCK {
+    union {
+        NTSTATUS Status;
+        PVOID Pointer;
+    } status_block;
+
+    ULONG_PTR Information;
+};
+
+enum FILE_INFORMATION_CLASS {
+    FileReplaceCompletionInformation = 0x3D,
+};
+typedef NTSTATUS(NTAPI NTSetInformationFile)(HANDLE file_handle, struct IO_STATUS_BLOCK *io_status_block,
+    void *file_information, ULONG length, enum FILE_INFORMATION_CLASS file_information_class);
+
+NTSetInformationFile *s_set_info_fn = NULL;
+
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -34,7 +66,7 @@ struct iocp_loop {
     struct {
         struct aws_mutex mutex;
         bool thread_signaled; /* whether thread has been signaled about changes to synced_data */
-        struct aws_array_list tasks_to_schedule;
+        struct aws_linked_list tasks_to_schedule;
         event_thread_state state;
     } synced_data;
 
@@ -44,36 +76,26 @@ struct iocp_loop {
 
         /* These variables duplicate ones in synced_data.
          * We move values out while holding the mutex and operate on them later */
-        struct aws_array_list tasks_to_schedule;
         event_thread_state state;
     } thread_data;
 };
 
-/* A task that needs to be added to the scheduler */
-struct task_to_schedule {
-    struct aws_task task;
-    uint64_t run_at;
-};
-
 enum {
     DEFAULT_TIMEOUT_MS = 100000,
-    NANOSEC_PER_MS = 1000000,
 
     /* Max I/O completion packets to process per loop of the event-thread */
     MAX_COMPLETION_PACKETS_PER_LOOP = 100,
-
-    DEFAULT_ARRAY_LIST_RESERVE = 32,
 };
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
-static int s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
-static int s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at);
+static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
-
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_event_thread_main(void *user_data);
 
 void aws_overlapped_init(
@@ -89,14 +111,29 @@ void aws_overlapped_init(
 }
 
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
-    assert(overlapped);
-
+    assert(overlapped);    
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
+
+    if (!s_set_info_fn) {
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+
+        if (!ntdll) {
+            assert(0);
+            exit(-1);
+        }
+
+        s_set_info_fn = (NTSetInformationFile *)GetProcAddress(ntdll, "NtSetInformationFile");
+        if (!s_set_info_fn) {
+            assert(0);
+            exit(-1);
+        }
+    }
+
     int err = 0;
 
     struct aws_event_loop *event_loop = NULL;
@@ -105,9 +142,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     bool clean_up_iocp_handle = false;
     bool clean_up_thread = false;
     bool clean_up_mutex = false;
-    bool clean_up_synced_data_tasks_to_schedule = false;
     bool clean_up_scheduler = false;
-    bool clean_up_thread_data_tasks_to_schedule = false;
 
     event_loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
     if (!event_loop) {
@@ -149,25 +184,13 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
     clean_up_mutex = true;
 
-    err = aws_array_list_init_dynamic(
-        &impl->synced_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule));
-    if (err) {
-        goto clean_up;
-    }
-    clean_up_synced_data_tasks_to_schedule = true;
+    aws_linked_list_init(&impl->synced_data.tasks_to_schedule);
 
-    err = aws_task_scheduler_init(&impl->thread_data.scheduler, alloc, clock);
+    err = aws_task_scheduler_init(&impl->thread_data.scheduler, alloc);
     if (err) {
         goto clean_up;
     }
     clean_up_scheduler = true;
-
-    err = aws_array_list_init_dynamic(
-        &impl->thread_data.tasks_to_schedule, alloc, DEFAULT_ARRAY_LIST_RESERVE, sizeof(struct task_to_schedule));
-    if (err) {
-        goto clean_up;
-    }
-    clean_up_thread_data_tasks_to_schedule = true;
 
     event_loop->impl_data = impl;
 
@@ -175,24 +198,18 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     event_loop->vtable.run = s_run;
     event_loop->vtable.stop = s_stop;
     event_loop->vtable.wait_for_stop_completion = s_wait_for_stop_completion;
-    event_loop->vtable.schedule_task = s_schedule_task_future;
+    event_loop->vtable.schedule_task_now = s_schedule_task_now;
+    event_loop->vtable.schedule_task_future = s_schedule_task_future;
     event_loop->vtable.connect_to_io_completion_port = s_connect_to_io_completion_port;
     event_loop->vtable.is_on_callers_thread = s_is_event_thread;
+    event_loop->vtable.unsubscribe_from_io_events = s_unsubscribe_from_io_events;
 
     return event_loop;
 
 clean_up:
 
-    if (clean_up_thread_data_tasks_to_schedule) {
-        aws_array_list_clean_up(&impl->thread_data.tasks_to_schedule);
-    }
-
     if (clean_up_scheduler) {
         aws_task_scheduler_clean_up(&impl->thread_data.scheduler);
-    }
-
-    if (clean_up_synced_data_tasks_to_schedule) {
-        aws_array_list_clean_up(&impl->synced_data.tasks_to_schedule);
     }
 
     if (clean_up_mutex) {
@@ -241,18 +258,11 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     aws_task_scheduler_clean_up(&impl->thread_data.scheduler); /* cancels remaining tasks in scheduler */
 
-    struct task_to_schedule task_to_schedule;
-    for (size_t i = 0; i < aws_array_list_length(&impl->thread_data.tasks_to_schedule); ++i) {
-        aws_array_list_get_at(&impl->thread_data.tasks_to_schedule, &task_to_schedule, i);
-        task_to_schedule.task.fn(task_to_schedule.task.arg, AWS_TASK_STATUS_CANCELED);
+    while (!aws_linked_list_empty(&impl->synced_data.tasks_to_schedule)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&impl->synced_data.tasks_to_schedule);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+        task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
     }
-    aws_array_list_clean_up(&impl->thread_data.tasks_to_schedule);
-
-    for (size_t i = 0; i < aws_array_list_length(&impl->synced_data.tasks_to_schedule); ++i) {
-        aws_array_list_get_at(&impl->synced_data.tasks_to_schedule, &task_to_schedule, i);
-        task_to_schedule.task.fn(task_to_schedule.task.arg, AWS_TASK_STATUS_CANCELED);
-    }
-    aws_array_list_clean_up(&impl->synced_data.tasks_to_schedule);
 
     /* Clean up everything else */
     bool close_iocp_success = CloseHandle(impl->iocp_handle);
@@ -357,43 +367,35 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-/* Called from any thread */
-static int s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    uint64_t now;
-    int err = event_loop->clock(&now);
-    if (err) {
-        return AWS_OP_ERR;
-    }
-
-    return aws_event_loop_schedule_task(event_loop, task, now);
-}
-
-/* Called from any thread */
-static int s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at) {
+/* Common function used by schedule_task_now() and schedule_task_future().
+ * When run_at_nanos is 0, it's treated as a "now" task.
+ * Called from any thread */
+static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
     struct iocp_loop *impl = event_loop->impl_data;
     assert(impl);
     assert(task);
 
     /* If we're on the event-thread, just schedule it directly */
     if (s_is_event_thread(event_loop)) {
-        return aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at);
+        if (run_at_nanos == 0) {
+            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at_nanos);
+        }
+        return;
     }
 
     /* Otherwise, add it to synced_data.tasks_to_schedule and signal the event-thread to process it */
-    struct task_to_schedule task_to_schedule;
-    task_to_schedule.task = *task;
-    task_to_schedule.run_at = run_at;
-
-    int push_back_err;
+    task->timestamp = run_at_nanos;
     bool should_signal_thread = false;
 
     { /* Begin critical section */
         aws_mutex_lock(&impl->synced_data.mutex);
-        push_back_err = aws_array_list_push_back(&impl->synced_data.tasks_to_schedule, &task_to_schedule);
+        aws_linked_list_push_back(&impl->synced_data.tasks_to_schedule, &task->node);
 
-        /* If successful, signal thread that synced_data has changed (unless it's been signaled already) */
-        if (!push_back_err) {
-            should_signal_thread = !impl->synced_data.thread_signaled;
+        /* Signal thread that synced_data has changed (unless it's been signaled already) */
+        if (!impl->synced_data.thread_signaled) {
+            should_signal_thread = true;
             impl->synced_data.thread_signaled = true;
         }
 
@@ -403,14 +405,17 @@ static int s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_
     if (should_signal_thread) {
         s_signal_synced_data_changed(event_loop);
     }
-
-    if (push_back_err) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
+/* Called from any thread */
+static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
+    s_schedule_task_common(event_loop, task, 0 /* use zero to denote it's a "now" task */);
+}
+
+/* Called from any thread */
+static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+    s_schedule_task_common(event_loop, task, run_at_nanos);
+}
 /* Called from any thread */
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
@@ -447,38 +452,21 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
 }
 
 /* Called from event-thread.
- * Takes tasks from tasks_to_schedule and adds them to the scheduler.
- * If everything is successful, tasks_to_schedule will be emptied.
- * If anything goes wrong, tasks_to_schedule will be left with the unprocessed tasks */
-static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
+ * Takes tasks from tasks_to_schedule and adds them to the scheduler. */
+static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_linked_list *tasks_to_schedule) {
     struct iocp_loop *impl = event_loop->impl_data;
     assert(impl);
 
-    const size_t num_tasks = aws_array_list_length(&impl->thread_data.tasks_to_schedule);
-    if (num_tasks == 0) {
-        return AWS_OP_SUCCESS;
-    }
+    while (!aws_linked_list_empty(tasks_to_schedule)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
-    /* Add tasks to scheduler, stop if anything goes wrong */
-    size_t task_i;
-    for (task_i = 0; task_i < num_tasks; ++task_i) {
-        struct task_to_schedule *task_to_schedule;
-        aws_array_list_get_at_ptr(&impl->thread_data.tasks_to_schedule, (void **)&task_to_schedule, task_i);
-        int err = aws_task_scheduler_schedule_future(
-            &impl->thread_data.scheduler, &task_to_schedule->task, task_to_schedule->run_at);
-        if (err) {
-            break;
+        /* We use timestamp of 0 to denote that it's a "now" task */
+        if (task->timestamp == 0) {
+            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, task->timestamp);
         }
-    }
-
-    if (task_i < num_tasks) {
-        /* Not all tasks were scheduled, modify list so only unprocessed tasks remain */
-        aws_array_list_pop_front_n(&impl->thread_data.tasks_to_schedule, task_i);
-        return AWS_OP_ERR;
-    } else {
-        /* Success, clear list */
-        aws_array_list_clear(&impl->thread_data.tasks_to_schedule);
-        return AWS_OP_SUCCESS;
     }
 }
 
@@ -486,7 +474,10 @@ static int s_process_tasks_to_schedule(struct aws_event_loop *event_loop) {
 static void s_process_synced_data(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
 
-    bool should_resignal_synced_data_changed = false;
+    /* If there are tasks to schedule, grab them all out of synced_data.tasks_to_schedule.
+     * We'll process them later, so that we minimize time spent holding the mutex. */
+    struct aws_linked_list tasks_to_schedule;
+    aws_linked_list_init(&tasks_to_schedule);
 
     { /* Begin critical section */
         aws_mutex_lock(&impl->synced_data.mutex);
@@ -498,31 +489,31 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
             impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
         }
 
-        /* If there are tasks to schedule, move them from synced_data to thread_data.
-         * We'll process them later, so that we minimize time spent holding the mutex. */
-        bool tasks_to_schedule = aws_array_list_length(&impl->synced_data.tasks_to_schedule) > 0;
-        if (AWS_LIKELY(tasks_to_schedule)) {
-            /* Swapping the contents of the two lists is the fastest and safest way to move this data,
-             * but requires the other list to be empty. */
-            bool swap_possible = aws_array_list_length(&impl->thread_data.tasks_to_schedule) == 0;
-            if (AWS_LIKELY(swap_possible)) {
-                aws_array_list_swap_contents(
-                    &impl->synced_data.tasks_to_schedule, &impl->thread_data.tasks_to_schedule);
-            } else {
-                /* If swap not possible, signal the thread to try again next loop */
-                should_resignal_synced_data_changed = true;
-                impl->synced_data.thread_signaled = true;
-            }
-        }
+        aws_linked_list_swap_contents(&impl->synced_data.tasks_to_schedule, &tasks_to_schedule);
 
         aws_mutex_unlock(&impl->synced_data.mutex);
     } /* End critical section */
 
-    s_process_tasks_to_schedule(event_loop);
+    s_process_tasks_to_schedule(event_loop, &tasks_to_schedule);
+}
 
-    if (should_resignal_synced_data_changed) {
-        s_signal_synced_data_changed(event_loop);
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)event_loop;
+    struct FILE_COMPLETION_INFORMATION file_completion_info;
+    file_completion_info.Key = NULL;
+    file_completion_info.Port = NULL;
+
+    struct IO_STATUS_BLOCK status_block;
+    AWS_ZERO_STRUCT(status_block);
+
+    NTSTATUS status = s_set_info_fn(handle->data.handle, &status_block, &file_completion_info,
+        sizeof(file_completion_info), FileReplaceCompletionInformation);
+
+    if (!status) {
+        return AWS_OP_SUCCESS;
     }
+
+    return AWS_OP_ERR;
 }
 
 /* Called from event-thread */
@@ -567,7 +558,11 @@ static void s_event_thread_main(void *user_data) {
                         AWS_CONTAINER_OF(completion->lpOverlapped, struct aws_overlapped, overlapped);
 
                     if (overlapped->on_completion) {
-                        overlapped->on_completion(event_loop, overlapped);
+                        overlapped->on_completion(
+                            event_loop,
+                            overlapped,
+                            (int)overlapped->overlapped.Internal, /* Status code for the completed request */
+                            completion->dwNumberOfBytesTransferred);
                     }
                 }
             }
@@ -576,26 +571,38 @@ static void s_event_thread_main(void *user_data) {
             assert(GetLastError() == WAIT_TIMEOUT);
         }
 
-        /* Just in case anything in thread_data.tasks_to_schedule failed to process in the past, try again. */
-        s_process_tasks_to_schedule(event_loop);
-
         /* Process synced_data */
         if (should_process_synced_data) {
             s_process_synced_data(event_loop);
         }
 
         /* Run scheduled tasks */
-        uint64_t next_run_time_ns = 0;
-        aws_task_scheduler_run_all(&impl->thread_data.scheduler, &next_run_time_ns);
+        uint64_t now_ns = 0;
+        event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
+                                       will not be run. That's ok, we'll handle them next time around. */
+        aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
-        /* Set timeout for next GetQueuedCompletionStatus() call */
-        uint64_t now_ns;
-        if ((next_run_time_ns != 0) && (event_loop->clock(&now_ns) == AWS_OP_SUCCESS)) {
-            uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
-            uint64_t timeout_ms64 = timeout_ns / NANOSEC_PER_MS;
-            timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
-        } else {
+        /* Set timeout for next GetQueuedCompletionStatus() call.
+         * If clock fails, or scheduler has no tasks, use default timeout */
+        bool use_default_timeout = false;
+
+        int err = event_loop->clock(&now_ns);
+        if (err) {
+            use_default_timeout = true;
+        }
+
+        uint64_t next_run_time_ns;
+        if (!aws_task_scheduler_has_tasks(&impl->thread_data.scheduler, &next_run_time_ns)) {
+            use_default_timeout = true;
+        }
+
+        if (use_default_timeout) {
             timeout_ms = DEFAULT_TIMEOUT_MS;
+        } else {
+            /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
+            uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
+            uint64_t timeout_ms64 = aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+            timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
         }
     }
 }

@@ -36,6 +36,7 @@ struct s2n_handler {
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
+    struct aws_task sequential_tasks;
     void *latest_message_completion_user_data;
     bool negotiation_finished;
 };
@@ -64,7 +65,7 @@ bool aws_tls_is_alpn_available(void) {
     return true;
 }
 
-static int generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
+static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
     size_t written = 0;
 
@@ -101,14 +102,14 @@ static int generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
     return -1;
 }
 
-static int s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
+static int s_s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
     struct s2n_handler *handler = (struct s2n_handler *)io_context;
 
     struct aws_byte_buf read_buffer = aws_byte_buf_from_array(buf, len);
-    return generic_read(handler, &read_buffer);
+    return s_generic_read(handler, &read_buffer);
 }
 
-static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
+static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
     size_t processed = 0;
     while (processed < buf->len) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
@@ -134,21 +135,21 @@ static int generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
     }
 
     if (processed) {
-        return processed;
+        return (int)processed;
     }
 
     errno = EAGAIN;
     return -1;
 }
 
-static int s2n_handler_send(void *io_context, const uint8_t *buf, uint32_t len) {
+static int s_s2n_handler_send(void *io_context, const uint8_t *buf, uint32_t len) {
     struct s2n_handler *handler = (struct s2n_handler *)io_context;
     struct aws_byte_buf send_buf = aws_byte_buf_from_array(buf, len);
 
-    return generic_send(handler, &send_buf);
+    return s_generic_send(handler, &send_buf);
 }
 
-static void s2n_handler_destroy(struct aws_channel_handler *handler) {
+static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
     if (handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
         s2n_connection_free(s2n_handler->connection);
@@ -157,7 +158,7 @@ static void s2n_handler_destroy(struct aws_channel_handler *handler) {
     }
 }
 
-static int drive_negotiation(struct aws_channel_handler *handler) {
+static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
@@ -223,10 +224,13 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     return AWS_OP_SUCCESS;
 }
 
-static void negotiation_task(void *arg, aws_task_status status) {
+static void s_negotiation_task(struct aws_task *task, void *arg, aws_task_status status) {
+    task->fn = NULL;
+    task->arg = NULL;
+
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
-        drive_negotiation(handler);
+        s_drive_negotiation(handler);
     }
 }
 
@@ -234,23 +238,20 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
-        return drive_negotiation(handler);
+        return s_drive_negotiation(handler);
     }
 
-    struct aws_task task = {
-        .fn = negotiation_task,
-        .arg = handler,
-    };
+    s2n_handler->sequential_tasks.fn = s_negotiation_task;
+    s2n_handler->sequential_tasks.arg = handler;
+    aws_channel_schedule_task_now(s2n_handler->slot->channel, &s2n_handler->sequential_tasks);
 
-    uint64_t now = 0;
-    aws_channel_current_clock_time(s2n_handler->slot->channel, &now);
-    return aws_channel_schedule_task(s2n_handler->slot->channel, &task, now);
+    return AWS_OP_SUCCESS;
 }
 
-static int s2n_handler_process_read_message(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_io_message *message) {
+static int s_s2n_handler_process_read_message(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message) {
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
 
@@ -259,7 +260,7 @@ static int s2n_handler_process_read_message(
 
         if (!s2n_handler->negotiation_finished) {
             size_t message_len = message->message_data.len;
-            if (!drive_negotiation(handler)) {
+            if (!s_drive_negotiation(handler)) {
                 aws_channel_slot_increment_read_window(slot, message_len);
             } else {
                 aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -313,10 +314,10 @@ static int s2n_handler_process_read_message(
     return AWS_OP_SUCCESS;
 }
 
-static int s2n_handler_process_write_message(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_io_message *message) {
+static int s_s2n_handler_process_write_message(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
@@ -340,12 +341,12 @@ static int s2n_handler_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
-static int s2n_handler_shutdown(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    enum aws_channel_direction dir,
-    int error_code,
-    bool abort_immediately) {
+static int s_s2n_handler_shutdown(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        enum aws_channel_direction dir,
+        int error_code,
+        bool abort_immediately) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
@@ -363,18 +364,21 @@ static int s2n_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-static void run_read(void *arg, aws_task_status status) {
+static void s_run_read(struct aws_task *task, void *arg, aws_task_status status) {
+    task->fn = NULL;
+    task->arg = NULL;
+
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-        s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
+        s_s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
     }
 }
 
-static int s2n_handler_increment_read_window(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    size_t size) {
+static int s_s2n_handler_increment_read_window(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        size_t size) {
     aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
@@ -383,21 +387,15 @@ static int s2n_handler_increment_read_window(
         /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
-        uint64_t now = 0;
-
-        if (aws_channel_current_clock_time(slot->channel, &now)) {
-            return AWS_OP_ERR;
-        }
-
-        struct aws_task task = {.fn = run_read, .arg = handler};
-
-        return aws_channel_schedule_task(slot->channel, &task, now);
+        s2n_handler->sequential_tasks.fn = s_run_read;
+        s2n_handler->sequential_tasks.arg = handler;
+        aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static size_t s2n_handler_get_current_window_size(struct aws_channel_handler *handler) {
+static size_t s_s2n_handler_get_current_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
     /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
@@ -417,20 +415,20 @@ struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *hand
 }
 
 static struct aws_channel_handler_vtable handler_vtable = {
-    .destroy = s2n_handler_destroy,
-    .process_read_message = s2n_handler_process_read_message,
-    .process_write_message = s2n_handler_process_write_message,
-    .shutdown = s2n_handler_shutdown,
-    .increment_read_window = s2n_handler_increment_read_window,
-    .initial_window_size = s2n_handler_get_current_window_size,
+    .destroy = s_s2n_handler_destroy,
+    .process_read_message = s_s2n_handler_process_read_message,
+    .process_write_message = s_s2n_handler_process_write_message,
+    .shutdown = s_s2n_handler_shutdown,
+    .increment_read_window = s_s2n_handler_increment_read_window,
+    .initial_window_size = s_s2n_handler_get_current_window_size,
 };
 
-struct aws_channel_handler *new_tls_handler(
-    struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
-    struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot,
-    s2n_mode mode) {
+struct aws_channel_handler *s_new_tls_handler(
+        struct aws_allocator *allocator,
+        struct aws_tls_ctx *ctx,
+        struct aws_tls_connection_options *options,
+        struct aws_channel_slot *slot,
+        s2n_mode mode) {
     struct aws_channel_handler *handler =
         (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
@@ -444,6 +442,7 @@ struct aws_channel_handler *new_tls_handler(
         goto cleanup_handler;
     }
 
+    AWS_ZERO_STRUCT(*s2n_handler);
     struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)ctx->impl;
     s2n_handler->connection = s2n_connection_new(mode);
 
@@ -473,9 +472,9 @@ struct aws_channel_handler *new_tls_handler(
 
     s2n_handler->negotiation_finished = false;
 
-    s2n_connection_set_recv_cb(s2n_handler->connection, s2n_handler_recv);
+    s2n_connection_set_recv_cb(s2n_handler->connection, s_s2n_handler_recv);
     s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
-    s2n_connection_set_send_cb(s2n_handler->connection, s2n_handler_send);
+    s2n_connection_set_send_cb(s2n_handler->connection, s_s2n_handler_send);
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
@@ -506,7 +505,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return new_tls_handler(allocator, ctx, options, slot, S2N_CLIENT);
+    return s_new_tls_handler(allocator, ctx, options, slot, S2N_CLIENT);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
@@ -515,7 +514,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return new_tls_handler(allocator, ctx, options, slot, S2N_SERVER);
+    return s_new_tls_handler(allocator, ctx, options, slot, S2N_SERVER);
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
