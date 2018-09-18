@@ -110,7 +110,7 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
         }
 
         flags |= O_NONBLOCK | O_CLOEXEC;
-        if (fcntl(pipe_fds[0], F_SETFL, flags) == -1) {
+        if (fcntl(pipe_fds[i], F_SETFL, flags) == -1) {
             s_raise_posix_error(err);
             goto error;
         }
@@ -173,6 +173,7 @@ int aws_pipe_init(
     write_impl->alloc = allocator;
     write_impl->handle.data.fd = pipe_fds[1];
     write_impl->event_loop = write_end_event_loop;
+    write_impl->is_writable = true; /* Assume pipe is writable to start. Even if it's not, things shouldn't break */
     aws_linked_list_init(&write_impl->write_list);
 
     err = aws_event_loop_subscribe_to_io_events(
@@ -242,11 +243,10 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
     assert(dst);
 
     if (num_bytes_read) {
-        num_bytes_read = 0;
+        *num_bytes_read = 0;
     }
 
     ssize_t read_val = read(read_impl->handle.data.fd, dst, dst_size);
-
 
     if (read_val < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
