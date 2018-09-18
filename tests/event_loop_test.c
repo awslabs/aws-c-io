@@ -238,7 +238,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
-#else  /* !AWS_USE_IO_COMPLETION_PORTS */
+#else /* !AWS_USE_IO_COMPLETION_PORTS */
 
 struct pipe_data {
     struct aws_io_handle handle;
@@ -388,6 +388,243 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(read_write_notifications, s_test_read_write_notifications)
+
+struct unsubrace_data {
+    struct aws_event_loop *event_loop;
+
+    struct aws_io_handle read_handle[2];
+    struct aws_io_handle write_handle[2];
+    bool is_writable[2];
+    bool wrote_to_both_pipes;
+    bool is_unsubscribed;
+
+    struct aws_task task;
+
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    bool done;
+    int result_code;
+};
+
+void s_unsubrace_error(struct unsubrace_data *data) {
+    aws_mutex_lock(&data->mutex);
+    data->result_code = -1;
+    data->done = true;
+    aws_condition_variable_notify_one(&data->condition_variable);
+    aws_mutex_unlock(&data->mutex);
+}
+
+void s_unsubrace_done(struct unsubrace_data *data) {
+    aws_mutex_lock(&data->mutex);
+    data->done = true;
+    aws_condition_variable_notify_one(&data->condition_variable);
+    aws_mutex_unlock(&data->mutex);
+}
+
+/* Wait until both pipes are writable, then write data to both of them.
+ * This make it likely that both pipes receive events in the same iteration of the event-loop. */
+void s_unsubrace_on_write_event(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data) {
+
+    (void)event_loop;
+    struct unsubrace_data *data = user_data;
+
+    /* There should be no events after unsubscribe */
+    if (data->is_unsubscribed) {
+        s_unsubrace_error(data);
+        return;
+    }
+
+    if (!(events & AWS_IO_EVENT_TYPE_WRITABLE)) {
+        return;
+    }
+
+    if (data->wrote_to_both_pipes) {
+        return;
+    }
+
+    bool all_writable = true;
+
+    for (int i = 0; i < 2; ++i) {
+        if (&data->write_handle[i] == handle) {
+            data->is_writable[i] = true;
+        }
+
+        if (!data->is_writable[i]) {
+            all_writable = false;
+        }
+    }
+
+    if (!all_writable) {
+        return;
+    }
+
+    for (int i = 0; i < 2; ++i) {
+        uint8_t buffer[] = "abc";
+        size_t bytes_written;
+        int err = aws_pipe_write(&data->write_handle[i], buffer, 3, &bytes_written);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+
+        if (bytes_written == 0) {
+            s_unsubrace_error(data);
+            return;
+        }
+    }
+
+    data->wrote_to_both_pipes = true;
+}
+
+/* Both pipes should have a readable event on the way.
+ * The first pipe to get the event closes both pipes.
+ * Since both pipes are unsubscribed, the second readable event shouldn't be delivered */
+void s_unsubrace_on_read_event(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data) {
+
+    (void)handle;
+    struct unsubrace_data *data = user_data;
+    int err;
+
+    if (data->is_unsubscribed) {
+        s_unsubrace_error(data);
+        return;
+    }
+
+    if (!(events & AWS_IO_EVENT_TYPE_READABLE)) {
+        return;
+    }
+
+    for (int i = 0; i < 2; ++i) {
+        err = aws_event_loop_unsubscribe_from_io_events(event_loop, &data->read_handle[i]);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+
+        err = aws_event_loop_unsubscribe_from_io_events(event_loop, &data->write_handle[i]);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+
+        err = aws_pipe_close(&data->read_handle[i], &data->write_handle[i]);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+    }
+
+    /* Zero out the handles so that further accesses to the closed pipe are extra likely to cause crashes */
+    AWS_ZERO_ARRAY(data->read_handle);
+    AWS_ZERO_ARRAY(data->write_handle);
+
+    data->is_unsubscribed = true;
+}
+
+void s_unsubrace_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct unsubrace_data *data = arg;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_unsubrace_error(data);
+        return;
+    }
+
+    s_unsubrace_done(data);
+}
+
+static void s_unsubrace_setup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct unsubrace_data *data = arg;
+    int err;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_unsubrace_error(data);
+        return;
+    }
+
+    for (int i = 0; i < 2; ++i) {
+        err = aws_pipe_open(&data->read_handle[i], &data->write_handle[i]);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+
+        err = aws_event_loop_subscribe_to_io_events(
+            data->event_loop, &data->write_handle[i], AWS_IO_EVENT_TYPE_WRITABLE, s_unsubrace_on_write_event, data);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+
+        err = aws_event_loop_subscribe_to_io_events(
+            data->event_loop, &data->read_handle[i], AWS_IO_EVENT_TYPE_READABLE, s_unsubrace_on_read_event, data);
+        if (err) {
+            s_unsubrace_error(data);
+            return;
+        }
+    }
+
+    /* Have a short delay before ending test. Any events that fire during that delay would be an error. */
+    uint64_t time_ns;
+    err = aws_event_loop_current_clock_time(data->event_loop, &time_ns);
+    if (err) {
+        s_unsubrace_error(data);
+        return;
+    }
+    time_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+    aws_task_init(&data->task, s_unsubrace_done_task, data);
+    aws_event_loop_schedule_task_future(data->event_loop, &data->task, time_ns);
+}
+
+static bool s_unsubrace_predicate(void *arg) {
+    struct unsubrace_data *data = arg;
+    return data->done;
+}
+
+/* Regression test: Ensure that a handle cannot receive an event after it's been unsubscribed.
+ * This was occuring in the case that there were events on two handles in the same event-loop tick,
+ * and the first handle to receive its event unsubscribed the other handle.
+ * Shortname: unsubrace */
+static int s_test_event_loop_no_events_after_unsubscribe(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    ASSERT_NOT_NULL(event_loop);
+
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct unsubrace_data data = {
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .event_loop = event_loop,
+    };
+
+    aws_task_init(&data.task, s_unsubrace_setup_task, &data);
+    aws_event_loop_schedule_task_now(event_loop, &data.task);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&data.mutex));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&data.condition_variable, &data.mutex, s_unsubrace_predicate, &data));
+    ASSERT_SUCCESS(aws_mutex_unlock(&data.mutex));
+
+    ASSERT_SUCCESS(data.result_code);
+
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_no_events_after_unsubscribe, s_test_event_loop_no_events_after_unsubscribe)
+
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
