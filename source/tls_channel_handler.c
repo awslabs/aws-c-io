@@ -40,23 +40,21 @@ void aws_tls_ctx_options_init_client_mtls_pkcs12(struct aws_tls_ctx_options *opt
 }
 
 void aws_tls_ctx_options_init_default_server(struct aws_tls_ctx_options *options,
-        const char *cert_path, const char *pkey_path, const char *server_name) {
+        const char *cert_path, const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = false;
     options->certificate_path = cert_path;
     options->private_key_path = pkey_path;
-    options->server_name = server_name;
 }
 
 void aws_tls_ctx_options_init_server_pkcs12(struct aws_tls_ctx_options *options,
-                                             const char *pkcs12_path, const char *pkcs_pwd, const char *server_name) {
+                                             const char *pkcs12_path, const char *pkcs_pwd) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = false;
     options->pkcs12_path = pkcs12_path;
     options->pkcs12_password = pkcs_pwd;
-    options->server_name = server_name;
 }
 
 void aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list) {
@@ -65,10 +63,6 @@ void aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, cons
 
 void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer) {
     options->verify_peer = verify_peer;
-}
-
-void aws_tls_ctx_options_set_server_name(struct aws_tls_ctx_options *options, const char *server_name) {
-    options->server_name = server_name;
 }
 
 void aws_tls_ctx_options_override_default_trust_store(struct aws_tls_ctx_options *options,

@@ -267,9 +267,9 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_tls_ctx_options server_ctx_options;
 #ifdef __APPLE__
-    aws_tls_ctx_options_init_server_pkcs12(&server_ctx_options, "./unittests.p12", "1234", "localhost");
+    aws_tls_ctx_options_init_server_pkcs12(&server_ctx_options, "./unittests.p12", "1234");
 #else
-    aws_tls_ctx_options_init_default_server(&server_ctx_options, "./unittests.crt", "./unittests.key", "localhost");
+    aws_tls_ctx_options_init_default_server(&server_ctx_options, "./unittests.crt", "./unittests.key");
 #endif /* __APPLE__ */
 
     aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
@@ -519,7 +519,6 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options);
     aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, "/etc/ssl/certs", NULL);
-    aws_tls_ctx_options_set_server_name(&client_ctx_options, (const char *)aws_string_bytes(host_name));
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -695,7 +694,6 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options);
     aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, "/etc/ssl/certs", NULL);
-    aws_tls_ctx_options_set_server_name(&client_ctx_options, (const char *)aws_string_bytes(host_name));
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);

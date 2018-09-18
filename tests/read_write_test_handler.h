@@ -17,6 +17,8 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/task_scheduler.h>
+
 struct aws_byte_buf;
 struct aws_channel_handler;
 struct aws_channel_slot;
@@ -34,8 +36,6 @@ struct aws_channel_handler *rw_handler_new(
     bool event_loop_driven,
     size_t window,
     void *ctx);
-
-enum aws_task_status;
 
 void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer);
 
