@@ -15,6 +15,7 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/testing/aws_test_harness.h>
@@ -207,8 +208,9 @@ static bool s_rw_test_shutdown_predicate(void *arg) {
     return rw_test_args->shutdown_completed;
 }
 
-static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, void *user_data) {
+static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
     (void)channel;
+    (void)error_code;
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     rw_test_args->shutdown_completed = true;

@@ -16,7 +16,7 @@
 #include <aws/io/channel.h>
 
 #include <aws/common/condition_variable.h>
-#include <aws/common/task_scheduler.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
 
@@ -120,11 +120,10 @@ int aws_channel_init(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
+    AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
-    channel->loop = event_loop;
-    channel->first = NULL;
-    channel->msg_pool = NULL;
+    channel->loop = event_loop;   
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
@@ -232,7 +231,12 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     enum aws_io_message_type message_type,
     size_t size_hint) {
 
-    return aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    struct aws_io_message *message = aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    if (AWS_LIKELY(message)) {
+        message->owning_channel = channel;
+    }
+
+    return message;
 }
 
 void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message) {
@@ -404,7 +408,7 @@ int aws_channel_slot_send_message(
         assert(slot->adj_right->handler);
 
         if (slot->adj_right->window_size >= message->message_data.len) {
-            slot->window_size -= message->message_data.len;
+            slot->adj_right->window_size -= message->message_data.len;
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
@@ -442,6 +446,15 @@ int aws_channel_slot_shutdown(
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 
+static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
+        struct aws_channel *channel = arg;
+        channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
+    }
+}
+
 int aws_channel_slot_on_handler_shutdown_complete(
     struct aws_channel_slot *slot,
     enum aws_channel_direction dir,
@@ -467,9 +480,14 @@ int aws_channel_slot_on_handler_shutdown_complete(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
 
-    if (slot->channel->first == slot && slot->channel->on_shutdown_completed) {
+    if (slot->channel->first == slot) {
         slot->channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        slot->channel->on_shutdown_completed(slot->channel, slot->channel->shutdown_user_data);
+        if (slot->channel->on_shutdown_completed) {
+            slot->channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
+            slot->channel->shutdown_notify_task.task.arg = slot->channel;
+            slot->channel->shutdown_notify_task.error_code = err_code;
+            aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+        }
     }
 
     return AWS_OP_SUCCESS;

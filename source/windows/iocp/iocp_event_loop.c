@@ -12,12 +12,43 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/event_loop.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/event_loop.h>
+
+struct FILE_BASIC_INFORMATION {
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    DWORD FileAttributes;
+};
+
+struct FILE_COMPLETION_INFORMATION {
+    HANDLE Port;
+    PVOID Key;
+};
+
+struct IO_STATUS_BLOCK {
+    union {
+        NTSTATUS Status;
+        PVOID Pointer;
+    } status_block;
+
+    ULONG_PTR Information;
+};
+
+enum FILE_INFORMATION_CLASS {
+    FileReplaceCompletionInformation = 0x3D,
+};
+typedef NTSTATUS(NTAPI NTSetInformationFile)(HANDLE file_handle, struct IO_STATUS_BLOCK *io_status_block,
+    void *file_information, ULONG length, enum FILE_INFORMATION_CLASS file_information_class);
+
+NTSetInformationFile *s_set_info_fn = NULL;
+
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -64,7 +95,7 @@ static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_ta
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
-
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_event_thread_main(void *user_data);
 
 void aws_overlapped_init(
@@ -80,14 +111,29 @@ void aws_overlapped_init(
 }
 
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
-    assert(overlapped);
-
+    assert(overlapped);    
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
+
+    if (!s_set_info_fn) {
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+
+        if (!ntdll) {
+            assert(0);
+            exit(-1);
+        }
+
+        s_set_info_fn = (NTSetInformationFile *)GetProcAddress(ntdll, "NtSetInformationFile");
+        if (!s_set_info_fn) {
+            assert(0);
+            exit(-1);
+        }
+    }
+
     int err = 0;
 
     struct aws_event_loop *event_loop = NULL;
@@ -156,6 +202,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     event_loop->vtable.schedule_task_future = s_schedule_task_future;
     event_loop->vtable.connect_to_io_completion_port = s_connect_to_io_completion_port;
     event_loop->vtable.is_on_callers_thread = s_is_event_thread;
+    event_loop->vtable.unsubscribe_from_io_events = s_unsubscribe_from_io_events;
 
     return event_loop;
 
@@ -450,6 +497,25 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
     s_process_tasks_to_schedule(event_loop, &tasks_to_schedule);
 }
 
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)event_loop;
+    struct FILE_COMPLETION_INFORMATION file_completion_info;
+    file_completion_info.Key = NULL;
+    file_completion_info.Port = NULL;
+
+    struct IO_STATUS_BLOCK status_block;
+    AWS_ZERO_STRUCT(status_block);
+
+    NTSTATUS status = s_set_info_fn(handle->data.handle, &status_block, &file_completion_info,
+        sizeof(file_completion_info), FileReplaceCompletionInformation);
+
+    if (!status) {
+        return AWS_OP_SUCCESS;
+    }
+
+    return AWS_OP_ERR;
+}
+
 /* Called from event-thread */
 static void s_event_thread_main(void *user_data) {
 
@@ -492,7 +558,11 @@ static void s_event_thread_main(void *user_data) {
                         AWS_CONTAINER_OF(completion->lpOverlapped, struct aws_overlapped, overlapped);
 
                     if (overlapped->on_completion) {
-                        overlapped->on_completion(event_loop, overlapped);
+                        overlapped->on_completion(
+                            event_loop,
+                            overlapped,
+                            (int)overlapped->overlapped.Internal, /* Status code for the completed request */
+                            completion->dwNumberOfBytesTransferred);
                     }
                 }
             }
