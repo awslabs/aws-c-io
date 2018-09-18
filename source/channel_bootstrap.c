@@ -12,15 +12,71 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
-#include <assert.h>
 #include <aws/io/channel_bootstrap.h>
+
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
 
+#include <assert.h>
+
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
+
+struct tl_shutdown_task_data {
+    struct aws_condition_variable *condition_variable;
+    struct aws_mutex *mutex;
+    bool invoked;
+};
+
+static bool s_tl_cleanup_predicate(void *arg) {
+    struct tl_shutdown_task_data *shutdown_task_data = arg;
+    return shutdown_task_data->invoked;
+
+}
+
+static void s_handle_tl_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct tl_shutdown_task_data *shutdown_task_data = arg;
+
+    aws_mutex_lock(shutdown_task_data->mutex);
+    aws_tls_clean_up_tl_state();
+    shutdown_task_data->invoked = true;
+    aws_condition_variable_notify_one(shutdown_task_data->condition_variable);
+    aws_mutex_unlock(shutdown_task_data->mutex);
+}
+
+static void s_ensure_tl_state_is_cleaned_up(struct aws_event_loop_group *el_group) {
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+
+    aws_mutex_lock(&mutex);
+    size_t len = aws_event_loop_group_get_loop_count(el_group);
+    for (size_t i = 0; i < len; ++i) {
+        struct aws_event_loop *el = aws_event_loop_group_get_loop_at(el_group, i);
+
+        struct tl_shutdown_task_data tl_shutdown = {
+                .mutex = &mutex,
+                .condition_variable = &condition_variable,
+                .invoked = false,
+        };
+
+        struct aws_task task = {
+                .fn = s_handle_tl_cleanup_task,
+                .arg = &tl_shutdown,
+        };
+
+        aws_event_loop_schedule_task_now(el, &task);
+        aws_condition_variable_wait_pred(&condition_variable, &mutex,
+                                         s_tl_cleanup_predicate, &tl_shutdown);
+    }
+    aws_mutex_unlock(&mutex);
+}
 
 int aws_client_bootstrap_init(
     struct aws_client_bootstrap *bootstrap,
@@ -54,7 +110,9 @@ int aws_client_bootstrap_set_alpn_callback(
 }
 
 void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
-    (void)bootstrap;
+    if (bootstrap->tls_ctx) {
+        s_ensure_tl_state_is_cleaned_up(bootstrap->event_loop_group);
+    }
 }
 
 struct client_channel_data {
@@ -327,7 +385,7 @@ static inline int new_client_channel(
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
-    struct aws_event_loop *connection_loop = aws_event_loop_get_next_loop(bootstrap->event_loop_group);
+    struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
     struct aws_socket_creation_args args = {
         .user_data = client_connection_args,
@@ -391,7 +449,9 @@ int aws_server_bootstrap_init(
 }
 
 void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap) {
-    (void)bootstrap;
+    if (bootstrap->tls_ctx) {
+        s_ensure_tl_state_is_cleaned_up(bootstrap->event_loop_group);
+    }
 }
 
 struct server_connection_args {
@@ -591,7 +651,7 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
     channel_data->socket = new_socket;
     channel_data->server_connection_args = connection_args;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(connection_args->bootstrap->event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
     struct aws_channel_creation_callbacks channel_callbacks = {
         .on_setup_completed = on_server_channel_on_setup_completed,
@@ -681,7 +741,7 @@ static inline struct aws_socket *server_add_socket_listener(
         server_connection_args->tls_options.user_data = server_connection_args;
     }
 
-    struct aws_event_loop *connection_loop = aws_event_loop_get_next_loop(bootstrap->event_loop_group);
+    struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
     struct aws_socket_creation_args args = {
         .user_data = server_connection_args,

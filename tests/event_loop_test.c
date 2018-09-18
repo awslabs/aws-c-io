@@ -429,15 +429,15 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
     size_t cpu_count = aws_system_info_processor_count();
     size_t el_count = 1;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     struct aws_event_loop *first_loop = event_loop;
 
-    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
@@ -445,7 +445,7 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     ASSERT_INT_EQUALS(cpu_count, el_count);
     el_count = 1;
     /* now do it again to make sure the counter turns over. */
-    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
@@ -462,17 +462,17 @@ static int test_event_loop_group_counter_overflow(struct aws_allocator *allocato
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
-    struct aws_event_loop *first_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *first_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(first_loop);
 
     /*this hurts my feelings to modify the internals of a struct to write a test, but it takes too long to
      * increment UINT32_MAX times. */
     event_loop_group.current_index = UINT32_MAX;
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
-    event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
     ASSERT_PTR_EQUALS(first_loop, event_loop);
 

@@ -229,7 +229,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     aws_tls_init_static_state(allocator);
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -448,7 +448,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     aws_tls_ctx_destroy(server_ctx);
 
     aws_event_loop_group_clean_up(&el_group);
-    aws_tls_clean_up_static_state(allocator);
+    aws_tls_clean_up_static_state();
 
     return AWS_OP_SUCCESS;
 }
@@ -511,7 +511,7 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     aws_tls_init_static_state(allocator);
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -594,7 +594,7 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
 
     aws_event_loop_group_clean_up(&el_group);
 
-    aws_tls_clean_up_static_state(allocator);
+    aws_tls_clean_up_static_state();
     return AWS_OP_SUCCESS;
 }
 
@@ -675,7 +675,7 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     aws_tls_init_static_state(allocator);
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -776,7 +776,7 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
 
     aws_event_loop_group_clean_up(&el_group);
 
-    aws_tls_clean_up_static_state(allocator);
+    aws_tls_clean_up_static_state();
     return AWS_OP_SUCCESS;
 }
 

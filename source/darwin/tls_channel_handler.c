@@ -49,8 +49,11 @@ static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 byt
 void aws_tls_init_static_state(struct aws_allocator *alloc) { /* no op */
     (void)alloc;
 }
-void aws_tls_clean_up_static_state(struct aws_allocator *alloc) { /* no op */
-    (void)alloc;
+
+void aws_tls_clean_up_tl_state(void) { /* no op */
+}
+
+void aws_tls_clean_up_static_state(void) { /* no op */
 }
 
 struct secure_transport_handler {

@@ -121,7 +121,8 @@ AWS_IO_API void aws_tls_connection_options_set_verify_peer(struct aws_tls_connec
 
 /********************************* stuff that actually does work *********************************/
 AWS_IO_API void aws_tls_init_static_state(struct aws_allocator *alloc);
-AWS_IO_API void aws_tls_clean_up_static_state(struct aws_allocator *alloc);
+AWS_IO_API void aws_tls_clean_up_static_state(void);
+AWS_IO_API void aws_tls_clean_up_tl_state(void);
 
 AWS_IO_API bool aws_tls_is_alpn_available(void);
 
