@@ -18,6 +18,7 @@
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/pipe.h>
 
 #include <aws/testing/aws_test_harness.h>
 

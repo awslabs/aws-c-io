@@ -12,6 +12,8 @@
 * express or implied. See the License for the specific language governing
 * permissions and limitations under the License.
 */
+
+/*keep these where they are.*/
 #include <WS2tcpip.h>
 #include <MSWSock.h>
 #include <Mstcpip.h>
@@ -21,9 +23,9 @@
 #include <aws/common/byte_buf.h>
 #include <aws/common/clock.h>
 #include <aws/common/task_scheduler.h>
+
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
-
 
 #include <assert.h>
 #include <aws/io/io.h>
@@ -100,7 +102,13 @@ static int s_stream_subscribe_to_read(struct aws_socket *socket,
 static int s_dgram_subscribe_to_read(struct aws_socket *socket,
     aws_socket_on_readable_fn *on_readable, void *user_data);
 
+static int s_determine_socket_error(int error);
 
+/* Why build this V-table instead of doing that beautiful posix code I just read?
+   I'm glad you asked...... because winsock is nothing like posix and certainly not
+   as well thought out. There were so many branches to handle three entirely different 
+   APIs we decided it was less painful to just have a bunch of function pointers in a table
+   than to want to gouge our eyes out while looking at a ridiculous number of branches. */
 static struct socket_vtable vtables[3][2] = {
     [AWS_SOCKET_IPV4] = {
         [AWS_SOCKET_STREAM] = {
@@ -223,8 +231,8 @@ struct iocp_socket {
     struct aws_socket *incoming_socket;
     uint8_t accept_buffer[SOCK_STORAGE_SIZE * 2];
     struct aws_task sequential_task_storage;
-    bool stop_accept;
-   volatile uint8_t pending_operations;
+    volatile bool stop_accept;
+    volatile uint8_t pending_operations;
 };
 
 static int create_socket(struct aws_socket *sock, struct aws_socket_options *options) {
@@ -237,24 +245,8 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
     }
 
     int error_code = WSAGetLastError();
-
-    if (error_code == WSAENOBUFS) {
-        return aws_raise_error(AWS_ERROR_OOM);
-    }
-
-    if (error_code == WSAEMFILE) {
-        return aws_raise_error(AWS_IO_MAX_FDS_EXCEEDED);
-    }
-
-    if (error_code == WSAEAFNOSUPPORT) {
-        return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-    }
-
-    if (error_code == WSAEACCES) {
-        return aws_raise_error(AWS_IO_NO_PERMISSION);
-    }
-
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    int aws_error = s_determine_socket_error(error_code);
+    return aws_raise_error(aws_error);
 }
 
 static int s_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, struct aws_socket_options *options) {
@@ -404,8 +396,10 @@ static int s_determine_socket_error(int error) {
     case WSA_INVALID_PARAMETER:
     case SOME_ERROR_CODE_THAT_MEANS_INVALID_PATH:
         return AWS_IO_FILE_INVALID_PATH;
-    case 0:
-        return AWS_IO_SOCKET_NOT_CONNECTED;
+    case WSAEAFNOSUPPORT:
+        return AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY;
+    case WSAEACCES:
+        return AWS_IO_NO_PERMISSION;
     default:
         return AWS_IO_SOCKET_NOT_CONNECTED;
     }
@@ -424,6 +418,7 @@ static inline int s_process_tcp_sock_options(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
+/* called when an IPV4 tcp socket successfully has connected. */
 static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
 
     if (s_process_tcp_sock_options(socket)) {
@@ -441,7 +436,7 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     }
 
     if (connect_result) {
-        int error = s_determine_socket_error(WSAGetLastError());
+        int error = s_determine_socket_error(connect_result);
         aws_raise_error(error);
         socket_impl->vtable->connection_error(socket, error);
         return AWS_OP_ERR;
@@ -474,6 +469,7 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
+/* called upon a successful TCP over IPv6 connection. */
 static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
 
     if (s_process_tcp_sock_options(socket)) {
@@ -491,7 +487,7 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     }
 
     if (connect_result) {
-        int error = s_determine_socket_error(WSAGetLastError());
+        int error = s_determine_socket_error(connect_result);
         aws_raise_error(error);
         socket_impl->vtable->connection_error(socket, error);
         return AWS_OP_ERR;
@@ -524,6 +520,7 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
+/* Outgoing UDP and Named pipe connections. */
 static int s_local_and_udp_connection_success(struct aws_socket *socket) {
     socket->state = CONNECTED_WRITE | CONNECTED_READ;
 
@@ -548,6 +545,7 @@ struct socket_connect_args {
     struct aws_socket *socket;
 };
 
+/* Named Pipes and TCP connection callbacks from the event loop. */
 void s_socket_connection_completion(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, int status_code, size_t num_bytes_transferred) {
     (void)num_bytes_transferred;
     (void)event_loop;
@@ -580,6 +578,8 @@ void s_socket_connection_completion(struct aws_event_loop *event_loop, struct aw
     }
 }
 
+/* outgoing tcp connection. If this task runs before `s_socket_connection_completion()`, then the
+   connection is considered timedout. */
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
     struct socket_connect_args *socket_args = (struct socket_connect_args *)args;
 
@@ -602,6 +602,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
     aws_mem_release(allocator, task);
 }
 
+/* initiate an outbound tcp connection (client mode). */
 static inline int s_tcp_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *connect_loop, 
     struct sockaddr *bind_addr, struct sockaddr *socket_addr, size_t sock_size) {
     struct iocp_socket *socket_impl = socket->impl;
@@ -669,6 +670,7 @@ static inline int s_tcp_connect(struct aws_socket *socket, struct aws_socket_end
     return AWS_OP_SUCCESS;
 }
 
+/* initiate TCP ipv4 outbound connection. */
 static int s_ipv4_stream_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *connect_loop) {
     assert(connect_loop);
     struct sockaddr_in addr_in;
@@ -686,6 +688,7 @@ static int s_ipv4_stream_connect(struct aws_socket *socket, struct aws_socket_en
     return s_tcp_connect(socket, remote_endpoint, connect_loop, (struct sockaddr *)&in_bind_addr, (struct sockaddr *)&addr_in, sizeof(addr_in));   
 }
 
+/* initiate TCP ipv6 outbound connection. */
 static int s_ipv6_stream_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *connect_loop) {
     struct sockaddr_in6 bind_addr;
     AWS_ZERO_STRUCT(bind_addr);
@@ -700,6 +703,7 @@ static int s_ipv6_stream_connect(struct aws_socket *socket, struct aws_socket_en
     return s_tcp_connect(socket, remote_endpoint, connect_loop, (struct sockaddr *)&bind_addr, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
 }
 
+/* simply moves the connection_success notification into the event-loop's thread. */
 static void s_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
     if (task_status == AWS_TASK_STATUS_RUN_READY) {
@@ -711,6 +715,7 @@ static void s_connection_success_task(struct aws_task *task, void *arg, enum aws
     }
 }
 
+/* initiate the client end of a named pipe. */
 static int s_local_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *connect_loop) {
     if (s_process_tcp_sock_options(socket)) {
         return AWS_OP_ERR;
@@ -738,6 +743,7 @@ static int s_local_connect(struct aws_socket *socket, struct aws_socket_endpoint
     }
 }
 
+/* connect generic udp outbound */
 static inline int s_dgram_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, 
     struct aws_event_loop *connect_loop, struct sockaddr *socket_addr, size_t sock_size) {
     struct iocp_socket *socket_impl = socket->impl;
@@ -928,6 +934,7 @@ static int s_local_listen(struct aws_socket *socket, int backlog_size) {
     return AWS_OP_SUCCESS;
 }
 
+/* triggered by the event loop upon an incomming pipe connection. */
 static void s_incoming_pipe_connection_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
     int status_code, size_t num_bytes_transferred) {
     (void)event_loop;
@@ -961,6 +968,9 @@ static void s_incoming_pipe_connection_event(struct aws_event_loop *event_loop, 
 
             new_socket->state = CONNECTED_WRITE | CONNECTED_READ;
 
+            /* Named pipes don't work like traditional socket APIs. The original handle is used
+               for the incoming connection. so we copy it over and do some trickery with the 
+               event loop registrations. */
             new_socket->io_handle = socket->io_handle;
             struct iocp_socket *new_socket_impl = new_socket->impl;
             new_socket_impl->read_signal->alloc = socket->allocator;
@@ -1005,7 +1015,9 @@ static void s_incoming_pipe_connection_event(struct aws_event_loop *event_loop, 
     }
 }
 
-static void s_socket_accept_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, int status_code, size_t num_bytes_transferred) {
+/* invoked by the event loop when a listening socket has incoming connections. This is only used for TCP.*/
+static void s_socket_accept_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
+    int status_code, size_t num_bytes_transferred) {
 
     (void)event_loop;
     (void)num_bytes_transferred;
@@ -1052,12 +1064,14 @@ static void s_socket_accept_event(struct aws_event_loop *event_loop, struct aws_
                 socket_impl->incoming_socket->options.domain = AWS_SOCKET_IPV6;
             }
 
-            sprintf_s(socket_impl->incoming_socket->remote_endpoint.port, sizeof(socket_impl->incoming_socket->remote_endpoint.port), "%d", port);
+            sprintf_s(socket_impl->incoming_socket->remote_endpoint.port, 
+                sizeof(socket_impl->incoming_socket->remote_endpoint.port), "%d", port);
 
             u_long non_blocking = 1;
             ioctlsocket((SOCKET)socket_impl->incoming_socket->io_handle.data.handle, FIONBIO, &non_blocking);
             aws_socket_set_options(socket_impl->incoming_socket, &socket->options);
-            socket->creation_args.on_incoming_connection(socket, socket_impl->incoming_socket, socket->creation_args.user_data);
+            socket->creation_args.on_incoming_connection(socket, socket_impl->incoming_socket, 
+                socket->creation_args.user_data);
             socket_impl->incoming_socket = NULL;
 
             aws_overlapped_reset(socket_impl->read_signal);
@@ -1072,10 +1086,13 @@ static void s_socket_accept_event(struct aws_event_loop *event_loop, struct aws_
  
             err = s_socket_init(socket_impl->incoming_socket, socket->allocator, &socket->options);
 
+            /* we need to start the accept process over again. */
             if (!err) {
                 socket_impl->incoming_socket->state = INIT;
-                memcpy(&socket_impl->incoming_socket->local_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
-                accept_status = accept_fn((SOCKET)socket->io_handle.data.handle, (SOCKET)socket_impl->incoming_socket->io_handle.data.handle, socket_impl->accept_buffer, 0,
+                memcpy(&socket_impl->incoming_socket->local_endpoint, &socket->local_endpoint,
+                    sizeof(socket->local_endpoint));
+                accept_status = accept_fn((SOCKET)socket->io_handle.data.handle, 
+                    (SOCKET)socket_impl->incoming_socket->io_handle.data.handle, socket_impl->accept_buffer, 0,
                     SOCK_STORAGE_SIZE, SOCK_STORAGE_SIZE, NULL, &socket_impl->read_signal->overlapped);
 
                 if (!accept_status) {
@@ -1138,7 +1155,8 @@ static int s_tcp_start_accept(struct aws_socket *socket, struct aws_event_loop *
     aws_overlapped_reset(socket_impl->read_signal);
     aws_overlapped_init(socket_impl->read_signal, s_socket_accept_event, socket);
     LPFN_ACCEPTEX accept_fn = (LPFN_ACCEPTEX)aws_winsock_get_acceptex_fn();
-    BOOL res = accept_fn((SOCKET)socket->io_handle.data.handle, (SOCKET)socket_impl->incoming_socket->io_handle.data.handle, socket_impl->accept_buffer, 0,
+    BOOL res = accept_fn((SOCKET)socket->io_handle.data.handle, 
+        (SOCKET)socket_impl->incoming_socket->io_handle.data.handle, socket_impl->accept_buffer, 0,
         SOCK_STORAGE_SIZE, SOCK_STORAGE_SIZE, NULL, &socket_impl->read_signal->overlapped);
 
     if (!res) {
@@ -1204,25 +1222,32 @@ int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options 
     int reuse = 1;
     setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int));
 
-    if (socket->options.keepalive && !(socket->options.keep_alive_interval && socket->options.keep_alive_timeout)) {
-        int keep_alive = 1;
-        setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive, sizeof(int));
-    } else if (socket->options.keepalive) {
-        struct tcp_keepalive keepalive_args = {
-            .onoff = 1,
-            .keepalivetime = socket->options.keep_alive_timeout,
-            .keepaliveinterval = socket->options.keep_alive_interval,
-        };
-        DWORD bytes_returned = 0;
-        WSAIoctl((SOCKET)socket->io_handle.data.handle, SIO_KEEPALIVE_VALS, &keepalive_args, sizeof(keepalive_args), 
-            NULL, 0, &bytes_returned, NULL, NULL);
+    if (socket->options.domain != AWS_SOCKET_LOCAL && socket->options.type == AWS_SOCKET_STREAM) {
+        if (socket->options.keepalive && !(socket->options.keep_alive_interval 
+            && socket->options.keep_alive_timeout)) {
+            int keep_alive = 1;
+            setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_KEEPALIVE, 
+                (char *)&keep_alive, sizeof(int));
+        }
+        else if (socket->options.keepalive) {
+            struct tcp_keepalive keepalive_args = {
+                .onoff = 1,
+                .keepalivetime = socket->options.keep_alive_timeout,
+                .keepaliveinterval = socket->options.keep_alive_interval,
+            };
+            DWORD bytes_returned = 0;
+            WSAIoctl((SOCKET)socket->io_handle.data.handle, SIO_KEEPALIVE_VALS, 
+                &keepalive_args, sizeof(keepalive_args),
+                NULL, 0, &bytes_returned, NULL, NULL);
+        }
     }
 
     if (socket->options.linger_time) {
         struct linger linger;
         linger.l_onoff = 1;
         linger.l_linger = (u_short)socket->options.linger_time;
-        setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_LINGER, (char *)&linger, sizeof(struct linger));
+        setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_LINGER, (char *)&linger, 
+            sizeof(struct linger));
     }
 
     return AWS_OP_SUCCESS;
@@ -1287,7 +1312,9 @@ struct read_cb_args {
     void *user_data;
 };
 
-static void s_stream_readable_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, int status_code, size_t num_bytes_transferred) {
+/* invoked by the event loop when the socket (TCP or Local) becomes readable. */
+static void s_stream_readable_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
+    int status_code, size_t num_bytes_transferred) {
     (void)num_bytes_transferred;
     (void)event_loop;
 
@@ -1309,7 +1336,9 @@ static void s_stream_readable_event(struct aws_event_loop *event_loop, struct aw
     socket->readable_fn(socket, err_code, socket->readable_user_data);
 }
 
-static void s_dgram_readable_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, int status_code, size_t num_bytes_transferred) {
+/* Invoked by the event loop when a UDP socket goes readable. */
+static void s_dgram_readable_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
+    int status_code, size_t num_bytes_transferred) {
     (void)num_bytes_transferred;
     (void)event_loop;
 
@@ -1382,7 +1411,8 @@ static int s_dgram_subscribe_to_read(struct aws_socket *socket,
         .buf = NULL,
     };
     DWORD flags = MSG_PEEK;
-    int err = WSARecv((SOCKET)socket->io_handle.data.handle, &buf, 1, NULL, &flags, &iocp_socket->read_signal->overlapped, NULL);
+    int err = WSARecv((SOCKET)socket->io_handle.data.handle, &buf, 1, NULL, &flags, 
+        &iocp_socket->read_signal->overlapped, NULL);
 
     if (err) {
         int wsa_err = WSAGetLastError();
@@ -1459,7 +1489,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    int read_val = recv((SOCKET)socket->io_handle.data.handle, (char *)buffer->buffer + buffer->len, (int)(buffer->capacity - buffer->len), 0);
+    int read_val = recv((SOCKET)socket->io_handle.data.handle, (char *)buffer->buffer + buffer->len, 
+        (int)(buffer->capacity - buffer->len), 0);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
@@ -1477,7 +1508,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
             aws_overlapped_init(iocp_socket->read_signal, s_stream_readable_event, socket);
             int fake_buffer = 0;
             iocp_socket->pending_operations |= PENDING_READ;
-            int err = ReadFile(socket->io_handle.data.handle, &fake_buffer, 0, NULL, &iocp_socket->read_signal->overlapped);
+            int err = ReadFile(socket->io_handle.data.handle, &fake_buffer, 0, NULL, 
+                &iocp_socket->read_signal->overlapped);
             if (err) {
                 int wsa_err = WSAGetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
@@ -1508,7 +1540,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    int read_val = recv((SOCKET)socket->io_handle.data.handle, (char *)buffer->buffer + buffer->len, (int)(buffer->capacity - buffer->len), 0);
+    int read_val = recv((SOCKET)socket->io_handle.data.handle, (char *)buffer->buffer + buffer->len, 
+        (int)(buffer->capacity - buffer->len), 0);
 
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
@@ -1534,7 +1567,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
             };
 
             DWORD flags = MSG_PEEK;
-            int err = WSARecv((SOCKET)socket->io_handle.data.handle, &buf, 1, NULL, &flags, &iocp_socket->read_signal->overlapped, NULL);
+            int err = WSARecv((SOCKET)socket->io_handle.data.handle, &buf, 1, NULL, &flags, 
+                &iocp_socket->read_signal->overlapped, NULL);
             if (err) {
                 int wsa_err = WSAGetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
@@ -1562,6 +1596,7 @@ struct write_cb_args {
     void *user_data;
 };
 
+/* Invoked for TCP, UDP, and Local when a message has been completely written to the wire.*/
 static void s_socket_written_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
     int status_code, size_t num_bytes_transferred) {
     (void)event_loop;
@@ -1622,7 +1657,8 @@ int aws_socket_write(struct aws_socket *socket, struct aws_byte_cursor *cursor,
     struct iocp_socket *socket_impl = socket->impl;
     socket_impl->pending_operations |= PENDING_WRITE;
 
-    BOOL res = WriteFile(socket->io_handle.data.handle, cursor->ptr, (DWORD)cursor->len, NULL, &write_cb_data->write_overlap.overlapped);
+    BOOL res = WriteFile(socket->io_handle.data.handle, cursor->ptr, (DWORD)cursor->len, NULL, 
+        &write_cb_data->write_overlap.overlapped);
 
     if (!res) {
         int error_code = GetLastError();
@@ -1641,7 +1677,8 @@ int aws_socket_get_error(struct aws_socket *socket) {
     if (socket->options.domain != AWS_SOCKET_LOCAL) {
         int connect_result;
         socklen_t result_length = sizeof(connect_result);
-        if (getsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
+        if (getsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, 
+            (char *)&connect_result, &result_length) < 0) {
             return AWS_OP_ERR;
         }
 
