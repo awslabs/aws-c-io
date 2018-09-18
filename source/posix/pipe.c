@@ -169,7 +169,7 @@ int aws_pipe_init(
         goto error;
     }
 
-    AWS_ZERO_STRUCT(*write_impl)
+    AWS_ZERO_STRUCT(*write_impl);
     write_impl->alloc = allocator;
     write_impl->handle.data.fd = pipe_fds[1];
     write_impl->event_loop = write_end_event_loop;

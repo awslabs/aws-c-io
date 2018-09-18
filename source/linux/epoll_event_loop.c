@@ -73,7 +73,6 @@ struct epoll_loop {
     struct aws_io_handle write_task_handle;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
-    struct aws_linked_list cleanup_list;
     int epoll_fd;
     bool should_continue;
     struct aws_task stop_task;
@@ -85,6 +84,7 @@ struct epoll_event_data {
     aws_event_loop_on_event_fn *on_event;
     void *user_data;
     struct aws_task cleanup_task;
+    bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't beeen cleaned up yet */
 };
 
 /* default timeout is 100 seconds */
@@ -149,7 +149,6 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
 
     epoll_loop->should_continue = false;
-    aws_linked_list_init(&epoll_loop->cleanup_list);
 
     loop->impl_data = epoll_loop;
     loop->vtable = s_vtable;
@@ -310,6 +309,7 @@ static int s_subscribe_to_io_events(
     epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
+    epoll_event_data->is_subscribed = true;
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
@@ -338,16 +338,6 @@ static int s_subscribe_to_io_events(
     return AWS_OP_SUCCESS;
 }
 
-static void s_process_unsubscribe_cleanup_list(struct epoll_loop *event_loop) {
-
-    while (!aws_linked_list_empty(&event_loop->cleanup_list)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&event_loop->cleanup_list);
-        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
-        struct epoll_event_data *event_data = AWS_CONTAINER_OF(task, struct epoll_event_data, cleanup_task);
-        aws_mem_release(event_data->alloc, (void *)event_data);
-    }
-}
-
 static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
@@ -356,30 +346,24 @@ static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aw
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
+
+    assert(handle->additional_data);
     struct epoll_event_data *additional_handle_data = handle->additional_data;
 
-    struct epoll_event compat_event = {
-        .data = {.ptr = additional_handle_data},
-        .events = 0,
-    };
+    struct epoll_event dummy_event;
 
-    /* We can't clean up yet, because we have schedule tasks and more events to process, add it to the cleanup list
-     * and we'll process it after everything is finished for this event loop tick. */
-    if (s_is_on_callers_thread(event_loop) && additional_handle_data) {
-        aws_linked_list_push_back(&epoll_loop->cleanup_list, &additional_handle_data->cleanup_task.node);
-
-    } else if (additional_handle_data) {
-        aws_task_init(&additional_handle_data->cleanup_task, s_unsubscribe_cleanup_task, additional_handle_data);
-
-        s_schedule_task_now(event_loop, &additional_handle_data->cleanup_task);
-    }
-
-    handle->additional_data = NULL;
-
-    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &compat_event))) {
+    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &dummy_event/*ignored*/))) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
+    /* We can't clean up yet, because we have schedule tasks and more events to process,
+     * mark it as unsubscribed and schedule a cleanup task. */
+    additional_handle_data->is_subscribed = false;
+
+    aws_task_init(&additional_handle_data->cleanup_task, s_unsubscribe_cleanup_task, additional_handle_data);
+    s_schedule_task_now(event_loop, &additional_handle_data->cleanup_task);
+
+    handle->additional_data = NULL;
     return AWS_OP_SUCCESS;
 }
 
@@ -470,7 +454,9 @@ static void s_main_loop(void *args) {
                 event_mask |= AWS_IO_EVENT_TYPE_ERROR;
             }
 
-            event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
+            if (event_data->is_subscribed) {
+                event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
+            }
         }
 
         /* run scheduled tasks */
@@ -478,8 +464,6 @@ static void s_main_loop(void *args) {
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
-
-        s_process_unsubscribe_cleanup_list(epoll_loop);
 
         /* set timeout for next epoll_wait() call.
          * if clock fails, or scheduler has no tasks, use default timeout */
@@ -505,5 +489,4 @@ static void s_main_loop(void *args) {
     }
 
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
-    s_process_unsubscribe_cleanup_list(epoll_loop);
 }

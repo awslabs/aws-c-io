@@ -91,13 +91,16 @@ struct handle_data {
     aws_event_loop_on_event_fn *on_event;
     void *on_event_user_data;
 
-    int events_subscribed; /* aws_io_event_types this handle is subscribed to */
+    int events_subscribed; /* aws_io_event_types this handle should be subscribed to */
     int events_this_loop;  /* aws_io_event_types received during current loop of the event-thread */
 
-    bool kevent_added_successfully;
+    /* False until subscribe task completes.
+     * Then true until unsubscribe function is called.
+     * Then false until cleanup task completes. */
+    bool is_subscribed;
 
     struct aws_task subscribe_task;
-    struct aws_task unsubscribe_task;
+    struct aws_task cleanup_task;
 };
 
 enum {
@@ -435,6 +438,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     (void)task;
     struct handle_data *handle_data = user_data;
+    struct aws_event_loop *event_loop = handle_data->event_loop;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
     impl->thread_data.connected_handle_count++;
@@ -474,12 +478,11 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
             handle_data /*udata*/);
     }
 
-    /* It's OK to re-use the same memory for changelist input and eventlist output */
     int num_events = kevent(
         impl->kq_fd,
         changelist /*changelist*/,
         changelist_size /*nchanges*/,
-        changelist /*eventlist*/,
+        changelist /*eventlist. It's OK to re-use the same memory for changelist input and eventlist output*/,
         changelist_size /*nevents*/,
         NULL /*timeout*/);
     if (num_events == -1) {
@@ -498,12 +501,10 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     }
 
     /* Success */
-    handle_data->kevent_added_successfully = true;
+    handle_data->is_subscribed = true;
     return;
 
 subscribe_failed:
-    handle_data->kevent_added_successfully = false;
-
     /* Remove any related kevents that succeeded */
     for (int i = 0; i < num_events; ++i) {
         if (changelist[i].data == 0) {
@@ -519,11 +520,8 @@ subscribe_failed:
     }
 
     /* We can't return an error code because this was a scheduled task.
-     * Notify the user of the failed subscription by passing AWS_IO_EVENT_TYPE_ERROR to the callback.
-     * Also raise AWS_IO_SYS_CALL_FAILURE, which might be helpful to anyone monitoring */
-    aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    handle_data->on_event(
-        handle_data->event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
+     * Notify the user of the failed subscription by passing AWS_IO_EVENT_TYPE_ERROR to the callback. */
+    handle_data->on_event(event_loop, handle_data->owner, AWS_IO_EVENT_TYPE_ERROR, handle_data->on_event_user_data);
 }
 
 static int s_subscribe_to_io_events(
@@ -551,8 +549,6 @@ static int s_subscribe_to_io_events(
     handle_data->on_event = on_event;
     handle_data->on_event_user_data = user_data;
     handle_data->events_subscribed = events;
-    handle_data->events_this_loop = 0;
-    handle_data->kevent_added_successfully = false;
 
     handle->additional_data = handle_data;
 
@@ -570,54 +566,59 @@ static int s_subscribe_to_io_events(
     return AWS_OP_SUCCESS;
 }
 
-static void s_unsubscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     (void)task;
+    (void)status;
+
     struct handle_data *handle_data = user_data;
-    struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
-    impl->thread_data.connected_handle_count--;
-
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (handle_data->kevent_added_successfully) {
-            struct kevent changelist[2];
-            int changelist_size = 0;
-
-            if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-                EV_SET(
-                    &changelist[changelist_size++],
-                    handle_data->owner->data.fd,
-                    EVFILT_READ /*filter*/,
-                    EV_DELETE /*flags*/,
-                    0 /*fflags*/,
-                    0 /*data*/,
-                    handle_data /*udata*/);
-            }
-            if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-                EV_SET(
-                    &changelist[changelist_size++],
-                    handle_data->owner->data.fd,
-                    EVFILT_WRITE /*filter*/,
-                    EV_DELETE /*flags*/,
-                    0 /*fflags*/,
-                    0 /*data*/,
-                    handle_data /*udata*/);
-            }
-
-            kevent(impl->kq_fd, changelist, changelist_size, NULL /*eventlist*/, 0 /*nevents*/, NULL /*timeout*/);
-        }
-    }
-
-    /* Clean up handle_data even if task was cancelled. */
     aws_mem_release(handle_data->event_loop->alloc, handle_data);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     assert(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
-    handle->additional_data = NULL;
+    struct kqueue_loop *impl = event_loop->impl_data;
 
-    aws_task_init(&handle_data->unsubscribe_task, s_unsubscribe_task, handle_data);
-    s_schedule_task_now(event_loop, &handle_data->unsubscribe_task);
+    assert(event_loop == handle_data->event_loop);
+
+    struct kevent changelist[2];
+    int changelist_size = 0;
+
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_READ /*filter*/,
+            EV_DELETE /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
+    }
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_WRITE /*filter*/,
+            EV_DELETE /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
+    }
+
+    kevent(impl->kq_fd, changelist, changelist_size, NULL /*eventlist*/, 0 /*nevents*/, NULL /*timeout*/);
+
+    /* Schedule a task to clean up the memory. This is done in a task to prevent the following scenario:
+     * - While processing a batch of events, some callback unsubscribes another aws_io_handle.
+     * - One of the other events in this batch belongs to that other aws_io_handle.
+     * - If the handle_data were already deleted, there would be an access invalid memory. */
+
+    aws_task_init(&handle_data->cleanup_task, s_clean_up_handle_data_task, handle_data);
+    aws_event_loop_schedule_task_now(event_loop, &handle_data->cleanup_task);
+
+    handle_data->is_subscribed = false;
+    handle->additional_data = NULL;
+    impl->thread_data.connected_handle_count--;
 
     return AWS_OP_SUCCESS;
 }
@@ -768,11 +769,15 @@ static void s_event_thread_main(void *user_data) {
             handle_data->events_this_loop |= event_flags;
         }
 
-        /* Invoke each handle's event callback */
+        /* Invoke each handle's event callback (unless the handle has been unsubscribed) */
         for (int i = 0; i < num_io_handle_events; ++i) {
             struct handle_data *handle_data = io_handle_events[i];
-            handle_data->on_event(
-                event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
+
+            if (handle_data->is_subscribed) {
+                handle_data->on_event(
+                    event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
+            }
+
             handle_data->events_this_loop = 0;
         }
 
