@@ -28,6 +28,9 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
         "A channel handler attempted to propagate a read larger than the upstream window"),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED,
+        "An attempt was made to assign an io handle to an event loop, but the handle was already assigned."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SYS_CALL_FAILURE,
         "System call failure"),
     AWS_DEFINE_ERROR_INFO_IO(
@@ -55,8 +58,17 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_FILE_VALIDATION_FAILURE,
         "A file was read and the input did not match the expected value"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_WRITE_WOULD_BLOCK,
-        "Write operation would block, try again later"),
+        AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY,
+        "Attempt to perform operation that must be run inside the event loop thread"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_ERROR_IO_ALREADY_SUBSCRIBED,
+        "Already subscribed to receive events"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_ERROR_IO_NOT_SUBSCRIBED,
+        "Not subscribed to receive events"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_ERROR_IO_OPERATION_CANCELLED,
+        "Operation cancelled before it could complete"),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_READ_WOULD_BLOCK,
         "Read operation would block, try again later"),

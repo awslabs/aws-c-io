@@ -300,7 +300,7 @@ static void s_socket_connect_event(
 
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
     (void)task;
-    struct socket_connect_args *socket_args = (struct socket_connect_args *)args;
+    struct socket_connect_args *socket_args = args;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (socket_args->socket) {
@@ -325,7 +325,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
  * timeout task scheduled, so in this case the socket_args are cleaned up. */
 static void s_run_connect_success(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
-    struct socket_connect_args *socket_args = (struct socket_connect_args *)arg;
+    struct socket_connect_args *socket_args = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         s_on_connection_success(socket_args->socket);
@@ -495,7 +495,7 @@ static void socket_accept_event(
 
     (void)event_loop;
 
-    struct aws_socket *socket = (struct aws_socket *)user_data;
+    struct aws_socket *socket = user_data;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         int in_fd = 0;
@@ -517,8 +517,7 @@ static void socket_accept_event(
                 continue;
             }
 
-            struct aws_socket *new_sock =
-                (struct aws_socket *)aws_mem_acquire(socket->allocator, sizeof(struct aws_socket));
+            struct aws_socket *new_sock = aws_mem_acquire(socket->allocator, sizeof(struct aws_socket));
 
             if (!new_sock) {
                 break;

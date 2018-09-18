@@ -44,7 +44,8 @@ static int s_socket_process_read_message(
     (void)slot;
     (void)message;
 
-    /*this should NEVER happen, if it does it's a programmer error.*/
+    /*since a socket handler will ALWAYS be the first handler in a channel,
+     * this should NEVER happen, if it does it's a programmer error.*/
     assert(0);
     return aws_raise_error(AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT);
 }
