@@ -76,7 +76,7 @@ static void s_write_end_on_event(
 static int s_translate_posix_error(int err) {
     assert(err);
 
-    switch(err) {
+    switch (err) {
         case EPIPE:
             return AWS_IO_BROKEN_PIPE;
         default:
@@ -96,6 +96,8 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
     if (err) {
         return s_raise_posix_error(err);
     }
+
+    return AWS_OP_SUCCESS;
 #else
     err = pipe(pipe_fds);
     if (err) {
@@ -115,14 +117,13 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
             goto error;
         }
     }
-#endif
 
     return AWS_OP_SUCCESS;
-
 error:
     close(pipe_fds[0]);
     close(pipe_fds[1]);
     return AWS_OP_ERR;
+#endif
 }
 
 int aws_pipe_init(
