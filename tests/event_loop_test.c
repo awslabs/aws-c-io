@@ -449,7 +449,7 @@ void s_unsubrace_done(struct unsubrace_data *data) {
 
 /* Wait until both pipes are writable, then write data to both of them.
  * This make it likely that both pipes receive events in the same iteration of the event-loop. */
-void s_unsubrace_on_write_event(
+void s_unsubrace_on_writable_event(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
@@ -500,10 +500,22 @@ void s_unsubrace_on_write_event(
     data->wrote_to_both_pipes = true;
 }
 
+void s_unsubrace_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct unsubrace_data *data = arg;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_unsubrace_error(data);
+        return;
+    }
+
+    s_unsubrace_done(data);
+}
+
 /* Both pipes should have a readable event on the way.
  * The first pipe to get the event closes both pipes.
  * Since both pipes are unsubscribed, the second readable event shouldn't be delivered */
-void s_unsubrace_on_read_event(
+void s_unsubrace_on_readable_event(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
@@ -543,18 +555,18 @@ void s_unsubrace_on_read_event(
     AWS_ZERO_ARRAY(data->write_handle);
 
     data->is_unsubscribed = true;
-}
 
-void s_unsubrace_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    struct unsubrace_data *data = arg;
-
-    if (status != AWS_TASK_STATUS_RUN_READY) {
+    /* Have a short delay before ending test. Any events that fire during that delay would be an error. */
+    uint64_t time_ns;
+    err = aws_event_loop_current_clock_time(data->event_loop, &time_ns);
+    if (err) {
         s_unsubrace_error(data);
         return;
     }
+    time_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-    s_unsubrace_done(data);
+    aws_task_init(&data->task, s_unsubrace_done_task, data);
+    aws_event_loop_schedule_task_future(data->event_loop, &data->task, time_ns);
 }
 
 static void s_unsubrace_setup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -575,31 +587,19 @@ static void s_unsubrace_setup_task(struct aws_task *task, void *arg, enum aws_ta
         }
 
         err = aws_event_loop_subscribe_to_io_events(
-            data->event_loop, &data->write_handle[i], AWS_IO_EVENT_TYPE_WRITABLE, s_unsubrace_on_write_event, data);
+            data->event_loop, &data->write_handle[i], AWS_IO_EVENT_TYPE_WRITABLE, s_unsubrace_on_writable_event, data);
         if (err) {
             s_unsubrace_error(data);
             return;
         }
 
         err = aws_event_loop_subscribe_to_io_events(
-            data->event_loop, &data->read_handle[i], AWS_IO_EVENT_TYPE_READABLE, s_unsubrace_on_read_event, data);
+            data->event_loop, &data->read_handle[i], AWS_IO_EVENT_TYPE_READABLE, s_unsubrace_on_readable_event, data);
         if (err) {
             s_unsubrace_error(data);
             return;
         }
     }
-
-    /* Have a short delay before ending test. Any events that fire during that delay would be an error. */
-    uint64_t time_ns;
-    err = aws_event_loop_current_clock_time(data->event_loop, &time_ns);
-    if (err) {
-        s_unsubrace_error(data);
-        return;
-    }
-    time_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-
-    aws_task_init(&data->task, s_unsubrace_done_task, data);
-    aws_event_loop_schedule_task_future(data->event_loop, &data->task, time_ns);
 }
 
 static bool s_unsubrace_predicate(void *arg) {
