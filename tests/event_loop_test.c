@@ -229,7 +229,7 @@ AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
 
-#include <unistd.h>
+#    include <unistd.h>
 
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
@@ -360,7 +360,6 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
         .mutex = AWS_MUTEX_INIT,
         .event_loop = event_loop,
     };
-
 
     ASSERT_SUCCESS(
         aws_event_loop_subscribe_to_io_events(
