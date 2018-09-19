@@ -271,8 +271,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 #else
     aws_tls_ctx_options_init_default_server(&server_ctx_options, "./unittests.crt", "./unittests.key");
 #endif /* __APPLE__ */
-
     aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
+
 
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
     ASSERT_NOT_NULL(server_ctx);
@@ -291,7 +291,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     struct aws_tls_ctx_options client_ctx_options;
 
     aws_tls_ctx_options_init_default_client(&client_ctx_options);
-    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
     aws_tls_ctx_options_override_default_trust_store(&client_ctx_options, NULL, "./unittests.crt");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
@@ -313,6 +312,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, "h2;http/1.1");
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, "localhost");
 
