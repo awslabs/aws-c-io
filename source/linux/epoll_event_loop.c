@@ -352,7 +352,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
     struct epoll_event dummy_event;
 
-    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &dummy_event/*ignored*/))) {
+    if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &dummy_event /*ignored*/))) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
