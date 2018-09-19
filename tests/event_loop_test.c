@@ -325,14 +325,19 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_event_loop_run(event_loop), "Event loop run failed.");
 
     uint8_t read_buffer[1024] = {0};
-    struct pipe_data read_data = {.buf = aws_byte_buf_from_array(read_buffer, sizeof(read_buffer)),
-                                  .bytes_processed = 0,
-                                  .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                  .mutex = AWS_MUTEX_INIT,
-                                  .event_loop = event_loop};
+    struct pipe_data read_data = {
+        .buf = aws_byte_buf_from_array(read_buffer, sizeof(read_buffer)),
+        .bytes_processed = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .event_loop = event_loop,
+    };
 
     struct pipe_data write_data = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .event_loop = event_loop};
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .event_loop = event_loop,
+    };
 
     ASSERT_SUCCESS(aws_pipe_open(&read_data.handle, &write_data.handle), "Pipe open failed");
 
