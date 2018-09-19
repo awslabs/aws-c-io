@@ -91,6 +91,8 @@ AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_ex
 
 #if AWS_USE_IO_COMPLETION_PORTS
 
+int aws_pipe_get_unique_name(char *dst, size_t dst_size);
+
 /* Open read/write handles to a pipe with support for async (overlapped) read and write */
 static int s_async_pipe_init(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     char pipe_name[256];
