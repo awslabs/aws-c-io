@@ -361,6 +361,8 @@ static int s_test_read_write_notifications(struct aws_allocator *allocator, void
         .event_loop = event_loop,
     };
 
+    ASSERT_SUCCESS(simple_pipe_open(&read_data.handle, &write_data.handle), "Pipe open failed");
+
     ASSERT_SUCCESS(
         aws_event_loop_subscribe_to_io_events(
             event_loop, &read_data.handle, AWS_IO_EVENT_TYPE_READABLE, s_on_pipe_readable, &read_data),
