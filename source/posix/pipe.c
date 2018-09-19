@@ -37,9 +37,9 @@ struct read_end_impl {
     struct aws_allocator *alloc;
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
-    bool is_subscribed;
     aws_pipe_on_read_event_fn *on_read_event_user_callback;
     void *on_read_event_user_data;
+    bool is_subscribed;
 };
 
 struct write_request {
@@ -58,10 +58,11 @@ struct write_end_impl {
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
     struct aws_linked_list write_list;
-    bool is_writable;
 
     /* Valid while invoking user callback on a completed write request. */
     struct write_request *currently_invoking_write_callback;
+
+    bool is_writable;
 
     /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated write_request around
      * and re-using it whenever possible */
@@ -85,7 +86,7 @@ static int s_translate_posix_error(int err) {
 }
 
 static int s_raise_posix_error(int err) {
-    return aws_raise_error(err);
+    return aws_raise_error(s_translate_posix_error(err));
 }
 
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
@@ -290,12 +291,12 @@ int aws_pipe_subscribe_to_read_events(
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    if (read_impl->is_subscribed) {
-        return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
-    }
-
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    if (read_impl->is_subscribed) {
+        return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
     }
 
     int err = aws_event_loop_subscribe_to_io_events(
@@ -315,12 +316,12 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    if (!read_impl->is_subscribed) {
-        return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
-    }
-
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    if (!read_impl->is_subscribed) {
+        return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
     }
 
     int err = aws_event_loop_unsubscribe_from_io_events(read_impl->event_loop, &read_impl->handle);
