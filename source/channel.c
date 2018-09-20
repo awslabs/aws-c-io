@@ -455,6 +455,19 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
     }
 }
 
+static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)arg;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *) task;
+        task->fn = NULL;
+        task->arg = NULL;
+        struct aws_channel_slot *slot = shutdown_notify->slot;
+        aws_channel_handler_shutdown(
+                slot->handler, slot, AWS_CHANNEL_DIR_WRITE, shutdown_notify->error_code,
+                shutdown_notify->shutdown_immediately);
+    }
+}
+
 int aws_channel_slot_on_handler_shutdown_complete(
     struct aws_channel_slot *slot,
     enum aws_channel_direction dir,
@@ -471,8 +484,16 @@ int aws_channel_slot_on_handler_shutdown_complete(
                 slot->adj_right->handler, slot->adj_right, dir, err_code, free_scarce_resources_immediately);
         }
 
-        return aws_channel_handler_shutdown(
-            slot->handler, slot, AWS_CHANNEL_DIR_WRITE, err_code, free_scarce_resources_immediately);
+        /* break the shutdown sequence so we don't have handlers having to deal with their memory disappearing out from
+         * under them during a shutdown process. */
+        slot->channel->shutdown_notify_task.slot = slot;
+        slot->channel->shutdown_notify_task.shutdown_immediately = free_scarce_resources_immediately;
+        slot->channel->shutdown_notify_task.error_code = err_code;
+        slot->channel->shutdown_notify_task.task.fn = s_run_shutdown_write_direction;
+        slot->channel->shutdown_notify_task.task.arg = NULL;
+
+        aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+        return AWS_OP_SUCCESS;
     }
 
     if (slot->adj_left && slot->adj_left->handler) {

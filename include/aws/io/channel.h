@@ -46,6 +46,8 @@ enum aws_channel_state {
 struct aws_shutdown_notification_task {
     struct aws_task task;
     int error_code;
+    struct aws_channel_slot *slot;
+    bool shutdown_immediately;
 };
 
 struct aws_channel {

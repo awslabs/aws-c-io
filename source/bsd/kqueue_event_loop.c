@@ -165,7 +165,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
         &thread_signal_kevent,
         impl->cross_thread_signal_pipe[READ_FD],
         EVFILT_READ /*filter*/,
-        EV_ADD /*flags*/,
+        EV_ADD | EV_CLEAR/*flags*/,
         0 /*fflags*/,
         0 /*data*/,
         NULL /*udata*/);
@@ -462,7 +462,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
             &changelist[changelist_size++],
             handle_data->owner->data.fd,
             EVFILT_READ /*filter*/,
-            EV_ADD | EV_RECEIPT /*flags*/,
+            EV_ADD | EV_RECEIPT | EV_CLEAR /*flags*/,
             0 /*fflags*/,
             0 /*data*/,
             handle_data /*udata*/);
@@ -472,7 +472,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
             &changelist[changelist_size++],
             handle_data->owner->data.fd,
             EVFILT_WRITE /*filter*/,
-            EV_ADD | EV_RECEIPT /*flags*/,
+            EV_ADD | EV_RECEIPT | EV_CLEAR/*flags*/,
             0 /*fflags*/,
             0 /*data*/,
             handle_data /*udata*/);

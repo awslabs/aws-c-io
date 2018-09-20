@@ -140,6 +140,8 @@ struct posix_socket {
     bool write_in_progress;
     bool currently_subscribed;
     bool continue_accept;
+    bool currently_in_event;
+    bool clean_yourself_up;
 };
 
 static int s_socket_init(struct aws_socket *socket,
@@ -172,6 +174,8 @@ static int s_socket_init(struct aws_socket *socket,
     posix_socket->write_in_progress = false;
     posix_socket->currently_subscribed = false;
     posix_socket->continue_accept = false;
+    posix_socket->currently_in_event = false;
+    posix_socket->clean_yourself_up = false;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -190,7 +194,15 @@ void aws_socket_clean_up(struct aws_socket *socket) {
     if (aws_socket_is_open(socket)) {
         aws_socket_shutdown(socket);
     }
-    aws_mem_release(socket->allocator, socket->impl);
+    struct posix_socket *socket_impl = socket->impl;
+
+    if (!socket_impl->currently_in_event) {
+        aws_mem_release(socket->allocator, socket->impl);
+    }
+    else {
+        socket_impl->clean_yourself_up = true;
+    }
+
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
 }
@@ -882,32 +894,43 @@ static void s_on_socket_io_event(struct aws_event_loop *event_loop,
     (void)event_loop;
     (void)handle;
     struct aws_socket *socket = user_data;
+    struct posix_socket *socket_impl = socket->impl;
+    struct aws_allocator *allocator = socket->allocator;
+
+    socket_impl->currently_in_event = true;
 
     if (events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP || events & AWS_IO_EVENT_TYPE_CLOSED) {
         aws_raise_error(AWS_IO_SOCKET_CLOSED);
         if (socket->readable_fn) {
             socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
         }
-        return;
+        goto end_check;
     }
 
-    if (events & AWS_IO_EVENT_TYPE_ERROR) {
+    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_ERROR) {
         int aws_error = s_determine_socket_error(errno);
         aws_raise_error(aws_error);
         if (socket->readable_fn) {
             socket->readable_fn(socket, aws_error, socket->readable_user_data);
         }
-        return;
+        goto end_check;
     }
 
-    if (events & AWS_IO_EVENT_TYPE_READABLE) {
+    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_READABLE) {
         if (socket->readable_fn) {
             socket->readable_fn(socket, AWS_OP_SUCCESS, socket->readable_user_data);
         }
     }
 
-    if (events & AWS_IO_EVENT_TYPE_WRITABLE) {
+    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_WRITABLE) {
         s_process_write_requests(socket);
+    }
+
+end_check:
+    socket_impl->currently_in_event = false;
+
+    if (socket_impl->clean_yourself_up) {
+        aws_mem_release(allocator, socket_impl);
     }
 }
 
