@@ -17,6 +17,8 @@
 
 #include <aws/common/byte_buf.h>
 #include <aws/common/clock.h>
+#include <aws/common/mutex.h>
+#include <aws/common/condition_variable.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
@@ -183,7 +185,9 @@ int aws_socket_init(
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
-    aws_socket_shutdown(socket);
+    if (aws_socket_is_open(socket)) {
+        aws_socket_shutdown(socket);
+    }
     aws_mem_release(socket->allocator, socket->impl);
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
@@ -589,6 +593,8 @@ int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *ac
     }
 
     socket->event_loop = accept_loop;
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->currently_subscribed = true;
     return aws_event_loop_subscribe_to_io_events(
         socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, socket_accept_event, socket);
 }
@@ -598,10 +604,13 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    int ret_val = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
-    struct posix_socket *socket_impl = socket->impl;
-    socket_impl->currently_subscribed = false;
-    socket->event_loop = NULL;
+    int ret_val = AWS_OP_SUCCESS;
+    /*struct posix_socket *socket_impl = socket->impl;
+    if (socket_impl->currently_subscribed) {
+        ret_val = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+        socket_impl->currently_subscribed = false;
+        socket->event_loop = NULL;
+    }*/
     return ret_val;
 }
 
@@ -650,16 +659,68 @@ struct write_request {
     struct aws_linked_list_node node;
 };
 
+struct socket_shutdown_args {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    struct aws_socket *socket;
+    bool invoked;
+    int ret_code;
+};
+
+static bool s_shutdown_predicate(void *arg) {
+    struct socket_shutdown_args *shutdown_args = arg;
+    return shutdown_args->invoked;
+}
+
+static void s_shutdown_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct socket_shutdown_args *shutdown_args = arg;
+        aws_mutex_lock(&shutdown_args->mutex);
+        struct posix_socket *socket_impl = shutdown_args->socket->impl;
+        aws_event_loop_unsubscribe_from_io_events(shutdown_args->socket->event_loop, &shutdown_args->socket->io_handle);
+        socket_impl->currently_subscribed = false;
+        shutdown_args->socket->event_loop = NULL;
+        shutdown_args->ret_code = aws_socket_shutdown(shutdown_args->socket);
+        shutdown_args->invoked = true;
+        aws_condition_variable_notify_one(&shutdown_args->condition_variable);
+        aws_mutex_unlock(&shutdown_args->mutex);
+    }
+}
+
 int aws_socket_shutdown(struct aws_socket *socket) {
     struct posix_socket *socket_impl = socket->impl;
 
-    if (socket->event_loop && socket_impl->currently_subscribed) {
-        int err_code = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+    if (socket->event_loop) {
+        /* don't freak out on me, this almost never happens, and never occurs inside a channel
+         * it only gets hit from a listening socket shutting down or from a unit test. */
+        if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+            struct socket_shutdown_args args = {
+                    .mutex = AWS_MUTEX_INIT,
+                    .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                    .socket = socket,
+                    .ret_code = AWS_OP_SUCCESS,
+            };
 
-        if (err_code) {
-            return AWS_OP_ERR;
+            struct aws_task shutdown_task = {
+                    .fn = s_shutdown_task,
+                    .arg = &args,
+            };
+
+            aws_mutex_lock(&args.mutex);
+            aws_event_loop_schedule_task_now(socket->event_loop, &shutdown_task);
+            aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_shutdown_predicate, &args);
+            return args.ret_code;
         }
-        socket_impl->currently_subscribed = false;
+        else if (socket_impl->currently_subscribed) {
+            int err_code = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+
+            if (err_code) {
+                return AWS_OP_ERR;
+            }
+            socket_impl->currently_subscribed = false;
+            socket->event_loop = NULL;
+        }
     }
 
     if (socket->io_handle.data.fd >= 0) {

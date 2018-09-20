@@ -436,7 +436,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &incoming_args));
 
-    /*now shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
+    /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
