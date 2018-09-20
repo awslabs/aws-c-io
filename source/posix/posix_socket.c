@@ -41,6 +41,7 @@
 
 #if defined(__MACH__)
 #    define NO_SIGNAL SO_NOSIGPIPE
+#    define TCP_KEEPIDLE TCP_KEEPALIVE
 #else
 #    define NO_SIGNAL MSG_NOSIGNAL
 #endif
@@ -135,6 +136,7 @@ static int s_create_socket(struct aws_socket *sock, struct aws_socket_options *o
 struct posix_socket {
     struct aws_linked_list write_queue;
     bool write_in_progress;
+    bool currently_subscribed;
 };
 
 static int s_socket_init(struct aws_socket *socket,
@@ -165,6 +167,7 @@ static int s_socket_init(struct aws_socket *socket,
 
     aws_linked_list_init(&posix_socket->write_queue);
     posix_socket->write_in_progress = false;
+    posix_socket->currently_subscribed = false;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -191,7 +194,13 @@ static void s_on_connection_error(struct aws_socket *socket, int error);
 static int s_on_connection_success(struct aws_socket *socket) {
 
     struct aws_event_loop *event_loop = socket->event_loop;
-    aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+    struct posix_socket *socket_impl = socket->impl;
+
+    if (socket_impl->currently_subscribed) {
+        aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+        socket_impl->currently_subscribed = false;
+    }
+
     socket->event_loop = NULL;
     if (aws_socket_set_options(socket, &socket->options)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -308,7 +317,8 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             aws_event_loop_unsubscribe_from_io_events(
                 socket_args->socket->event_loop, &socket_args->socket->io_handle);
             socket_args->socket->event_loop = NULL;
-
+            struct posix_socket *socket_impl = socket_args->socket->impl;
+            socket_impl->currently_subscribed = false;
             aws_socket_shutdown(socket_args->socket);
             aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
 
@@ -589,6 +599,8 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
     }
 
     int ret_val = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->currently_subscribed = false;
     socket->event_loop = NULL;
     return ret_val;
 }
@@ -639,20 +651,21 @@ struct write_request {
 };
 
 int aws_socket_shutdown(struct aws_socket *socket) {
-    if (socket->event_loop) {
+    struct posix_socket *socket_impl = socket->impl;
+
+    if (socket->event_loop && socket_impl->currently_subscribed) {
         int err_code = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
 
         if (err_code) {
             return AWS_OP_ERR;
         }
+        socket_impl->currently_subscribed = false;
     }
 
     if (socket->io_handle.data.fd >= 0) {
         close(socket->io_handle.data.fd);
         socket->io_handle.data.fd = -1;
     }
-
-    struct posix_socket *socket_impl = socket->impl;
 
     /* after shutdown, just go ahead and clear out the pending writes queue
      * and tell the user they were cancelled. */
@@ -784,6 +797,8 @@ static void s_on_socket_io_event(struct aws_event_loop *event_loop,
 int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop) {
     if (!socket->event_loop) {
         socket->event_loop = event_loop;
+        struct posix_socket *socket_impl = socket->impl;
+        socket_impl->currently_subscribed = true;
         return aws_event_loop_subscribe_to_io_events(event_loop, &socket->io_handle,
                                                      AWS_IO_EVENT_TYPE_WRITABLE | AWS_IO_EVENT_TYPE_READABLE,
                                                      s_on_socket_io_event, socket);

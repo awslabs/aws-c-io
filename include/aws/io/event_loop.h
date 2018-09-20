@@ -306,7 +306,8 @@ int aws_event_loop_connect_handle_to_io_completion_port(
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were
  * received. The definition for these values can be found in aws_io_event_type. Currently, only
  * AWS_IO_EVENT_TYPE_READABLE and AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions
- * and closure. This function may be called from outside or inside the event loop thread.
+ * and closure. This function may be called from outside or inside the event loop thread. However, the unsubscribe
+ * function must be called inside the event-loop's thread.
  */
 AWS_IO_API
 int aws_event_loop_subscribe_to_io_events(
@@ -319,9 +320,9 @@ int aws_event_loop_subscribe_to_io_events(
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
-* Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
-* This function may be called from outside or inside the event loop thread.
-*/
+ * Unsubscribes handle from event-loop notifications.
+ * This function is not thread safe and should be called inside the event-loop's thread.
+ */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 

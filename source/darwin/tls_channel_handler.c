@@ -69,6 +69,8 @@ struct secure_transport_handler {
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
+    struct aws_task read_task;
+    bool read_task_pending;
     bool negotiation_finished;
     bool verify_peer;
 };
@@ -254,7 +256,7 @@ static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, i
     }
 }
 
-static int drive_negotiation(struct aws_channel_handler *handler) {
+static int s_drive_negotiation(struct aws_channel_handler* handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
@@ -339,7 +341,7 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
             CFRelease(trust);
 
             if (status == errSecSuccess && (trust_eval == kSecTrustResultProceed || trust_eval == kSecTrustResultUnspecified)) {
-                return drive_negotiation(handler);
+                return s_drive_negotiation(handler);
             }
 
             return AWS_OP_ERR;
@@ -358,28 +360,33 @@ static int drive_negotiation(struct aws_channel_handler *handler) {
     return AWS_OP_SUCCESS;
 }
 
-static void negotiation_task(void *arg, aws_task_status status) {
+static void s_negotiation_task(struct aws_task* task, void* arg, aws_task_status status) {
+    struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
+
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
-        drive_negotiation(handler);
+        s_drive_negotiation(handler);
     }
+
+    aws_mem_release(handler->alloc, task);
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
 
     if (aws_channel_thread_is_callers_thread(secure_transport_handler->parent_slot->channel)) {
-        return drive_negotiation(handler);
+        return s_drive_negotiation(handler);
     }
 
-    struct aws_task task = {
-        .fn = negotiation_task,
-        .arg = handler,
-    };
+    struct aws_task *negotiation_task = aws_mem_acquire(handler->alloc, sizeof(struct aws_task));
 
-    uint64_t now = 0;
-    aws_channel_current_clock_time(secure_transport_handler->parent_slot->channel, &now);
-    return aws_channel_schedule_task(secure_transport_handler->parent_slot->channel, &task, now);
+    if (!negotiation_task) {
+        return AWS_OP_ERR;
+    }
+
+    negotiation_task->fn = s_negotiation_task;
+    negotiation_task->arg = handler;
+    aws_channel_schedule_task_now(secure_transport_handler->parent_slot->channel, negotiation_task);
+    return AWS_OP_SUCCESS;
 }
 
 static int secure_transport_handler_process_write_message(
@@ -441,7 +448,7 @@ static int secure_transport_handler_process_read_message(
 
         if (!secure_transport_handler->negotiation_finished) {
             size_t message_len = message->message_data.len;
-            if (!drive_negotiation(handler)) {
+            if (!s_drive_negotiation(handler)) {
                 aws_channel_slot_increment_read_window(slot, message_len);
             } else {
                 aws_channel_shutdown(
@@ -493,18 +500,20 @@ static int secure_transport_handler_process_read_message(
     return AWS_OP_SUCCESS;
 }
 
-static void run_read(void *arg, aws_task_status status) {
+static void s_run_read(struct aws_task *task, void *arg, aws_task_status status) {
+    (void)task;
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
         struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+        secure_transport_handler->read_task_pending = false;
         secure_transport_handler_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
     }
 }
 
-static int secure_transport_handler_on_window_update(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    size_t size) {
+static int s_secure_transport_handler_on_window_update(
+        struct aws_channel_handler* handler,
+        struct aws_channel_slot* slot,
+        size_t size) {
     aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
     struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
@@ -513,18 +522,13 @@ static int secure_transport_handler_on_window_update(
         /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
-        uint64_t now = 0;
-
-        if (aws_channel_current_clock_time(slot->channel, &now)) {
-            return AWS_OP_ERR;
+        if (!secure_transport_handler->read_task_pending) {
+            secure_transport_handler->read_task_pending = true;
+            secure_transport_handler->read_task.fn = s_run_read;
+            secure_transport_handler->read_task.arg = handler;
         }
 
-        struct aws_task task = {
-            .fn = run_read,
-            .arg = handler,
-        };
-
-        return aws_channel_schedule_task(slot->channel, &task, now);
+        aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
     }
 
     return AWS_OP_SUCCESS;
@@ -555,7 +559,7 @@ static struct aws_channel_handler_vtable handler_vtable = {
     .process_read_message = secure_transport_handler_process_read_message,
     .process_write_message = secure_transport_handler_process_write_message,
     .shutdown = secure_transport_handler_shutdown,
-    .increment_read_window = secure_transport_handler_on_window_update,
+    .increment_read_window = s_secure_transport_handler_on_window_update,
     .initial_window_size = secure_transport_handler_get_current_window_size,
 };
 
@@ -565,7 +569,6 @@ struct secure_transport_ctx {
     CFArrayRef certs;
     CFArrayRef ca_cert;
     aws_tls_versions minimum_version;
-    const char *server_name;
     const char *alpn_list;
     bool veriify_peer;
 };
@@ -671,16 +674,9 @@ static struct aws_channel_handler *tls_handler_new(
     secure_transport_handler->negotiation_finished = false;
     secure_transport_handler->latest_message_on_completion = NULL;
 
-    const char *server_name = NULL;
     if (options->server_name) {
-        server_name = options->server_name;
-    } else {
-        server_name = secure_transport_ctx->server_name;
-    }
-
-    if (server_name) {
-        size_t server_name_len = strlen(server_name);
-        SSLSetPeerDomainName(secure_transport_handler->ctx, server_name, server_name_len);
+        size_t server_name_len = strlen(options->server_name);
+        SSLSetPeerDomainName(secure_transport_handler->ctx, options->server_name, server_name_len);
     }
 
     const char *alpn_list = NULL;
@@ -750,7 +746,6 @@ static struct aws_tls_ctx *tls_ctx_new(struct aws_allocator *alloc, struct aws_t
         goto cleanup_secure_transport_ctx;
     }
 
-    secure_transport_ctx->server_name = options->server_name;
     secure_transport_ctx->alpn_list = options->alpn_list;
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;

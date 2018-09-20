@@ -1076,7 +1076,7 @@ error:
 
 /* Perform an enormous write that can't possibly complete without a bit of reading.
  * After kicking off the write operation, close the write-end.
- * The write operation chould complete with a "cancelled" status */
+ * The write operation chould complete with an error status */
 static int test_pipe_clean_up_cancels_pending_writes(struct pipe_state *state) {
     /* capture the status code from the on-write-complete callback */
     int write_status_code = 0;
@@ -1086,8 +1086,8 @@ static int test_pipe_clean_up_cancels_pending_writes(struct pipe_state *state) {
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(AWS_ERROR_IO_OPERATION_CANCELLED, write_status_code);
-    ASSERT_UINT_EQUALS(0, state->buffers.num_bytes_written);
+    ASSERT_INT_EQUALS(AWS_IO_BROKEN_PIPE, write_status_code);
+    ASSERT_TRUE(state->buffers.num_bytes_written < state->buffer_size);
 
     return AWS_OP_SUCCESS;
 }

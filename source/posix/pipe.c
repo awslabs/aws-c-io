@@ -37,9 +37,9 @@ struct read_end_impl {
     struct aws_allocator *alloc;
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
-    bool is_subscribed;
     aws_pipe_on_read_event_fn *on_read_event_user_callback;
     void *on_read_event_user_data;
+    bool is_subscribed;
 };
 
 struct write_request {
@@ -58,10 +58,11 @@ struct write_end_impl {
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
     struct aws_linked_list write_list;
-    bool is_writable;
 
     /* Valid while invoking user callback on a completed write request. */
     struct write_request *currently_invoking_write_callback;
+
+    bool is_writable;
 
     /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated write_request around
      * and re-using it whenever possible */
@@ -76,7 +77,7 @@ static void s_write_end_on_event(
 static int s_translate_posix_error(int err) {
     assert(err);
 
-    switch(err) {
+    switch (err) {
         case EPIPE:
             return AWS_IO_BROKEN_PIPE;
         default:
@@ -85,7 +86,7 @@ static int s_translate_posix_error(int err) {
 }
 
 static int s_raise_posix_error(int err) {
-    return aws_raise_error(err);
+    return aws_raise_error(s_translate_posix_error(err));
 }
 
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
@@ -96,6 +97,8 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
     if (err) {
         return s_raise_posix_error(err);
     }
+
+    return AWS_OP_SUCCESS;
 #else
     err = pipe(pipe_fds);
     if (err) {
@@ -110,19 +113,18 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
         }
 
         flags |= O_NONBLOCK | O_CLOEXEC;
-        if (fcntl(pipe_fds[0], F_SETFL, flags) == -1) {
+        if (fcntl(pipe_fds[i], F_SETFL, flags) == -1) {
             s_raise_posix_error(err);
             goto error;
         }
     }
-    return AWS_OP_SUCCESS
 
+    return AWS_OP_SUCCESS;
 error:
     close(pipe_fds[0]);
     close(pipe_fds[1]);
     return AWS_OP_ERR;
 #endif
-    return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_init(
@@ -138,8 +140,8 @@ int aws_pipe_init(
     assert(write_end_event_loop);
     assert(allocator);
 
-    AWS_ZERO_STRUCT(read_end);
-    AWS_ZERO_STRUCT(write_end);
+    AWS_ZERO_STRUCT(*read_end);
+    AWS_ZERO_STRUCT(*write_end);
 
     struct read_end_impl *read_impl = NULL;
     struct write_end_impl *write_impl = NULL;
@@ -158,6 +160,7 @@ int aws_pipe_init(
         goto error;
     }
 
+    AWS_ZERO_STRUCT(*read_impl);
     read_impl->alloc = allocator;
     read_impl->handle.data.fd = pipe_fds[0];
     read_impl->event_loop = read_end_event_loop;
@@ -168,9 +171,11 @@ int aws_pipe_init(
         goto error;
     }
 
+    AWS_ZERO_STRUCT(*write_impl);
     write_impl->alloc = allocator;
     write_impl->handle.data.fd = pipe_fds[1];
     write_impl->event_loop = write_end_event_loop;
+    write_impl->is_writable = true; /* Assume pipe is writable to start. Even if it's not, things shouldn't break */
     aws_linked_list_init(&write_impl->write_list);
 
     err = aws_event_loop_subscribe_to_io_events(
@@ -240,17 +245,16 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
     assert(dst);
 
     if (num_bytes_read) {
-        num_bytes_read = 0;
+        *num_bytes_read = 0;
     }
 
     ssize_t read_val = read(read_impl->handle.data.fd, dst, dst_size);
 
-    if (read_val == EAGAIN || read_val == EWOULDBLOCK) {
-        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-    }
-
     if (read_val < 0) {
-        return s_raise_posix_error(read_val);
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        return s_raise_posix_error(errno);
     }
 
     if (num_bytes_read) {
@@ -287,12 +291,12 @@ int aws_pipe_subscribe_to_read_events(
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    if (read_impl->is_subscribed) {
-        return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
-    }
-
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    if (read_impl->is_subscribed) {
+        return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
     }
 
     int err = aws_event_loop_subscribe_to_io_events(
@@ -312,12 +316,12 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
-    if (!read_impl->is_subscribed) {
-        return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
-    }
-
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    if (!read_impl->is_subscribed) {
+        return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
     }
 
     int err = aws_event_loop_unsubscribe_from_io_events(read_impl->event_loop, &read_impl->handle);
@@ -377,15 +381,15 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
         if (request->cursor.len > 0) {
             ssize_t write_val = write(write_impl->handle.data.fd, request->cursor.ptr, request->cursor.len);
 
-            if (write_val == EAGAIN || write_val == EWOULDBLOCK) {
-                /* The pipe is no longer writable. Bail out */
-                write_impl->is_writable = false;
-                return;
-            }
-
             if (write_val < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    /* The pipe is no longer writable. Bail out */
+                    write_impl->is_writable = false;
+                    return;
+                }
+
                 /* A non-recoverable error occurred during this write */
-                completed_write_status = s_translate_posix_error(write_val);
+                completed_write_status = s_translate_posix_error(errno);
 
             } else {
                 request->num_bytes_written += write_val;
