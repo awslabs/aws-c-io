@@ -236,7 +236,7 @@ static int s_test_socket(
         ASSERT_INT_EQUALS(options->type, listener_args.incoming->options.type);
     }
 
-    aws_socket_assign_to_event_loop(server_sock, event_loop);
+    ASSERT_SUCCESS(aws_socket_assign_to_event_loop(server_sock, event_loop));
     aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
     aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 

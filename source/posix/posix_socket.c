@@ -139,6 +139,7 @@ struct posix_socket {
     struct aws_linked_list write_queue;
     bool write_in_progress;
     bool currently_subscribed;
+    bool continue_accept;
 };
 
 static int s_socket_init(struct aws_socket *socket,
@@ -170,6 +171,7 @@ static int s_socket_init(struct aws_socket *socket,
     aws_linked_list_init(&posix_socket->write_queue);
     posix_socket->write_in_progress = false;
     posix_socket->currently_subscribed = false;
+    posix_socket->continue_accept = false;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -414,7 +416,8 @@ int aws_socket_connect(struct aws_socket *socket,
                                                       s_socket_connect_event, sock_args)) {
                 goto err_clean_up;
             }
-
+            struct posix_socket *socket_impl = socket->impl;
+            socket_impl->currently_subscribed = true;
             uint64_t timeout = 0;
             aws_event_loop_current_clock_time(event_loop, &timeout);
 
@@ -510,8 +513,9 @@ static void socket_accept_event(
     (void)event_loop;
 
     struct aws_socket *socket = user_data;
+    struct posix_socket *socket_impl = socket->impl;
 
-    if (events & AWS_IO_EVENT_TYPE_READABLE) {
+    if (socket_impl->continue_accept && events & AWS_IO_EVENT_TYPE_READABLE) {
         int in_fd = 0;
         while (in_fd != -1) {
             struct sockaddr_storage in_addr;
@@ -594,23 +598,79 @@ int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *ac
 
     socket->event_loop = accept_loop;
     struct posix_socket *socket_impl = socket->impl;
+    socket_impl->continue_accept = true;
+
+    if (aws_event_loop_subscribe_to_io_events(
+        socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, socket_accept_event, socket)) {
+        socket_impl->continue_accept = false;
+
+        return AWS_OP_ERR;
+    }
+
     socket_impl->currently_subscribed = true;
-    return aws_event_loop_subscribe_to_io_events(
-        socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, socket_accept_event, socket);
+    return AWS_OP_SUCCESS;
+}
+
+struct stop_accept_args {
+    struct aws_task task;
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    struct aws_socket *socket;
+    int ret_code;
+    bool invoked;
+};
+
+static bool s_stop_accept_pred(void *arg) {
+    struct stop_accept_args *stop_accept_args = arg;
+    return stop_accept_args->invoked;
+}
+
+static void s_stop_accept_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct stop_accept_args *stop_accept_args = arg;
+    aws_mutex_lock(&stop_accept_args->mutex);
+    stop_accept_args->ret_code = aws_socket_stop_accept(stop_accept_args->socket);
+    stop_accept_args->invoked = true;
+    aws_condition_variable_notify_one(&stop_accept_args->condition_variable);
+    aws_mutex_unlock(&stop_accept_args->mutex);
 }
 
 int aws_socket_stop_accept(struct aws_socket *socket) {
+    if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+        struct stop_accept_args args = {
+                .mutex = AWS_MUTEX_INIT,
+                .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                .invoked = false,
+                .socket = socket,
+                .ret_code = AWS_OP_SUCCESS,
+                .task = {
+                        .fn = s_stop_accept_task
+                }
+        };
+        /* Look.... I know what I'm doing.... trust me, I'm an engineer.
+         * We wait on the completion before 'args' goes out of scope.
+         * NOLINTNEXTLINE */
+        args.task.arg = &args;
+        aws_mutex_lock(&args.mutex);
+        aws_event_loop_schedule_task_now(socket->event_loop, &args.task);
+        aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_stop_accept_pred, &args);
+        return args.ret_code;
+    }
+
     if (socket->state != LISTENING) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
     int ret_val = AWS_OP_SUCCESS;
-    /*struct posix_socket *socket_impl = socket->impl;
+    struct posix_socket *socket_impl = socket->impl;
     if (socket_impl->currently_subscribed) {
         ret_val = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
         socket_impl->currently_subscribed = false;
         socket->event_loop = NULL;
-    }*/
+    }
+
     return ret_val;
 }
 
@@ -677,10 +737,6 @@ static void s_shutdown_task(struct aws_task *task, void *arg, enum aws_task_stat
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_shutdown_args *shutdown_args = arg;
         aws_mutex_lock(&shutdown_args->mutex);
-        struct posix_socket *socket_impl = shutdown_args->socket->impl;
-        aws_event_loop_unsubscribe_from_io_events(shutdown_args->socket->event_loop, &shutdown_args->socket->io_handle);
-        socket_impl->currently_subscribed = false;
-        shutdown_args->socket->event_loop = NULL;
         shutdown_args->ret_code = aws_socket_shutdown(shutdown_args->socket);
         shutdown_args->invoked = true;
         aws_condition_variable_notify_one(&shutdown_args->condition_variable);
