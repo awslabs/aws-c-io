@@ -37,8 +37,8 @@ struct read_end_impl {
     struct aws_allocator *alloc;
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
-    aws_pipe_on_read_event_fn *on_read_event_user_callback;
-    void *on_read_event_user_data;
+    aws_pipe_on_readable_fn *on_readable_user_callback;
+    void *on_readable_user_data;
     bool is_subscribed;
 };
 
@@ -214,7 +214,7 @@ int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
     }
 
     if (read_impl->is_subscribed) {
-        int err = aws_pipe_unsubscribe_from_read_events(read_end);
+        int err = aws_pipe_unsubscribe_from_readable_events(read_end);
         if (err) {
             return AWS_OP_ERR;
         }
@@ -277,19 +277,21 @@ static void s_read_end_on_event(
     assert(read_impl->event_loop == event_loop);
     assert(&read_impl->handle == handle);
     assert(read_impl->is_subscribed);
+    assert(events != 0);
 
-    if (read_impl->on_read_event_user_callback) {
-        read_impl->on_read_event_user_callback(read_end, events, read_impl->on_read_event_user_data);
-    }
+    int error_code = (events == AWS_IO_EVENT_TYPE_READABLE) ? AWS_ERROR_SUCCESS : AWS_IO_BROKEN_PIPE;
+
+    read_impl->on_readable_user_callback(read_end, error_code, read_impl->on_readable_user_data);
 }
 
-int aws_pipe_subscribe_to_read_events(
+int aws_pipe_subscribe_to_readable_events(
     struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_event_fn *on_read_event,
+    aws_pipe_on_readable_fn *on_readable,
     void *user_data) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
+    assert(on_readable);
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -306,13 +308,13 @@ int aws_pipe_subscribe_to_read_events(
     }
 
     read_impl->is_subscribed = true;
-    read_impl->on_read_event_user_callback = on_read_event;
-    read_impl->on_read_event_user_data = user_data;
+    read_impl->on_readable_user_callback = on_readable;
+    read_impl->on_readable_user_data = user_data;
 
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
+int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
@@ -330,8 +332,8 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     }
 
     read_impl->is_subscribed = false;
-    read_impl->on_read_event_user_callback = NULL;
-    read_impl->on_read_event_user_data = NULL;
+    read_impl->on_readable_user_callback = NULL;
+    read_impl->on_readable_user_data = NULL;
 
     return AWS_OP_SUCCESS;
 }

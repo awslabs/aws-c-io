@@ -64,10 +64,10 @@ struct pipe_state {
     } buffers;
 
     struct {
-        int monitoring_mask;               /* contains aws_io_event_type flags */
-        int count;                         /* count of events that matched the mask */
-        int close_read_end_after_n_events; /* if set, close read end when count reaches N */
-    } events;
+        int error_code_to_monitor; /* By default, monitors AWS_ERROR_SUCCESS aka normal readable events */
+        int count; /* count of events that we're monitoring */
+        int close_read_end_after_n_events; /* if set, close read-end when count reaches N */
+    } readable_events;
 
     void *test_data; /* If a test needs special data */
 };
@@ -423,14 +423,14 @@ static int test_pipe_read_write_large_buffer(struct pipe_state *state) {
 
 PIPE_TEST_CASE(pipe_read_write_large_buffer, GIANT_BUFFER_SIZE);
 
-static void s_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
+static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_code, void *user_data) {
 
     struct pipe_state *state = user_data;
 
-    if (events & state->events.monitoring_mask) {
-        state->events.count++;
+    if (error_code == state->readable_events.error_code_to_monitor) {
+        state->readable_events.count++;
 
-        if (state->events.count == state->events.close_read_end_after_n_events) {
+        if (state->readable_events.count == state->readable_events.close_read_end_after_n_events) {
             int err = aws_pipe_clean_up_read_end(read_end);
             if (err) {
                 goto error;
@@ -453,7 +453,7 @@ static void s_subscribe_task(struct aws_task *task, void *arg, enum aws_task_sta
         goto error;
     }
 
-    int err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+    int err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_on_readable_event, state);
     if (err) {
         goto error;
     }
@@ -464,15 +464,15 @@ error:
 }
 
 static int test_pipe_readable_event_sent_after_write(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state->events.close_read_end_after_n_events = 1;
+    state->readable_events.error_code_to_monitor = AWS_ERROR_SUCCESS;
+    state->readable_events.close_read_end_after_n_events = 1;
 
     s_schedule_read_end_task(state, s_subscribe_task);
     s_schedule_write_end_task(state, s_write_once_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->events.count);
+    ASSERT_INT_EQUALS(1, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -529,14 +529,14 @@ error:
 }
 
 static int test_pipe_readable_event_sent_on_subscribe_if_data_present(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state->events.close_read_end_after_n_events = 1;
+    state->readable_events.error_code_to_monitor = AWS_ERROR_SUCCESS;
+    state->readable_events.close_read_end_after_n_events = 1;
 
     s_schedule_write_end_task(state, s_write_once_then_subscribe_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->events.count);
+    ASSERT_INT_EQUALS(1, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -547,7 +547,7 @@ static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, 
     struct pipe_state *state = user_data;
     int err = 0;
 
-    int prev_events_count = state->events.count;
+    int prev_events_count = state->readable_events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -555,14 +555,14 @@ static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, 
         return;
     }
 
-    if ((state->events.count == 1) && (prev_events_count == 0)) {
+    if ((state->readable_events.count == 1) && (prev_events_count == 0)) {
         /* unsubscribe and resubscribe */
-        err = aws_pipe_unsubscribe_from_read_events(&state->read_end);
+        err = aws_pipe_unsubscribe_from_readable_events(&state->read_end);
         if (err) {
             goto error;
         }
 
-        err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+        err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_on_readable_event, state);
         if (err) {
             goto error;
         }
@@ -584,7 +584,7 @@ static void s_resubscribe_1_task(struct aws_task *task, void *arg, enum aws_task
     }
 
     /* subscribe */
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_resubscribe_on_readable_event, state);
+    err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_resubscribe_on_readable_event, state);
     if (err) {
         goto error;
     }
@@ -620,14 +620,14 @@ error:
 }
 
 static int test_pipe_readable_event_sent_on_resubscribe_if_data_present(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state->events.close_read_end_after_n_events = 2;
+    state->readable_events.error_code_to_monitor = AWS_ERROR_SUCCESS;
+    state->readable_events.close_read_end_after_n_events = 2;
 
     s_schedule_write_end_task(state, s_resubscribe_write_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(2, state->events.count);
+    ASSERT_INT_EQUALS(2, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -689,7 +689,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
     struct pipe_state *state = user_data;
     int err = 0;
 
-    int prev_event_count = state->events.count;
+    int prev_event_count = state->readable_events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -697,7 +697,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
         return;
     }
 
-    if ((state->events.count == 1) && (prev_event_count == 0)) {
+    if ((state->readable_events.count == 1) && (prev_event_count == 0)) {
         /* After the first write, read data until we're told that further reads would block.
          * This ensures that the next write is sure to trigger a readable event */
         while (true) {
@@ -737,7 +737,7 @@ static void s_readall_subscribe_task(struct aws_task *task, void *arg, enum aws_
         goto error;
     }
 
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_readall_on_readable, state);
+    err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_readall_on_readable, state);
     if (err) {
         goto error;
     }
@@ -750,15 +750,15 @@ error:
 /* Check that the 2nd readable event is sent again in the case of: subscribe, write 1, read all, write 2
  * Short name for test is: readall */
 static int test_pipe_readable_event_sent_again_after_all_data_read(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
-    state->events.close_read_end_after_n_events = 2;
+    state->readable_events.error_code_to_monitor = AWS_ERROR_SUCCESS;
+    state->readable_events.close_read_end_after_n_events = 2;
 
     s_schedule_read_end_task(state, s_readall_subscribe_task);
     s_schedule_write_end_task(state, s_readall_write_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(2, state->events.count);
+    ASSERT_INT_EQUALS(2, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -769,7 +769,7 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
     struct pipe_state *state = user_data;
     int err = 0;
 
-    int prev_events_count = state->events.count;
+    int prev_events_count = state->readable_events.count;
 
     /* invoke usual readable callback so the events are logged */
     s_on_readable_event(read_end, events, user_data);
@@ -778,11 +778,11 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
     }
 
     /* if this wasn't an event we're tracking, bail */
-    if (state->events.count == prev_events_count) {
+    if (state->readable_events.count == prev_events_count) {
         return;
     }
 
-    if (state->events.count == 1) {
+    if (state->readable_events.count == 1) {
         /* After the first write, read just some of the data.
          * Further writes shouldn't trigger the readable event */
         size_t num_bytes_read = 0;
@@ -820,7 +820,7 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
 
         aws_event_loop_schedule_task_future(state->read_loop, task, task_time);
 
-    } else if (state->events.count > 1) {
+    } else if (state->readable_events.count > 1) {
         /* There should only be 1 readable event */
         goto error;
     }
@@ -840,7 +840,7 @@ static void s_readsome_subscribe_task(struct aws_task *task, void *arg, enum aws
         goto error;
     }
 
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_readsome_on_readable, state);
+    err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_readsome_on_readable, state);
     if (err) {
         goto error;
     }
@@ -853,7 +853,7 @@ error:
 /* Test that only 1 readable event is sent in the case of: subscribe, write 1, read some but not all data, write 2.
  * Short name for test is: readsome */
 static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_READABLE;
+    state->readable_events.error_code_to_monitor = AWS_ERROR_SUCCESS;
 
     /* not setting close_read_end_after_n_events because we manually shut down read-end in this test */
 
@@ -864,7 +864,7 @@ static int test_pipe_readable_event_not_sent_again_until_all_data_read(struct pi
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->events.count);
+    ASSERT_INT_EQUALS(1, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -885,7 +885,7 @@ static void s_subscribe_and_schedule_write_end_clean_up_task(
         goto error;
     }
 
-    err = aws_pipe_subscribe_to_read_events(&state->read_end, s_on_readable_event, state);
+    err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_on_readable_event, state);
     if (err) {
         goto error;
     }
@@ -899,14 +899,14 @@ error:
 }
 
 static int test_pipe_hangup_event_sent_after_write_end_closed(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    state->events.close_read_end_after_n_events = 1;
+    state->readable_events.error_code_to_monitor = AWS_IO_BROKEN_PIPE;
+    state->readable_events.close_read_end_after_n_events = 1;
 
     s_schedule_read_end_task(state, s_subscribe_and_schedule_write_end_clean_up_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->events.count);
+    ASSERT_INT_EQUALS(1, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }
@@ -941,14 +941,14 @@ error:
 }
 
 static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(struct pipe_state *state) {
-    state->events.monitoring_mask = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-    state->events.close_read_end_after_n_events = 1;
+    state->readable_events.error_code_to_monitor = AWS_IO_BROKEN_PIPE;
+    state->readable_events.close_read_end_after_n_events = 1;
 
     s_schedule_write_end_task(state, s_clean_up_write_end_then_schedule_subscribe_task);
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->events.count);
+    ASSERT_INT_EQUALS(1, state->readable_events.count);
 
     return AWS_OP_SUCCESS;
 }

@@ -29,21 +29,27 @@ struct aws_pipe_write_end {
 };
 
 /**
- * Called when events occur on the read end of the pipe.
- * `events` contains flags corresponding to `aws_io_event_type` values.
+ * Callback for when the pipe is readable (edge-triggered), or an error has occurred.
+ *
+ * Afer subscribing, the callback is invoked when the pipe has data to read, or the pipe has an error.
+ * The readable callback is invoked again any time the user reads all data, and then more data arrives.
+ * Note that it will not be invoked again if the pipe still has unread data when more data arrives.
+ *
+ * `error_code` of AWS_ERROR_SUCCESS indicates a readable event, and otherwise contains the value of the error.
  * `user_data` corresponds to the `user_data` passed into aws_pipe_subscribe_to_read_events().
- * This call is always made on the read-end's event-loop thread.
+ *
+ * This callback is always invoked on the read-end's event-loop thread.
  */
-typedef void(aws_pipe_on_read_event_fn)(struct aws_pipe_read_end *read_end, int events, void *user_data);
+typedef void(aws_pipe_on_readable_fn)(struct aws_pipe_read_end *read_end, int error_code, void *user_data);
 
 /**
- * Called when the write initialized by aws_pipe_write() completes.
+ * Callback for when the write initialized by aws_pipe_write() completes.
  * `write_end` corresponds to the write-end passed to aws_pipe_write(),
  * but will be NULL if the write-end was cleaned up before this callback could be invoked.
  * `write_result` contains AWS_ERROR_SUCCESS or a code corresponding to the error.
  * `num_bytes_written` contains the number of bytes successfully transferred.
  * `user_data` corresponds to the `user_data` passed into aws_pipe_write().
- * This call is always made on the write-end's event-loop thread.
+ * This callback is always invoked on the write-end's event-loop thread.
  */
 typedef void(aws_pipe_on_write_complete_fn)(
     struct aws_pipe_write_end *write_end,
@@ -123,23 +129,22 @@ AWS_IO_API
 int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_size, size_t *num_bytes_read);
 
 /**
- * Subscribe to be notified of events affecting the read-end of the pipe.
- * This is useful for learning when the pipe has data that can be read.
- * When events occurs, `on_read_event` is called on the event-loop's thread.
+ * Subscribe to be notified when the read-end of the pipe is readable, or an error occurs.
+ * When these events occurs, `on_readable` is called on the event-loop's thread.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_subscribe_to_read_events(
+int aws_pipe_subscribe_to_readable_events(
     struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_event_fn *on_read_event,
+    aws_pipe_on_readable_fn *on_readable,
     void *user_data);
 
 /**
- * Stop receiving notifications about events affecting the read-end of the pipe.
+ * Stop receiving notifications about events on the read-end of the pipe.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end);
+int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end);
 
 #if defined(_WIN32)
 /**
