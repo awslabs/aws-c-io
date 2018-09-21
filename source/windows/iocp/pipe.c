@@ -628,7 +628,8 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    if (dst_buffer->len == 0) {
+    /* Just return success if user requests 0 data */
+    if (dst_buffer->capacity <= dst_buffer->len) {
         return AWS_OP_SUCCESS;
     }
 
@@ -727,10 +728,10 @@ int aws_pipe_write(
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    if (src_buffer->len > MAXDWORD) {
+    if (src_buffer.len > MAXDWORD) {
         return aws_raise_error(AWS_ERROR_INVALID_BUFFER_SIZE);
     }
-    DWORD num_bytes_to_write = (DWORD)src_buffer->len;
+    DWORD num_bytes_to_write = (DWORD)src_buffer.len;
 
     struct write_request *write = aws_mem_acquire(write_impl->alloc, sizeof(struct write_request));
     if (!write) {
@@ -746,7 +747,7 @@ int aws_pipe_write(
 
     bool write_success = WriteFile(
         write_impl->handle.data.handle, /*hFile*/
-        src_buffer->buffer,             /*lpBuffer*/
+        src_buffer.ptr,                 /*lpBuffer*/
         num_bytes_to_write,             /*nNumberOfBytesToWrite*/
         NULL,                           /*lpNumberOfBytesWritten*/
         &write->overlapped.overlapped); /*lpOverlapped*/
@@ -772,6 +773,8 @@ void s_write_end_on_write_completion(
 
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
+
+    assert((num_bytes_transferred == write_request->original_cursor.len) || status_code);
 
     struct aws_byte_cursor original_cursor = write_request->original_cursor;
     aws_pipe_on_write_completed_fn *user_callback = write_request->user_callback;
