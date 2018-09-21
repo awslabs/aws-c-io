@@ -581,6 +581,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct kqueue_loop *impl = event_loop->impl_data;
 
     assert(event_loop == handle_data->event_loop);
+    assert(handle_data->is_subscribed);
 
     struct kevent changelist[2];
     int changelist_size = 0;

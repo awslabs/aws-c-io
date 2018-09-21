@@ -56,16 +56,14 @@ struct pipe_state {
     } results;
 
     struct {
-        uint8_t *src;
-        uint8_t *dst;
-        size_t size;
+        struct aws_byte_buf src;
+        struct aws_byte_buf dst;
         size_t num_bytes_written;
-        size_t num_bytes_read;
     } buffers;
 
     struct {
-        int error_code_to_monitor; /* By default, monitors AWS_ERROR_SUCCESS aka normal readable events */
-        int count; /* count of events that we're monitoring */
+        int error_code_to_monitor;         /* By default, monitors AWS_ERROR_SUCCESS aka normal readable events */
+        int count;                         /* count of events that we're monitoring */
         int close_read_end_after_n_events; /* if set, close read-end when count reaches N */
     } readable_events;
 
@@ -102,26 +100,27 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
     err = aws_condition_variable_init(&state->results.condvar);
     assert(!err);
 
-    /* Fill src buffer with random content */
     if (state->buffer_size > 0) {
+        /* Create full src buffer, containing random content */
+        err = aws_byte_buf_init(allocator, &state->buffers.src, state->buffer_size);
+        assert(!err);
 
-        state->buffers.src = aws_mem_acquire(allocator, state->buffer_size);
-        assert(state->buffers.src);
-
+        state->buffers.src.len = state->buffer_size;
         for (size_t i = 0; i < state->buffer_size; ++i) {
-            state->buffers.src[i] = rand() % 256;
+            state->buffers.src.buffer[i] = rand() % 256;
         }
 
-        /* Zero out dst buffer */
-        state->buffers.dst = aws_mem_acquire(allocator, state->buffer_size);
-        assert(state->buffers.dst);
+        /* Create empty dst buffer, with zeroed out content */
+        err = aws_byte_buf_init(allocator, &state->buffers.dst, state->buffer_size);
+        assert(!err);
 
-        memset(state->buffers.dst, 0, state->buffer_size);
+        memset(state->buffers.dst.buffer, 0, state->buffers.dst.capacity);
     }
 }
 
 /* Assumes the pipe's read-end and write-end are already cleaned up */
 static void s_fixture_after(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
     struct pipe_state *state = ctx;
 
     aws_condition_variable_clean_up(&state->results.condvar);
@@ -131,12 +130,8 @@ static void s_fixture_after(struct aws_allocator *allocator, void *ctx) {
         aws_event_loop_destroy(state->write_loop);
     }
 
-    if (state->buffers.src) {
-        aws_mem_release(allocator, state->buffers.src);
-    }
-    if (state->buffers.dst) {
-        aws_mem_release(allocator, state->buffers.dst);
-    }
+    aws_byte_buf_clean_up(&state->buffers.src);
+    aws_byte_buf_clean_up(&state->buffers.dst);
 
     AWS_ZERO_STRUCT(*state);
 }
@@ -221,8 +216,7 @@ static void s_signal_done_on_write_end_closed(struct pipe_state *state) {
 
 static int s_pipe_state_check_copied_data(struct pipe_state *state) {
     ASSERT_UINT_EQUALS(state->buffer_size, state->buffers.num_bytes_written);
-    ASSERT_UINT_EQUALS(state->buffer_size, state->buffers.num_bytes_read);
-    ASSERT_INT_EQUALS(0, memcmp(state->buffers.src, state->buffers.dst, state->buffer_size));
+    ASSERT_TRUE(aws_byte_buf_eq(&state->buffers.src, &state->buffers.dst));
     return AWS_OP_SUCCESS;
 }
 
@@ -315,17 +309,17 @@ static int test_pipe_open_close(struct pipe_state *state) {
 
 PIPE_TEST_CASE(pipe_open_close, SMALL_BUFFER_SIZE);
 
-void s_clean_up_write_end_on_write_complete(
+void s_clean_up_write_end_on_write_completed(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data) {
-
-    (void)write_result;
 
     struct pipe_state *state = user_data;
 
-    state->buffers.num_bytes_written += num_bytes_written;
+    if (!error_code) {
+        state->buffers.num_bytes_written += src_buffer.len;
+    }
 
     int err = aws_pipe_clean_up_write_end(write_end);
     if (err) {
@@ -349,8 +343,8 @@ static void s_write_once_task(struct aws_task *task, void *arg, enum aws_task_st
         goto error;
     }
 
-    int err = aws_pipe_write(
-        &state->write_end, state->buffers.src, state->buffer_size, s_clean_up_write_end_on_write_complete, state);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
+    int err = aws_pipe_write(&state->write_end, cursor, s_clean_up_write_end_on_write_completed, state);
     if (err) {
         goto error;
     }
@@ -370,19 +364,15 @@ static void s_read_everything_task(struct aws_task *task, void *arg, enum aws_ta
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto error;
     }
-    size_t num_bytes_remaining = state->buffer_size - state->buffers.num_bytes_read;
-    size_t num_bytes_read = 0;
-    uint8_t *dst_cur = state->buffers.dst + state->buffers.num_bytes_read;
-    int err = aws_pipe_read(&state->read_end, dst_cur, num_bytes_remaining, &num_bytes_read);
 
-    state->buffers.num_bytes_read += num_bytes_read;
+    int err = aws_pipe_read(&state->read_end, &state->buffers.dst, NULL);
 
     /* AWS_IO_READ_WOULD_BLOCK is an acceptable error, it just means the data's not ready yet */
     if (err && (aws_last_error() != AWS_IO_READ_WOULD_BLOCK)) {
         goto error;
     }
 
-    if (num_bytes_read < num_bytes_remaining) {
+    if (state->buffers.dst.len < state->buffers.dst.capacity) {
         s_schedule_read_end_task(state, s_read_everything_task);
     } else {
         err = aws_pipe_clean_up_read_end(&state->read_end);
@@ -479,17 +469,17 @@ static int test_pipe_readable_event_sent_after_write(struct pipe_state *state) {
 
 PIPE_TEST_CASE(pipe_readable_event_sent_after_write, SMALL_BUFFER_SIZE);
 
-void s_subscribe_on_write_complete(
+void s_subscribe_on_write_completed(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data) {
-
-    (void)write_result;
 
     struct pipe_state *state = user_data;
 
-    state->buffers.num_bytes_written += num_bytes_written;
+    if (!error_code) {
+        state->buffers.num_bytes_written += src_buffer.len;
+    }
 
     int err = aws_pipe_clean_up_write_end(write_end);
     if (err) {
@@ -517,8 +507,8 @@ static void s_write_once_then_subscribe_task(struct aws_task *task, void *arg, e
     }
 
     /* write date */
-    err =
-        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_subscribe_on_write_complete, state);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
+    err = aws_pipe_write(&state->write_end, cursor, s_subscribe_on_write_completed, state);
     if (err) {
         goto error;
     }
@@ -605,8 +595,8 @@ static void s_resubscribe_write_task(struct aws_task *task, void *arg, enum aws_
     }
 
     /* write date */
-    err = aws_pipe_write(
-        &state->write_end, state->buffers.src, state->buffer_size, s_clean_up_write_end_on_write_complete, state);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
+    err = aws_pipe_write(&state->write_end, cursor, s_clean_up_write_end_on_write_completed, state);
     if (err) {
         goto error;
     }
@@ -634,22 +624,22 @@ static int test_pipe_readable_event_sent_on_resubscribe_if_data_present(struct p
 
 PIPE_TEST_CASE(pipe_readable_event_sent_on_resubscribe_if_data_present, SMALL_BUFFER_SIZE);
 
-static void s_readall_on_write_complete(
+static void s_readall_on_write_completed(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data) {
 
     struct pipe_state *state = user_data;
     int err = 0;
 
-    if (write_result) {
+    if (error_code) {
         goto error;
     }
 
     bool is_2nd_write = (state->buffers.num_bytes_written > 0);
 
-    state->buffers.num_bytes_written += num_bytes_written;
+    state->buffers.num_bytes_written += src_buffer.len;
 
     /* Clean up after 2nd write */
     if (is_2nd_write) {
@@ -674,8 +664,8 @@ static void s_readall_write_task(struct aws_task *task, void *arg, enum aws_task
         goto error;
     }
 
-    int err =
-        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_readall_on_write_complete, state);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
+    int err = aws_pipe_write(&state->write_end, cursor, s_readall_on_write_completed, state);
     if (err) {
         goto error;
     }
@@ -698,12 +688,14 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
     }
 
     if ((state->readable_events.count == 1) && (prev_event_count == 0)) {
+        size_t total_bytes_read = 0;
+
         /* After the first write, read data until we're told that further reads would block.
          * This ensures that the next write is sure to trigger a readable event */
         while (true) {
-            size_t num_bytes_read = 0;
-            err = aws_pipe_read(read_end, state->buffers.dst, state->buffer_size, &num_bytes_read);
-            state->buffers.num_bytes_read += num_bytes_read;
+            state->buffers.dst.len = 0;
+            err = aws_pipe_read(read_end, &state->buffers.dst, NULL);
+            total_bytes_read += state->buffers.dst.len;
 
             if (err) {
                 if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
@@ -714,7 +706,7 @@ static void s_readall_on_readable(struct aws_pipe_read_end *read_end, int events
         }
 
         /* Sanity check that we did in fact read something */
-        if (state->buffers.num_bytes_read == 0) {
+        if (total_bytes_read == 0) {
             goto error;
         }
 
@@ -785,16 +777,17 @@ static void s_readsome_on_readable(struct aws_pipe_read_end *read_end, int event
     if (state->readable_events.count == 1) {
         /* After the first write, read just some of the data.
          * Further writes shouldn't trigger the readable event */
-        size_t num_bytes_read = 0;
-        err = aws_pipe_read(read_end, state->buffers.dst, 1, &num_bytes_read);
-        state->buffers.num_bytes_read += num_bytes_read;
+        uint8_t array[] = {0};
+        struct aws_byte_buf small_read_buf = aws_byte_buf_from_array(array, 1);
+        small_read_buf.len = 0;
+        err = aws_pipe_read(read_end, &small_read_buf, NULL);
 
         if (err) {
             goto error;
         }
 
         /* Sanity check that we did in fact read something */
-        if (state->buffers.num_bytes_read == 0) {
+        if (small_read_buf.len == 0) {
             goto error;
         }
 
@@ -955,23 +948,19 @@ static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
 
 PIPE_TEST_CASE(pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed, SMALL_BUFFER_SIZE);
 
-static void s_close_write_end_after_all_writes_complete(
+static void s_close_write_end_after_all_writes_completed(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data) {
 
     struct pipe_state *state = user_data;
 
-    if (write_result) {
+    if (error_code) {
         goto error;
     }
 
-    if (num_bytes_written == 0) {
-        goto error;
-    }
-
-    state->buffers.num_bytes_written += num_bytes_written;
+    state->buffers.num_bytes_written += src_buffer.len;
 
     if (state->buffers.num_bytes_written == state->buffer_size) {
         int err = aws_pipe_clean_up_write_end(write_end);
@@ -997,13 +986,13 @@ static void s_write_in_simultaneous_chunks_task(struct aws_task *task, void *arg
     }
 
     /* Write the whole buffer via several successive writes */
-    struct aws_byte_cursor cursor = aws_byte_cursor_from_array(state->buffers.src, state->buffer_size);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
     const size_t chunk_size = cursor.len / 8;
     while (cursor.len > 0) {
         size_t bytes_to_write = (chunk_size < cursor.len) ? chunk_size : cursor.len;
+        struct aws_byte_cursor chunk_cursor = aws_byte_cursor_from_array(cursor.ptr, bytes_to_write);
 
-        err = aws_pipe_write(
-            &state->write_end, cursor.ptr, bytes_to_write, s_close_write_end_after_all_writes_complete, state);
+        err = aws_pipe_write(&state->write_end, chunk_cursor, s_close_write_end_after_all_writes_completed, state);
         if (err) {
             goto error;
         }
@@ -1030,19 +1019,21 @@ static int test_pipe_writes_are_fifo(struct pipe_state *state) {
 
 PIPE_TEST_CASE(pipe_writes_are_fifo, GIANT_BUFFER_SIZE);
 
-static void s_cancelled_on_write_complete(
+static void s_cancelled_on_write_completed(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data) {
 
     (void)write_end;
     struct pipe_state *state = user_data;
 
     int *write_status_code = state->test_data;
-    *write_status_code = write_result;
+    *write_status_code = error_code;
 
-    state->buffers.num_bytes_written += num_bytes_written;
+    if (!error_code) {
+        state->buffers.num_bytes_written += src_buffer.len;
+    }
 
     s_schedule_read_end_task(state, s_clean_up_read_end_task);
 }
@@ -1057,8 +1048,8 @@ static void s_write_then_clean_up_task(struct aws_task *task, void *arg, enum aw
         goto error;
     }
 
-    err =
-        aws_pipe_write(&state->write_end, state->buffers.src, state->buffer_size, s_cancelled_on_write_complete, state);
+    struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&state->buffers.src);
+    err = aws_pipe_write(&state->write_end, cursor, s_cancelled_on_write_completed, state);
     if (err) {
         goto error;
     }
