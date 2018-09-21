@@ -85,12 +85,12 @@ struct read_end_impl {
     aws_pipe_on_readable_fn *on_readable_user_callback;
     void *on_readable_user_data;
 
+    /* Error code that the error-reporting task will report. */
+    int error_code_to_report;
+
     /* Reasons to restart monitoring once current async operation completes.
      * Contains read_end_monitoring_request_t flags.*/
     uint8_t monitoring_request_reasons;
-
-    /* Error code that the error-reporting task will report. */
-    uint8_t error_code_to_report;
 };
 
 enum write_end_state {
@@ -487,11 +487,11 @@ static void s_read_end_report_error_task(struct aws_task *task, void *user_data,
     /* Only report the error if we're still in the SUBSCRIBE_ERROR state.
      * If the user unsubscribed since this task was queued, then we'd be in a different state. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBE_ERROR) {
-        assert(read_impl->error_events_to_report != 0);
+        assert(read_impl->error_code_to_report != 0);
 
         if (read_impl->on_readable_user_callback) {
             read_impl->on_readable_user_callback(
-                read_end, read_impl->error_events_to_report, read_impl->on_readable_user_data);
+                read_end, read_impl->error_code_to_report, read_impl->on_readable_user_data);
         }
     }
 }
@@ -602,7 +602,7 @@ int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end
     read_impl->on_readable_user_callback = NULL;
     read_impl->on_readable_user_data = NULL;
     read_impl->monitoring_request_reasons = 0;
-    read_impl->error_events_to_report = 0;
+    read_impl->error_code_to_report = 0;
 
     /* If there's a chance the zero-byte-read is pending, cancel it.
      * s_read_end_on_zero_byte_read_completion() will see status code
