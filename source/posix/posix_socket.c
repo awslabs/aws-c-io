@@ -102,6 +102,8 @@ static int s_determine_socket_error(int error) {
     case ENOBUFS:
     case ENOMEM:
         return AWS_ERROR_OOM;
+    case EAGAIN:
+        return AWS_IO_READ_WOULD_BLOCK;
     case EMFILE:
     case ENFILE:
         return AWS_IO_MAX_FDS_EXCEEDED;
@@ -120,12 +122,12 @@ static int s_determine_socket_error(int error) {
 static int s_create_socket(struct aws_socket *sock, struct aws_socket_options *options) {
 
     int fd = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
-    int flags = fcntl(fd, F_GETFL, 0);
-    flags |= O_NONBLOCK;
-    flags |= O_CLOEXEC;
-    fcntl(fd, F_SETFL, flags);
 
     if (fd != -1) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        flags |= O_NONBLOCK | O_CLOEXEC;
+        int success = fcntl(fd, F_SETFL, flags);
+        (void)success;
         sock->io_handle.data.fd = fd;
         sock->io_handle.additional_data = NULL;
         return aws_socket_set_options(sock, options);
@@ -319,6 +321,11 @@ static void s_socket_connect_event(
         }
 
         int aws_error = aws_socket_get_error(socket_args->socket);
+        /* we'll get another notification. */
+        if (aws_error == AWS_IO_READ_WOULD_BLOCK) {
+            return;
+        }
+
         aws_raise_error(aws_error);
         s_on_connection_error(socket_args->socket, aws_error);
         socket_args->socket = NULL;
@@ -430,6 +437,7 @@ int aws_socket_connect(struct aws_socket *socket,
             }
             struct posix_socket *socket_impl = socket->impl;
             socket_impl->currently_subscribed = true;
+
             uint64_t timeout = 0;
             aws_event_loop_current_clock_time(event_loop, &timeout);
 
@@ -589,7 +597,7 @@ static void socket_accept_event(
                 new_sock->options.domain = AWS_SOCKET_LOCAL;
             }
 
-            sprintf(socket->remote_endpoint.port, "%d", port);
+            sprintf(new_sock->remote_endpoint.port, "%d", port);
 
             int flags = fcntl(in_fd, F_GETFL, 0);
 

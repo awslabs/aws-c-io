@@ -14,6 +14,7 @@
  */
 #include <aws/io/socket_channel_handler.h>
 
+#include <aws/common/error.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
@@ -79,7 +80,11 @@ static int s_socket_process_write_message(
 
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
-        return AWS_OP_ERR;
+        if (aws_last_error() == AWS_ERROR_OOM) {
+            return AWS_OP_ERR;
+        }
+
+        return AWS_OP_SUCCESS;
     }
 
     return AWS_OP_SUCCESS;
