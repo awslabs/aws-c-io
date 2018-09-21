@@ -878,7 +878,6 @@ static int s_process_write_requests(struct aws_socket *socket) {
             write_request->written_fn(socket, aws_error, write_request->original_cursor, write_request->write_user_data);
             aws_mem_release(socket->allocator, write_request);
         }
-        s_on_connection_error(socket, aws_error);
         socket_impl->write_in_progress = false;
         return AWS_OP_ERR;
     }
