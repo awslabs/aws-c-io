@@ -147,11 +147,13 @@ int aws_event_loop_group_init(
     void *new_loop_user_data);
 
 /**
- * Initializes an event loop group with platform defaults. loop count will be the number of available processors on the
- * machine.
+ * Initializes an event loop group with platform defaults. If max_threads == 0, then the
+ * loop count will be the number of available processors on the machine. Otherwise, max_threads
+ * will be the number of event loops in the group.
  */
 AWS_IO_API
-int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc);
+int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group,
+        struct aws_allocator *alloc, uint16_t max_threads);
 
 /**
  * Destroys each event loop in the event loop group and then cleans up resources.
@@ -159,13 +161,19 @@ int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, str
 AWS_IO_API
 void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
 
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
+
+AWS_IO_API
+size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group);
+
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
  * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
  * style.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group);
+struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
@@ -298,7 +306,8 @@ int aws_event_loop_connect_handle_to_io_completion_port(
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were
  * received. The definition for these values can be found in aws_io_event_type. Currently, only
  * AWS_IO_EVENT_TYPE_READABLE and AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions
- * and closure. This function may be called from outside or inside the event loop thread.
+ * and closure. This function may be called from outside or inside the event loop thread. However, the unsubscribe
+ * function must be called inside the event-loop's thread.
  */
 AWS_IO_API
 int aws_event_loop_subscribe_to_io_events(
@@ -311,9 +320,9 @@ int aws_event_loop_subscribe_to_io_events(
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
-* Unsubscribes handle from event-loop notifications. You may still receive events for up to one event-loop tick.
-* This function may be called from outside or inside the event loop thread.
-*/
+ * Unsubscribes handle from event-loop notifications.
+ * This function is not thread safe and should be called inside the event-loop's thread.
+ */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 

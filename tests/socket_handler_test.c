@@ -201,7 +201,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     (void)ctx;
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -362,7 +362,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;

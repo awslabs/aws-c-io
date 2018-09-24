@@ -14,6 +14,7 @@
  */
 #include <aws/io/socket_channel_handler.h>
 
+#include <aws/common/error.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
@@ -27,7 +28,6 @@
 
 struct socket_handler {
     struct aws_socket *socket;
-    struct aws_event_loop *event_loop;
     struct aws_channel_slot *slot;
     size_t max_rw_size;
     struct aws_task read_task_storage;
@@ -80,7 +80,11 @@ static int s_socket_process_write_message(
 
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
-        return AWS_OP_ERR;
+        if (aws_last_error() == AWS_ERROR_OOM) {
+            return AWS_OP_ERR;
+        }
+
+        return AWS_OP_SUCCESS;
     }
 
     return AWS_OP_SUCCESS;
@@ -108,9 +112,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
 
     if (max_to_read) {
-
         size_t total_read = 0, read = 0;
-        while (total_read < max_to_read) {
+        while (total_read < max_to_read && !socket_handler->shutdown_in_progress) {
             struct aws_io_message *message = aws_channel_acquire_message_from_pool(
                 socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, max_to_read);
 

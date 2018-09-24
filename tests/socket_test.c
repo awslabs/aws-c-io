@@ -236,7 +236,7 @@ static int s_test_socket(
         ASSERT_INT_EQUALS(options->type, listener_args.incoming->options.type);
     }
 
-    aws_socket_assign_to_event_loop(server_sock, event_loop);
+    ASSERT_SUCCESS(aws_socket_assign_to_event_loop(server_sock, event_loop));
     aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
     aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 
@@ -344,7 +344,7 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "8125"};
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "8127"};
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -623,6 +623,12 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(incoming_udp_sock_errors, s_test_incoming_udp_sock_errors)
 
+static void s_on_null_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    (void)error_code;
+    (void)user_data;
+}
+
 static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
@@ -657,6 +663,7 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     aws_socket_bind(&incoming, &endpoint);
     aws_socket_assign_to_event_loop(&incoming, event_loop);
+    aws_socket_subscribe_to_readable_events(&incoming, s_on_null_readable_notification, NULL);
     ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_read(&incoming, NULL, NULL));
     ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_write(&incoming, NULL, NULL, NULL));
 

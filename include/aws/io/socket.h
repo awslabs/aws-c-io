@@ -161,12 +161,16 @@ AWS_IO_API int aws_socket_start_accept(struct aws_socket *socket, struct aws_eve
 
 /**
  * TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after
- * this operation.
+ * this operation. This can be called from any thread but be aware,
+ * on some platforms, if you call this from outside of the current event loop's thread, it will block
+ * until the event loop finishes processing the request for unsubscribe in it's own thread.
  */
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 /**
- * Calls `close()` on the socket and unregisters all io operations from the event loop.
+ * Calls `close()` on the socket and unregisters all io operations from the event loop. Can be called from any thread,
+ * but be aware, on some platforms, if you call this from outside of the current event loop's thread, it will block
+ * until the event loop finishes processing the request for unsubscribe in it's own thread.
  */
 AWS_IO_API int aws_socket_shutdown(struct aws_socket *socket);
 
