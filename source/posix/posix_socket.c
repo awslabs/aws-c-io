@@ -93,6 +93,8 @@ static int s_determine_socket_error(int error) {
         return AWS_IO_SOCKET_TIMEOUT;
     case ENETUNREACH:
         return AWS_IO_SOCKET_NO_ROUTE_TO_HOST;
+    case EADDRNOTAVAIL:
+        return AWS_IO_SOCKET_INVALID_ADDRESS;
     case ENETDOWN:
         return AWS_IO_SOCKET_NETWORK_DOWN;
     case ECONNABORTED:
@@ -164,7 +166,6 @@ static int s_socket_init(struct aws_socket *socket,
 
     if (creation_args) {
         socket->creation_args = *creation_args;
-
         int err = s_create_socket(socket, options);
         if (err) {
             aws_mem_release(alloc, posix_socket);
@@ -704,6 +705,7 @@ int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options 
     setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
 
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
+
         if (socket->options.keepalive) {
             int keep_alive = 1;
             setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int));

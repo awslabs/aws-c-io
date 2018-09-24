@@ -471,7 +471,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         EV_SET(
             &changelist[changelist_size++],
             handle_data->owner->data.fd,
-            EVFILT_WRITE /*filter*/,
+            EVFILT_WRITE/*filter*/,
             EV_ADD | EV_RECEIPT | EV_CLEAR/*flags*/,
             0 /*fflags*/,
             0 /*data*/,
@@ -815,7 +815,7 @@ static void s_event_thread_main(void *user_data) {
 
             uint64_t timeout_remainder_ns = 0;
             uint64_t timeout_sec =
-                aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, &timeout_remainder_ns);
+                aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &timeout_remainder_ns);
 
             if (timeout_sec > LONG_MAX) { /* Check for overflow. On Darwin, these values are stored as longs */
                 timeout_sec = LONG_MAX;

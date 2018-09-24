@@ -344,7 +344,7 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "8125"};
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "8127"};
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -613,7 +613,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
     int error = aws_last_error();
-    ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error);
+    ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error || AWS_IO_SOCKET_INVALID_ADDRESS == error);
 
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);
