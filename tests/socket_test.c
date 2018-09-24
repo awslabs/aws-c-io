@@ -613,7 +613,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
     int error = aws_last_error();
-    ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error || AWS_IO_SOCKET_INVALID_ADDRESS == error);
+    ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error);
 
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);
@@ -622,6 +622,12 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(incoming_udp_sock_errors, s_test_incoming_udp_sock_errors)
+
+static void s_on_null_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    (void)error_code;
+    (void)user_data;
+}
 
 static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -657,6 +663,7 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options, &incoming_creation_args));
     aws_socket_bind(&incoming, &endpoint);
     aws_socket_assign_to_event_loop(&incoming, event_loop);
+    aws_socket_subscribe_to_readable_events(&incoming, s_on_null_readable_notification, NULL);
     ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_read(&incoming, NULL, NULL));
     ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_write(&incoming, NULL, NULL, NULL));
 

@@ -32,9 +32,10 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
 }
 
-void aws_tls_clean_up_static_state(struct aws_allocator *alloc) {
+void aws_tls_clean_up_tl_state(void) {
+}
 
-    (void)alloc;
+void aws_tls_clean_up_static_state(void) {
 }
 
 bool aws_tls_is_alpn_available(void) {

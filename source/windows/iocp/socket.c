@@ -379,6 +379,8 @@ static int s_determine_socket_error(int error) {
         return AWS_IO_SOCKET_TIMEOUT;
     case IO_PIPE_BROKEN:
         return AWS_IO_SOCKET_CLOSED;
+    case WSAEADDRNOTAVAIL:
+        return AWS_IO_SOCKET_INVALID_ADDRESS;
     case WSAENETUNREACH:
     case IO_NETWORK_UNREACHABLE:
     case IO_HOST_UNREACHABLE:
@@ -1329,7 +1331,7 @@ static void s_stream_readable_event(struct aws_event_loop *event_loop, struct aw
     socket->state = socket->state & ~WAITING_ON_READABLE;
 
     int err_code = AWS_OP_SUCCESS;
-    if (status_code != ERROR_IO_PENDING) {
+    if (status_code && status_code != ERROR_IO_PENDING) {
         err_code = s_determine_socket_error(status_code);
     }
 
