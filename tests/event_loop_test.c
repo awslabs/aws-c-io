@@ -501,6 +501,7 @@ struct thread_tester {
 
     thread_tester_state_fn **state_functions;
     size_t current_state;
+    size_t last_printed_state;
 
     /* data for tests */
     struct aws_io_handle read_handle;
@@ -508,6 +509,9 @@ struct thread_tester {
     struct aws_byte_buf buffer;
     int read_handle_event_counts[AWS_IO_EVENT_TYPE_ERROR + 1];
     int write_handle_event_counts[AWS_IO_EVENT_TYPE_ERROR + 1];
+
+    enum { TIMER_NOT_SET, TIMER_WAITING, TIMER_DONE } timer_state;
+    struct aws_task timer_task;
 };
 
 static void s_thread_tester_abort(struct thread_tester *tester) {
@@ -517,6 +521,14 @@ static void s_thread_tester_abort(struct thread_tester *tester) {
     aws_condition_variable_notify_one(&tester->condition_variable);
     aws_mutex_unlock(&tester->mutex);
 }
+
+static void s_thread_tester_print_state(struct thread_tester *tester, const char *state_name) {
+    if (tester->last_printed_state != tester->current_state) {
+        printf("entering state[%zu]: %s\n", tester->current_state, state_name);
+        tester->last_printed_state = tester->current_state;
+    }
+}
+#    define PRINT_STATE() s_thread_tester_print_state(tester, __func__)
 
 static void s_thread_tester_update(struct thread_tester *tester) {
     thread_tester_state_fn *current_fn;
@@ -568,6 +580,19 @@ static bool s_thread_tester_pred(void *arg) {
     return tester->done;
 }
 
+static void s_timer_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct thread_tester *tester = arg;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_thread_tester_abort(tester);
+        return;
+    }
+
+    tester->timer_state = TIMER_DONE;
+    s_thread_tester_update(tester);
+}
+
 static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_fn *state_functions[]) {
 
     /* Set up tester */
@@ -577,6 +602,7 @@ static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .state_functions = state_functions,
+        .last_printed_state = -1,
     };
 
     ASSERT_NOT_NULL(tester.event_loop);
@@ -585,6 +611,7 @@ static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_
     /* Set up data to test with */
     ASSERT_SUCCESS(aws_pipe_open(&tester.read_handle, &tester.write_handle));
     ASSERT_SUCCESS(aws_byte_buf_init(alloc, &tester.buffer, sizeof(data_to_copy)));
+    aws_task_init(&tester.timer_task, s_timer_done_task, &tester);
 
     /* Wait for tester to finish running its state functions on the event-loop thread */
     aws_mutex_lock(&tester.mutex);
@@ -626,6 +653,14 @@ static void s_io_event_counter(
         return s_thread_tester_abort(tester);
     }
 
+    if (handle == &tester->read_handle && (events & AWS_IO_EVENT_TYPE_READABLE)) {
+        printf("event: readable\n");
+    }
+
+    if (handle == &tester->write_handle && (events & AWS_IO_EVENT_TYPE_WRITABLE)) {
+        printf("event: writable\n");
+    }
+
     for (int flag = 1; flag <= AWS_IO_EVENT_TYPE_ERROR; flag <<= 1) {
         if (events & flag) {
             event_counts[flag] += 1;
@@ -636,6 +671,7 @@ static void s_io_event_counter(
 }
 
 static int s_state_subscribe(struct thread_tester *tester) {
+    PRINT_STATE();
     ASSERT_SUCCESS(aws_event_loop_subscribe_to_io_events(
         tester->event_loop, &tester->read_handle, AWS_IO_EVENT_TYPE_READABLE, s_io_event_counter, tester));
 
@@ -646,11 +682,111 @@ static int s_state_subscribe(struct thread_tester *tester) {
 }
 
 static int s_state_unsubscribe(struct thread_tester *tester) {
+    PRINT_STATE();
     ASSERT_SUCCESS(aws_event_loop_unsubscribe_from_io_events(tester->event_loop, &tester->read_handle));
     ASSERT_SUCCESS(aws_event_loop_unsubscribe_from_io_events(tester->event_loop, &tester->write_handle));
     return AWS_OP_SUCCESS;
 }
 
+/* Remain in state until readable event fires. Then reset readable event count and proceed to next state */
+static int s_state_on_readable(struct thread_tester *tester) {
+    PRINT_STATE();
+
+    if (tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE] == 0) {
+        return REMAIN_IN_STATE;
+    }
+
+    ASSERT_UINT_EQUALS(1, tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE]);
+
+    tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE] = 0;
+    return AWS_OP_SUCCESS;
+}
+
+/* Remain in state until writable event fires. Then reset writable event count and proceed to next state. */
+static int s_state_on_writable(struct thread_tester *tester) {
+    PRINT_STATE();
+
+    if (tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE] == 0) {
+        return REMAIN_IN_STATE;
+    }
+
+    ASSERT_UINT_EQUALS(1, tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE]);
+
+    tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE] = 0;
+    return AWS_OP_SUCCESS;
+}
+
+static int s_state_fail_if_more_readable_events(struct thread_tester *tester) {
+    PRINT_STATE();
+    ASSERT_INT_EQUALS(0, tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE]);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_state_fail_if_more_writable_events(struct thread_tester *tester) {
+    PRINT_STATE();
+    ASSERT_INT_EQUALS(0, tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE]);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_state_write_all(struct thread_tester *tester) {
+    PRINT_STATE();
+    size_t num_bytes_written;
+    ASSERT_SUCCESS(
+        aws_pipe_write(&tester->write_handle, (const uint8_t *)data_to_copy, sizeof(data_to_copy), &num_bytes_written));
+
+    ASSERT_UINT_EQUALS(sizeof(data_to_copy), num_bytes_written);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_state_read_1byte(struct thread_tester *tester) {
+    PRINT_STATE();
+
+    ASSERT_SUCCESS(aws_pipe_read(&tester->read_handle, tester->buffer.buffer, 1, &tester->buffer.len));
+
+    ASSERT_UINT_EQUALS(1, tester->buffer.len);
+
+    return AWS_OP_SUCCESS;
+}
+
+/* Read from pipe until AWS_IO_READ_WOULD_BLOCK error occurs */
+static int s_state_read_until_blocked(struct thread_tester *tester) {
+    PRINT_STATE();
+    int err;
+    do {
+        err = aws_pipe_read(&tester->read_handle, tester->buffer.buffer, tester->buffer.capacity, &tester->buffer.len);
+    } while (err == AWS_OP_SUCCESS);
+
+    ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_state_wait_1sec(struct thread_tester *tester) {
+    PRINT_STATE();
+    uint64_t time_ns;
+    switch (tester->timer_state) {
+        case TIMER_NOT_SET:
+            time_ns = 0;
+            ASSERT_SUCCESS(aws_event_loop_current_clock_time(tester->event_loop, &time_ns));
+            time_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_event_loop_schedule_task_future(tester->event_loop, &tester->timer_task, time_ns);
+
+            tester->timer_state = TIMER_WAITING;
+            return REMAIN_IN_STATE;
+
+        case TIMER_WAITING:
+            return REMAIN_IN_STATE;
+
+        default:
+            ASSERT_INT_EQUALS(TIMER_DONE, tester->timer_state);
+            return AWS_OP_SUCCESS;
+    }
+}
+
+/* Test that subscribe/unubscribe work at all */
 static int s_test_event_loop_subscribe_unsubscribe(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -666,40 +802,14 @@ static int s_test_event_loop_subscribe_unsubscribe(struct aws_allocator *allocat
 }
 AWS_TEST_CASE(event_loop_subscribe_unsubscribe, s_test_event_loop_subscribe_unsubscribe)
 
-static int s_state_on_writable_do_write(struct thread_tester *tester) {
-    if (tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE] == 0) {
-        return REMAIN_IN_STATE;
-    }
-
-    size_t num_bytes_written;
-    ASSERT_SUCCESS(
-        aws_pipe_write(&tester->write_handle, (const uint8_t *)data_to_copy, sizeof(data_to_copy), &num_bytes_written));
-
-    ASSERT_UINT_EQUALS(sizeof(data_to_copy), num_bytes_written);
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_state_on_readable_do_read(struct thread_tester *tester) {
-    if (tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE] == 0) {
-        return REMAIN_IN_STATE;
-    }
-
-    ASSERT_SUCCESS(
-        aws_pipe_read(&tester->read_handle, tester->buffer.buffer, tester->buffer.capacity, &tester->buffer.len));
-
-    ASSERT_UINT_EQUALS(tester->buffer.capacity, tester->buffer.len);
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_test_event_loop_read_write_notifications(struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_writable_event_on_subscribe(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
-        s_state_on_writable_do_write,
-        s_state_on_readable_do_read,
+        s_state_on_writable,
+        s_state_wait_1sec,
+        s_state_fail_if_more_writable_events,
         s_state_unsubscribe,
         NULL,
     };
@@ -708,43 +818,129 @@ static int s_test_event_loop_read_write_notifications(struct aws_allocator *allo
 
     return AWS_OP_SUCCESS;
 }
+AWS_TEST_CASE(event_loop_writable_event_on_subscribe, s_test_event_loop_writable_event_on_subscribe)
 
-AWS_TEST_CASE(event_loop_read_write_notifications, s_test_event_loop_read_write_notifications)
-
-static int s_test_event_loop_readable_events_are_edge_triggered(struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_no_readable_event_before_write(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     thread_tester_state_fn *state_functions[] = {
-        /*
         s_state_subscribe,
-        s_state_on_writable_do_write,
-        s_state_on_readable_1_do_read_and_write,
-        s_state_on_readable_2_do_read_one_byte_and_write_and_wait,
-        s_state_after_wait_ensure_no_more_read_events_and_unsubscribe,
-        */
+        s_state_wait_1sec,
+        s_state_fail_if_more_readable_events,
+        s_state_unsubscribe,
         NULL,
     };
 
     ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
-
     return AWS_OP_SUCCESS;
 }
+AWS_TEST_CASE(event_loop_no_readable_event_before_write, s_test_event_loop_no_readable_event_before_write);
 
-AWS_TEST_CASE(event_loop_readable_events_are_edge_triggered, s_test_event_loop_readable_events_are_edge_triggered)
-
-static int s_test_event_loop_writable_events_are_edge_triggered(struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_readable_event_on_subscribe_if_data_present(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     thread_tester_state_fn *state_functions[] = {
+        s_state_write_all,
+        s_state_subscribe,
+        s_state_on_readable,
+        s_state_wait_1sec,
+        s_state_fail_if_more_readable_events,
+        s_state_unsubscribe,
         NULL,
     };
 
     ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
-
     return AWS_OP_SUCCESS;
 }
+AWS_TEST_CASE(
+    event_loop_readable_event_on_subscribe_if_data_present,
+    s_test_event_loop_readable_event_on_subscribe_if_data_present);
 
-AWS_TEST_CASE(event_loop_writable_events_are_edge_triggered, s_test_event_loop_writable_events_are_edge_triggered)
+static int s_test_event_loop_readable_event_after_write(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    thread_tester_state_fn *state_functions[] = {
+        s_state_subscribe,
+        s_state_on_writable,
+        s_state_write_all,
+        s_state_on_readable,
+        s_state_wait_1sec,
+        s_state_fail_if_more_readable_events,
+        s_state_unsubscribe,
+        NULL,
+    };
+
+    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(event_loop_readable_event_after_write, s_test_event_loop_readable_event_after_write);
+
+/* Read only a fraction of what was written.
+ * This should not trigger a 2nd writable event, since there was no point where a write would have blocked */
+static int s_test_event_loop_no_writable_event_if_already_writable(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    thread_tester_state_fn *state_functions[] = {
+        s_state_subscribe,
+        s_state_on_writable,
+        s_state_write_all,
+        s_state_on_readable,
+        s_state_read_1byte,
+        s_state_wait_1sec,
+        s_state_fail_if_more_writable_events,
+        s_state_unsubscribe,
+        NULL,
+    };
+
+    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(event_loop_no_writable_event_if_already_writable, s_test_event_loop_no_writable_event_if_already_writable);
+
+/* Read only a fraction of what was written, then write more.
+ * This should not trigger a 2nd readable event, since there was already data to read when the 2nd write occurred. */
+static int s_test_event_loop_no_readable_event_if_already_readable(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    thread_tester_state_fn *state_functions[] = {
+        s_state_subscribe,
+        s_state_on_writable,
+        s_state_write_all,
+        s_state_on_readable,
+        s_state_read_1byte,
+        s_state_write_all,
+        s_state_wait_1sec,
+        s_state_fail_if_more_readable_events,
+        s_state_unsubscribe,
+        NULL,
+    };
+
+    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(
+    event_loop_no_readable_event_if_already_readable,
+    s_test_event_loop_no_readable_event_if_already_readable);
+
+static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    thread_tester_state_fn *state_functions[] = {
+        s_state_subscribe,
+        s_state_on_writable,
+        s_state_write_all,
+        s_state_on_readable,
+        s_state_read_until_blocked,
+        s_state_write_all,
+        s_state_on_readable,
+        s_state_unsubscribe,
+        NULL,
+    };
+
+    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_readable_event_on_2nd_time_readable);
 
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
