@@ -770,6 +770,7 @@ void s_write_end_on_write_completion(
     size_t num_bytes_transferred) {
 
     (void)event_loop;
+    (void)num_bytes_transferred;
 
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
