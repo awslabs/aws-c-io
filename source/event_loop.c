@@ -70,11 +70,14 @@ static struct aws_event_loop *default_new_event_loop(
     return aws_event_loop_new_default(allocator, clock);
 }
 
-int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc) {
-    uint16_t cpu_count = (uint16_t)aws_system_info_processor_count();
+int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group,
+        struct aws_allocator *alloc, uint16_t max_threads) {
+    if (!max_threads) {
+        max_threads = (uint16_t) aws_system_info_processor_count();
+    }
 
     return aws_event_loop_group_init(
-        el_group, alloc, aws_high_res_clock_get_ticks, cpu_count, default_new_event_loop, NULL);
+        el_group, alloc, aws_high_res_clock_get_ticks, max_threads, default_new_event_loop, NULL);
 }
 
 void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
@@ -91,7 +94,17 @@ void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
     aws_array_list_clean_up(&el_group->event_loops);
 }
 
-struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group) {
+size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {
+    return aws_array_list_length(&el_group->event_loops);
+}
+
+struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index) {
+    struct aws_event_loop *el = NULL;
+    aws_array_list_get_at(&el_group->event_loops, &el, index);
+    return el;
+}
+
+struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group) {
     size_t loop_count = aws_array_list_length(&el_group->event_loops);
 
     /* thread safety: we don't really care. It's always incrementing and it doesn't have to be perfect, this
@@ -175,7 +188,9 @@ int aws_event_loop_remove_local_object(
 
     assert(aws_event_loop_thread_is_callers_thread(event_loop));
 
-    struct aws_hash_element existing_object = {0};
+    struct aws_hash_element existing_object;
+    AWS_ZERO_STRUCT(existing_object);
+
     int was_present = 0;
 
     struct aws_hash_element *remove_candidate = removed_obj ? &existing_object : NULL;
@@ -245,13 +260,13 @@ int aws_event_loop_subscribe_to_io_events(
     assert(event_loop->vtable.subscribe_to_io_events);
     return event_loop->vtable.subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    assert(aws_event_loop_thread_is_callers_thread(event_loop));
     assert(event_loop->vtable.unsubscribe_from_io_events);
     return event_loop->vtable.unsubscribe_from_io_events(event_loop, handle);
 }
-
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable.is_on_callers_thread);

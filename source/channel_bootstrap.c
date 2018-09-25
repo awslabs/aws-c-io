@@ -160,7 +160,7 @@ static inline int s_new_client_channel(
     client_connection_args->setup_callback = setup_callback;
     client_connection_args->shutdown_callback = shutdown_callback;
 
-    struct aws_event_loop *connection_loop = aws_event_loop_get_next_loop(bootstrap->event_loop_group);
+    struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
     struct aws_socket_creation_args args = {
         .user_data = client_connection_args,
@@ -313,7 +313,7 @@ void on_server_connection_established(struct aws_socket *socket, struct aws_sock
     channel_data->socket = new_socket;
     channel_data->server_connection_args = connection_args;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(connection_args->bootstrap->event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
     struct aws_channel_creation_callbacks channel_callbacks = {
         .on_setup_completed = s_on_server_channel_on_setup_completed,
@@ -371,7 +371,7 @@ static inline struct aws_socket *s_server_add_socket_listener(
     server_connection_args->shutdown_callback = shutdown_callback;
     server_connection_args->incoming_callback = incoming_callback;
 
-    struct aws_event_loop *connection_loop = aws_event_loop_get_next_loop(bootstrap->event_loop_group);
+    struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
     struct aws_socket_creation_args args = {
         .user_data = server_connection_args,
