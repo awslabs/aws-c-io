@@ -18,7 +18,6 @@
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
-#include <aws/io/pipe.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -91,30 +90,13 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
 AWS_TEST_CASE(event_loop_xthread_scheduled_tasks_execute, s_test_event_loop_xthread_scheduled_tasks_execute)
 
 #if AWS_USE_IO_COMPLETION_PORTS
-static uint64_t s_hash_combine(uint64_t a, uint64_t b) {
-    return a ^ (b + 0x9e3779b99e3779b9llu + (a << 6) + (a >> 2));
-}
 
-static int s_create_random_pipe_name(char *buffer, size_t buffer_size) {
-    /* Gin up a random number */
-    LARGE_INTEGER timestamp;
-    ASSERT_TRUE(QueryPerformanceCounter(&timestamp));
-    DWORD process_id = GetCurrentProcessId();
-    DWORD thread_id = GetCurrentThreadId();
-
-    uint64_t rand_num = s_hash_combine(timestamp.QuadPart, ((uint64_t)process_id << 32) | process_id);
-    rand_num = s_hash_combine(rand_num, ((uint64_t)thread_id << 32) | thread_id);
-
-    int len = snprintf(buffer, buffer_size, "\\\\.\\pipe\\aws_pipe_%llux", rand_num);
-    ASSERT_TRUE(len > 0);
-
-    return AWS_OP_SUCCESS;
-}
+int aws_pipe_get_unique_name(char *dst, size_t dst_size);
 
 /* Open read/write handles to a pipe with support for async (overlapped) read and write */
 static int s_async_pipe_init(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
     char pipe_name[256];
-    ASSERT_SUCCESS(s_create_random_pipe_name(pipe_name, sizeof(pipe_name)));
+    ASSERT_SUCCESS(aws_pipe_get_unique_name(pipe_name, sizeof(pipe_name)));
 
     write_handle->data.handle = CreateNamedPipeA(
         pipe_name,                                                                   /* lpName */
@@ -153,6 +135,8 @@ struct overlapped_completion_data {
     bool signaled;
     struct aws_event_loop *event_loop;
     struct aws_overlapped *overlapped;
+    int status_code;
+    size_t num_bytes_transferred;
 };
 
 static int s_overlapped_completion_data_init(struct overlapped_completion_data *data) {
@@ -167,11 +151,18 @@ static void s_overlapped_completion_data_clean_up(struct overlapped_completion_d
     aws_mutex_clean_up(&data->mutex);
 }
 
-static void s_on_overlapped_operation_complete(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped) {
+static void s_on_overlapped_operation_complete(
+    struct aws_event_loop *event_loop,
+    struct aws_overlapped *overlapped,
+    int status_code,
+    size_t num_bytes_transferred) {
+
     struct overlapped_completion_data *data = overlapped->user_data;
     aws_mutex_lock(&data->mutex);
     data->event_loop = event_loop;
     data->overlapped = overlapped;
+    data->status_code = status_code;
+    data->num_bytes_transferred = num_bytes_transferred;
     data->signaled = true;
     aws_condition_variable_notify_one(&data->condition_variable);
     aws_mutex_unlock(&data->mutex);
@@ -223,10 +214,8 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
     /* Assert that the aws_event_loop_on_completion_fn passed the appropriate args */
     ASSERT_PTR_EQUALS(event_loop, completion_data.event_loop);
     ASSERT_PTR_EQUALS(&overlapped, completion_data.overlapped);
-
-    /* Assert that the OVERLAPPED structure has the expected data for a successful write */
-    ASSERT_INT_EQUALS(0, overlapped.overlapped.Internal);               /* Check status code for I/O operation */
-    ASSERT_INT_EQUALS(sizeof(msg), overlapped.overlapped.InternalHigh); /* Check number of bytes transferred */
+    ASSERT_INT_EQUALS(0, completion_data.status_code); /* Check status code for I/O operation */
+    ASSERT_INT_EQUALS(sizeof(msg), completion_data.num_bytes_transferred);
 
     /* Shut it all down */
     s_overlapped_completion_data_clean_up(&completion_data);
@@ -239,6 +228,40 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
+
+#    include <unistd.h>
+
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
+
+/* Define simple pipe for testing. */
+int simple_pipe_open(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    AWS_ZERO_STRUCT(*read_handle);
+    AWS_ZERO_STRUCT(*write_handle);
+
+    int pipe_fds[2];
+    ASSERT_SUCCESS(aws_open_nonblocking_posix_pipe(pipe_fds));
+
+    read_handle->data.fd = pipe_fds[0];
+    write_handle->data.fd = pipe_fds[1];
+
+    return AWS_OP_SUCCESS;
+}
+void simple_pipe_close(struct aws_io_handle *read_handle, struct aws_io_handle *write_handle) {
+    close(read_handle->data.fd);
+    close(write_handle->data.fd);
+}
+
+/* return number of bytes written */
+size_t simple_pipe_write(struct aws_io_handle *handle, const uint8_t *src, size_t src_size) {
+    ssize_t write_val = write(handle->data.fd, src, src_size);
+    return (write_val < 0) ? 0 : write_val;
+}
+
+/* return number of bytes read */
+size_t simple_pipe_read(struct aws_io_handle *handle, uint8_t *dst, size_t dst_size) {
+    ssize_t read_val = read(handle->data.fd, dst, dst_size);
+    return (read_val < 0) ? 0 : read_val;
+}
 
 struct unsubrace_data {
     struct aws_event_loop *event_loop;
@@ -274,7 +297,7 @@ void s_unsubrace_done(struct unsubrace_data *data) {
 
 /* Wait until both pipes are writable, then write data to both of them.
  * This make it likely that both pipes receive events in the same iteration of the event-loop. */
-void s_unsubrace_on_write_event(
+void s_unsubrace_on_writable_event(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
@@ -315,13 +338,7 @@ void s_unsubrace_on_write_event(
 
     for (int i = 0; i < 2; ++i) {
         uint8_t buffer[] = "abc";
-        size_t bytes_written;
-        int err = aws_pipe_write(&data->write_handle[i], buffer, 3, &bytes_written);
-        if (err) {
-            s_unsubrace_error(data);
-            return;
-        }
-
+        size_t bytes_written = simple_pipe_write(&data->write_handle[i], buffer, 3);
         if (bytes_written == 0) {
             s_unsubrace_error(data);
             return;
@@ -346,7 +363,7 @@ void s_unsubrace_done_task(struct aws_task *task, void *arg, enum aws_task_statu
 /* Both pipes should have a readable event on the way.
  * The first pipe to get the event closes both pipes.
  * Since both pipes are unsubscribed, the second readable event shouldn't be delivered */
-void s_unsubrace_on_read_event(
+void s_unsubrace_on_readable_event(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
@@ -378,11 +395,7 @@ void s_unsubrace_on_read_event(
             return;
         }
 
-        err = aws_pipe_close(&data->read_handle[i], &data->write_handle[i]);
-        if (err) {
-            s_unsubrace_error(data);
-            return;
-        }
+        simple_pipe_close(&data->read_handle[i], &data->write_handle[i]);
     }
 
     /* Zero out the handles so that further accesses to the closed pipe are extra likely to cause crashes */
@@ -415,21 +428,21 @@ static void s_unsubrace_setup_task(struct aws_task *task, void *arg, enum aws_ta
     }
 
     for (int i = 0; i < 2; ++i) {
-        err = aws_pipe_open(&data->read_handle[i], &data->write_handle[i]);
+        err = simple_pipe_open(&data->read_handle[i], &data->write_handle[i]);
         if (err) {
             s_unsubrace_error(data);
             return;
         }
 
         err = aws_event_loop_subscribe_to_io_events(
-            data->event_loop, &data->write_handle[i], AWS_IO_EVENT_TYPE_WRITABLE, s_unsubrace_on_write_event, data);
+            data->event_loop, &data->write_handle[i], AWS_IO_EVENT_TYPE_WRITABLE, s_unsubrace_on_writable_event, data);
         if (err) {
             s_unsubrace_error(data);
             return;
         }
 
         err = aws_event_loop_subscribe_to_io_events(
-            data->event_loop, &data->read_handle[i], AWS_IO_EVENT_TYPE_READABLE, s_unsubrace_on_read_event, data);
+            data->event_loop, &data->read_handle[i], AWS_IO_EVENT_TYPE_READABLE, s_unsubrace_on_readable_event, data);
         if (err) {
             s_unsubrace_error(data);
             return;
@@ -608,7 +621,7 @@ static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_
     ASSERT_SUCCESS(aws_event_loop_run(tester.event_loop));
 
     /* Set up data to test with */
-    ASSERT_SUCCESS(aws_pipe_open(&tester.read_handle, &tester.write_handle));
+    ASSERT_SUCCESS(simple_pipe_open(&tester.read_handle, &tester.write_handle));
     aws_task_init(&tester.timer_task, s_timer_done_task, &tester);
 
     /* Wait for tester to finish running its state functions on the event-loop thread */
@@ -623,7 +636,7 @@ static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_
     aws_event_loop_destroy(tester.event_loop);
 
     /* Clean up data */
-    aws_pipe_close(&tester.read_handle, &tester.write_handle);
+    simple_pipe_close(&tester.read_handle, &tester.write_handle);
 
     /* Return tester results */
     return tester.error_code;
@@ -725,25 +738,19 @@ static int s_state_write_data(struct thread_tester *tester) {
     PRINT_STATE();
 
     const uint8_t data_to_copy[] = "abcdefghijklmnopqrstuvwxyz";
-    size_t num_bytes_written;
-    ASSERT_SUCCESS(aws_pipe_write(&tester->write_handle, data_to_copy, sizeof(data_to_copy), &num_bytes_written));
-
+    size_t num_bytes_written = simple_pipe_write(&tester->write_handle, data_to_copy, sizeof(data_to_copy));
     ASSERT_UINT_EQUALS(sizeof(data_to_copy), num_bytes_written);
 
     return AWS_OP_SUCCESS;
 }
 
-/* Read from pipe until AWS_IO_READ_WOULD_BLOCK error occurs */
+/* Read from pipe until no data remains */
 static int s_state_read_until_blocked(struct thread_tester *tester) {
     PRINT_STATE();
 
     uint8_t buffer[512];
-    int err;
-    do {
-        err = aws_pipe_read(&tester->read_handle, buffer, sizeof(buffer), NULL);
-    } while (err == AWS_OP_SUCCESS);
-
-    ASSERT_INT_EQUALS(AWS_IO_READ_WOULD_BLOCK, aws_last_error());
+    while (simple_pipe_read(&tester->read_handle, buffer, sizeof(buffer)) > 0) {
+    }
 
     return AWS_OP_SUCCESS;
 }
