@@ -891,7 +891,7 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_hangup_event_sent_after_write_end_closed(struct pipe_state *state) {
+static int test_pipe_error_event_sent_after_write_end_closed(struct pipe_state *state) {
     state->readable_events.error_code_to_monitor = AWS_IO_BROKEN_PIPE;
     state->readable_events.close_read_end_after_n_events = 1;
 
@@ -904,7 +904,7 @@ static int test_pipe_hangup_event_sent_after_write_end_closed(struct pipe_state 
     return AWS_OP_SUCCESS;
 }
 
-PIPE_TEST_CASE(pipe_hangup_event_sent_after_write_end_closed, SMALL_BUFFER_SIZE);
+PIPE_TEST_CASE(pipe_error_event_sent_after_write_end_closed, SMALL_BUFFER_SIZE);
 
 static void s_clean_up_write_end_then_schedule_subscribe_task(
     struct aws_task *task,
@@ -933,7 +933,7 @@ error:
     s_signal_error(state);
 }
 
-static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(struct pipe_state *state) {
+static int test_pipe_error_event_sent_on_subscribe_if_write_end_already_closed(struct pipe_state *state) {
     state->readable_events.error_code_to_monitor = AWS_IO_BROKEN_PIPE;
     state->readable_events.close_read_end_after_n_events = 1;
 
@@ -946,7 +946,7 @@ static int test_pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed(
     return AWS_OP_SUCCESS;
 }
 
-PIPE_TEST_CASE(pipe_hangup_event_sent_on_subscribe_if_write_end_already_closed, SMALL_BUFFER_SIZE);
+PIPE_TEST_CASE(pipe_error_event_sent_on_subscribe_if_write_end_already_closed, SMALL_BUFFER_SIZE);
 
 static void s_close_write_end_after_all_writes_completed(
     struct aws_pipe_write_end *write_end,
