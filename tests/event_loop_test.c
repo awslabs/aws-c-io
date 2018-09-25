@@ -741,16 +741,6 @@ static int s_state_write_all(struct thread_tester *tester) {
     return AWS_OP_SUCCESS;
 }
 
-static int s_state_read_1byte(struct thread_tester *tester) {
-    PRINT_STATE();
-
-    ASSERT_SUCCESS(aws_pipe_read(&tester->read_handle, tester->buffer.buffer, 1, &tester->buffer.len));
-
-    ASSERT_UINT_EQUALS(1, tester->buffer.len);
-
-    return AWS_OP_SUCCESS;
-}
-
 /* Read from pipe until AWS_IO_READ_WOULD_BLOCK error occurs */
 static int s_state_read_until_blocked(struct thread_tester *tester) {
     PRINT_STATE();
@@ -874,53 +864,6 @@ static int s_test_event_loop_readable_event_after_write(struct aws_allocator *al
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(event_loop_readable_event_after_write, s_test_event_loop_readable_event_after_write);
-
-/* Read only a fraction of what was written.
- * This should not trigger a 2nd writable event, since there was no point where a write would have blocked */
-static int s_test_event_loop_no_writable_event_if_already_writable(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    thread_tester_state_fn *state_functions[] = {
-        s_state_subscribe,
-        s_state_on_writable,
-        s_state_write_all,
-        s_state_on_readable,
-        s_state_read_1byte,
-        s_state_wait_1sec,
-        s_state_fail_if_more_writable_events,
-        s_state_unsubscribe,
-        NULL,
-    };
-
-    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
-    return AWS_OP_SUCCESS;
-}
-AWS_TEST_CASE(event_loop_no_writable_event_if_already_writable, s_test_event_loop_no_writable_event_if_already_writable);
-
-/* Read only a fraction of what was written, then write more.
- * This should not trigger a 2nd readable event, since there was already data to read when the 2nd write occurred. */
-static int s_test_event_loop_no_readable_event_if_already_readable(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    thread_tester_state_fn *state_functions[] = {
-        s_state_subscribe,
-        s_state_on_writable,
-        s_state_write_all,
-        s_state_on_readable,
-        s_state_read_1byte,
-        s_state_write_all,
-        s_state_wait_1sec,
-        s_state_fail_if_more_readable_events,
-        s_state_unsubscribe,
-        NULL,
-    };
-
-    ASSERT_SUCCESS(s_thread_tester_run(allocator, state_functions));
-    return AWS_OP_SUCCESS;
-}
-AWS_TEST_CASE(
-    event_loop_no_readable_event_if_already_readable,
-    s_test_event_loop_no_readable_event_if_already_readable);
 
 static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
