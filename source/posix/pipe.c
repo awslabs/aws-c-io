@@ -426,7 +426,7 @@ static void s_write_end_on_event(
     int events,
     void *user_data) {
 
-    /* Note that it should be impossible for this to run after read-end has been unsubscribed or cleaned up */
+    /* Note that it should be impossible for this to run after write-end has been unsubscribed or cleaned up */
     struct aws_pipe_write_end *write_end = user_data;
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
