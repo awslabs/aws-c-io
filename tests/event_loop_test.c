@@ -46,7 +46,7 @@ static bool s_task_ran_predicate(void *args) {
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
-static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
+static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
@@ -88,7 +88,7 @@ static int s_test_xthread_scheduled_tasks_execute(struct aws_allocator *allocato
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(xthread_scheduled_tasks_execute, s_test_xthread_scheduled_tasks_execute)
+AWS_TEST_CASE(event_loop_xthread_scheduled_tasks_execute, s_test_event_loop_xthread_scheduled_tasks_execute)
 
 #if AWS_USE_IO_COMPLETION_PORTS
 static uint64_t s_hash_combine(uint64_t a, uint64_t b) {
@@ -882,7 +882,7 @@ AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_
 
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
-static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
+static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -919,7 +919,7 @@ static int s_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(stop_then_restart, s_test_stop_then_restart)
+AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
