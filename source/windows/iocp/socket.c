@@ -1602,6 +1602,7 @@ struct write_cb_args {
 static void s_socket_written_event(struct aws_event_loop *event_loop, struct aws_overlapped *overlapped, 
     int status_code, size_t num_bytes_transferred) {
     (void)event_loop;
+    (void)num_bytes_transferred;
 
     struct write_cb_args *write_cb_args = overlapped->user_data;
 
