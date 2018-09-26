@@ -25,7 +25,7 @@ if (NOT UNIX) # TODO: these shouldn't fail
     add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
 endif ()
 
-if (NOT WINDOWS)
+if (NOT WIN32)
     #this one is flaky on windows, we'll revisit soon
     add_pipe_test_case(pipe_writes_are_fifo)
 endif ()
