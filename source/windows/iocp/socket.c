@@ -13,10 +13,16 @@
  * permissions and limitations under the License.
  */
 
-/*keep these where they are.*/
+/* clang is just a naive little idealist and doesn't understand that it can't just
+go around re-ordering windows header files.
+keep the above includes where they are. Also, sorry about the C++ style comments
+below, clang-format doesn't work (at least on my version with the c-style comments.*/
+
+// clang-format off
+#include <WS2tcpip.h>
 #include <MSWSock.h>
 #include <Mstcpip.h>
-#include <WS2tcpip.h>
+// clang-format on
 
 #include <aws/io/socket.h>
 
