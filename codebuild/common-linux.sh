@@ -17,6 +17,8 @@ function install_library {
 }
 
 
+sudo apt-get install libssl-dev
+
 cd ../
 
 mkdir install
