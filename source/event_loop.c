@@ -70,10 +70,12 @@ static struct aws_event_loop *default_new_event_loop(
     return aws_event_loop_new_default(allocator, clock);
 }
 
-int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group,
-        struct aws_allocator *alloc, uint16_t max_threads) {
+int aws_event_loop_group_default_init(
+    struct aws_event_loop_group *el_group,
+    struct aws_allocator *alloc,
+    uint16_t max_threads) {
     if (!max_threads) {
-        max_threads = (uint16_t) aws_system_info_processor_count();
+        max_threads = (uint16_t)aws_system_info_processor_count();
     }
 
     return aws_event_loop_group_init(
@@ -248,7 +250,7 @@ int aws_event_loop_connect_handle_to_io_completion_port(
     return event_loop->vtable.connect_to_io_completion_port(event_loop, handle);
 }
 
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+#else  /* !AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_subscribe_to_io_events(
     struct aws_event_loop *event_loop,

@@ -16,16 +16,16 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <aws/common/clock.h>
-#include <aws/common/task_scheduler.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
 
 #ifdef _WIN32
-#define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
+#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
 #else
-#define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
+#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
 struct local_listener_args {
@@ -100,7 +100,11 @@ struct socket_io_args {
     struct aws_condition_variable condition_variable;
 };
 
-static void s_on_written(struct aws_socket *socket, int error_code, struct aws_byte_cursor *data_written, void *user_data) {
+static void s_on_written(
+    struct aws_socket *socket,
+    int error_code,
+    struct aws_byte_cursor *data_written,
+    void *user_data) {
     (void)socket;
     struct socket_io_args *write_args = user_data;
     aws_mutex_lock(write_args->mutex);
@@ -164,13 +168,13 @@ static void s_on_readable(struct aws_socket *socket, int error_code, void *user_
     (void)error_code;
 }
 
-/* we have tests that need to check the error handling path, but it's damn near 
+/* we have tests that need to check the error handling path, but it's damn near
    impossible to predictably make sockets fail, the best idea we have is to
    do something the OS won't allow for the access permissions (like attempt to listen
    on a port < 1024), but alas, what if you're running the build as root? This disables
    those tests if the user runs the build as a root user. */
 static bool s_test_running_as_root(struct aws_allocator *alloc) {
-    struct aws_socket_endpoint endpoint = { .address = "127.0.0.1",.port = "81" };
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = "81"};
     struct aws_socket socket;
 
     struct aws_socket_options options = {
@@ -238,9 +242,9 @@ static int s_test_socket(
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
 
     struct aws_socket_creation_args outgoing_creation_args = {
-            .on_connection_established = s_local_outgoing_connection,
-            .on_error = s_local_outgoing_connection_error,
-            .user_data = &outgoing_args,
+        .on_connection_established = s_local_outgoing_connection,
+        .on_error = s_local_outgoing_connection_error,
+        .user_data = &outgoing_args,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -357,7 +361,8 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    snprintf(
+        endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -433,7 +438,8 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
         .mutex = &mutex,
         .condition_variable = &condition_variable,
         .connect_invoked = false,
-        .error_invoked = false,};
+        .error_invoked = false,
+    };
 
     struct aws_socket_creation_args outgoing_creation_args = {.on_connection_established = s_local_outgoing_connection,
                                                               .on_error = s_timeout_error_handler,
@@ -534,8 +540,8 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_socket_endpoint endpoint = {
-            .address = "127.0.0.1",
-            .port = "8567",
+        .address = "127.0.0.1",
+        .port = "8567",
     };
 
     struct error_test_args args = {
@@ -584,8 +590,8 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         /* hit a endpoint that will not send me a SYN packet. */
         struct aws_socket_endpoint endpoint = {
-                .address = "127.0.0.1",
-                .port = "80",
+            .address = "127.0.0.1",
+            .port = "80",
         };
 
         struct error_test_args args = {
@@ -606,7 +612,6 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         aws_socket_clean_up(&incoming);
         aws_event_loop_destroy(event_loop);
-
     }
     return 0;
 }
@@ -630,8 +635,8 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 
         /* hit a endpoint that will not send me a SYN packet. */
         struct aws_socket_endpoint endpoint = {
-                .address = "127.0",
-                .port = "80",
+            .address = "127.0",
+            .port = "80",
         };
 
         struct error_test_args args = {
@@ -680,8 +685,8 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_socket_endpoint endpoint = {
-            .address = "127.0.0.1",
-            .port = "50000",
+        .address = "127.0.0.1",
+        .port = "50000",
     };
 
     struct error_test_args args = {

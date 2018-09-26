@@ -25,9 +25,9 @@
 #include <read_write_test_handler.h>
 
 #ifdef _WIN32
-#define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
+#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
 #else
-#define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
+#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
 struct socket_test_args {
@@ -238,11 +238,21 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     static size_t s_outgoing_initial_read_window = 9;
     static size_t s_incoming_initial_read_window = 8;
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, s_outgoing_initial_read_window, &outgoing_rw_args);
+        allocator,
+        s_socket_test_handle_read,
+        s_socket_test_handle_write,
+        true,
+        s_outgoing_initial_read_window,
+        &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct aws_channel_handler *incoming_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, s_incoming_initial_read_window, &incoming_rw_args);
+        allocator,
+        s_socket_test_handle_read,
+        s_socket_test_handle_write,
+        true,
+        s_incoming_initial_read_window,
+        &incoming_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct socket_test_args incoming_args = {
@@ -276,7 +286,8 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    snprintf(
+        endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -322,12 +333,12 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     /* Go ahead and verify back-pressure works*/
     rw_handler_trigger_increment_read_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_socket_test_full_read_predicate, &incoming_rw_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &condition_variable, &mutex, s_socket_test_full_read_predicate, &incoming_rw_args));
 
     rw_handler_trigger_increment_read_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_socket_test_full_read_predicate, &outgoing_rw_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &condition_variable, &mutex, s_socket_test_full_read_predicate, &outgoing_rw_args));
 
     ASSERT_INT_EQUALS(read_tag.len, outgoing_rw_args.amount_read);
     ASSERT_INT_EQUALS(write_tag.len, incoming_rw_args.amount_read);
@@ -348,7 +359,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
-    
+
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
     aws_event_loop_group_clean_up(&el_group);
@@ -419,7 +430,8 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    snprintf(
+        endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));

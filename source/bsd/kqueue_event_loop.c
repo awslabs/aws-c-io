@@ -162,7 +162,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
         &thread_signal_kevent,
         impl->cross_thread_signal_pipe[READ_FD],
         EVFILT_READ /*filter*/,
-        EV_ADD | EV_CLEAR/*flags*/,
+        EV_ADD | EV_CLEAR /*flags*/,
         0 /*fflags*/,
         0 /*data*/,
         NULL /*udata*/);

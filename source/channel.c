@@ -123,7 +123,7 @@ int aws_channel_init(
     AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
-    channel->loop = event_loop;   
+    channel->loop = event_loop;
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
@@ -458,13 +458,16 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)arg;
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *) task;
+        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
         task->fn = NULL;
         task->arg = NULL;
         struct aws_channel_slot *slot = shutdown_notify->slot;
         aws_channel_handler_shutdown(
-                slot->handler, slot, AWS_CHANNEL_DIR_WRITE, shutdown_notify->error_code,
-                shutdown_notify->shutdown_immediately);
+            slot->handler,
+            slot,
+            AWS_CHANNEL_DIR_WRITE,
+            shutdown_notify->error_code,
+            shutdown_notify->shutdown_immediately);
     }
 }
 
