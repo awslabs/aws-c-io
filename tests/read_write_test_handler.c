@@ -224,18 +224,22 @@ struct increment_read_window_task_args {
     struct aws_task task;
 };
 
-#if 0  /* not used yet */
 static void s_increment_read_window_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+    (void)task;
+    (void)task_status;
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
     struct rw_test_handler_impl *handler_impl = increment_read_window_task_args->handler->impl;
 
     handler_impl->window += increment_read_window_task_args->window_update;
-    aws_channel_slot_increment_read_window(increment_read_window_task_args->slot, increment_read_window_task_args->window_update);
+    aws_channel_slot_increment_read_window(
+        increment_read_window_task_args->slot, increment_read_window_task_args->window_update);
 
     aws_mem_release(increment_read_window_task_args->handler->alloc, increment_read_window_task_args);
 }
 
-static void s_rw_handler_trigger_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+void rw_handler_trigger_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
     size_t window_update) {
 
     struct rw_test_handler_impl *handler_impl = handler->impl;
@@ -243,20 +247,17 @@ static void s_rw_handler_trigger_increment_read_window(struct aws_channel_handle
     if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
         handler_impl->window += window_update;
         aws_channel_slot_increment_read_window(slot, window_update);
-    }
-    else {
-        struct increment_read_window_task_args *increment_read_window_task_args = aws_mem_acquire(
-                handler->alloc,
-                sizeof(struct increment_read_window_task_args));
+    } else {
+        struct increment_read_window_task_args *increment_read_window_task_args =
+            aws_mem_acquire(handler->alloc, sizeof(struct increment_read_window_task_args));
         increment_read_window_task_args->handler = handler;
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
-        aws_task_init(increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
+        aws_task_init(&increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
 
         aws_channel_schedule_task_now(slot->channel, &increment_read_window_task_args->task);
     }
 }
-#endif /* not used yet */
 
 bool rw_handler_shutdown_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
@@ -268,8 +269,7 @@ bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler
     return handler_impl->increment_read_window_called;
 }
 
-#if 0  /* not used yet */
-static int s_rw_handler_last_error_code(struct aws_channel_handler *handler) {
+int rw_handler_last_error_code(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
     return handler_impl->shutdown_error;
 }
@@ -279,9 +279,8 @@ static bool s_rw_test_handler_shutdown_predicate(void *arg) {
     return handler_impl->shutdown_called;
 }
 
-static int s_rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
+int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
-    return aws_condition_variable_wait_pred(&handler_impl->condition_variable, &handler_impl->mutex,
-                                            s_rw_test_handler_shutdown_predicate, handler_impl);
+    return aws_condition_variable_wait_pred(
+        &handler_impl->condition_variable, &handler_impl->mutex, s_rw_test_handler_shutdown_predicate, handler_impl);
 }
-#endif /* not used yet */
