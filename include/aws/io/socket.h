@@ -56,8 +56,8 @@ struct aws_socket_creation_args {
      */
     void (*on_connection_established)(struct aws_socket *socket, void *user_data);
     /**
-     * Called for connection level errors, either in client in server mode. This will never be invoked once IO operations
-     * have begun.
+     * Called for connection level errors, either in client in server mode. This will never be invoked once IO
+     * operations have begun.
      */
     void (*on_error)(struct aws_socket *socket, int err_code, void *user_data);
     void *user_data;
@@ -67,8 +67,11 @@ struct aws_socket_creation_args {
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_OP_SUCCESS.
  */
-typedef void(aws_socket_on_data_written_fn)(struct aws_socket *socket, int error_code,
-        struct aws_byte_cursor *data_written, void *user_data);
+typedef void(aws_socket_on_data_written_fn)(
+    struct aws_socket *socket,
+    int error_code,
+    struct aws_byte_cursor *data_written,
+    void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_OP_SUCCESS.
@@ -98,11 +101,11 @@ struct aws_socket {
 struct aws_byte_buf;
 struct aws_byte_cursor;
 
-/* These are hacks for working around headers and functions we need for IO work but aren't directly includable or linkable.
-   these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are just in case
-   someone includes this header somewhere they were able to get these definitions included. */
+/* These are hacks for working around headers and functions we need for IO work but aren't directly includable or
+   linkable. these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are
+   just in case someone includes this header somewhere they were able to get these definitions included. */
 #ifdef _WIN32
-typedef void(*aws_ms_fn_ptr)(void);
+typedef void (*aws_ms_fn_ptr)(void);
 
 void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
@@ -139,7 +142,10 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful
  * return.
  */
-AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *event_loop);
+AWS_IO_API int aws_socket_connect(
+    struct aws_socket *socket,
+    struct aws_socket_endpoint *remote_endpoint,
+    struct aws_event_loop *event_loop);
 
 /**
  * Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In
@@ -193,8 +199,8 @@ AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_sock
 /**
  * Assigns the socket to the event-loop. The socket will begin receiving read/write/error notifications after this call.
  *
- * Note: If you called connect for TCP or Unix Domain Sockets and received a connection_success callback, this has already
- * happened. You only need to call this function when:
+ * Note: If you called connect for TCP or Unix Domain Sockets and received a connection_success callback, this has
+ * already happened. You only need to call this function when:
  *
  * a.) This socket is a server socket (e.g. a result of a call to start_accept())
  * b.) This socket is a UDP socket.
@@ -207,15 +213,17 @@ AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct
 AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
 /**
- * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved in
- * the callback.
+ * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved
+ * in the callback.
  *
  * Note! This function is technically not thread safe, but we do not enforce which thread you call from.
  * It's your responsibility to either call this in safely (e.g. just don't call it in parallel from multiple threads) or
  * schedule a task to call it. If you call it before your first call to read, it will be fine.
  */
-AWS_IO_API int aws_socket_subscribe_to_readable_events(struct aws_socket *socket,
-    aws_socket_on_readable_fn *on_readable, void *user_data);
+AWS_IO_API int aws_socket_subscribe_to_readable_events(
+    struct aws_socket *socket,
+    aws_socket_on_readable_fn *on_readable,
+    void *user_data);
 
 /**
  * Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_READ_WOULD_BLOCK` if no data is
@@ -228,14 +236,17 @@ AWS_IO_API int aws_socket_subscribe_to_readable_events(struct aws_socket *socket
 AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
 
 /**
- * Writes to the socket. This call is non-blocking and will attempt to write as much as it can, but will queue any remaining
- * portion of the data for write when available. written_fn will be invoked once the entire cursor has been written, or
- * the write failed or was cancelled.
+ * Writes to the socket. This call is non-blocking and will attempt to write as much as it can, but will queue any
+ * remaining portion of the data for write when available. written_fn will be invoked once the entire cursor has been
+ * written, or the write failed or was cancelled.
  *
  * NOTE! This function must be called from the event-loop used in aws_socket_assign_to_event_loop
  */
-AWS_IO_API int aws_socket_write(struct aws_socket *socket, struct aws_byte_cursor *cursor, 
-    aws_socket_on_data_written_fn *written_fn, void *user_data);
+AWS_IO_API int aws_socket_write(
+    struct aws_socket *socket,
+    struct aws_byte_cursor *cursor,
+    aws_socket_on_data_written_fn *written_fn,
+    void *user_data);
 
 /**
  * Gets the latest error from the socket. If no error has occurred AWS_OP_SUCCESS will be returned. This function does
