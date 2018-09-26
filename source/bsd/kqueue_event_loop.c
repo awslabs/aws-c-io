@@ -754,7 +754,7 @@ static void s_event_thread_main(void *user_data) {
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
-            if ((int)kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
+            if (kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
                 should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */

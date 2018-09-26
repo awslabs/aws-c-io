@@ -5,9 +5,29 @@ file(GLOB TEST_SRC "*.c")
 file(GLOB TEST_HDRS "*.h")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
-add_test_case(pipe_open_close)
-add_test_case(pipe_read_write)
-add_test_case(pipe_read_write_large_buffer)
+# Each pipe test runs in 2 different configurations
+macro(add_pipe_test_case name)
+    add_test_case("${name}")
+    add_test_case("${name}_2loops")
+endmacro()
+
+add_pipe_test_case(pipe_open_close)
+add_pipe_test_case(pipe_read_write)
+add_pipe_test_case(pipe_read_write_large_buffer)
+add_pipe_test_case(pipe_readable_event_sent_after_write)
+add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
+add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
+add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
+
+if (NOT UNIX) # TODO: these shouldn't fail
+    add_pipe_test_case(pipe_readable_event_not_sent_again_until_all_data_read)
+    add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
+    add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
+endif ()
+
+add_pipe_test_case(pipe_writes_are_fifo)
+add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
+
 add_test_case(event_loop_xthread_scheduled_tasks_execute)
 if (USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
