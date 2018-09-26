@@ -37,15 +37,16 @@ struct read_end_impl {
     struct aws_allocator *alloc;
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
-    aws_pipe_on_read_event_fn *on_read_event_user_callback;
-    void *on_read_event_user_data;
+    aws_pipe_on_readable_fn *on_readable_user_callback;
+    void *on_readable_user_data;
     bool is_subscribed;
 };
 
 struct write_request {
-    struct aws_byte_cursor cursor;
+    struct aws_byte_cursor original_cursor;
+    struct aws_byte_cursor cursor; /* tracks progress of write */
     size_t num_bytes_written;
-    aws_pipe_on_write_complete_fn *user_callback;
+    aws_pipe_on_write_completed_fn *user_callback;
     void *user_data;
     struct aws_linked_list_node list_node;
 
@@ -214,7 +215,7 @@ int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
     }
 
     if (read_impl->is_subscribed) {
-        int err = aws_pipe_unsubscribe_from_read_events(read_end);
+        int err = aws_pipe_unsubscribe_from_readable_events(read_end);
         if (err) {
             return AWS_OP_ERR;
         }
@@ -239,16 +240,18 @@ struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_w
     return write_impl->event_loop;
 }
 
-int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_size, size_t *num_bytes_read) {
+int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *num_bytes_read) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
-    assert(dst);
+    assert(dst_buffer && dst_buffer->buffer);
 
     if (num_bytes_read) {
         *num_bytes_read = 0;
     }
 
-    ssize_t read_val = read(read_impl->handle.data.fd, dst, dst_size);
+    size_t num_bytes_to_read = dst_buffer->capacity - dst_buffer->len;
+
+    ssize_t read_val = read(read_impl->handle.data.fd, dst_buffer->buffer + dst_buffer->len, num_bytes_to_read);
 
     if (read_val < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -256,6 +259,9 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
         }
         return s_raise_posix_error(errno);
     }
+
+    /* Success */
+    dst_buffer->len += read_val;
 
     if (num_bytes_read) {
         *num_bytes_read = read_val;
@@ -277,19 +283,21 @@ static void s_read_end_on_event(
     assert(read_impl->event_loop == event_loop);
     assert(&read_impl->handle == handle);
     assert(read_impl->is_subscribed);
+    assert(events != 0);
 
-    if (read_impl->on_read_event_user_callback) {
-        read_impl->on_read_event_user_callback(read_end, events, read_impl->on_read_event_user_data);
-    }
+    int error_code = (events == AWS_IO_EVENT_TYPE_READABLE) ? AWS_ERROR_SUCCESS : AWS_IO_BROKEN_PIPE;
+
+    read_impl->on_readable_user_callback(read_end, error_code, read_impl->on_readable_user_data);
 }
 
-int aws_pipe_subscribe_to_read_events(
+int aws_pipe_subscribe_to_readable_events(
     struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_event_fn *on_read_event,
+    aws_pipe_on_readable_fn *on_readable,
     void *user_data) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
+    assert(on_readable);
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -306,13 +314,13 @@ int aws_pipe_subscribe_to_read_events(
     }
 
     read_impl->is_subscribed = true;
-    read_impl->on_read_event_user_callback = on_read_event;
-    read_impl->on_read_event_user_data = user_data;
+    read_impl->on_readable_user_callback = on_readable;
+    read_impl->on_readable_user_data = user_data;
 
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
+int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
@@ -330,15 +338,15 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     }
 
     read_impl->is_subscribed = false;
-    read_impl->on_read_event_user_callback = NULL;
-    read_impl->on_read_event_user_data = NULL;
+    read_impl->on_readable_user_callback = NULL;
+    read_impl->on_readable_user_data = NULL;
 
     return AWS_OP_SUCCESS;
 }
 
 /* Pop front write request, invoke its callback, and delete it.
  * Returns whether the callback resulted in the write-end getting cleaned up */
-static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *write_end, int status) {
+static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *write_end, int error_code) {
     struct write_end_impl *write_impl = write_end->impl_data;
 
     assert(!aws_linked_list_empty(&write_impl->write_list));
@@ -354,7 +362,7 @@ static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *
     write_impl->currently_invoking_write_callback = request;
 
     if (request->user_callback) {
-        request->user_callback(write_end, status, request->num_bytes_written, request->user_data);
+        request->user_callback(write_end, error_code, request->original_cursor, request->user_data);
         write_end_cleaned_up_during_callback = request->did_user_callback_clean_up_write_end;
     }
 
@@ -376,7 +384,7 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
         struct aws_linked_list_node *node = aws_linked_list_front(&write_impl->write_list);
         struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
 
-        int completed_write_status = AWS_ERROR_SUCCESS;
+        int completed_error_code = AWS_ERROR_SUCCESS;
 
         if (request->cursor.len > 0) {
             ssize_t write_val = write(write_impl->handle.data.fd, request->cursor.ptr, request->cursor.len);
@@ -389,10 +397,9 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
                 }
 
                 /* A non-recoverable error occurred during this write */
-                completed_write_status = s_translate_posix_error(errno);
+                completed_error_code = s_translate_posix_error(errno);
 
             } else {
-                request->num_bytes_written += write_val;
                 aws_byte_cursor_advance(&request->cursor, write_val);
 
                 if (request->cursor.len > 0) {
@@ -404,7 +411,7 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
 
         /* If we got this far in the loop, then the write request is complete.
          * Note that the callback may result in the pipe being cleaned up. */
-        bool write_end_cleaned_up = s_write_end_complete_front_write_request(write_end, completed_write_status);
+        bool write_end_cleaned_up = s_write_end_complete_front_write_request(write_end, completed_error_code);
         if (write_end_cleaned_up) {
             /* Bail out! Any remaining requests were canceled during clean_up() */
             return;
@@ -419,7 +426,7 @@ static void s_write_end_on_event(
     int events,
     void *user_data) {
 
-    /* Note that it should be impossible for this to run after read-end has been unsubscribed or cleaned up */
+    /* Note that it should be impossible for this to run after write-end has been unsubscribed or cleaned up */
     struct aws_pipe_write_end *write_end = user_data;
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
@@ -438,15 +445,13 @@ static void s_write_end_on_event(
 
 int aws_pipe_write(
     struct aws_pipe_write_end *write_end,
-    const uint8_t *src,
-    size_t src_size,
-    aws_pipe_on_write_complete_fn *on_complete,
+    struct aws_byte_cursor src_buffer,
+    aws_pipe_on_write_completed_fn *on_completed,
     void *user_data) {
-
-    assert(src);
 
     struct write_end_impl *write_impl = write_end->impl_data;
     assert(write_impl);
+    assert(src_buffer.ptr);
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -458,8 +463,9 @@ int aws_pipe_write(
     }
 
     AWS_ZERO_STRUCT(*request);
-    request->cursor = aws_byte_cursor_from_array(src, src_size);
-    request->user_callback = on_complete;
+    request->original_cursor = src_buffer;
+    request->cursor = src_buffer;
+    request->user_callback = on_completed;
     request->user_data = user_data;
 
     aws_linked_list_push_back(&write_impl->write_list, &request->list_node);

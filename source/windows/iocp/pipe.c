@@ -82,16 +82,15 @@ struct read_end_impl {
     /* Async task operation used to deliver error reports. */
     struct async_operation *async_error_report;
 
-    aws_pipe_on_read_event_fn *on_read_event_user_callback;
-    void *on_read_event_user_data;
+    aws_pipe_on_readable_fn *on_readable_user_callback;
+    void *on_readable_user_data;
+
+    /* Error code that the error-reporting task will report. */
+    int error_code_to_report;
 
     /* Reasons to restart monitoring once current async operation completes.
      * Contains read_end_monitoring_request_t flags.*/
     uint8_t monitoring_request_reasons;
-
-    /* Events that the error-reporting task will report.
-     * Contains aws_io_event_t flags.*/
-    uint8_t error_events_to_report;
 };
 
 enum write_end_state {
@@ -101,7 +100,8 @@ enum write_end_state {
 
 /* Data describing an async write request */
 struct write_request {
-    aws_pipe_on_write_complete_fn *user_callback;
+    struct aws_byte_cursor original_cursor;
+    aws_pipe_on_write_completed_fn *user_callback;
     void *user_data;
     struct aws_allocator *alloc;
     struct aws_overlapped overlapped;
@@ -436,7 +436,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
         return;
     }
 
-    assert(read_impl->error_events_to_report == 0);
+    assert(read_impl->error_code_to_report == 0);
 
     read_impl->monitoring_request_reasons = 0;
     read_impl->state = READ_END_STATE_SUBSCRIBED;
@@ -462,16 +462,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
      * We schedule this as a task so the callback doesn't happen before the user expects it.
      * We also set the state to SUBSCRIBE_ERROR so we don't keep trying to monitor the file. */
     read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
-
-    DWORD win_err = GetLastError();
-    switch (win_err) {
-        case ERROR_BROKEN_PIPE:
-            read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-            break;
-        default:
-            read_impl->error_events_to_report = AWS_IO_EVENT_TYPE_ERROR;
-    }
-
+    read_impl->error_code_to_report = s_translate_windows_error(GetLastError());
     read_impl->async_error_report->is_active = true;
     aws_event_loop_schedule_task_now(read_impl->event_loop, &read_impl->async_error_report->op.task);
 }
@@ -496,11 +487,11 @@ static void s_read_end_report_error_task(struct aws_task *task, void *user_data,
     /* Only report the error if we're still in the SUBSCRIBE_ERROR state.
      * If the user unsubscribed since this task was queued, then we'd be in a different state. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBE_ERROR) {
-        assert(read_impl->error_events_to_report != 0);
+        assert(read_impl->error_code_to_report != 0);
 
-        if (read_impl->on_read_event_user_callback) {
-            read_impl->on_read_event_user_callback(
-                read_end, read_impl->error_events_to_report, read_impl->on_read_event_user_data);
+        if (read_impl->on_readable_user_callback) {
+            read_impl->on_readable_user_callback(
+                read_end, read_impl->error_code_to_report, read_impl->on_readable_user_data);
         }
     }
 }
@@ -529,9 +520,10 @@ static void s_read_end_on_zero_byte_read_completion(
     /* Only report events to user when in the SUBSCRIBED state.
      * If in the SUBSCRIBING state, this completion is from an operation begun during a previous subscription. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBED) {
-        int events;
+        int readable_error_code;
+
         if (status_code == 0) {
-            events = AWS_IO_EVENT_TYPE_READABLE;
+            readable_error_code = AWS_ERROR_SUCCESS;
 
             /* Clear out the "waiting for data" reason to restart zero-byte-read, since we're about to tell the user
              * that the pipe is readable. If the user consumes all the data, the "waiting for data" reason will get set
@@ -539,21 +531,14 @@ static void s_read_end_on_zero_byte_read_completion(
             read_impl->monitoring_request_reasons &= ~MONITORING_BECAUSE_WAITING_FOR_DATA;
 
         } else {
+            readable_error_code = AWS_IO_BROKEN_PIPE;
+
             /* Move pipe to SUBSCRIBE_ERROR state to prevent further monitoring */
             read_impl->state = READ_END_STATE_SUBSCRIBE_ERROR;
-
-            switch (status_code) {
-                case 0xC000014B: /* STATUS_PIPE_BROKEN */
-                    /* The pipe operation has failed because the other end of the pipe has been closed. */
-                    events = AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-                    break;
-                default:
-                    events = AWS_IO_EVENT_TYPE_ERROR;
-            }
         }
 
-        if (read_impl->on_read_event_user_callback) {
-            read_impl->on_read_event_user_callback(read_end, events, read_impl->on_read_event_user_data);
+        if (read_impl->on_readable_user_callback) {
+            read_impl->on_readable_user_callback(read_end, readable_error_code, read_impl->on_readable_user_data);
         }
     }
 
@@ -570,9 +555,9 @@ static void s_read_end_on_zero_byte_read_completion(
     }
 }
 
-int aws_pipe_subscribe_to_read_events(
+int aws_pipe_subscribe_to_readable_events(
     struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_event_fn *on_read_event,
+    aws_pipe_on_readable_fn *on_readable,
     void *user_data) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
@@ -593,15 +578,15 @@ int aws_pipe_subscribe_to_read_events(
     }
 
     read_impl->state = READ_END_STATE_SUBSCRIBING;
-    read_impl->on_read_event_user_callback = on_read_event;
-    read_impl->on_read_event_user_data = user_data;
+    read_impl->on_readable_user_callback = on_readable;
+    read_impl->on_readable_user_data = user_data;
 
     s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_SUBSCRIBING);
 
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
+int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
 
@@ -614,10 +599,10 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     }
 
     read_impl->state = READ_END_STATE_OPEN;
-    read_impl->on_read_event_user_callback = NULL;
-    read_impl->on_read_event_user_data = NULL;
+    read_impl->on_readable_user_callback = NULL;
+    read_impl->on_readable_user_data = NULL;
     read_impl->monitoring_request_reasons = 0;
-    read_impl->error_events_to_report = 0;
+    read_impl->error_code_to_report = 0;
 
     /* If there's a chance the zero-byte-read is pending, cancel it.
      * s_read_end_on_zero_byte_read_completion() will see status code
@@ -630,10 +615,10 @@ int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_size, size_t *amount_read) {
+int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *amount_read) {
     struct read_end_impl *read_impl = read_end->impl_data;
     assert(read_impl);
-    assert(dst);
+    assert(dst_buffer && dst_buffer->buffer);
 
     if (amount_read) {
         *amount_read = 0;
@@ -643,7 +628,8 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    if (dst_size == 0) {
+    /* Just return success if user requests 0 data */
+    if (dst_buffer->capacity <= dst_buffer->len) {
         return AWS_OP_SUCCESS;
     }
 
@@ -658,41 +644,48 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_s
         &bytes_available, /*lpTotalBytesAvail*/
         NULL);            /*lpBytesLeftThisMessage: doesn't apply to byte-type pipes*/
 
-    /* Operation failed. Request async monitoring so user is informed via aws_pipe_on_read_event_fn of handle error. */
+    /* If operation failed. Request async monitoring so user is informed via aws_pipe_on_readable_fn of handle error. */
     if (!peek_success) {
         s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_ERROR_SUSPECTED);
         return s_raise_last_windows_error();
     }
 
-    /* No data available. Request async monitoring so user is notified when data becomes available. */
+    /* If no data available. Request async monitoring so user is notified when data becomes available. */
     if (bytes_available == 0) {
         s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_WAITING_FOR_DATA);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
+    size_t bytes_to_read = dst_buffer->capacity - dst_buffer->len;
+    if (bytes_to_read > bytes_available) {
+        bytes_to_read = bytes_available;
+    }
+
     DWORD bytes_read = 0;
-    DWORD bytes_to_read = dst_size > bytes_available ? bytes_available : (DWORD)dst_size;
     bool read_success = ReadFile(
         read_impl->handle.data.handle,
-        dst,           /*lpBuffer*/
-        bytes_to_read, /*nNumberOfBytesToRead*/
-        &bytes_read,   /*lpNumberOfBytesRead*/
-        NULL);         /*lpOverlapped: NULL so read is synchronous*/
+        dst_buffer->buffer,   /*lpBuffer*/
+        (DWORD)bytes_to_read, /*nNumberOfBytesToRead*/
+        &bytes_read,          /*lpNumberOfBytesRead*/
+        NULL);                /*lpOverlapped: NULL so read is synchronous*/
 
-    /* Operation failed. Request async monitoring so user is informed via aws_pipe_on_read_event_fn of handle error. */
+    /* Operation failed. Request async monitoring so user is informed via aws_pipe_on_readable_fn of handle error. */
     if (!read_success) {
         s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_ERROR_SUSPECTED);
         return s_raise_last_windows_error();
     }
 
-    if (bytes_read < dst_size) {
-        /* If we weren't able to read as many bytes as the user requested, that's ok.
-         * Request async monitoring so we can alert the user when more data arrives */
-        s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_WAITING_FOR_DATA);
-    }
+    /* Success */
+    dst_buffer->len += bytes_read;
 
     if (amount_read) {
         *amount_read = bytes_read;
+    }
+
+    if (bytes_read < bytes_to_read) {
+        /* If we weren't able to read as many bytes as the user requested, that's ok.
+         * Request async monitoring so we can alert the user when more data arrives */
+        s_read_end_request_async_monitoring(read_end, MONITORING_BECAUSE_WAITING_FOR_DATA);
     }
 
     return AWS_OP_SUCCESS;
@@ -724,9 +717,8 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
 
 int aws_pipe_write(
     struct aws_pipe_write_end *write_end,
-    const uint8_t *src,
-    size_t src_size,
-    aws_pipe_on_write_complete_fn *on_complete,
+    struct aws_byte_cursor src_buffer,
+    aws_pipe_on_write_completed_fn *on_completed,
     void *user_data) {
 
     struct write_end_impl *write_impl = write_end->impl_data;
@@ -736,10 +728,10 @@ int aws_pipe_write(
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    if (src_size > MAXDWORD) {
+    if (src_buffer.len > MAXDWORD) {
         return aws_raise_error(AWS_ERROR_INVALID_BUFFER_SIZE);
     }
-    DWORD num_bytes_to_write = (DWORD)src_size;
+    DWORD num_bytes_to_write = (DWORD)src_buffer.len;
 
     struct write_request *write = aws_mem_acquire(write_impl->alloc, sizeof(struct write_request));
     if (!write) {
@@ -747,14 +739,15 @@ int aws_pipe_write(
     }
 
     AWS_ZERO_STRUCT(*write);
-    write->user_callback = on_complete;
+    write->original_cursor = src_buffer;
+    write->user_callback = on_completed;
     write->user_data = user_data;
     write->alloc = write_impl->alloc;
     aws_overlapped_init(&write->overlapped, s_write_end_on_write_completion, write_end);
 
     bool write_success = WriteFile(
         write_impl->handle.data.handle, /*hFile*/
-        src,                            /*lpBuffer*/
+        src_buffer.ptr,                 /*lpBuffer*/
         num_bytes_to_write,             /*nNumberOfBytesToWrite*/
         NULL,                           /*lpNumberOfBytesWritten*/
         &write->overlapped.overlapped); /*lpOverlapped*/
@@ -777,12 +770,16 @@ void s_write_end_on_write_completion(
     size_t num_bytes_transferred) {
 
     (void)event_loop;
+    (void)num_bytes_transferred;
 
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
 
-    aws_pipe_on_write_complete_fn *on_write_user_callback = write_request->user_callback;
-    void *on_write_user_data = write_request->user_data;
+    assert((num_bytes_transferred == write_request->original_cursor.len) || status_code);
+
+    struct aws_byte_cursor original_cursor = write_request->original_cursor;
+    aws_pipe_on_write_completed_fn *user_callback = write_request->user_callback;
+    void *user_data = write_request->user_data;
 
     /* Clean up write-request.
      * Note that write-end might have been cleaned up before this executes. */
@@ -793,14 +790,14 @@ void s_write_end_on_write_completion(
     aws_mem_release(write_request->alloc, write_request);
 
     /* Report outcome to user */
-    if (on_write_user_callback) {
+    if (user_callback) {
 
-        int write_result = AWS_ERROR_SUCCESS;
+        int error_code = AWS_ERROR_SUCCESS;
         if (status_code != 0) {
-            write_result = s_translate_windows_error(status_code);
+            error_code = s_translate_windows_error(status_code);
         }
 
         /* Note that user may choose to clean up write-end in this callback */
-        on_write_user_callback(write_end, write_result, num_bytes_transferred, on_write_user_data);
+        user_callback(write_end, error_code, original_cursor, user_data);
     }
 }

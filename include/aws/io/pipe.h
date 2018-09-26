@@ -16,6 +16,7 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/common/byte_buf.h>
 #include <aws/io/io.h>
 
 struct aws_event_loop;
@@ -29,26 +30,29 @@ struct aws_pipe_write_end {
 };
 
 /**
- * Called when events occur on the read end of the pipe.
- * `events` contains flags corresponding to `aws_io_event_type` values.
+ * Callback for when the pipe is readable (edge-triggered), or an error has occurred.
+ * Afer subscribing, the callback is invoked when the pipe has data to read, or the pipe has an error.
+ * The readable callback is invoked again any time the user reads all data, and then more data arrives.
+ * Note that it will not be invoked again if the pipe still has unread data when more data arrives.
+ * `error_code` of AWS_ERROR_SUCCESS indicates a readable event, and otherwise contains the value of the error.
  * `user_data` corresponds to the `user_data` passed into aws_pipe_subscribe_to_read_events().
- * This call is always made on the read-end's event-loop thread.
+ * This callback is always invoked on the read-end's event-loop thread.
  */
-typedef void(aws_pipe_on_read_event_fn)(struct aws_pipe_read_end *read_end, int events, void *user_data);
+typedef void(aws_pipe_on_readable_fn)(struct aws_pipe_read_end *read_end, int error_code, void *user_data);
 
 /**
- * Called when the write initialized by aws_pipe_write() completes.
- * `write_end` corresponds to the write-end passed to aws_pipe_write(),
- * but will be NULL if the write-end was cleaned up before this callback could be invoked.
- * `write_result` contains AWS_ERROR_SUCCESS or a code corresponding to the error.
- * `num_bytes_written` contains the number of bytes successfully transferred.
+ * Callback for when the asynchronous aws_pipe_write() operation has either completed or failed.
+ * `write_end` will be NULL if this callback is invoked after the the write-end has been cleaned up,
+ * this does not necessarily mean that the write operation failed.
+ * `error_code` will be AWS_ERROR_SUCCESS if all data was written, or a code corresponding to the error.
+ * `src_buffer` corresponds to the buffer passed into aws_pipe_write()
  * `user_data` corresponds to the `user_data` passed into aws_pipe_write().
- * This call is always made on the write-end's event-loop thread.
+ * This callback is always invoked on the write-end's event-loop thread.
  */
-typedef void(aws_pipe_on_write_complete_fn)(
+typedef void(aws_pipe_on_write_completed_fn)(
     struct aws_pipe_write_end *write_end,
-    int write_result,
-    size_t num_bytes_written,
+    int error_code,
+    struct aws_byte_cursor src_buffer,
     void *user_data);
 
 #ifdef __cplusplus
@@ -97,49 +101,50 @@ AWS_IO_API
 struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_write_end *write_end);
 
 /**
- * Initiates an asynchrous write from `src` buffer to the pipe.
- * Up to `src_size` bytes will be written.
- * `on_complete` will be called on the event-loop thread when the operation completes.
- * Multiple asynchronous writes may be active at a time, they will be written in the order they are received.
+ * Initiates an asynchrous write from the source buffer to the pipe.
+ * The data referenced by `src_buffer` must remain in memory until the operation completes.
+ * `on_complete` is called on the event-loop thread when the operation has either completed or failed.
+ * The callback's pipe argument will be NULL if the callback is invoked after the pipe has been cleaned up.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
 int aws_pipe_write(
     struct aws_pipe_write_end *write_end,
-    const uint8_t *src,
-    size_t src_size,
-    aws_pipe_on_write_complete_fn *on_complete,
+    struct aws_byte_cursor src_buffer,
+    aws_pipe_on_write_completed_fn *on_completed,
     void *user_data);
 
 /**
- * Reads data from the pipe to the `dst` buffer.
- * Up to `dst_size` bytes will be read.
- * The number of bytes successfully read will be stored in `num_bytes_read`.
- * This function never blocks. If a block would be required to read then AWS_OP_ERR is
- * returned and aws_last_error() code will be AWS_IO_READ_WOULD_BLOCK.
+ * Read data from the pipe into the destination buffer.
+ * Attempts to read enough to fill all remaining space in the buffer, from `dst_buffer->len` to `dst_buffer->capacity`.
+ * `dst_buffer->len` is updated to reflect the buffer's new length.
+ * `num_bytes_read` (optional) is set to the total number of bytes read.
+ * This function never blocks. If no bytes could be read without blocking, then AWS_OP_ERR is returned and
+ * aws_last_error() code will be AWS_IO_READ_WOULD_BLOCK.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_read(struct aws_pipe_read_end *read_end, uint8_t *dst, size_t dst_size, size_t *num_bytes_read);
+int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *num_bytes_read);
 
 /**
- * Subscribe to be notified of events affecting the read-end of the pipe.
- * This is useful for learning when the pipe has data that can be read.
- * When events occurs, `on_read_event` is called on the event-loop's thread.
+ * Subscribe to be notified when the pipe becomes readable (edge-triggered), or an error occurs.
+ * `on_readable` is invoked on the event-loop's thread when the pipe has data to read, or the pipe has an error.
+ * `on_readable` is invoked again any time the user reads all data, and then more data arrives.
+ * Note that it will not be invoked again if the pipe still has unread data when more data arrives.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_subscribe_to_read_events(
+int aws_pipe_subscribe_to_readable_events(
     struct aws_pipe_read_end *read_end,
-    aws_pipe_on_read_event_fn *on_read_event,
+    aws_pipe_on_readable_fn *on_readable,
     void *user_data);
 
 /**
- * Stop receiving notifications about events affecting the read-end of the pipe.
+ * Stop receiving notifications about events on the read-end of the pipe.
  * This must be called on the thread of the connected event-loop.
  */
 AWS_IO_API
-int aws_pipe_unsubscribe_from_read_events(struct aws_pipe_read_end *read_end);
+int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end);
 
 #if defined(_WIN32)
 /**
