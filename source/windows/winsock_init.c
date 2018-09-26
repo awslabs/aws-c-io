@@ -15,7 +15,7 @@
 
 /* clang is just a naive little idealist and doesn't understand that it can't just
    go around re-ordering windows header files. Also, sorry about the C++ style comments
-   below, clang-format doesn't work (at least on my version with the c-style comments. */
+   below, clang-format doesn't work (at least on my version) with the c-style comments. */
 
 // clang-format off
 #include <WinSock2.h>
