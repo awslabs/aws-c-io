@@ -1,6 +1,5 @@
 #ifndef AWS_IO_SOCKET_H
 #define AWS_IO_SOCKET_H
-
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
@@ -137,8 +136,12 @@ AWS_IO_API int aws_socket_init(
     struct aws_socket_options *options);
 
 /**
- * Shuts down any pending operations on the socket, and cleans up state. The socket object can be re initialized after
- * this operation.
+ * Shuts down any pending operations on the socket, and cleans up state. The socket object can be re-initialized after
+ * this operation. This function calls aws_socket_close. If you have not already called aws_socket_close() on the socket, all of the rules for
+ * aws_socket_close() apply here. In this case it will not fail if you use the function improperly, but on some platforms
+ * you will certainly leak memory.
+ *
+ * If the socket has already been closed, you can safely, call this from any thread.
  */
 AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
 
@@ -186,9 +189,11 @@ AWS_IO_API int aws_socket_start_accept(struct aws_socket *socket, struct aws_eve
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 /**
- * Calls `close()` on the socket and unregisters all io operations from the event loop. Can be called from any thread,
- * but be aware, on some platforms, if you call this from outside of the current event loop's thread, it will block
- * until the event loop finishes processing the request for unsubscribe in it's own thread.
+ * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called from the
+ *  event-loop's thread unless this is a listening socket. If it's a listening socket it can be called from any non-event-loop thread
+ * or the event-loop the socket is currently assigned to. If called from outside the event-loop, this function will block waiting on
+ * the socket to shutdown. If this is called from an event-loop thread other than the one it's assigned to, it presents the possibility of
+ * a deadlock, so don't do it.
  */
 AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 
