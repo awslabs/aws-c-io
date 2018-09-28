@@ -277,7 +277,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
@@ -286,8 +286,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(
-        endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -421,7 +420,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
@@ -430,8 +429,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket_endpoint endpoint;
 
-    snprintf(
-        endpoint.socket_name, sizeof(endpoint.socket_name), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
