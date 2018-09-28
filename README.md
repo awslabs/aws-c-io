@@ -26,14 +26,16 @@ Typical Client API Usage Pattern:
         
         struct aws_event_loop_group el_group;
         
-        if (aws_event_loop_group_init_default(&el_group, allocator)) {
+        if (aws_event_loop_group_init_default(&el_group, allocator, 0)) {
             goto cleanup;
         }
         
-        struct aws_tls_ctx_options tls_options = { ... };
+        struct aws_tls_ctx_options tls_options;
+        aws_tls_ctx_options_init_default_client(&tls_options);
         struct aws_tls_ctx *tls_ctx = aws_tls_client_ctx_new(allocator, &tls_options);
         
-        struct aws_tls_connection_options tls_client_conn_options = { ... };      
+        struct aws_tls_connection_options tls_client_conn_options;
+        aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &options);      
         
         struct aws_client_bootstrap client_bootstrap;
         
@@ -70,17 +72,19 @@ Typical Server API Usage Pattern:
             goto cleanup;
         }
         
-        struct aws_tls_ctx_options tls_options = { ... };
+        struct aws_tls_ctx_options tls_options;
+        aws_tls_ctx_options_init_default_server(&tls_options,
+                                             "./my_cert.pem", "./my_private_key.pem")
         struct aws_tls_ctx *tls_ctx = aws_tls_server_ctx_new(allocator, &tls_options);
-        
-        struct aws_tls_connection_options tls_server_conn_options = { ... };
-        
+        struct aws_tls_connection_options tls_server_conn_options;
+        aws_tls_connection_options_init_from_ctx_options(&tls_server_conn_options, &tls_options);
+
         struct aws_socket_options sock_options = { ... };
-        struct aws_socket_endpoint endpoint = { ... };
+        struct aws_socket_endpoint endpoint = { .address = "127.0.0.1", .port = "443" };
         
         struct aws_server_bootstrap server_bootstrap;
         
-        if (aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group) {
+        if (aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group, 0) {
             goto cleanup;
         }
         
@@ -113,10 +117,10 @@ Core to Async-IO is the event loop. We provide an implementation for most platfo
 Platform | Implementation
 --- | ---
 Linux | Edge-Triggered Epoll
-BSD Variants and Apple Devices | KQueue
+BSD Variants and Apple Devices | Edge-Triggered KQueue
 Windows | IOCP (IO Completion Ports)
 Solaris | /dev/poll
-Default Fallback | Select
+Default Fallback | Select and Poll
 
 Also, you can always implement your own as well.
 
@@ -132,7 +136,7 @@ provides a API to move a cross-thread call into the event-loop thread if necessa
 ### Channels and Slots
 A channel is simply a container that drives the slots. It is responsible for providing an interface
 between slots and the underlying event-loop as well as invoking the slots to pass messages. As a channel 
-runs. It also provides utilities for making sure slots and their handlers run in the correct thread and moving execution 
+runs, it also provides utilities for making sure slots and their handlers run in the correct thread and moving execution 
 to that thread if necessary.
 
 ![Channels and Slots Diagram](docs/images/channels_slots.png)
@@ -141,7 +145,7 @@ In this diagram, a channel is a collection of slots, and it knows how to make th
 lifetime of slots.
 
 When a channel is being shutdown, it will issue shutdown_direction messages in the appropriate direction. If it is in the read
-direction, it will call shutdown_direction on the first slot. Conversely, in the write direction, it will call shutdown_direction
+direction, it will call `shutdown()` on the first slot. Conversely, in the write direction, it will call `shutdown()`
 on the last slot in the channel. When all slots have successfully shutdown, the channel can be safely cleaned up and de-allocated.
 
 ### Slots
@@ -199,7 +203,7 @@ of your handlers never block.
 
 Since multiple channels run in the same event loop, we need to make sure channels are not starved by other active channels.
 To address this, the handlers consuming IO events from the event loop should determine the appropriate max read and write
-and context switch before continuing. A context switch is performed, simply by scheduling a task to run at the current timestamp,
+and context switch before continuing. A context switch is performed, simply by scheduling a task to run at the event loop tick,
 to continue the IO operation.
 
 A reasonable default is 16kb, but a savy implementation may want to upgrade a few connections to 256kb if they notice a particularly
@@ -208,7 +212,7 @@ fast connection (e.g. you notice EAGAIN or EWOULDBLOCK is never returned from wr
 ### Read Back Pressure
 
 One of the most challenging aspects of asynchronous io programming, is managing when back-pressure should be applied to
-the underlying io layer. In the read direction, this is managed via update_window messages. Let's look at the below diagram
+the underlying io layer. In the read direction, this is managed via `increment_read_window` messages. Let's look at the below diagram
 for an example of how this works.
 
 In this example, we have a channel setup with an event loop which manages io event notifications. The first slot contains a socket handler.
@@ -223,13 +227,13 @@ and process data faster than the application can use it. As a result, it has a 2
 
 1. The event loop notifies the socket handler that it has data available to read. The handler knows it can read up to 20kb
 so it reads a full 16kb from the socket and passes it to the next slot. Since the socket sees that there is still an open window,
-it, schedules a task to read again after the other channels have had a chance to process their pending reads. 
+it schedules a task to read again after the other channels have had a chance to process their pending reads. 
 
     Likewise, the TLS handler decrypts the data and passes
 it to the slot containing the application protocol. 
 
     The application protocol processes the 16 kb and hands it off to the application.
-At this point, the application hasn't notified the channel it is finished with the data (suppose application queues it), so the
+At this point, the application hasn't notified the channel it is finished with the data (suppose the application queues it), so the
 new window for the slot is 4 kb.
 
 2. The event loop runs the scheduled read task from (1) after processing the other channels. The socket handler sees it
@@ -243,7 +247,7 @@ time however, the window is 0, so the socket does not schedule another read task
     The channel now goes idle waiting on the application to finish processing its data.
 
 3. The application notifies the channel (via the API on the application protocol handler) it has processed 20kb
-of data. This causes the protocol handler to issue an update_window message with an update of 20kb.
+of data. This causes the protocol handler to issue an `increment_read_window` message with an update of 20kb.
 
     Slot 2 passes the message on to the TLS handler. It evaluates the message and simply, sends a 20kb window update message
     to its slot.
@@ -256,15 +260,15 @@ EWOULD_BLOCK. The channel now goes back to an idle state waiting on the event-lo
 ### Write Back Pressure
 
 Write back pressure comes into play when the application can produce data more quickly than it can be sent to the 
-underlying io. To manage this, messages have members to attach a promise fn and context data to. When a handler exposes
-and API, it has the responsibility to take a fn and data from the user if over write is a possibility. The io-handler will
+underlying io. To manage this, messages have members to attach a callback fn and user data to. When a handler exposes
+and API, it has the responsibility to take a fn and data from the user if over-write is a possibility. The io-handler will
 invoke the promise after it has successfully written the last byte to the underlying io.
 
 ### Thread Safety
 
 In general, the plan for addressing thread-safety is to not share memory across threads. This library is designed around 
 single threaded event loops which process one or more channels. Anywhere a handler or channel exposes a back-channel API,
-it is responsible for checking which thread it was invoked from. If it is invoked from the event loop's thread, then it may
+it is responsible for checking which thread it was invoked from. If it is invoked from the event-loop's thread, then it may
 proceed as planned. If it is not, it is required to queue a task to do the work. When the task is executed, it will be executed
 in the correct thread.
 
@@ -280,8 +284,8 @@ This means that the API is driven by a virtual-table. This is simply a struct of
 a c extern style API, but ultimately those public functions simply invoke the cooresponding function in the v-table.
 
 These are reserved for types that: 
-a.) Need to be configurable, changable at runtime
-b.) Do not have immediate performance concerns caused by an indirect function call.
+a.) Need to be configurable and/or changable at runtime
+b.) An indirect function call is less of a performance penalty than a branch miss or maintenance complexity
 
 ### Compile-time Polymorphic
 This means that the API is not necessarily driven by a virtual-table. It is exposed as a c extern style API, but the 
@@ -321,25 +325,37 @@ only via its API.
 #### Layout
     struct aws_event_loop {
         struct aws_event_loop_vtable vtable;
-        aws_clock clock;
-        struct aws_allocator *allocator;
-        struct aws_common_hash_table local_storage;
+        struct aws_allocator *alloc;
+        aws_io_clock_fn *clock;
+        struct aws_hash_table local_data;
         void *impl_data;
     };
 
 #### V-Table
 
     struct aws_event_loop_vtable {
-        void (*destroy)(struct aws_event_loop *);
-        int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
-        int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
-        int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
-        int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
-        BOOL (*is_on_callers_thread) (struct aws_event_loop *);
-    };
+		void (*destroy)(struct aws_event_loop *event_loop);
+		int (*run)(struct aws_event_loop *event_loop);
+		int (*stop)(struct aws_event_loop *event_loop);
+		int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
+		void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+		void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+	#if AWS_USE_IO_COMPLETION_PORTS
+		int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+	#else
+		int (*subscribe_to_io_events)(
+			struct aws_event_loop *event_loop,
+			struct aws_io_handle *handle,
+			int events,
+			aws_event_loop_on_event_fn *on_event,
+			void *user_data);
+	#endif
+		int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+		bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
+	};
 
+Notice there's a slight difference for IO completion ports. This is because IOCP is not really compatible with the traditional
+UNIX polling model. It is improbable you'll ever need to worry about the IOCP branch at all when implementing your own loop
 Every implementation of aws_event_loop must implement this table. Let's look at some details for what each entry does.
 
     void (*destroy)(struct aws_event_loop *);
@@ -350,37 +366,49 @@ This function is invoked when the event loop is finished processing and is ready
 
 This function starts the running of the event loop and then immediately returns. This could kick off a thread, or setup some resources to run and 
 recieve events in a back channel API. For example, you could have an epoll loop that runs in a thread, or you could have an event loop pumped by a system
-loop such as glib, or libevent etc... and then publish events to your event loop implementation. 
+loop such as glib, Win32 GetMessage or libevent etc... and then publish events to your event loop implementation. 
 
-    int (*stop) (struct aws_event_loop *,
-     void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
+    int (*stop) (struct aws_event_loop *);
 
 The stop function signals the event loop to shutdown. This function should not block but it should remove active io handles from the
-currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
-Once the event loop has shutdown to a safe state, it should invoke the on_stopped function.
+currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed.
 
-    int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+    int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
 
-This function schedules a task to run in its task scheduler at the time specified by run_at. Each event loop is responsible for implementing
-a task scheduler. This function must not block, and must be thread-safe. How this is implemented will depend on platform. For example,
-one reasonable implementation is if the call comes from the event-loop's thread, to queue it in the task scheduler directly. Otherwise,
-write to a pipe that the event-loop is listening for events on. Upon noticing the write to the pipe, it can read the task from the pipe
-and schedule the task.
+After calling `stop()` this function allows the caller to block until shutdown of the loop has completed.
 
-`task` must be copied.
+    void (*schedule_task_now) (struct aws_event_loop *, struct aws_task *task);
 
-`run_at` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
+This function schedules a task to run in its task scheduler as soon as possible. This function must not fail. It must be thread-safe.
 
-    int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events, 
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *user_data);
+`task` the ownership of this memory is managed by the caller and must not be freed until the task has been run.
 
-A subscriber will call this function to register an io_handle for event monitoring. This function is thread-safe.
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 
-`events` is a bit field of the events the subscriber wants to receive. A few events will always be registered (regardless of the value passed here), such
-as `AWS_IO_EVENT_HANDLE_REMOVED`. The event loop will invoke `on_event` anytime it receives one or more of the registered events.
+This function is similar to `schedule_task_now()`, but it schedules for the future. This function must not fail. It must be thread-safe.
 
-**NOTE: The event-loop is not responsible for manipulating or setting io flags on io_handles. It will never call, read(), write(), connect(), accept(), close() etc...
-on any io handle it does not explicitly own. It is the subscriber's responsibility to know how to respond to the event.**
+`run_at_nanos` is the timestamp in nanoseconds based on the event-loop's clock to run the task.
+
+    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+This function is only necessary for IOCP implementations. It connects an IO handle to an IO completion port for use with the windows `OVERLAPPED` 
+structure. IOCP event-loops do not notify a user of state changes. Instead io operations are connected to a completion port, and the subscriber is notified
+when those operations have completed. As a result, the io handlers end up handling notifications back to the channel when io operations have occured asynchronously.
+This function must be thread-safe.
+
+    int (*subscribe_to_io_events)(
+        struct aws_event_loop *event_loop,
+        struct aws_io_handle *handle,
+        int events,
+        aws_event_loop_on_event_fn *on_event,
+        void *user_data);
+
+This function is used everywhere other than IOCP. A subscriber calls it with an io handle it wants monitored. The event-loop will then notify the user
+anytime the state of that IO handle has changed. 
+
+`events` is a bit field of what state changes the user wants to be notified of.
+
+`on_event` is a callback that will be invoked upon state changes. 
 
 **NOTE: The event-loop will not maintain any state other than the io handles it is polling. So, for example, in edge-triggered epoll, it does
 not maintain a read ready list. It is the subscriber's responsibility to know it has more data to read or write and to schedule its tasks
@@ -389,11 +417,12 @@ appropriately.**
     int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
 
 A subscriber will call this function to remove its io handle from the monitored events. For example, it would may this immediately before calling
-close() on a socke or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs.
+close() on a socke or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs. Also note, that on Windows, this
+function removes the handle from the completion port in `connect_to_io_completion_port()`. This function must be called from the event-loop's thread.
 
-    BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+    bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 
-Returns `TRUE` if the caller is on the same thread as the event loop. Returns `FALSE` otherwise. This allows users of the event loop to make a decision
+Returns `true` if the caller is on the same thread as the event loop. Returns `false` otherwise. This allows users of the event loop to make a decision
 about whether it is safe to interact with the loop directly, or if they need to schedule a task to run in the correct thread.
 This function is thread-safe.
 
