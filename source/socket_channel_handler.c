@@ -210,7 +210,7 @@ static int s_socket_shutdown(
     socket_handler->shutdown_in_progress = true;
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (abort && aws_socket_is_open(socket_handler->socket)) {
-            if (aws_socket_shutdown(socket_handler->socket)) {
+            if (aws_socket_close(socket_handler->socket)) {
                 return AWS_OP_ERR;
             }
         }
@@ -219,7 +219,7 @@ static int s_socket_shutdown(
     }
 
     if (aws_socket_is_open(socket_handler->socket)) {
-        aws_socket_shutdown(socket_handler->socket);
+        aws_socket_close(socket_handler->socket);
     }
 
     /* we have an edge case where this was initiated by an io event (not from the user), we've already a do_read task

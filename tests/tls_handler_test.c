@@ -40,7 +40,6 @@ struct tls_test_args {
     struct aws_channel_slot *rw_slot;
     struct aws_byte_buf negotiated_protocol;
     struct aws_byte_buf server_name;
-    struct aws_byte_buf returned_server_name;
     int last_error_code;
     bool tls_negotiated;
     bool error_invoked;
@@ -318,7 +317,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
@@ -327,7 +326,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    sprintf(endpoint.socket_name, "testsock%llu.sock", (long long unsigned)timestamp);
+    sprintf(endpoint.address, "testsock%llu.sock", (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -540,7 +539,7 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -569,7 +568,7 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
 
     ASSERT_TRUE(host_callback_data.has_a_address);
     struct aws_socket_endpoint endpoint = {
-            .port = "443"
+            .port = 443
     };
 
     sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
@@ -708,7 +707,7 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout = 3000;
+    options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -738,7 +737,7 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
 
     ASSERT_TRUE(host_callback_data.has_a_address);
     struct aws_socket_endpoint endpoint = {
-            .port = "443"
+            .port = 443,
     };
 
     sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));

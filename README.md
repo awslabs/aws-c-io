@@ -703,7 +703,7 @@ arrive via the `on_incoming_connection()` callback.
 TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after this
 operation.
 
-    int aws_socket_shutdown(struct aws_socket *socket);
+    int aws_socket_close(struct aws_socket *socket);
 
 Calls `close()` on the socket and unregisters all io operations from the event loop.
 
