@@ -176,6 +176,33 @@ static void s_socket_close_task(struct aws_task *task, void *args, enum aws_task
     aws_mutex_unlock(io_args->mutex);
 }
 
+/* we have tests that need to check the error handling path, but it's damn near
+   impossible to predictably make sockets fail, the best idea we have is to
+   do something the OS won't allow for the access permissions (like attempt to listen
+   on a port < 1024), but alas, what if you're running the build as root? This disables
+   those tests if the user runs the build as a root user. */
+static bool s_test_running_as_root(struct aws_allocator *alloc) {
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 80};
+    struct aws_socket socket;
+
+    struct aws_socket_options options = {
+            .type = AWS_SOCKET_STREAM,
+            .domain = AWS_SOCKET_IPV4,
+            .keep_alive_interval_sec = 0,
+            .keep_alive_timeout_sec = 0,
+            .connect_timeout_ms = 0,
+            .keepalive = 0,
+    };
+
+    int err = aws_socket_init(&socket, alloc, &options);
+    assert(!err);
+
+    err = aws_socket_bind(&socket, &endpoint);
+    err |= aws_socket_listen(&socket, 1024);
+    bool is_root = !err;
+    aws_socket_clean_up(&socket);
+    return is_root;
+}
 
 static int s_test_socket(
     struct aws_allocator *allocator,
@@ -536,30 +563,31 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
 static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    (void) ctx;
+    if (!s_test_running_as_root(allocator)) {
+        struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_socket_options options;
-    AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 1000;
-    options.type = AWS_SOCKET_STREAM;
-    options.domain = AWS_SOCKET_IPV4;
+        struct aws_socket_options options;
+        AWS_ZERO_STRUCT(options);
+        options.connect_timeout_ms = 1000;
+        options.type = AWS_SOCKET_STREAM;
+        options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_socket_endpoint endpoint = {
-            .address = "127.0.0.1",
-            .port = 80,
-    };
+        struct aws_socket_endpoint endpoint = {
+                .address = "127.0.0.1",
+                .port = 80,
+        };
 
-    struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-    ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+        struct aws_socket incoming;
+        ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
+        ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
 
-    aws_socket_clean_up(&incoming);
-    aws_event_loop_destroy(event_loop);
-
+        aws_socket_clean_up(&incoming);
+        aws_event_loop_destroy(event_loop);
+    }
     return 0;
 }
 
@@ -567,32 +595,34 @@ AWS_TEST_CASE(incoming_tcp_sock_errors, s_test_incoming_tcp_sock_errors)
 
 static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    if (!s_test_running_as_root(allocator)) {
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+        struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    struct aws_socket_options options;
-    AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 1000;
-    options.type = AWS_SOCKET_DGRAM;
-    options.domain = AWS_SOCKET_IPV4;
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {
-            .address = "127.0",
-            .port = 80,
-    };
+        struct aws_socket_options options;
+        AWS_ZERO_STRUCT(options);
+        options.connect_timeout_ms = 1000;
+        options.type = AWS_SOCKET_DGRAM;
+        options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_socket incoming;
-    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-    ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
-    int error = aws_last_error();
-    ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error);
+        /* hit a endpoint that will not send me a SYN packet. */
+        struct aws_socket_endpoint endpoint = {
+                .address = "127.0",
+                .port = 80,
+        };
 
-    aws_socket_clean_up(&incoming);
-    aws_event_loop_destroy(event_loop);
+        struct aws_socket incoming;
+        ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
+        ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
+        int error = aws_last_error();
+        ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error);
 
+        aws_socket_clean_up(&incoming);
+        aws_event_loop_destroy(event_loop);
+    }
     return 0;
 }
 
