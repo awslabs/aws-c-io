@@ -256,16 +256,17 @@ static int s_on_connection_success(struct aws_socket *socket) {
         if (address.ss_family == AF_INET) {
             struct sockaddr_in *s = (struct sockaddr_in *)&address;
             port = ntohs(s->sin_port);
+            /* this comes straight from the kernal. a.) they won't fail. b.) even if they do, it's not fatal
+             * once we add logging, we can log this if it fails. */
             inet_ntop(AF_INET, &s->sin_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address));
         } else if (address.ss_family == AF_INET6) {
             struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
             port = ntohs(s->sin6_port);
+            /* this comes straight from the kernal. a.) they won't fail. b.) even if they do, it's not fatal
+             * once we add logging, we can log this if it fails. */
             inet_ntop(AF_INET6, &s->sin6_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address));
-        } else if (address.ss_family == AF_UNIX) {
-            struct sockaddr_in *s = (struct sockaddr_in *)&address;
-            inet_ntop(
-                AF_INET, &s->sin_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address));
         }
+
         socket->local_endpoint.port = port;
     } else {
         int aws_error = s_determine_socket_error(connect_result);
@@ -285,7 +286,13 @@ static int s_on_connection_success(struct aws_socket *socket) {
 
 static void s_on_connection_error(struct aws_socket *socket, int error) {
     socket->state = ERROR;
-    socket->connection_result_fn(socket, error, socket->connect_accept_user_data);
+
+    if (socket->connection_result_fn) {
+        socket->connection_result_fn(socket, error, socket->connect_accept_user_data);
+    }
+    else if (socket->accept_result_fn) {
+        socket->accept_result_fn(socket, error, NULL, socket->connect_accept_user_data);
+    }
 }
 
 struct posix_socket_connect_args {
@@ -365,6 +372,24 @@ static void s_run_connect_success(struct aws_task *task, void *arg, enum aws_tas
     aws_mem_release(socket_args->allocator, socket_args);
 }
 
+static inline int s_convert_pton_error(int pton_code) {
+    if (pton_code == 0) {
+        return AWS_IO_SOCKET_INVALID_ADDRESS;
+    }
+
+    return s_determine_socket_error(errno);
+}
+
+struct socket_address {
+    union sock_addr_types {
+        struct sockaddr_in addr_in;
+        struct sockaddr_in6 addr_in6;
+        struct sockaddr_un un_addr;
+
+    } sock_addr_types;
+};
+
+
 int aws_socket_connect(struct aws_socket *socket,
                        struct aws_socket_endpoint *remote_endpoint,
                        struct aws_event_loop *event_loop,
@@ -374,6 +399,39 @@ int aws_socket_connect(struct aws_socket *socket,
 
     if (socket->state != INIT) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+
+    if (socket->options.type != AWS_SOCKET_DGRAM) {
+        assert(on_connection_result);
+    }
+
+    struct socket_address address;
+    AWS_ZERO_STRUCT(address);
+    socklen_t sock_size = 0;
+    int pton_err = 1;
+    if (socket->options.domain == AWS_SOCKET_IPV4) {
+        pton_err =inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+        address.sock_addr_types.addr_in.sin_port = htons(remote_endpoint->port);
+        address.sock_addr_types.addr_in.sin_family = AF_INET;
+        sock_size = sizeof(address.sock_addr_types.addr_in);
+    } else if (socket->options.domain == AWS_SOCKET_IPV6) {
+        pton_err =inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+        address.sock_addr_types.addr_in6.sin6_port = htons(remote_endpoint->port);
+        address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+        sock_size = sizeof(address.sock_addr_types.addr_in6);
+    } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
+        address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+        assert(sizeof(remote_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
+        strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address,
+                sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
+        sock_size = sizeof(address.sock_addr_types.un_addr);
+    } else {
+        assert(0);
+        return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+    }
+
+    if (pton_err != 1) {
+        return aws_raise_error(s_convert_pton_error(pton_err));
     }
 
     socket->state = CONNECTING;
@@ -393,34 +451,7 @@ int aws_socket_connect(struct aws_socket *socket,
     sock_args->task.fn = s_handle_socket_timeout;
     sock_args->task.arg = sock_args;
 
-    int error_code = -1;
-    if (socket->options.domain == AWS_SOCKET_IPV4) {
-        struct sockaddr_in addr_in;
-        AWS_ZERO_STRUCT(addr_in);
-        inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
-        addr_in.sin_port = htons(remote_endpoint->port);
-        addr_in.sin_family = AF_INET;
-        error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
-    } else if (socket->options.domain == AWS_SOCKET_IPV6) {
-        struct sockaddr_in6 addr_in;
-        AWS_ZERO_STRUCT(addr_in);
-        inet_pton(AF_INET6, remote_endpoint->address, &(addr_in.sin6_addr));
-        addr_in.sin6_port = htons(remote_endpoint->port);
-        addr_in.sin6_family = AF_INET6;
-        error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
-    } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
-        struct sockaddr_un addr;
-        AWS_ZERO_STRUCT(addr);
-        addr.sun_family = AF_UNIX;
-        assert(sizeof(remote_endpoint->address) <= sizeof(addr.sun_path));
-        strncpy(addr.sun_path, remote_endpoint->address, sizeof(addr.sun_path) - 1);
-        error_code = connect(socket->io_handle.data.fd, (const struct sockaddr *)&addr, sizeof(struct sockaddr_un));
-    } else {
-        assert(0);
-        aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-        goto err_clean_up;
-    }
-
+    int error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&address.sock_addr_types, sock_size);
     socket->event_loop = event_loop;
 
     if (!error_code) {
@@ -473,28 +504,36 @@ int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local
 
     socket->local_endpoint = *local_endpoint;
 
+    struct socket_address address;
+    AWS_ZERO_STRUCT(address);
+    socklen_t sock_size = 0;
+    int pton_err = 1;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
-        struct sockaddr_in addr_in;
-        AWS_ZERO_STRUCT(addr_in);
-        inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
-        addr_in.sin_port = htons(local_endpoint->port);
-        addr_in.sin_family = AF_INET;
-        error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
+        pton_err =inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+        address.sock_addr_types.addr_in.sin_port = htons(local_endpoint->port);
+        address.sock_addr_types.addr_in.sin_family = AF_INET;
+        sock_size = sizeof(address.sock_addr_types.addr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
-        struct sockaddr_in6 addr_in;
-        AWS_ZERO_STRUCT(addr_in);
-        inet_pton(AF_INET6, local_endpoint->address, &(addr_in.sin6_addr));
-        addr_in.sin6_port = htons(local_endpoint->port);
-        addr_in.sin6_family = AF_INET6;
-        error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&addr_in, sizeof(addr_in));
+        pton_err =inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+        address.sock_addr_types.addr_in6.sin6_port = htons(local_endpoint->port);
+        address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+        sock_size = sizeof(address.sock_addr_types.addr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
-        struct sockaddr_un name;
-        AWS_ZERO_STRUCT(name);
-        name.sun_family = AF_UNIX;
-        assert(sizeof(local_endpoint->address) <= sizeof(name.sun_path));
-        strncpy(name.sun_path, local_endpoint->address, sizeof(name.sun_path) - 1);
-        error_code = bind(socket->io_handle.data.fd, (const struct sockaddr *)&name, sizeof(struct sockaddr_un));
+        address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+        assert(sizeof(local_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
+        strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address,
+                sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
+        sock_size = sizeof(address.sock_addr_types.un_addr);
+    } else {
+        assert(0);
+        return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
     }
+
+    if (pton_err != 1) {
+        return aws_raise_error(s_convert_pton_error(pton_err));
+    }
+
+    error_code = bind(socket->io_handle.data.fd, (struct sockaddr *)&address.sock_addr_types, sock_size);
 
     if (!error_code) {
         if (socket->options.type == AWS_SOCKET_STREAM) {
@@ -586,6 +625,8 @@ static void socket_accept_event(
             if (in_addr.ss_family == AF_INET) {
                 struct sockaddr_in *s = (struct sockaddr_in *)&in_addr;
                 port = ntohs(s->sin_port);
+                /* this came from the kernel, a.) it won't fail. b.) even if it does
+                 * its not fatal. come back and add logging later. */
                 inet_ntop(
                     AF_INET,
                     &s->sin_addr,
@@ -593,6 +634,8 @@ static void socket_accept_event(
                     sizeof(new_sock->remote_endpoint.address));
                 new_sock->options.domain = AWS_SOCKET_IPV4;
             } else if (in_addr.ss_family == AF_INET6) {
+                /* this came from the kernel, a.) it won't fail. b.) even if it does
+                * its not fatal. come back and add logging later. */
                 struct sockaddr_in6 *s = (struct sockaddr_in6 *)&in_addr;
                 port = ntohs(s->sin6_port);
                 inet_ntop(
@@ -602,7 +645,7 @@ static void socket_accept_event(
                     sizeof(new_sock->remote_endpoint.address));
                 new_sock->options.domain = AWS_SOCKET_IPV6;
             } else if (in_addr.ss_family == AF_UNIX) {
-                memcpy(&new_sock->remote_endpoint, &socket->local_endpoint, sizeof(socket->local_endpoint));
+                new_sock->remote_endpoint = socket->local_endpoint;
                 new_sock->options.domain = AWS_SOCKET_LOCAL;
             }
 

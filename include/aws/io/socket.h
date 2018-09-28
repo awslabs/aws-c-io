@@ -151,6 +151,8 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  *
  * In TCP amd LOCAL, this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
+ *
+ * on_connection_result and user_data are ignored for UDP and connectionless sockets.
  */
 AWS_IO_API int aws_socket_connect(struct aws_socket *socket,
                 struct aws_socket_endpoint *remote_endpoint,
