@@ -125,13 +125,13 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         }
 
         return;
-    } else {
-        connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
-        aws_socket_clean_up(&connection_args->channel_data.socket);
-        aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
-        return;
     }
 
+    connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
+    aws_socket_clean_up(&connection_args->channel_data.socket);
+    aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
+    return;
+    
 error:
     aws_socket_clean_up(socket);
     connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
@@ -335,11 +335,11 @@ void s_on_server_connection_result(
         }
 
         return;
-    } else {
-        connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
-        aws_server_bootstrap_remove_socket_listener(connection_args->bootstrap, &connection_args->listener);
-        return;
     }
+
+    connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
+    aws_server_bootstrap_remove_socket_listener(connection_args->bootstrap, &connection_args->listener);
+    return;
 
 error_cleanup:
     connection_args->incoming_callback(connection_args->bootstrap, aws_last_error(), NULL, connection_args->user_data);
