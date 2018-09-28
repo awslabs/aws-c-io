@@ -15,17 +15,17 @@
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
-#include <aws/io/host_resolver.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 
 #include <aws/testing/aws_test_harness.h>
 
-#include <read_write_test_handler.h>
 #include <aws/common/string.h>
+#include <read_write_test_handler.h>
 
 #if _MSC_VER
 #    pragma warning(disable : 4996) /* sprintf */
@@ -272,7 +272,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 #endif /* __APPLE__ */
     aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
 
-
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
     ASSERT_NOT_NULL(server_ctx);
 
@@ -470,11 +469,11 @@ static bool s_default_host_resolved_predicate(void *arg) {
 }
 
 static void s_default_host_resolved_test_callback(
-        struct aws_host_resolver *resolver,
-        const struct aws_string *host_name,
-        int err_code,
-        const struct aws_array_list *host_addresses,
-        void *user_data) {
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host_name,
+    int err_code,
+    const struct aws_array_list *host_addresses,
+    void *user_data) {
 
     (void)resolver;
     (void)host_name;
@@ -505,7 +504,7 @@ static void s_default_host_resolved_test_callback(
     aws_condition_variable_notify_one(&callback_data->condition_variable);
 }
 
-static int s_verify_negotiation_fails (struct aws_allocator *allocator, const struct aws_string *host_name) {
+static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
 
     aws_tls_init_static_state(allocator);
 
@@ -527,14 +526,14 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, (const char *)aws_string_bytes(host_name));
 
     struct tls_test_args outgoing_args = {
-            .mutex = &mutex,
-            .allocator = allocator,
-            .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .rw_handler = NULL,
-            .server = false,
-            .tls_negotiated = false,
-            .shutdown_finished = false,
+        .mutex = &mutex,
+        .allocator = allocator,
+        .condition_variable = &condition_variable,
+        .error_invoked = 0,
+        .rw_handler = NULL,
+        .server = false,
+        .tls_negotiated = false,
+        .shutdown_finished = false,
     };
 
     struct aws_socket_options options;
@@ -547,29 +546,24 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
 
     struct aws_host_resolution_config resolution_config = {
-          .impl = aws_default_dns_resolve,
-          .impl_data = NULL,
-          .max_ttl = 1
-    };
+        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
 
     struct default_host_callback_data host_callback_data = {
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-            .invoked = false,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
     };
 
     aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_host_resolver_resolve_host(&resolver, host_name,
-            s_default_host_resolved_test_callback, &resolution_config, &host_callback_data));
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        &resolver, host_name, s_default_host_resolved_test_callback, &resolution_config, &host_callback_data));
 
-    aws_condition_variable_wait_pred(&host_callback_data.condition_variable, &mutex,
-            s_default_host_resolved_predicate, &host_callback_data);
+    aws_condition_variable_wait_pred(
+        &host_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &host_callback_data);
 
     aws_host_resolver_clean_up(&resolver);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
-    struct aws_socket_endpoint endpoint = {
-            .port = 443
-    };
+    struct aws_socket_endpoint endpoint = {.port = 443};
 
     sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
 
@@ -577,13 +571,17 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group)));
     ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(&client_bootstrap, &endpoint, &options,
-            &tls_client_conn_options, s_tls_handler_test_client_setup_callback,
-            s_tls_handler_test_client_shutdown_callback, &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
+        &client_bootstrap,
+        &endpoint,
+        &options,
+        &tls_client_conn_options,
+        s_tls_handler_test_client_setup_callback,
+        s_tls_handler_test_client_shutdown_callback,
+        &outgoing_args));
 
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex,
-            s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
     ASSERT_TRUE(outgoing_args.error_invoked);
     ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
@@ -598,7 +596,7 @@ static int s_verify_negotiation_fails (struct aws_allocator *allocator, const st
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_client_channel_negotiation_error_expired_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
@@ -610,7 +608,7 @@ static int s_tls_client_channel_negotiation_error_expired_fn (struct aws_allocat
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel_negotiation_error_expired_fn)
 
-static int s_tls_client_channel_negotiation_error_wrong_host_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
@@ -622,7 +620,7 @@ static int s_tls_client_channel_negotiation_error_wrong_host_fn (struct aws_allo
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
 
-static int s_tls_client_channel_negotiation_error_self_signed_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
@@ -634,7 +632,7 @@ static int s_tls_client_channel_negotiation_error_self_signed_fn (struct aws_all
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_channel_negotiation_error_self_signed_fn)
 
-static int s_tls_client_channel_negotiation_error_untrusted_root_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
@@ -644,10 +642,11 @@ static int s_tls_client_channel_negotiation_error_untrusted_root_fn (struct aws_
     return err_code;
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_error_untrusted_root,
-        s_tls_client_channel_negotiation_error_untrusted_root_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_untrusted_root,
+    s_tls_client_channel_negotiation_error_untrusted_root_fn)
 
-static int s_tls_client_channel_negotiation_error_revoked_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
@@ -659,7 +658,7 @@ static int s_tls_client_channel_negotiation_error_revoked_fn (struct aws_allocat
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
 
-static int s_tls_client_channel_negotiation_error_pinning_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
@@ -671,7 +670,7 @@ static int s_tls_client_channel_negotiation_error_pinning_fn (struct aws_allocat
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_pinning, s_tls_client_channel_negotiation_error_pinning_fn)
 
-static int s_verify_good_host (struct aws_allocator *allocator, const struct aws_string *host_name) {
+static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name) {
 
     aws_tls_init_static_state(allocator);
 
@@ -682,14 +681,14 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
     struct tls_test_args outgoing_args = {
-            .mutex = &mutex,
-            .allocator = allocator,
-            .condition_variable = &condition_variable,
-            .error_invoked = 0,
-            .rw_handler = NULL,
-            .server = false,
-            .tls_negotiated = false,
-            .shutdown_finished = false,
+        .mutex = &mutex,
+        .allocator = allocator,
+        .condition_variable = &condition_variable,
+        .error_invoked = 0,
+        .rw_handler = NULL,
+        .server = false,
+        .tls_negotiated = false,
+        .shutdown_finished = false,
     };
 
     struct aws_tls_ctx_options client_ctx_options;
@@ -715,29 +714,25 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
 
     struct aws_host_resolution_config resolution_config = {
-            .impl = aws_default_dns_resolve,
-            .impl_data = NULL,
-            .max_ttl = 1
-    };
+        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
 
     struct default_host_callback_data host_callback_data = {
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-            .invoked = false,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
     };
 
     aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_host_resolver_resolve_host(&resolver, host_name,
-                                                  s_default_host_resolved_test_callback,
-                                                  &resolution_config, &host_callback_data));
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        &resolver, host_name, s_default_host_resolved_test_callback, &resolution_config, &host_callback_data));
 
-    aws_condition_variable_wait_pred(&host_callback_data.condition_variable, &mutex,
-                                     s_default_host_resolved_predicate, &host_callback_data);
+    aws_condition_variable_wait_pred(
+        &host_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &host_callback_data);
 
     aws_host_resolver_clean_up(&resolver);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
     struct aws_socket_endpoint endpoint = {
-            .port = 443,
+        .port = 443,
     };
 
     sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
@@ -746,15 +741,17 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group)));
     ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(&client_bootstrap, &endpoint, &options,
-                                                               &tls_client_conn_options,
-                                                               s_tls_handler_test_client_setup_callback,
-                                                               s_tls_handler_test_client_shutdown_callback,
-                                                               &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
+        &client_bootstrap,
+        &endpoint,
+        &options,
+        &tls_client_conn_options,
+        s_tls_handler_test_client_setup_callback,
+        s_tls_handler_test_client_shutdown_callback,
+        &outgoing_args));
 
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex,
-            s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &outgoing_args));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
@@ -762,17 +759,18 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
 
     if (aws_tls_is_alpn_available()) {
         ASSERT_BIN_ARRAYS_EQUALS(
-                expected_protocol.buffer,
-                expected_protocol.len,
-                outgoing_args.negotiated_protocol.buffer,
-                outgoing_args.negotiated_protocol.len);
+            expected_protocol.buffer,
+            expected_protocol.len,
+            outgoing_args.negotiated_protocol.buffer,
+            outgoing_args.negotiated_protocol.len);
     }
 
     ASSERT_BIN_ARRAYS_EQUALS(
-            aws_string_bytes(host_name), host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
+        aws_string_bytes(host_name), host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
     aws_client_bootstrap_clean_up(&client_bootstrap);
 
@@ -785,7 +783,7 @@ static int s_verify_good_host (struct aws_allocator *allocator, const struct aws
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_client_channel_negotiation_success_fn (struct aws_allocator *allocator, void *user_data) {
+static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *user_data) {
     (void)user_data;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "www.amazon.com");

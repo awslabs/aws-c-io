@@ -25,8 +25,8 @@
 
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
-#    pragma warning(disable : 4221) /* allow automatic variable to escape scope 
-                                        (it's intenional and we make sure it doesn't actually return 
+#    pragma warning(disable : 4221) /* allow automatic variable to escape scope                                        \
+                                        (it's intenional and we make sure it doesn't actually return                   \
                                          before the task is finished).*/
 #endif
 
@@ -39,7 +39,6 @@ struct tl_shutdown_task_data {
 static bool s_tl_cleanup_predicate(void *arg) {
     struct tl_shutdown_task_data *shutdown_task_data = arg;
     return shutdown_task_data->invoked;
-
 }
 
 static void s_handle_tl_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -64,19 +63,18 @@ static void s_ensure_tl_state_is_cleaned_up(struct aws_event_loop_group *el_grou
         struct aws_event_loop *el = aws_event_loop_group_get_loop_at(el_group, i);
 
         struct tl_shutdown_task_data tl_shutdown = {
-                .mutex = &mutex,
-                .condition_variable = &condition_variable,
-                .invoked = false,
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+            .invoked = false,
         };
 
         struct aws_task task = {
-                .fn = s_handle_tl_cleanup_task,
-                .arg = &tl_shutdown,
+            .fn = s_handle_tl_cleanup_task,
+            .arg = &tl_shutdown,
         };
 
         aws_event_loop_schedule_task_now(el, &task);
-        aws_condition_variable_wait_pred(&condition_variable, &mutex,
-                                         s_tl_cleanup_predicate, &tl_shutdown);
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tl_cleanup_predicate, &tl_shutdown);
     }
     aws_mutex_unlock(&mutex);
 }
@@ -138,7 +136,7 @@ struct client_connection_args {
     void *user_data;
 };
 
-static void tls_client_on_negotiation_result(
+static void s_tls_client_on_negotiation_result(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err_code,
@@ -164,7 +162,7 @@ static void tls_client_on_negotiation_result(
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
  * provide a proxy for the user actually receiving their callbacks. */
-static void tls_client_on_data_read(
+static void s_tls_client_on_data_read(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
@@ -179,7 +177,7 @@ static void tls_client_on_data_read(
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
  * provide a proxy for the user actually receiving their callbacks. */
-static void tls_client_on_error(
+static void s_tls_client_on_error(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err,
@@ -193,7 +191,7 @@ static void tls_client_on_error(
     }
 }
 
-static inline int setup_client_tls(struct client_connection_args *connection_args, struct aws_channel *channel) {
+static inline int s_setup_client_tls(struct client_connection_args *connection_args, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
 
     if (!tls_slot) {
@@ -242,7 +240,7 @@ static inline int setup_client_tls(struct client_connection_args *connection_arg
     return AWS_OP_SUCCESS;
 }
 
-static void on_client_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     int err_code = error_code;
 
@@ -270,7 +268,7 @@ static void on_client_channel_on_setup_completed(struct aws_channel *channel, in
         if (connection_args->channel_data.use_tls) {
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
-            if (setup_client_tls(connection_args, channel)) {
+            if (s_setup_client_tls(connection_args, channel)) {
                 err_code = aws_last_error();
                 goto error;
             }
@@ -288,7 +286,7 @@ error:
     aws_mem_release(connection_args->bootstrap->allocator, connection_args);
 }
 
-static void on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
+static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
     connection_args->shutdown_callback(connection_args->bootstrap, error_code, channel, connection_args->user_data);
@@ -296,15 +294,15 @@ static void on_client_channel_on_shutdown(struct aws_channel *channel, int error
     aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
 }
 
-static void on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
+static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
     if (!error_code) {
         struct aws_channel_creation_callbacks channel_callbacks = {
-                .on_setup_completed = on_client_channel_on_setup_completed,
-                .setup_user_data = connection_args,
-                .shutdown_user_data = connection_args,
-                .on_shutdown_completed = on_client_channel_on_shutdown,
+            .on_setup_completed = s_on_client_channel_on_setup_completed,
+            .setup_user_data = connection_args,
+            .shutdown_user_data = connection_args,
+            .on_shutdown_completed = s_on_client_channel_on_shutdown,
         };
 
         if (aws_channel_init(
@@ -317,8 +315,7 @@ static void on_client_connection_established(struct aws_socket *socket, int erro
         }
 
         return;
-    }
-    else {
+    } else {
         connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         aws_socket_clean_up(&connection_args->channel_data.socket);
         aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
@@ -331,7 +328,7 @@ error:
     aws_mem_release(connection_args->bootstrap->allocator, (void *)connection_args);
 }
 
-static inline int new_client_channel(
+static inline int s_new_client_channel(
     struct aws_client_bootstrap *bootstrap,
     struct aws_socket_endpoint *endpoint,
     struct aws_socket_options *options,
@@ -369,32 +366,35 @@ static inline int new_client_channel(
 
         if (connection_options->on_data_read) {
             client_connection_args->channel_data.user_on_data_read = connection_options->on_data_read;
-            client_connection_args->channel_data.tls_options.on_data_read = tls_client_on_data_read;
+            client_connection_args->channel_data.tls_options.on_data_read = s_tls_client_on_data_read;
         }
 
         if (connection_options->on_error) {
             client_connection_args->channel_data.user_on_error = connection_options->on_error;
-            client_connection_args->channel_data.tls_options.on_error = tls_client_on_error;
+            client_connection_args->channel_data.tls_options.on_error = s_tls_client_on_error;
         }
 
         if (connection_options->on_negotiation_result) {
             client_connection_args->channel_data.user_on_negotiation_result = connection_options->on_negotiation_result;
         }
 
-        client_connection_args->channel_data.tls_options.on_negotiation_result = tls_client_on_negotiation_result;
+        client_connection_args->channel_data.tls_options.on_negotiation_result = s_tls_client_on_negotiation_result;
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
     struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
-    if (aws_socket_init(
-            &client_connection_args->channel_data.socket, bootstrap->allocator, options)) {
+    if (aws_socket_init(&client_connection_args->channel_data.socket, bootstrap->allocator, options)) {
         aws_mem_release(bootstrap->allocator, (void *)client_connection_args);
         return AWS_OP_ERR;
     }
 
-    if (aws_socket_connect(&client_connection_args->channel_data.socket, endpoint, connection_loop,
-            on_client_connection_established, client_connection_args)) {
+    if (aws_socket_connect(
+            &client_connection_args->channel_data.socket,
+            endpoint,
+            connection_loop,
+            s_on_client_connection_established,
+            client_connection_args)) {
         aws_socket_clean_up(&client_connection_args->channel_data.socket);
         aws_mem_release(bootstrap->allocator, (void *)client_connection_args);
         return AWS_OP_ERR;
@@ -414,7 +414,7 @@ int aws_client_bootstrap_new_tls_socket_channel(
     assert(connection_options);
     assert(bootstrap->tls_ctx);
 
-    return new_client_channel(
+    return s_new_client_channel(
         bootstrap, endpoint, options, connection_options, setup_callback, shutdown_callback, user_data);
 }
 
@@ -425,7 +425,7 @@ int aws_client_bootstrap_new_socket_channel(
     aws_channel_client_setup_callback setup_callback,
     aws_channel_client_shutdown_callback shutdown_callback,
     void *user_data) {
-    return new_client_channel(bootstrap, endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
+    return s_new_client_channel(bootstrap, endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
 int aws_server_bootstrap_init(
@@ -470,7 +470,7 @@ struct server_channel_data {
     struct server_connection_args *server_connection_args;
 };
 
-static void tls_server_on_negotiation_result(
+static void s_tls_server_on_negotiation_result(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err_code,
@@ -492,7 +492,7 @@ static void tls_server_on_negotiation_result(
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
  * provide a proxy for the user actually receiving their callbacks. */
-static void tls_server_on_data_read(
+static void s_tls_server_on_data_read(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
@@ -506,7 +506,7 @@ static void tls_server_on_data_read(
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
  * provide a proxy for the user actually receiving their callbacks. */
-static void tls_server_on_error(
+static void s_tls_server_on_error(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err,
@@ -519,7 +519,7 @@ static void tls_server_on_error(
     }
 }
 
-static inline int setup_server_tls(struct server_connection_args *connection_args, struct aws_channel *channel) {
+static inline int s_setup_server_tls(struct server_connection_args *connection_args, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
 
     if (!tls_slot) {
@@ -562,7 +562,7 @@ static inline int setup_server_tls(struct server_connection_args *connection_arg
     return AWS_OP_SUCCESS;
 }
 
-static void on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct server_channel_data *channel_data = user_data;
 
     int err_code = error_code;
@@ -590,7 +590,7 @@ static void on_server_channel_on_setup_completed(struct aws_channel *channel, in
         if (channel_data->server_connection_args->use_tls) {
             /* incoming callback will be invoked upon the negotiation completion so don't do it
              * here. */
-            if (setup_server_tls(channel_data->server_connection_args, channel)) {
+            if (s_setup_server_tls(channel_data->server_connection_args, channel)) {
                 err_code = aws_last_error();
                 goto error;
             }
@@ -631,13 +631,17 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     aws_mem_release(allocator, channel_data);
 }
 
-void on_server_connection_result(struct aws_socket *socket, int error_code, struct aws_socket *new_socket, void *user_data) {
+void s_on_server_connection_result(
+    struct aws_socket *socket,
+    int error_code,
+    struct aws_socket *new_socket,
+    void *user_data) {
     (void)socket;
     struct server_connection_args *connection_args = user_data;
 
     if (!error_code) {
         struct server_channel_data *channel_data =
-                aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
+            aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
 
         if (!channel_data) {
             goto error_cleanup;
@@ -647,14 +651,14 @@ void on_server_connection_result(struct aws_socket *socket, int error_code, stru
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
 
-        struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(
-                connection_args->bootstrap->event_loop_group);
+        struct aws_event_loop *event_loop =
+            aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
         struct aws_channel_creation_callbacks channel_callbacks = {
-                .on_setup_completed = on_server_channel_on_setup_completed,
-                .setup_user_data = channel_data,
-                .shutdown_user_data = channel_data,
-                .on_shutdown_completed = s_on_server_channel_on_shutdown,
+            .on_setup_completed = s_on_server_channel_on_setup_completed,
+            .setup_user_data = channel_data,
+            .shutdown_user_data = channel_data,
+            .on_shutdown_completed = s_on_server_channel_on_shutdown,
         };
 
         aws_socket_assign_to_event_loop(new_socket, event_loop);
@@ -666,8 +670,7 @@ void on_server_connection_result(struct aws_socket *socket, int error_code, stru
         }
 
         return;
-    }
-    else {
+    } else {
         connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         aws_server_bootstrap_remove_socket_listener(connection_args->bootstrap, &connection_args->listener);
         return;
@@ -679,7 +682,7 @@ error_cleanup:
     aws_mem_release(new_socket->allocator, (void *)new_socket);
 }
 
-static inline struct aws_socket *server_add_socket_listener(
+static inline struct aws_socket *s_server_add_socket_listener(
     struct aws_server_bootstrap *bootstrap,
     struct aws_socket_endpoint *endpoint,
     struct aws_socket_options *options,
@@ -691,7 +694,7 @@ static inline struct aws_socket *server_add_socket_listener(
     assert(shutdown_callback);
 
     struct server_connection_args *server_connection_args =
-            aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
+        aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
 
     if (!server_connection_args) {
         goto cleanup_server_connection_args;
@@ -718,24 +721,23 @@ static inline struct aws_socket *server_add_socket_listener(
 
         if (connection_options->on_data_read) {
             server_connection_args->user_on_data_read = connection_options->on_data_read;
-            server_connection_args->tls_options.on_data_read = tls_server_on_data_read;
+            server_connection_args->tls_options.on_data_read = s_tls_server_on_data_read;
         }
 
         if (connection_options->on_error) {
             server_connection_args->user_on_error = connection_options->on_error;
-            server_connection_args->tls_options.on_error = tls_server_on_error;
+            server_connection_args->tls_options.on_error = s_tls_server_on_error;
         }
 
         if (connection_options->on_negotiation_result) {
             server_connection_args->user_on_negotiation_result = connection_options->on_negotiation_result;
         }
 
-        server_connection_args->tls_options.on_negotiation_result = tls_server_on_negotiation_result;
+        server_connection_args->tls_options.on_negotiation_result = s_tls_server_on_negotiation_result;
         server_connection_args->tls_options.user_data = server_connection_args;
     }
 
     struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
-
 
     if (aws_socket_init(&server_connection_args->listener, bootstrap->allocator, options)) {
         goto cleanup_server_connection_args;
@@ -749,8 +751,11 @@ static inline struct aws_socket *server_add_socket_listener(
         goto cleanup_listener;
     }
 
-    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop,
-                                on_server_connection_result, server_connection_args)) {
+    if (aws_socket_start_accept(
+            &server_connection_args->listener,
+            connection_loop,
+            s_on_server_connection_result,
+            server_connection_args)) {
         goto cleanup_listener;
     }
 
@@ -772,7 +777,7 @@ struct aws_socket *aws_server_bootstrap_add_socket_listener(
     aws_channel_server_incoming_channel_callback incoming_callback,
     aws_channel_server_channel_shutdown_callback shutdown_callback,
     void *user_data) {
-    return server_add_socket_listener(
+    return s_server_add_socket_listener(
         bootstrap, endpoint, options, NULL, incoming_callback, shutdown_callback, user_data);
 }
 
@@ -786,7 +791,7 @@ struct aws_socket *aws_server_bootstrap_add_tls_socket_listener(
     void *user_data) {
     assert(connection_options);
     assert(bootstrap->tls_ctx);
-    return server_add_socket_listener(
+    return s_server_add_socket_listener(
         bootstrap, endpoint, options, connection_options, incoming_callback, shutdown_callback, user_data);
 }
 

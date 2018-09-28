@@ -44,11 +44,14 @@ struct IO_STATUS_BLOCK {
 enum FILE_INFORMATION_CLASS {
     FileReplaceCompletionInformation = 0x3D,
 };
-typedef NTSTATUS(NTAPI NTSetInformationFile)(HANDLE file_handle, struct IO_STATUS_BLOCK *io_status_block,
-    void *file_information, ULONG length, enum FILE_INFORMATION_CLASS file_information_class);
+typedef NTSTATUS(NTAPI NTSetInformationFile)(
+    HANDLE file_handle,
+    struct IO_STATUS_BLOCK *io_status_block,
+    void *file_information,
+    ULONG length,
+    enum FILE_INFORMATION_CLASS file_information_class);
 
 NTSetInformationFile *s_set_info_fn = NULL;
-
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -111,7 +114,7 @@ void aws_overlapped_init(
 }
 
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
-    assert(overlapped);    
+    assert(overlapped);
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 
@@ -506,8 +509,12 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct IO_STATUS_BLOCK status_block;
     AWS_ZERO_STRUCT(status_block);
 
-    NTSTATUS status = s_set_info_fn(handle->data.handle, &status_block, &file_completion_info,
-        sizeof(file_completion_info), FileReplaceCompletionInformation);
+    NTSTATUS status = s_set_info_fn(
+        handle->data.handle,
+        &status_block,
+        &file_completion_info,
+        sizeof(file_completion_info),
+        FileReplaceCompletionInformation);
 
     if (!status) {
         return AWS_OP_SUCCESS;

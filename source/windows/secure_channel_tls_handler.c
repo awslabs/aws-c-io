@@ -1,17 +1,17 @@
 /*
-* Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-*
-* Licensed under the Apache License, Version 2.0 (the "License").
-* You may not use this file except in compliance with the License.
-* A copy of the License is located at
-*
-*  http://aws.amazon.com/apache2.0
-*
-* or in the "license" file accompanying this file. This file is distributed
-* on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-* express or implied. See the License for the specific language governing
-* permissions and limitations under the License.
-*/
+ * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/io/channel.h>
@@ -27,16 +27,13 @@
 
 static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
 
-
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
 }
 
-void aws_tls_clean_up_tl_state(void) {
-}
+void aws_tls_clean_up_tl_state(void) {}
 
-void aws_tls_clean_up_static_state(void) {
-}
+void aws_tls_clean_up_static_state(void) {}
 
 bool aws_tls_is_alpn_available(void) {
     return true;
@@ -46,7 +43,6 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
     (void)handler;
     return AWS_OP_ERR;
 }
-
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     (void)handler;

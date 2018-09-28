@@ -253,7 +253,8 @@ void rw_handler_trigger_increment_read_window(
         increment_read_window_task_args->handler = handler;
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
-        aws_task_init(&increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
+        aws_task_init(
+            &increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
 
         aws_channel_schedule_task_now(slot->channel, &increment_read_window_task_args->task);
     }

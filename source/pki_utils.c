@@ -299,12 +299,16 @@ int aws_read_and_decode_pem_file_to_buffer_list(
 }
 
 #ifdef __MACH__
-#include <Security/Security.h>
-#include <Security/SecCertificate.h>
-#include <Security/SecKey.h>
+#    include <Security/SecCertificate.h>
+#    include <Security/SecKey.h>
+#    include <Security/Security.h>
 
-int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, CFAllocatorRef cf_alloc,
-                                                   struct aws_byte_buf* public_cert_chain, struct aws_byte_buf* private_key, CFArrayRef *identity) {
+int aws_import_public_and_private_keys_to_identity(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *public_cert_chain,
+    struct aws_byte_buf *private_key,
+    CFArrayRef *identity) {
 
     size_t total_len = public_cert_chain->len + private_key->len;
     struct aws_byte_buf aggregate_buffer;
@@ -333,7 +337,8 @@ int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, 
     SecKeychainRef import_keychain = NULL;
     SecKeychainCopyDefault(&import_keychain);
 
-    OSStatus status = SecItemImport(aggregate_certificate_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &import_output);
+    OSStatus status = SecItemImport(
+        aggregate_certificate_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &import_output);
 
     CFRelease(aggregate_certificate_data);
     aws_byte_buf_clean_up(&aggregate_buffer);
@@ -367,8 +372,7 @@ int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, 
         }
 
         aws_array_list_clean_up(&cert_chain_list);
-    }
-    else {
+    } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(import_output, 0);
     }
 
@@ -377,15 +381,13 @@ int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, 
         status = SecIdentityCreateWithCertificate(import_keychain, certificate_ref, &identity_output);
 
         CFRelease(import_keychain);
-        if (import_output)
-        {
+        if (import_output) {
             CFRelease(import_output);
         }
 
-        if (status == errSecSuccess)
-        {
+        if (status == errSecSuccess) {
             CFTypeRef certs[] = {identity_output};
-            *identity = CFArrayCreate(cf_alloc, (const void**) certs, 1L, &kCFTypeArrayCallBacks);
+            *identity = CFArrayCreate(cf_alloc, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
             return AWS_OP_SUCCESS;
         }
     }
@@ -393,12 +395,15 @@ int aws_import_public_and_private_keys_to_identity(struct aws_allocator* alloc, 
     return AWS_OP_ERR;
 }
 
-int aws_import_pkcs12_to_identity(CFAllocatorRef cf_alloc, struct aws_byte_buf* pkcs12_buffer, struct aws_byte_buf* password, CFArrayRef *identity) {
+int aws_import_pkcs12_to_identity(
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *pkcs12_buffer,
+    struct aws_byte_buf *password,
+    CFArrayRef *identity) {
     CFDataRef pkcs12_data = CFDataCreate(cf_alloc, pkcs12_buffer->buffer, pkcs12_buffer->len);
     CFArrayRef items = NULL;
 
-    CFMutableDictionaryRef dictionary =
-            CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
+    CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
 
     CFStringRef password_ref = CFSTR("");
 
@@ -418,9 +423,9 @@ int aws_import_pkcs12_to_identity(CFAllocatorRef cf_alloc, struct aws_byte_buf* 
     CFRelease(dictionary);
 
     if (status == errSecSuccess) {
-        CFTypeRef item = (CFTypeRef) CFArrayGetValueAtIndex(items, 0);
+        CFTypeRef item = (CFTypeRef)CFArrayGetValueAtIndex(items, 0);
 
-        CFTypeRef identity_ref = (CFTypeRef) CFDictionaryGetValue((CFDictionaryRef) item, kSecImportItemIdentity);
+        CFTypeRef identity_ref = (CFTypeRef)CFDictionaryGetValue((CFDictionaryRef)item, kSecImportItemIdentity);
         if (identity_ref) {
             CFRetain(identity_ref);
             CFTypeRef certs[] = {identity_ref};
@@ -434,7 +439,11 @@ int aws_import_pkcs12_to_identity(CFAllocatorRef cf_alloc, struct aws_byte_buf* 
     return AWS_OP_ERR;
 }
 
-int aws_import_trusted_certificates(struct aws_allocator *alloc, CFAllocatorRef cf_alloc, struct aws_byte_buf *certificates_blob, CFArrayRef *certs) {
+int aws_import_trusted_certificates(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *certificates_blob,
+    CFArrayRef *certs) {
     struct aws_array_list certificates;
 
     if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -461,8 +470,7 @@ int aws_import_trusted_certificates(struct aws_allocator *alloc, CFAllocatorRef 
             SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
             CFArrayAppendValue(temp_cert_array, certificate_ref);
             CFRelease(cert_blob);
-        }
-        else {
+        } else {
             err = AWS_OP_SUCCESS;
         }
     }

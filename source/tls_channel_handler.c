@@ -21,8 +21,10 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->verify_peer = true;
 }
 
-void aws_tls_ctx_options_init_client_mtls(struct aws_tls_ctx_options *options,
-        const char *cert_path, const char *pkey_path) {
+void aws_tls_ctx_options_init_client_mtls(
+    struct aws_tls_ctx_options *options,
+    const char *cert_path,
+    const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = true;
@@ -30,8 +32,10 @@ void aws_tls_ctx_options_init_client_mtls(struct aws_tls_ctx_options *options,
     options->private_key_path = pkey_path;
 }
 
-void aws_tls_ctx_options_init_client_mtls_pkcs12(struct aws_tls_ctx_options *options,
-                                                 const char *pkcs12_path, const char *pkcs_pwd) {
+void aws_tls_ctx_options_init_client_mtls_pkcs12(
+    struct aws_tls_ctx_options *options,
+    const char *pkcs12_path,
+    const char *pkcs_pwd) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = true;
@@ -39,8 +43,10 @@ void aws_tls_ctx_options_init_client_mtls_pkcs12(struct aws_tls_ctx_options *opt
     options->pkcs12_password = pkcs_pwd;
 }
 
-void aws_tls_ctx_options_init_default_server(struct aws_tls_ctx_options *options,
-        const char *cert_path, const char *pkey_path) {
+void aws_tls_ctx_options_init_default_server(
+    struct aws_tls_ctx_options *options,
+    const char *cert_path,
+    const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = false;
@@ -48,8 +54,10 @@ void aws_tls_ctx_options_init_default_server(struct aws_tls_ctx_options *options
     options->private_key_path = pkey_path;
 }
 
-void aws_tls_ctx_options_init_server_pkcs12(struct aws_tls_ctx_options *options,
-                                             const char *pkcs12_path, const char *pkcs_pwd) {
+void aws_tls_ctx_options_init_server_pkcs12(
+    struct aws_tls_ctx_options *options,
+    const char *pkcs12_path,
+    const char *pkcs_pwd) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLSv1_1;
     options->verify_peer = false;
@@ -65,48 +73,45 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
-void aws_tls_ctx_options_override_default_trust_store(struct aws_tls_ctx_options *options,
-                                                      const char *ca_path, const char *ca_file) {
+void aws_tls_ctx_options_override_default_trust_store(
+    struct aws_tls_ctx_options *options,
+    const char *ca_path,
+    const char *ca_file) {
     options->ca_path = ca_path;
     options->ca_file = ca_file;
 }
 
-void aws_tls_connection_options_init_from_ctx_options(struct aws_tls_connection_options *conn_options,
-                                                      const struct aws_tls_ctx_options *ctx_options) {
+void aws_tls_connection_options_init_from_ctx_options(
+    struct aws_tls_connection_options *conn_options,
+    const struct aws_tls_ctx_options *ctx_options) {
     AWS_ZERO_STRUCT(*conn_options);
     /* the assumption here, is that if it was set in the context, we WANT it to be NULL here unless it's different.
      * so only set verify peer at this point. */
     conn_options->verify_peer = ctx_options->verify_peer;
 }
 
-void aws_tls_connection_options_set_callbacks(struct aws_tls_connection_options *conn_options,
-                                              aws_tls_on_negotiation_result_fn *on_negotiation_result,
-                                              aws_tls_on_data_read_fn *on_data_read,
-                                              aws_tls_on_error_fn *on_error,
-                                              void *user_data) {
+void aws_tls_connection_options_set_callbacks(
+    struct aws_tls_connection_options *conn_options,
+    aws_tls_on_negotiation_result_fn *on_negotiation_result,
+    aws_tls_on_data_read_fn *on_data_read,
+    aws_tls_on_error_fn *on_error,
+    void *user_data) {
     conn_options->on_negotiation_result = on_negotiation_result;
     conn_options->on_data_read = on_data_read;
     conn_options->on_error = on_error;
     conn_options->user_data = user_data;
 }
 
-void aws_tls_connection_options_set_server_name(struct aws_tls_connection_options *conn_options,
-                                                const char *server_name) {
+void aws_tls_connection_options_set_server_name(
+    struct aws_tls_connection_options *conn_options,
+    const char *server_name) {
     conn_options->server_name = server_name;
 }
 
-void aws_tls_connection_options_set_alpn_list(struct aws_tls_connection_options *conn_options,
-                                              const char *alpn_list) {
+void aws_tls_connection_options_set_alpn_list(struct aws_tls_connection_options *conn_options, const char *alpn_list) {
     conn_options->alpn_list = alpn_list;
 }
 
-void aws_tls_connection_options_set_verify_peer(struct aws_tls_connection_options *conn_options,
-                                                         bool verify_peer) {
+void aws_tls_connection_options_set_verify_peer(struct aws_tls_connection_options *conn_options, bool verify_peer) {
     conn_options->verify_peer = verify_peer;
 }
-
-
-
-
-
-

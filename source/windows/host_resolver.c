@@ -17,9 +17,9 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
-#include <aws/common/string.h>
 
 int aws_default_dns_resolve(
     struct aws_allocator *allocator,

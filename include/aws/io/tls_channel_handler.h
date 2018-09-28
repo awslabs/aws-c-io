@@ -33,19 +33,19 @@ struct aws_tls_ctx {
     void *impl;
 };
 
-typedef void (aws_tls_on_negotiation_result_fn)(
+typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data);
 
-typedef void (aws_tls_on_data_read_fn)(
+typedef void(aws_tls_on_data_read_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
     void *user_data);
 
-typedef void (aws_tls_on_error_fn)(
+typedef void(aws_tls_on_error_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err,
@@ -89,35 +89,50 @@ extern "C" {
 #endif
 /******************************** tls options init stuff ***********************/
 AWS_IO_API void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options);
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls(struct aws_tls_ctx_options *options,
-                                          const char *cert_path, const char *pkey_path);
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls_pkcs12(struct aws_tls_ctx_options *options,
-                                                 const char *pkcs12_path, const char *pkcs_pwd);
-AWS_IO_API void aws_tls_ctx_options_init_default_server(struct aws_tls_ctx_options *options,
-                                             const char *cert_path, const char *pkey_path);
-AWS_IO_API void aws_tls_ctx_options_init_server_pkcs12(struct aws_tls_ctx_options *options,
-                                            const char *pkcs12_path, const char *pkcs_pwd);
+AWS_IO_API void aws_tls_ctx_options_init_client_mtls(
+    struct aws_tls_ctx_options *options,
+    const char *cert_path,
+    const char *pkey_path);
+AWS_IO_API void aws_tls_ctx_options_init_client_mtls_pkcs12(
+    struct aws_tls_ctx_options *options,
+    const char *pkcs12_path,
+    const char *pkcs_pwd);
+AWS_IO_API void aws_tls_ctx_options_init_default_server(
+    struct aws_tls_ctx_options *options,
+    const char *cert_path,
+    const char *pkey_path);
+AWS_IO_API void aws_tls_ctx_options_init_server_pkcs12(
+    struct aws_tls_ctx_options *options,
+    const char *pkcs12_path,
+    const char *pkcs_pwd);
 AWS_IO_API void aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list);
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
-AWS_IO_API void aws_tls_ctx_options_override_default_trust_store(struct aws_tls_ctx_options *options,
-                                                        const char *ca_path, const char *ca_file);
+AWS_IO_API void aws_tls_ctx_options_override_default_trust_store(
+    struct aws_tls_ctx_options *options,
+    const char *ca_path,
+    const char *ca_file);
 
-AWS_IO_API void aws_tls_connection_options_init_from_ctx_options(struct aws_tls_connection_options *conn_options,
-        const struct aws_tls_ctx_options *ctx_options);
+AWS_IO_API void aws_tls_connection_options_init_from_ctx_options(
+    struct aws_tls_connection_options *conn_options,
+    const struct aws_tls_ctx_options *ctx_options);
 
-AWS_IO_API void aws_tls_connection_options_set_callbacks(struct aws_tls_connection_options *conn_options,
-                                                         aws_tls_on_negotiation_result_fn *on_negotiation_result,
-                                                         aws_tls_on_data_read_fn *on_data_read,
-                                                         aws_tls_on_error_fn *on_error,
-                                                         void *user_data);
+AWS_IO_API void aws_tls_connection_options_set_callbacks(
+    struct aws_tls_connection_options *conn_options,
+    aws_tls_on_negotiation_result_fn *on_negotiation_result,
+    aws_tls_on_data_read_fn *on_data_read,
+    aws_tls_on_error_fn *on_error,
+    void *user_data);
 
-AWS_IO_API void aws_tls_connection_options_set_server_name(struct aws_tls_connection_options *conn_options,
-                                              const char *server_name);
+AWS_IO_API void aws_tls_connection_options_set_server_name(
+    struct aws_tls_connection_options *conn_options,
+    const char *server_name);
 
-AWS_IO_API void aws_tls_connection_options_set_alpn_list(struct aws_tls_connection_options *conn_options,
-                                                           const char *alpn_list);
-AWS_IO_API void aws_tls_connection_options_set_verify_peer(struct aws_tls_connection_options *conn_options,
-                                                            bool verify_peer);
+AWS_IO_API void aws_tls_connection_options_set_alpn_list(
+    struct aws_tls_connection_options *conn_options,
+    const char *alpn_list);
+AWS_IO_API void aws_tls_connection_options_set_verify_peer(
+    struct aws_tls_connection_options *conn_options,
+    bool verify_peer);
 
 /********************************* stuff that actually does work *********************************/
 AWS_IO_API void aws_tls_init_static_state(struct aws_allocator *alloc);

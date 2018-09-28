@@ -152,8 +152,10 @@ int aws_event_loop_group_init(
  * will be the number of event loops in the group.
  */
 AWS_IO_API
-int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group,
-        struct aws_allocator *alloc, uint16_t max_threads);
+int aws_event_loop_group_default_init(
+    struct aws_event_loop_group *el_group,
+    struct aws_allocator *alloc,
+    uint16_t max_threads);
 
 /**
  * Destroys each event loop in the event loop group and then cleans up resources.

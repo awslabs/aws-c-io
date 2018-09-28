@@ -63,8 +63,6 @@ struct aws_tls_connection_options;
 
 struct aws_event_loop_group;
 
-
-
 struct aws_client_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;

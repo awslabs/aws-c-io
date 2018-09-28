@@ -252,11 +252,11 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
 }
 
 static int s_s2n_handler_process_read_message(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        struct aws_io_message *message) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
 
-    struct s2n_handler *s2n_handler = (struct s2n_handler *) handler->impl;
+    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
@@ -318,9 +318,9 @@ static int s_s2n_handler_process_read_message(
 }
 
 static int s_s2n_handler_process_write_message(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        struct aws_io_message *message) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
@@ -345,11 +345,11 @@ static int s_s2n_handler_process_write_message(
 }
 
 static int s_s2n_handler_shutdown(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        enum aws_channel_direction dir,
-        int error_code,
-        bool abort_immediately) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool abort_immediately) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
@@ -379,9 +379,9 @@ static void s_run_read(struct aws_task *task, void *arg, aws_task_status status)
 }
 
 static int s_s2n_handler_increment_read_window(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        size_t size) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
@@ -417,7 +417,7 @@ struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *hand
     return s2n_handler->server_name;
 }
 
-static struct aws_channel_handler_vtable handler_vtable = {
+static struct aws_channel_handler_vtable s_handler_vtable = {
     .destroy = s_s2n_handler_destroy,
     .process_read_message = s_s2n_handler_process_read_message,
     .process_write_message = s_s2n_handler_process_write_message,
@@ -426,7 +426,10 @@ static struct aws_channel_handler_vtable handler_vtable = {
     .initial_window_size = s_s2n_handler_get_current_window_size,
 };
 
-static int s_parse_protocol_preferences(const char *alpn_list_str, const char protocol_output[4][128], size_t *protocol_count) {
+static int s_parse_protocol_preferences(
+    const char *alpn_list_str,
+    const char protocol_output[4][128],
+    size_t *protocol_count) {
     size_t max_count = *protocol_count;
     *protocol_count = 0;
 
@@ -464,11 +467,11 @@ static int s_parse_protocol_preferences(const char *alpn_list_str, const char pr
 }
 
 struct aws_channel_handler *s_new_tls_handler(
-        struct aws_allocator *allocator,
-        struct aws_tls_ctx *ctx,
-        struct aws_tls_connection_options *options,
-        struct aws_channel_slot *slot,
-        s2n_mode mode) {
+    struct aws_allocator *allocator,
+    struct aws_tls_ctx *ctx,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    s2n_mode mode) {
     struct aws_channel_handler *handler =
         (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
 
@@ -492,7 +495,7 @@ struct aws_channel_handler *s_new_tls_handler(
 
     handler->impl = s2n_handler;
     handler->alloc = allocator;
-    handler->vtable = handler_vtable;
+    handler->vtable = s_handler_vtable;
 
     s2n_handler->options = *options;
     s2n_handler->latest_message_completion_user_data = NULL;
@@ -533,8 +536,8 @@ struct aws_channel_handler *s_new_tls_handler(
             protocols[i] = protocols_cpy[i];
         }
 
-        if (s2n_connection_set_protocol_preferences(s2n_handler->connection,
-                                                (const char *const *)protocols, (int)protocols_size)) {
+        if (s2n_connection_set_protocol_preferences(
+                s2n_handler->connection, (const char *const *)protocols, (int)protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -544,8 +547,6 @@ struct aws_channel_handler *s_new_tls_handler(
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_conn;
     }
-
-
 
     return handler;
 
@@ -685,8 +686,7 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
             protocols[i] = protocols_cpy[i];
         }
 
-        if (s2n_config_set_protocol_preferences(s2n_ctx->s2n_config,
-                protocols, (int)protocols_size)) {
+        if (s2n_config_set_protocol_preferences(s2n_ctx->s2n_config, protocols, (int)protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
