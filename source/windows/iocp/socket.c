@@ -433,6 +433,13 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
         return aws_raise_error(aws_error);
     }
 
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        socket->state &= ~CONNECTED_READ;
+    }
+    else {
+        socket->state &= ~CONNECTED_WRITE;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -1900,7 +1907,6 @@ static void s_socket_written_event(
     int status_code,
     size_t num_bytes_transferred) {
     (void)event_loop;
-    (void)num_bytes_transferred;
 
     struct write_cb_args *write_cb_args = overlapped->user_data;
 

@@ -390,6 +390,11 @@ int aws_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
     assert(event_loop);
+    assert(!socket->event_loop);
+
+    if (socket->event_loop) {
+        return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
+    }
 
     if (socket->state != INIT) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -458,16 +463,19 @@ int aws_socket_connect(
         aws_event_loop_schedule_task_now(event_loop, &sock_args->task);
     }
 
+    struct posix_socket *socket_impl = socket->impl;
+
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
+            socket_impl->currently_subscribed = true;
             /* This event is for when the connection finishes. (the fd will flip writable). */
             if (aws_event_loop_subscribe_to_io_events(
                     event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_WRITABLE, s_socket_connect_event, sock_args)) {
+                socket_impl->currently_subscribed = false;
+                socket->event_loop = NULL;
                 goto err_clean_up;
             }
-            struct posix_socket *socket_impl = socket->impl;
-            socket_impl->currently_subscribed = true;
 
             uint64_t timeout = 0;
             aws_event_loop_current_clock_time(event_loop, &timeout);
@@ -480,6 +488,8 @@ int aws_socket_connect(
         } else {
             int aws_error = s_determine_socket_error(error_code);
             aws_raise_error(aws_error);
+            socket->event_loop = NULL;
+            socket_impl->currently_subscribed = false;
             goto err_clean_up;
         }
     }
@@ -569,11 +579,11 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
 
 /* this is called by the event loop handler that was installed in start_accept(). It runs once the FD goes readable,
  * accepts as many as it can and then returns control to the event loop. */
-static void socket_accept_event(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    int events,
-    void *user_data) {
+static void s_socket_accept_event(
+        struct aws_event_loop *event_loop,
+        struct aws_io_handle *handle,
+        int events,
+        void *user_data) {
 
     (void)event_loop;
 
@@ -677,9 +687,10 @@ int aws_socket_start_accept(
     socket_impl->currently_subscribed = true;
 
     if (aws_event_loop_subscribe_to_io_events(
-            socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, socket_accept_event, socket)) {
+            socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, s_socket_accept_event, socket)) {
         socket_impl->continue_accept = false;
         socket_impl->currently_subscribed = false;
+        socket->event_loop = NULL;
 
         return AWS_OP_ERR;
     }
@@ -878,6 +889,13 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
         return aws_raise_error(aws_error);
     }
 
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        socket->state &= ~CONNECTED_READ;
+    }
+    else {
+        socket->state &= ~CONNECTED_WRITE;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -1032,6 +1050,7 @@ int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_
                 s_on_socket_io_event,
                 socket)) {
             socket_impl->currently_subscribed = false;
+            socket->event_loop = NULL;
             return AWS_OP_ERR;
         }
 
