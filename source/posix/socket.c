@@ -580,10 +580,10 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
 /* this is called by the event loop handler that was installed in start_accept(). It runs once the FD goes readable,
  * accepts as many as it can and then returns control to the event loop. */
 static void s_socket_accept_event(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        int events,
-        void *user_data) {
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data) {
 
     (void)event_loop;
 
@@ -891,8 +891,7 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
 
     if (dir == AWS_CHANNEL_DIR_READ) {
         socket->state &= ~CONNECTED_READ;
-    }
-    else {
+    } else {
         socket->state &= ~CONNECTED_WRITE;
     }
 

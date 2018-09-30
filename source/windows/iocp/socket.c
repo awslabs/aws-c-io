@@ -435,8 +435,7 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
 
     if (dir == AWS_CHANNEL_DIR_READ) {
         socket->state &= ~CONNECTED_READ;
-    }
-    else {
+    } else {
         socket->state &= ~CONNECTED_WRITE;
     }
 
