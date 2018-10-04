@@ -138,7 +138,6 @@ static void s_write_end_on_write_completion(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred);
-static void s_write_end_finish_closing_task(struct aws_task *task, void *user_data, enum aws_task_status status);
 
 /* Translate Windows errors into aws_pipe errors */
 static int s_translate_windows_error(DWORD win_error) {
@@ -357,14 +356,20 @@ clean_up:
 
 struct aws_event_loop *aws_pipe_get_read_end_event_loop(const struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        aws_raise_error(AWS_IO_BROKEN_PIPE);
+        return NULL;
+    }
 
     return read_impl->event_loop;
 }
 
 struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_write_end *write_end) {
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    if (!write_impl) {
+        aws_raise_error(AWS_IO_BROKEN_PIPE);
+        return NULL;
+    }
 
     return write_impl->event_loop;
 }
@@ -372,7 +377,9 @@ struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_w
 int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -561,7 +568,9 @@ int aws_pipe_subscribe_to_readable_events(
     void *user_data) {
 
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (read_impl->state != READ_END_STATE_OPEN) {
         /* Return specific error about why user can't subscribe */
@@ -588,7 +597,9 @@ int aws_pipe_subscribe_to_readable_events(
 
 int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!s_read_end_is_subscribed(read_end)) {
         return aws_raise_error(AWS_ERROR_IO_NOT_SUBSCRIBED);
@@ -616,9 +627,12 @@ int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end
 }
 
 int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *amount_read) {
-    struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
     assert(dst_buffer && dst_buffer->buffer);
+
+    struct read_end_impl *read_impl = read_end->impl_data;
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (amount_read) {
         *amount_read = 0;
@@ -664,10 +678,10 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
     DWORD bytes_read = 0;
     bool read_success = ReadFile(
         read_impl->handle.data.handle,
-        dst_buffer->buffer,   /*lpBuffer*/
-        (DWORD)bytes_to_read, /*nNumberOfBytesToRead*/
-        &bytes_read,          /*lpNumberOfBytesRead*/
-        NULL);                /*lpOverlapped: NULL so read is synchronous*/
+        dst_buffer->buffer + dst_buffer->len, /*lpBuffer*/
+        (DWORD)bytes_to_read,                 /*nNumberOfBytesToRead*/
+        &bytes_read,                          /*lpNumberOfBytesRead*/
+        NULL);                                /*lpOverlapped: NULL so read is synchronous*/
 
     /* Operation failed. Request async monitoring so user is informed via aws_pipe_on_readable_fn of handle error. */
     if (!read_success) {
@@ -694,7 +708,9 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
 int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
 
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    if (!write_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -722,7 +738,9 @@ int aws_pipe_write(
     void *user_data) {
 
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    if (!write_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
