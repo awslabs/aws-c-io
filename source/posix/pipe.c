@@ -40,7 +40,8 @@ struct read_end_impl {
     aws_pipe_on_readable_fn *on_readable_user_callback;
     void *on_readable_user_data;
 
-    /* Used in handshake for detecting whether user callback resulted in read-end being cleaned up */
+    /* Used in handshake for detecting whether user callback resulted in read-end being cleaned up.
+     * If clean_up() sees that the pointer is set, the bool it points to will get set true. */
     bool *did_user_callback_clean_up_read_end;
 
     bool is_subscribed;
