@@ -543,7 +543,9 @@ static int test_pipe_readable_event_sent_once(struct pipe_state *state) {
 
     ASSERT_SUCCESS(s_wait_for_results(state));
 
-    ASSERT_INT_EQUALS(1, state->readable_events.count);
+    /* Accept 1 or 2 events. Epoll notifies about "readable" when sending "write end closed" event.
+     * That's fine, we just don't want dozens of readable events to have come in. */
+    ASSERT_TRUE(state->readable_events.count <= 2);
 
     return AWS_OP_SUCCESS;
 }
