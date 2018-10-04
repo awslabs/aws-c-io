@@ -39,6 +39,10 @@ struct read_end_impl {
     struct aws_event_loop *event_loop;
     aws_pipe_on_readable_fn *on_readable_user_callback;
     void *on_readable_user_data;
+
+    /* Used in handshake for detecting whether user callback resulted in read-end being cleaned up */
+    bool *did_user_callback_clean_up_read_end;
+
     bool is_subscribed;
 };
 
@@ -225,6 +229,13 @@ int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
         }
     }
 
+    /* If the event-handler is invoking a user callback, let it know that the read-end was cleaned up */
+    if (read_impl->did_user_callback_clean_up_read_end) {
+        *read_impl->did_user_callback_clean_up_read_end = true;
+    }
+
+    close(read_impl->handle.data.fd);
+
     aws_mem_release(read_impl->alloc, read_impl);
     AWS_ZERO_STRUCT(*read_end);
     return AWS_OP_SUCCESS;
@@ -297,10 +308,35 @@ static void s_read_end_on_event(
     assert(&read_impl->handle == handle);
     assert(read_impl->is_subscribed);
     assert(events != 0);
+    assert(read_impl->did_user_callback_clean_up_read_end == NULL);
 
-    int error_code = (events == AWS_IO_EVENT_TYPE_READABLE) ? AWS_ERROR_SUCCESS : AWS_IO_BROKEN_PIPE;
+    /* Set up handshake, so we can be informed if the read-end is cleaned up while invoking a user callback */
+    bool did_user_callback_clean_up_read_end = false;
+    read_impl->did_user_callback_clean_up_read_end = &did_user_callback_clean_up_read_end;
 
-    read_impl->on_readable_user_callback(read_end, error_code, read_impl->on_readable_user_data);
+    /* If readable event received, tell user to try and read, even if "error" events have also occurred. */
+    if (events & AWS_IO_EVENT_TYPE_READABLE) {
+        read_impl->on_readable_user_callback(read_end, AWS_ERROR_SUCCESS, read_impl->on_readable_user_data);
+
+        if (did_user_callback_clean_up_read_end) {
+            return;
+        }
+
+        events &= ~AWS_IO_EVENT_TYPE_READABLE;
+    }
+
+    if (events) {
+        /* Check that user didn't unsubscribe in the previous callback */
+        if (read_impl->is_subscribed) {
+            read_impl->on_readable_user_callback(read_end, AWS_IO_BROKEN_PIPE, read_impl->on_readable_user_data);
+
+            if (did_user_callback_clean_up_read_end) {
+                return;
+            }
+        }
+    }
+
+    read_impl->did_user_callback_clean_up_read_end = NULL;
 }
 
 int aws_pipe_subscribe_to_readable_events(
@@ -518,6 +554,8 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
     if (err) {
         return AWS_OP_ERR;
     }
+
+    close(write_impl->handle.data.fd);
 
     /* Zero out write-end before invoking user callbacks so that it won't work anymore with public functions. */
     AWS_ZERO_STRUCT(*write_end);
