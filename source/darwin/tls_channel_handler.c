@@ -504,7 +504,7 @@ static void s_run_read(struct aws_task *task, void *arg, aws_task_status status)
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
         struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
         secure_transport_handler->read_task_pending = false;
-        secure_transport_handler_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
+        s_secure_transport_handler_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
     }
 }
 
