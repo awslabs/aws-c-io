@@ -1336,7 +1336,7 @@ static void s_socket_accept_event(
                 return;
             }
 
-            err = s_socket_init(socket_impl->incoming_socket, socket->allocator, &socket->options, false);
+            err = s_socket_init(socket_impl->incoming_socket, socket->allocator, &socket->options, true);
 
             /* we need to start the accept process over again. */
             if (!err) {
@@ -1786,6 +1786,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         (int)(buffer->capacity - buffer->len),
         0);
 
+
     if (read_val > 0) {
         *amount_read = (size_t)read_val;
         buffer->len += *amount_read;
@@ -1800,10 +1801,14 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
             socket->state |= WAITING_ON_READABLE;
             aws_overlapped_reset(iocp_socket->read_signal);
             aws_overlapped_init(iocp_socket->read_signal, s_stream_readable_event, socket);
-            int fake_buffer = 0;
             iocp_socket->pending_operations |= PENDING_READ;
-            int err =
-                ReadFile(socket->io_handle.data.handle, &fake_buffer, 0, NULL, &iocp_socket->read_signal->overlapped);
+            WSABUF buf = {
+                .len = 0,
+                .buf = NULL,
+            };
+            DWORD flags = MSG_PEEK;
+            int err = WSARecv(
+                (SOCKET)socket->io_handle.data.handle, &buf, 1, NULL, &flags, &iocp_socket->read_signal->overlapped, NULL);           
             if (err) {
                 int wsa_err = WSAGetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {

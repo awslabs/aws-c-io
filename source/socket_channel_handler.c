@@ -116,17 +116,21 @@ static void s_do_read(struct socket_handler *socket_handler) {
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
 
     if (max_to_read) {
+
         size_t total_read = 0, read = 0;
         while (total_read < max_to_read && !socket_handler->shutdown_in_progress) {
+            size_t iter_max_read = max_to_read - total_read;
+
             struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-                socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, max_to_read);
+                socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
             if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 break;
             }
 
-            total_read += read;
+            total_read += read;           
+
             if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
                 return;

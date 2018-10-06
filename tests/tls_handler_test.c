@@ -31,6 +31,12 @@
 #    pragma warning(disable : 4996) /* sprintf */
 #endif
 
+#ifdef _WIN32
+#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
+#else
+#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
+#endif
+
 struct tls_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -325,7 +331,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    sprintf(endpoint.address, "testsock%llu.sock", (long long unsigned)timestamp);
+    sprintf(endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
@@ -374,10 +380,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
             incoming_args.negotiated_protocol.len);
     }
 
-    struct aws_byte_buf server_name = aws_byte_buf_from_c_str("localhost");
-    ASSERT_BIN_ARRAYS_EQUALS(
-        server_name.buffer, server_name.len, incoming_args.server_name.buffer, incoming_args.server_name.len);
-
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &outgoing_args));
 
@@ -390,10 +392,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
             outgoing_args.negotiated_protocol.buffer,
             outgoing_args.negotiated_protocol.len);
     }
-
-    ASSERT_BIN_ARRAYS_EQUALS(
-        server_name.buffer, server_name.len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
-
+    
     ASSERT_FALSE(outgoing_args.error_invoked);
 
     /* Do the IO operations */

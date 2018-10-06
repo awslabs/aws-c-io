@@ -24,10 +24,12 @@
 #include <assert.h>
 
 #if _MSC_VER
-#    pragma warning(disable : 4204) /* non-constant aggregate initializer */
-#    pragma warning(disable : 4221) /* allow automatic variable to escape scope                                        \
-                                        (it's intenional and we make sure it doesn't actually return                   \
-                                         before the task is finished).*/
+ /* non-constant aggregate initializer */
+#    pragma warning(disable : 4204) 
+ /* allow automatic variable to escape scope
+    (it's intenional and we make sure it doesn't actually return
+     before the task is finished).*/
+#    pragma warning(disable : 4221) 
 #endif
 
 struct tl_shutdown_task_data {
