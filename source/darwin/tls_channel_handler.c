@@ -337,8 +337,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             status = SecTrustEvaluate(trust, &trust_eval);
             CFRelease(trust);
 
-            if (status == errSecSuccess &&
-                (trust_eval == kSecTrustResultProceed || trust_eval == kSecTrustResultUnspecified)) {
+            if (status == errSecSuccess && (trust_eval == kSecTrustResultProceed
+                    || trust_eval == kSecTrustResultUnspecified
+                    || trust_eval == kSecTrustResultRecoverableTrustFailure)) {
                 return s_drive_negotiation(handler);
             }
 
