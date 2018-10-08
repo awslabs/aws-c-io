@@ -96,7 +96,7 @@ AWS_IO_API int aws_import_key_pair_to_cert_context(struct aws_allocator *alloc,
     struct aws_byte_buf *public_cert_chain, struct aws_byte_buf *private_key, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs);
 AWS_IO_API int aws_import_pkcs12_to_cert_context(struct aws_allocator *alloc,
     struct aws_byte_buf *pkcs12_buffer, PCCERT_CONTEXT *certs);
-#endif*/ /* _WIN32 */
+#endif /* _WIN32 */
 
 #ifdef __cplusplus
 }

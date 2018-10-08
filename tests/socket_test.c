@@ -17,9 +17,11 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
+#include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 
 #ifdef _WIN32
@@ -422,6 +424,47 @@ static int s_test_udp_socket_communication(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(udp_socket_communication, s_test_udp_socket_communication)
 
+
+struct test_host_callback_data {
+    struct aws_host_address a_address;
+    bool has_a_address;
+    struct aws_condition_variable condition_variable;
+    bool invoked;
+};
+
+static bool s_test_host_resolved_predicate(void *arg) {
+    struct test_host_callback_data *callback_data = arg;
+
+    return callback_data->invoked;
+}
+
+static void s_test_host_resolved_test_callback(
+        struct aws_host_resolver *resolver,
+        const struct aws_string *host_name,
+        int err_code,
+        const struct aws_array_list *host_addresses,
+        void *user_data) {
+
+    (void)resolver;
+    (void)host_name;
+    (void)err_code;
+
+    struct test_host_callback_data *callback_data = user_data;
+
+    struct aws_host_address *host_address = NULL;
+
+    if (aws_array_list_length(host_addresses) == 1) {
+        aws_array_list_get_at(host_addresses, &host_address, 0);
+
+        aws_host_address_copy(host_address, &callback_data->a_address);
+        callback_data->has_a_address = true;
+    }
+
+    callback_data->invoked = true;
+    aws_condition_variable_notify_one(&callback_data->condition_variable);
+}
+
+
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -430,17 +473,45 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 1000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    /* hit a endpoint that will not send me a SYN packet. */
-    struct aws_socket_endpoint endpoint = {.address = "172.217.15.110", .port = 81};
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
 
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+    struct aws_host_resolution_config resolution_config = {
+            .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
+
+    struct test_host_callback_data host_callback_data = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .invoked = false,
+            .has_a_address = false,
+    };
+
+    /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
+    struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            &resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
+
+    aws_condition_variable_wait_pred(
+            &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+
+    aws_host_resolver_clean_up(&resolver);
+
+    ASSERT_TRUE(host_callback_data.has_a_address);
+
+    struct aws_socket_endpoint endpoint = { .port = 81};
+    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+
+    aws_string_destroy((void *)host_name);
+    aws_host_address_clean_up(&host_callback_data.a_address);
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex,
@@ -451,7 +522,6 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
     ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);

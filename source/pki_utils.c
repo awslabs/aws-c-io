@@ -696,5 +696,5 @@ int aws_import_pkcs12_to_cert_context(struct aws_allocator *alloc,
     return AWS_OP_SUCCESS;
 }
 
-#endif*/ /* _WIN32 */
+#endif /* _WIN32 */
 
