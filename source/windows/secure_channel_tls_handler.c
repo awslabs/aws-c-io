@@ -36,7 +36,10 @@
 #    pragma warning(disable : 4306) /* msft doesn't trust us to do pointer arithmetic. */
 #endif
 
-#define KB_16  (1024 * 16)
+#define KB_1  1024
+#define READ_OUT_SIZE (KB_1 * 16)
+#define READ_IN_SIZE READ_OUT_SIZE
+#define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
@@ -50,6 +53,7 @@ struct secure_channel_ctx {
     struct aws_tls_ctx_options options;
     SCHANNEL_CRED credentials;
     PCERT_CONTEXT pcerts;
+    HCERTSTORE cert_store;
     HCERTSTORE custom_trust_store;
 };
 
@@ -67,10 +71,14 @@ struct secure_channel_handler {
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
     TimeStamp sspi_timestamp;
-    int(*s_handshake_state_fn)(struct aws_channel_handler *handler);
-    uint8_t scratch_space[KB_16];
-    struct aws_byte_buf scratch_buffer;
-    size_t unprocessed_scratch_data;
+    int(*s_connection_state_fn)(struct aws_channel_handler *handler);
+    uint8_t buffered_read_in_data[READ_IN_SIZE];
+    struct aws_byte_buf buffered_read_in_data_buf;
+    size_t estimated_incomplete_size;
+    size_t read_extra;
+    uint8_t buffered_read_out_data[READ_OUT_SIZE];
+    struct aws_byte_buf buffered_read_out_data_buf;
+    struct aws_task sequential_task_storage;
     bool negotiation_finished;
     
 };
@@ -245,10 +253,12 @@ static int s_fillin_alpn_data(struct aws_channel_handler *handler, unsigned char
     return AWS_OP_SUCCESS;
 }
 
-static int s_do_negotiation(struct aws_channel_handler *handler) {
+static int s_process_connection_state(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    return sc_handler->s_handshake_state_fn(handler);
+    return sc_handler->s_connection_state_fn(handler);
 }
+
+static int s_do_application_data_decrypt(struct aws_channel_handler *handler);
 
 static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handler);
 
@@ -258,8 +268,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     unsigned char alpn_buffer_data[128] = { 0 };
     SecBuffer input_bufs[] = { 
         {
-            .pvBuffer = sc_handler->scratch_buffer.buffer,
-            .cbBuffer = (unsigned long)sc_handler->scratch_buffer.len,
+            .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
+            .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
             .BufferType = SECBUFFER_TOKEN,
         },
         {
@@ -310,7 +320,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     SECURITY_STATUS status = AcceptSecurityContext(&sc_handler->creds, NULL, &input_bufs_desc, 
         sc_handler->ctx_req, 0, &sc_handler->sec_handle, &output_buffer_desc, &sc_handler->ctx_ret_flags, NULL);
 
-    if ((!status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK)) {
+    if (!(status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK)) {
         int error = s_determine_sspi_error(status);
         aws_raise_error(error);
         s_invoke_negotiation_error(handler, error);
@@ -338,7 +348,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         return AWS_OP_ERR;
     }
 
-    sc_handler->s_handshake_state_fn = s_do_server_side_negotiation_step_2;
+    sc_handler->s_connection_state_fn = s_do_server_side_negotiation_step_2;
 
     return AWS_OP_SUCCESS;
 }
@@ -348,8 +358,8 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
     SecBuffer input_buffers[] = {
         [0] = {
-        .pvBuffer = sc_handler->scratch_buffer.buffer,
-        .cbBuffer = (unsigned long)sc_handler->scratch_buffer.len,
+        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
+        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
         .BufferType = SECBUFFER_TOKEN,
     },
     [1] = {
@@ -380,7 +390,15 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         &input_buffers_desc, sc_handler->ctx_req, 0, NULL,
         &output_buffers_desc, &sc_handler->ctx_ret_flags, &sc_handler->sspi_timestamp);
     
+    if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        s_invoke_negotiation_error(handler, aws_error);
+        return AWS_OP_ERR;
+    }
+
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
+        sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     };
 
@@ -411,10 +429,10 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
-            sc_handler->unprocessed_scratch_data = input_buffers[1].cbBuffer;
+            sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
         else {
-            sc_handler->unprocessed_scratch_data = 0;
+            sc_handler->read_extra = 0;
         }
     }    
 
@@ -442,6 +460,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             }
         }
 #endif 
+        sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
         s_on_negotiation_success(handler);
     }
 
@@ -530,7 +549,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
         return AWS_OP_ERR;
     }
 
-    sc_handler->s_handshake_state_fn = s_do_client_side_negotiation_step_2;
+    sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_2;
 
     return AWS_OP_SUCCESS;
 }
@@ -539,8 +558,8 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     struct secure_channel_handler *sc_handler = handler->impl;    
     SecBuffer input_buffers[] = {
         [0] = {
-            .pvBuffer = sc_handler->scratch_buffer.buffer,
-            .cbBuffer = (unsigned long)(sc_handler->scratch_buffer.len),
+            .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
+            .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
             .BufferType = SECBUFFER_TOKEN,
         },
         [1] = {
@@ -581,6 +600,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
+        sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
@@ -611,10 +631,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
-            sc_handler->unprocessed_scratch_data = input_buffers[1].cbBuffer;
+            sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
         else {
-            sc_handler->unprocessed_scratch_data = 0;
+            sc_handler->read_extra = 0;
         }
     }
 
@@ -645,10 +665,117 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             return AWS_OP_ERR;
         }
 #endif 
+        sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
         s_on_negotiation_success(handler);
     }
 
     return AWS_OP_SUCCESS;
+}
+
+static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+    /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
+    SecBuffer input_buffers[4];
+    AWS_ZERO_ARRAY(input_buffers);
+    input_buffers[0] = (SecBuffer) {
+        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
+        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
+        .BufferType = SECBUFFER_DATA,
+    };
+
+    SecBufferDesc buffer_desc = {
+        .ulVersion = SECBUFFER_VERSION,
+        .cBuffers = 4,
+        .pBuffers = input_buffers,
+    };
+
+    SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
+
+    if (status == SEC_E_OK) {
+        if (input_buffers[1].BufferType == SECBUFFER_DATA) {
+            size_t decrypted_length = input_buffers[1].cbBuffer;
+
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
+                sc_handler->read_extra = input_buffers[3].cbBuffer;
+            }
+            
+            assert(decrypted_length <= sc_handler->buffered_read_out_data_buf.capacity - sc_handler->buffered_read_out_data_buf.len);
+            memcpy(sc_handler->buffered_read_out_data_buf.buffer + sc_handler->buffered_read_out_data_buf.len,
+                    (uint8_t *)input_buffers[1].pvBuffer, decrypted_length);
+            sc_handler->buffered_read_out_data_buf.len += decrypted_length;
+        }
+
+        return AWS_OP_SUCCESS;
+    }
+    else if (status == SEC_E_INCOMPLETE_MESSAGE) {
+        sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
+        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+    }
+    else {
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        return AWS_OP_ERR;
+    }
+}
+
+static int s_process_pending_output_messages(struct aws_channel_handler *handler) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    size_t downstream_window = SIZE_MAX;
+    
+    if (sc_handler->slot->adj_right) {
+        downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+    }
+
+    while (sc_handler->buffered_read_out_data_buf.len && downstream_window) {
+        size_t requested_message_size = sc_handler->buffered_read_out_data_buf.len > downstream_window ?
+            downstream_window : sc_handler->buffered_read_out_data_buf.len;
+
+        if (sc_handler->slot->adj_right) {
+            struct aws_io_message *read_out_msg =
+                aws_channel_acquire_message_from_pool(sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, requested_message_size);
+
+            if (!read_out_msg) {
+                return AWS_OP_ERR;
+            }
+
+            size_t copy_size = read_out_msg->message_data.capacity < requested_message_size ?
+                read_out_msg->message_data.len : requested_message_size;
+
+            memcpy(read_out_msg->message_data.buffer, sc_handler->buffered_read_out_data_buf.buffer, copy_size);
+            read_out_msg->message_data.len = copy_size;
+
+            memmove(sc_handler->buffered_read_out_data_buf.buffer,
+                sc_handler->buffered_read_out_data_buf.buffer + copy_size,
+                sc_handler->buffered_read_out_data_buf.len - copy_size);
+            sc_handler->buffered_read_out_data_buf.len -= copy_size;
+
+            if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
+                aws_channel_release_message_to_pool(sc_handler->slot->channel, read_out_msg);
+                return AWS_OP_ERR;
+            }
+
+            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+        }
+        else {
+            /* TODO: invoke the on read callback here.*/
+            sc_handler->buffered_read_out_data_buf.len = 0;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_process_pending_output_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct aws_channel_handler *handler = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (s_process_pending_output_messages(handler)) {
+            struct secure_channel_handler *sc_handler = arg;
+            aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
+        }
+    }
 }
 
 static int s_process_read_message(
@@ -656,106 +783,80 @@ static int s_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct secure_channel_handler *sc_handler = (struct secure_channel_handler *)handler->impl;
+    struct secure_channel_handler *sc_handler = handler->impl;
 
     if (message) {
-        size_t available_scratch_space = sc_handler->scratch_buffer.capacity - sc_handler->scratch_buffer.len;
-        size_t available_message_len = message->message_data.len - message->copy_mark;
-        size_t amount_to_move_to_scratch = available_scratch_space > available_message_len ?
-            available_message_len : available_scratch_space;
+        struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
-        memcpy(sc_handler->scratch_buffer.buffer + sc_handler->scratch_buffer.len,
-            message->message_data.buffer + message->copy_mark, amount_to_move_to_scratch);
+        int err = AWS_OP_SUCCESS;
+        while (!err && message_cursor.len) {
+            size_t available_buffer_space = sc_handler->buffered_read_in_data_buf.capacity -
+                sc_handler->buffered_read_in_data_buf.len;
+            size_t available_message_len = message_cursor.len;
+            size_t amount_to_move_to_buffer = available_buffer_space > available_message_len ?
+                available_message_len : available_buffer_space;
 
-        message->copy_mark += amount_to_move_to_scratch;
-        sc_handler->scratch_buffer.len += amount_to_move_to_scratch;
+            memcpy(sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len,
+                message_cursor.ptr, amount_to_move_to_buffer);
+            sc_handler->buffered_read_in_data_buf.len += amount_to_move_to_buffer;
+            
+            err = sc_handler->s_connection_state_fn(handler);
 
-        if (!sc_handler->negotiation_finished) {
-            int err = AWS_OP_SUCCESS;
-            err = s_do_negotiation(handler);
-
-            if (!err) {
-                memmove(sc_handler->scratch_buffer.buffer, 
-                    sc_handler->scratch_buffer.buffer + (sc_handler->scratch_buffer.len - sc_handler->unprocessed_scratch_data), sc_handler->unprocessed_scratch_data);
-                sc_handler->scratch_buffer.len = sc_handler->unprocessed_scratch_data;
-                sc_handler->unprocessed_scratch_data = 0;
-
-                memcpy(sc_handler->scratch_buffer.buffer + sc_handler->scratch_buffer.len, 
-                    message->message_data.buffer + message->copy_mark, message->message_data.len - message->copy_mark);
-
-                sc_handler->scratch_buffer.len += message->message_data.len - message->copy_mark;
-            }
-            else if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
-                if (AWS_UNLIKELY(message->copy_mark != message->message_data.len)) {
+            if (err && aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+                if (sc_handler->buffered_read_in_data_buf.len == sc_handler->buffered_read_in_data_buf.capacity) {
+                    /* throw this one as a protocol error. */
                     aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
-                    s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_WRITE_FAILURE);
-                    aws_channel_shutdown(slot->channel, aws_last_error());
-                    return AWS_OP_ERR;
-                }               
-                aws_channel_release_message_to_pool(slot->channel, message);
-                return AWS_OP_SUCCESS;
-            }
-            else {
-                aws_channel_shutdown(slot->channel, aws_last_error());
-                return AWS_OP_ERR;
-            }
-        }
-
-        if (sc_handler->negotiation_finished && sc_handler->scratch_buffer.len) {
-            struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&sc_handler->scratch_buffer);
-
-            while (message_cursor.len) {
-                /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
-                SecBuffer input_buffers[4];
-                AWS_ZERO_ARRAY(input_buffers);
-                input_buffers[0] = (SecBuffer) {
-                    .cbBuffer = (unsigned long)(message_cursor.len),
-                    .pvBuffer = message_cursor.ptr,
-                    .BufferType = SECBUFFER_DATA,
-                };
-
-                SecBufferDesc buffer_desc = {
-                    .ulVersion = SECBUFFER_VERSION,
-                    .cBuffers = 4,
-                    .pBuffers = input_buffers,
-                };
-
-                SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
-
-                if (status == SEC_E_OK) {
-                    if (input_buffers[1].BufferType == SECBUFFER_DATA) {
-                        size_t decrypted_length = input_buffers[1].cbBuffer;
-
-                        /* if no extra data, then the original buffer has been completely decrypted in place, save on the copies
-                           and just pass it straight through. */
-                        if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
-                            sc_handler->unprocessed_scratch_data = input_buffers[3].cbBuffer;
-                        }
-
-                        /* here down.... I'm pretty sure this occurs in-place and we don't need another message, we can just pass the original through
-                           after updating the length to match.... but let's wait until I've actually tested before doing that.*/
-                        struct aws_io_message *outgoing_message =
-                            aws_channel_acquire_message_from_pool(sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, decrypted_length);
-
-                        if (!outgoing_message) {
-                            return AWS_OP_ERR;
-                        }
-
-                        memcpy(outgoing_message->message_data.buffer, input_buffers[1].pvBuffer, decrypted_length);
-                        outgoing_message->message_data.len = decrypted_length;
-                        if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_READ)) {
-                            aws_channel_release_message_to_pool(slot->channel, outgoing_message);
-                            return AWS_OP_ERR;
-                        }
-
-                        aws_byte_cursor_advance(&message_cursor, decrypted_length);
+                }
+                else {
+                    size_t window_size = slot->window_size;
+                    if (!window_size && aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
+                        err = AWS_OP_ERR;
+                    }
+                    else {
+                        sc_handler->estimated_incomplete_size = 0;
+                        err = AWS_OP_SUCCESS;
                     }
                 }
             }
-        }
-        aws_channel_release_message_to_pool(slot->channel, message);
+            else if (err) {
+                break;
+            }
+            
+            if (sc_handler->read_extra) {
+                size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
+                memmove(sc_handler->buffered_read_in_data_buf.buffer,
+                    sc_handler->buffered_read_in_data_buf.buffer + move_pos,
+                    sc_handler->read_extra);
+                sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
+            }
+            else {
+                sc_handler->buffered_read_in_data_buf.len = 0;
+            }
 
-    }    
+            if (sc_handler->buffered_read_out_data_buf.len) {
+                err = s_process_pending_output_messages(handler);
+                if (err) {
+                    break;
+                }
+            }
+            aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
+        }
+
+        if (!err) {
+            aws_channel_release_message_to_pool(slot->channel, message);
+            return AWS_OP_SUCCESS;
+        }
+
+        aws_channel_shutdown(slot->channel, err);
+        return AWS_OP_ERR;
+    }
+
+    if (sc_handler->buffered_read_out_data_buf.len) {
+        if (s_process_pending_output_messages(handler)) {
+            return AWS_OP_ERR;
+        }
+        aws_channel_release_message_to_pool(slot->channel, message);        
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -845,6 +946,7 @@ static int s_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
+    (void)size;
     struct secure_channel_handler *sc_handler = (struct secure_channel_handler *)handler->impl;
 
     if (!sc_handler->stream_sizes.cbMaximumMessage) {
@@ -857,17 +959,29 @@ static int s_increment_read_window(
         }
     }
 
-    /* account for TLS overhead, otherwise just pass it through. unlike other implementations where we have to guess about this, we know precisely */
-    return aws_channel_slot_increment_read_window(slot, size + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer);
+    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+    size_t current_window_size = slot->window_size;
+
+    if (downstream_size <= current_window_size) {
+        size_t window_update_size = (downstream_size - current_window_size) + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
+        aws_channel_slot_increment_read_window(slot, window_update_size);
+    }
+
+    if (sc_handler->negotiation_finished) {
+        sc_handler->sequential_task_storage.fn = s_process_pending_output_task;
+        sc_handler->sequential_task_storage.arg = handler;
+
+        aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
+    }
+    return AWS_OP_SUCCESS;
 }
 
 static size_t s_get_current_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
-    /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
-    * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
-    * with it large, and then take the downstream window when it notifies us.*/
-    return SIZE_MAX;
+    /* set this to just enough for the handshake, once the handshake completes, the downstream
+       handler will tell us the new window size. */
+    return EST_HANDSHAKE_SIZE;
 }
 
 static int s_handler_shutdown(
@@ -928,7 +1042,8 @@ static int s_handler_shutdown(
             NULL);
 
         if (status == SEC_E_OK || status == SEC_I_CONTEXT_EXPIRED) {
-            struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
+            struct aws_io_message *outgoing_message = 
+                aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
 
             if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
                 aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
@@ -941,20 +1056,23 @@ static int s_handler_shutdown(
                 aws_channel_release_message_to_pool(slot->channel, outgoing_message);
             }
         }
-
     }   
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 static void s_do_negotiation_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
     struct aws_channel_handler *handler = arg;
+    struct secure_channel_handler *sc_handler = handler->impl;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        s_do_negotiation(handler);
+        int err = sc_handler->s_connection_state_fn(handler);
+        if (err) {
+            aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
+        }
     }
-
-    aws_mem_release(handler->alloc, task);
 }
 
 static void s_handler_destroy(struct aws_channel_handler *handler) {
@@ -981,19 +1099,17 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (aws_channel_thread_is_callers_thread(sc_handler->slot->channel)) {
-        return s_do_negotiation(handler);
+        int err = sc_handler->s_connection_state_fn(handler);
+        if (err) {
+            aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
+        }
+        return err;
     }
+    
+    sc_handler->sequential_task_storage.fn = s_do_negotiation_task;
+    sc_handler->sequential_task_storage.arg = handler;
 
-    struct aws_task *task = aws_mem_acquire(handler->alloc, sizeof(struct aws_task));
-
-    if (!task) {
-        return AWS_OP_ERR;
-    }
-
-    task->fn = s_do_negotiation_task;
-    task->arg = handler;
-
-    aws_channel_schedule_task_now(sc_handler->slot->channel, task);
+    aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->sequential_task_storage);
     return AWS_OP_SUCCESS;
 }
 
@@ -1055,10 +1171,14 @@ struct aws_channel_handler *aws_tls_client_handler_new(
 
     sc_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
     sc_handler->slot = slot;
-    sc_handler->s_handshake_state_fn = s_do_client_side_negotiation_step_1;
-    sc_handler->scratch_buffer = aws_byte_buf_from_array((const uint8_t *)&sc_handler->scratch_space, sizeof(sc_handler->scratch_space));
-    sc_handler->scratch_buffer.len = 0;
+    sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_1;
     sc_handler->custom_ca_store = sc_ctx->custom_trust_store;
+    sc_handler->buffered_read_in_data_buf = aws_byte_buf_from_array(sc_handler->buffered_read_in_data, 
+        sizeof(sc_handler->buffered_read_in_data));
+    sc_handler->buffered_read_in_data_buf.len = 0;
+    sc_handler->buffered_read_out_data_buf = aws_byte_buf_from_array(sc_handler->buffered_read_out_data,
+        sizeof(sc_handler->buffered_read_out_data));
+    sc_handler->buffered_read_out_data_buf.len = 0;
 
     return handler;
 }
@@ -1101,15 +1221,33 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     }
 
     sc_handler->slot = slot;
-    sc_handler->s_handshake_state_fn = s_do_server_side_negotiation_step_1;
-    sc_handler->scratch_buffer = aws_byte_buf_from_array((const uint8_t *)&sc_handler->scratch_space, sizeof(sc_handler->scratch_space));
-    sc_handler->scratch_buffer.len = 0;
+    sc_handler->s_connection_state_fn = s_do_server_side_negotiation_step_1;
+    sc_handler->buffered_read_in_data_buf = aws_byte_buf_from_array(sc_handler->buffered_read_in_data,
+        sizeof(sc_handler->buffered_read_in_data));
+    sc_handler->buffered_read_in_data_buf.len = 0;
+
+    sc_handler->buffered_read_out_data_buf = aws_byte_buf_from_array(sc_handler->buffered_read_out_data,
+        sizeof(sc_handler->buffered_read_out_data));
+    sc_handler->buffered_read_out_data_buf.len = 0;
 
     return handler;
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     struct secure_channel_ctx *secure_channel_ctx = ctx->impl;
+
+    if (secure_channel_ctx->custom_trust_store) {
+        aws_close_cert_store(secure_channel_ctx->custom_trust_store);
+    }
+
+    if (secure_channel_ctx->pcerts) {
+        CertFreeCertificateContext(secure_channel_ctx->pcerts);
+    }
+
+    if (secure_channel_ctx->cert_store) {
+        aws_close_cert_store(secure_channel_ctx->cert_store);
+    }
+    
     aws_mem_release(ctx->alloc, secure_channel_ctx);
     aws_mem_release(ctx->alloc, ctx);
 }
@@ -1149,14 +1287,15 @@ struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct a
             goto clean_up;
         }
 
-        HCERTSTORE cert_store = NULL;
-        if (aws_import_key_pair_to_cert_context(alloc, &certificate_chain, &private_key, &cert_store, &secure_channel_ctx->pcerts)) {
-            aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
-            aws_byte_buf_clean_up(&certificate_chain);
-            aws_secure_zero(private_key.buffer, private_key.len);
-            aws_byte_buf_clean_up(&private_key);
-            goto clean_up;
-        }
+        int err = aws_import_key_pair_to_cert_context(alloc, &certificate_chain, &private_key, 
+            &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
+
+        aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
+        aws_byte_buf_clean_up(&certificate_chain);
+        aws_secure_zero(private_key.buffer, private_key.len);
+        aws_byte_buf_clean_up(&private_key);
+        
+        if (err) goto clean_up;
 
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;
@@ -1200,8 +1339,8 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct a
             goto clean_up;
         }
 
-        HCERTSTORE cert_store = NULL;
-        int error = aws_import_key_pair_to_cert_context(alloc, &certificate_chain, &private_key, &cert_store, &secure_channel_ctx->pcerts);
+        int error = aws_import_key_pair_to_cert_context(alloc, &certificate_chain, &private_key, 
+            &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
        
         aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
         aws_byte_buf_clean_up(&certificate_chain);
@@ -1239,14 +1378,16 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct a
     }
 
     if (!options->verify_peer) {
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
+        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK 
+            | SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else {
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN;
 
     }
 
     secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
-    secure_channel_ctx->credentials.grbitEnabledProtocols = SP_PROT_TLS1_0_CLIENT | SP_PROT_TLS1_1_CLIENT | SP_PROT_TLS1_2_CLIENT;
+    secure_channel_ctx->credentials.grbitEnabledProtocols = SP_PROT_TLS1_0_CLIENT 
+        | SP_PROT_TLS1_1_CLIENT | SP_PROT_TLS1_2_CLIENT;
     tls_ctx->alloc = alloc;
     tls_ctx->impl = secure_channel_ctx;
     return tls_ctx;

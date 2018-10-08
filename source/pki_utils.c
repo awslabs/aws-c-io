@@ -546,6 +546,7 @@ clean_up:
     aws_array_list_clean_up(&certificates);
   
     if (error_code && *cert_store) {
+        *cert_store = NULL;
         aws_close_cert_store(*cert_store);
     }
     return error_code;
@@ -610,7 +611,8 @@ int aws_import_key_pair_to_cert_context(struct aws_allocator *alloc,
 
         DWORD content_type = 0;
         BOOL query_res = CryptQueryObject(CERT_QUERY_OBJECT_BLOB, &cert_blob,
-            CERT_QUERY_CONTENT_FLAG_CERT, CERT_QUERY_FORMAT_FLAG_ALL, 0, NULL, &content_type, NULL, NULL, NULL, &cert_context);
+            CERT_QUERY_CONTENT_FLAG_CERT, CERT_QUERY_FORMAT_FLAG_ALL, 0, NULL, &content_type, 
+            NULL, NULL, NULL, &cert_context);
 
         if (!query_res) {
             error_code = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
@@ -644,7 +646,8 @@ int aws_import_key_pair_to_cert_context(struct aws_allocator *alloc,
 
     //PCRYPT_PRIVATE_KEY_INFO key_info = 0;
     DWORD decoded_len = 0;
-    success = CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, PKCS_RSA_PRIVATE_KEY, private_key_ptr->buffer, (DWORD)private_key_ptr->len, CRYPT_DECODE_ALLOC_FLAG, 0, &key, &decoded_len);
+    success = CryptDecodeObjectEx(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, PKCS_RSA_PRIVATE_KEY, 
+        private_key_ptr->buffer, (DWORD)private_key_ptr->len, CRYPT_DECODE_ALLOC_FLAG, 0, &key, &decoded_len);
     HCRYPTKEY h_key = 0;
     success = CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key);
     LocalFree(key);
@@ -657,6 +660,7 @@ int aws_import_key_pair_to_cert_context(struct aws_allocator *alloc,
     key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
 
     success = CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info);
+    CryptReleaseContext(crypto_prov, 0);
     (void)success;
 
 clean_up:
@@ -672,6 +676,7 @@ clean_up:
 
     if (error_code && *certs) {
         CertFreeCertificateContext(*certs);
+        *certs = NULL;
     }
 
     return error_code;
