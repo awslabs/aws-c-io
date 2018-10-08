@@ -15,16 +15,12 @@ add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
 add_pipe_test_case(pipe_read_write_large_buffer)
 add_pipe_test_case(pipe_readable_event_sent_after_write)
+add_pipe_test_case(pipe_readable_event_sent_once)
 add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
 add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
 add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
-
-if (NOT UNIX) # TODO: these shouldn't fail
-    add_pipe_test_case(pipe_readable_event_not_sent_again_until_all_data_read)
-    add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
-    add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
-endif ()
-
+add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
+add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
 add_pipe_test_case(pipe_writes_are_fifo)
 add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
 

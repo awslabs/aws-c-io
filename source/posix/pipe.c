@@ -39,6 +39,11 @@ struct read_end_impl {
     struct aws_event_loop *event_loop;
     aws_pipe_on_readable_fn *on_readable_user_callback;
     void *on_readable_user_data;
+
+    /* Used in handshake for detecting whether user callback resulted in read-end being cleaned up.
+     * If clean_up() sees that the pointer is set, the bool it points to will get set true. */
+    bool *did_user_callback_clean_up_read_end;
+
     bool is_subscribed;
 };
 
@@ -152,7 +157,7 @@ int aws_pipe_init(
     int pipe_fds[2];
     err = aws_open_nonblocking_posix_pipe(pipe_fds);
     if (err) {
-        return s_raise_posix_error(err);
+        return AWS_OP_ERR;
     }
 
     /* Init read-end */
@@ -179,15 +184,14 @@ int aws_pipe_init(
     write_impl->is_writable = true; /* Assume pipe is writable to start. Even if it's not, things shouldn't break */
     aws_linked_list_init(&write_impl->write_list);
 
+    read_end->impl_data = read_impl;
+    write_end->impl_data = write_impl;
+
     err = aws_event_loop_subscribe_to_io_events(
         write_end_event_loop, &write_impl->handle, AWS_IO_EVENT_TYPE_WRITABLE, s_write_end_on_event, write_end);
     if (err) {
         goto error;
     }
-
-    /* Success */
-    read_end->impl_data = read_impl;
-    write_end->impl_data = write_impl;
 
     return AWS_OP_SUCCESS;
 
@@ -203,12 +207,17 @@ error:
         aws_mem_release(allocator, write_impl);
     }
 
+    read_end->impl_data = NULL;
+    write_end->impl_data = NULL;
+
     return AWS_OP_ERR;
 }
 
 int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -221,6 +230,13 @@ int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
         }
     }
 
+    /* If the event-handler is invoking a user callback, let it know that the read-end was cleaned up */
+    if (read_impl->did_user_callback_clean_up_read_end) {
+        *read_impl->did_user_callback_clean_up_read_end = true;
+    }
+
+    close(read_impl->handle.data.fd);
+
     aws_mem_release(read_impl->alloc, read_impl);
     AWS_ZERO_STRUCT(*read_end);
     return AWS_OP_SUCCESS;
@@ -228,22 +244,31 @@ int aws_pipe_clean_up_read_end(struct aws_pipe_read_end *read_end) {
 
 struct aws_event_loop *aws_pipe_get_read_end_event_loop(const struct aws_pipe_read_end *read_end) {
     const struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        aws_raise_error(AWS_IO_BROKEN_PIPE);
+        return NULL;
+    }
 
     return read_impl->event_loop;
 }
 
 struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_write_end *write_end) {
     const struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    if (!write_impl) {
+        aws_raise_error(AWS_IO_BROKEN_PIPE);
+        return NULL;
+    }
 
     return write_impl->event_loop;
 }
 
 int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *num_bytes_read) {
-    struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
     assert(dst_buffer && dst_buffer->buffer);
+
+    struct read_end_impl *read_impl = read_end->impl_data;
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (num_bytes_read) {
         *num_bytes_read = 0;
@@ -284,10 +309,35 @@ static void s_read_end_on_event(
     assert(&read_impl->handle == handle);
     assert(read_impl->is_subscribed);
     assert(events != 0);
+    assert(read_impl->did_user_callback_clean_up_read_end == NULL);
 
-    int error_code = (events == AWS_IO_EVENT_TYPE_READABLE) ? AWS_ERROR_SUCCESS : AWS_IO_BROKEN_PIPE;
+    /* Set up handshake, so we can be informed if the read-end is cleaned up while invoking a user callback */
+    bool did_user_callback_clean_up_read_end = false;
+    read_impl->did_user_callback_clean_up_read_end = &did_user_callback_clean_up_read_end;
 
-    read_impl->on_readable_user_callback(read_end, error_code, read_impl->on_readable_user_data);
+    /* If readable event received, tell user to try and read, even if "error" events have also occurred. */
+    if (events & AWS_IO_EVENT_TYPE_READABLE) {
+        read_impl->on_readable_user_callback(read_end, AWS_ERROR_SUCCESS, read_impl->on_readable_user_data);
+
+        if (did_user_callback_clean_up_read_end) {
+            return;
+        }
+
+        events &= ~AWS_IO_EVENT_TYPE_READABLE;
+    }
+
+    if (events) {
+        /* Check that user didn't unsubscribe in the previous callback */
+        if (read_impl->is_subscribed) {
+            read_impl->on_readable_user_callback(read_end, AWS_IO_BROKEN_PIPE, read_impl->on_readable_user_data);
+
+            if (did_user_callback_clean_up_read_end) {
+                return;
+            }
+        }
+    }
+
+    read_impl->did_user_callback_clean_up_read_end = NULL;
 }
 
 int aws_pipe_subscribe_to_readable_events(
@@ -295,9 +345,12 @@ int aws_pipe_subscribe_to_readable_events(
     aws_pipe_on_readable_fn *on_readable,
     void *user_data) {
 
-    struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
     assert(on_readable);
+
+    struct read_end_impl *read_impl = read_end->impl_data;
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -307,22 +360,28 @@ int aws_pipe_subscribe_to_readable_events(
         return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
     }
 
-    int err = aws_event_loop_subscribe_to_io_events(
-        read_impl->event_loop, &read_impl->handle, AWS_IO_EVENT_TYPE_READABLE, s_read_end_on_event, read_end);
-    if (err) {
-        return AWS_OP_ERR;
-    }
-
     read_impl->is_subscribed = true;
     read_impl->on_readable_user_callback = on_readable;
     read_impl->on_readable_user_data = user_data;
+
+    int err = aws_event_loop_subscribe_to_io_events(
+        read_impl->event_loop, &read_impl->handle, AWS_IO_EVENT_TYPE_READABLE, s_read_end_on_event, read_end);
+    if (err) {
+        read_impl->is_subscribed = false;
+        read_impl->on_readable_user_callback = NULL;
+        read_impl->on_readable_user_data = NULL;
+
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
 }
 
 int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end) {
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    if (!read_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(read_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -449,9 +508,12 @@ int aws_pipe_write(
     aws_pipe_on_write_completed_fn *on_completed,
     void *user_data) {
 
-    struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
     assert(src_buffer.ptr);
+
+    struct write_end_impl *write_impl = write_end->impl_data;
+    if (!write_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -481,7 +543,9 @@ int aws_pipe_write(
 
 int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    if (!write_impl) {
+        return aws_raise_error(AWS_IO_BROKEN_PIPE);
+    }
 
     if (!aws_event_loop_thread_is_callers_thread(write_impl->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
@@ -492,6 +556,11 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
         return AWS_OP_ERR;
     }
 
+    close(write_impl->handle.data.fd);
+
+    /* Zero out write-end before invoking user callbacks so that it won't work anymore with public functions. */
+    AWS_ZERO_STRUCT(*write_end);
+
     /* If a request callback is currently being invoked, let it know that the write-end was cleaned up */
     if (write_impl->currently_invoking_write_callback) {
         write_impl->currently_invoking_write_callback->did_user_callback_clean_up_write_end = true;
@@ -499,10 +568,14 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
 
     /* Force any outstanding write requests to complete with an error status. */
     while (!aws_linked_list_empty(&write_impl->write_list)) {
-        s_write_end_complete_front_write_request(write_end, AWS_IO_BROKEN_PIPE);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
+        struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
+        if (request->user_callback) {
+            request->user_callback(NULL, AWS_IO_BROKEN_PIPE, request->original_cursor, request->user_data);
+        }
+        aws_mem_release(write_impl->alloc, request);
     }
 
     aws_mem_release(write_impl->alloc, write_impl);
-    AWS_ZERO_STRUCT(*write_end);
     return AWS_OP_SUCCESS;
 }
