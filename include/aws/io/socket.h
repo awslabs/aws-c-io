@@ -94,8 +94,14 @@ typedef void(aws_socket_on_write_completed_fn)(
  */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
+#ifdef _WIN32
+#    define AWS_ADDRESS_MAX_LEN 256
+#else
+#include <sys/un.h>
+#    define AWS_ADDRESS_MAX_LEN sizeof(((struct sockaddr_un*)0)->sun_path)
+#endif
 struct aws_socket_endpoint {
-    char address[108];
+    char address[AWS_ADDRESS_MAX_LEN];
     uint16_t port;
 };
 

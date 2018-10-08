@@ -428,9 +428,7 @@ int aws_import_pkcs12_to_identity(
 
         CFTypeRef identity_ref = (CFTypeRef)CFDictionaryGetValue((CFDictionaryRef)item, kSecImportItemIdentity);
         if (identity_ref) {
-            CFRetain(identity_ref);
-            CFTypeRef certs[] = {identity_ref};
-            *identity = CFArrayCreate(cf_alloc, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
+            *identity = CFArrayCreate(cf_alloc, &identity_ref, 1L, &kCFTypeArrayCallBacks);
         }
 
         CFRelease(items);
@@ -470,6 +468,7 @@ int aws_import_trusted_certificates(
         if (cert_blob) {
             SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
             CFArrayAppendValue(temp_cert_array, certificate_ref);
+            CFRelease(certificate_ref);
             CFRelease(cert_blob);
         } else {
             err = AWS_OP_SUCCESS;
