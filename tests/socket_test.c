@@ -30,6 +30,10 @@
 #    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* sprintf */
+#endif
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;

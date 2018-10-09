@@ -386,6 +386,9 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         .pBuffers = output_buffers,
     };
 
+    sc_handler->read_extra = 0;
+    sc_handler->estimated_incomplete_size = 0;
+
     SECURITY_STATUS status = AcceptSecurityContext(&sc_handler->creds, &sc_handler->sec_handle,
         &input_buffers_desc, sc_handler->ctx_req, 0, NULL,
         &output_buffers_desc, &sc_handler->ctx_ret_flags, &sc_handler->sspi_timestamp);
@@ -430,9 +433,6 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
             sc_handler->read_extra = input_buffers[1].cbBuffer;
-        }
-        else {
-            sc_handler->read_extra = 0;
         }
     }    
 
@@ -555,7 +555,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 }
 
 static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handler) {
-    struct secure_channel_handler *sc_handler = handler->impl;    
+    struct secure_channel_handler *sc_handler = handler->impl;   
     SecBuffer input_buffers[] = {
         [0] = {
             .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
@@ -588,6 +588,9 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     SECURITY_STATUS status = SEC_E_OK;
    
+    sc_handler->read_extra = 0;
+    sc_handler->estimated_incomplete_size = 0;
+
     status = InitializeSecurityContextA(&sc_handler->creds, &sc_handler->sec_handle,
         (SEC_CHAR *)sc_handler->options.server_name, sc_handler->ctx_req, 0, 0, &input_buffers_desc, 0, NULL,
         &output_buffers_desc, &sc_handler->ctx_ret_flags, &sc_handler->sspi_timestamp);
@@ -602,7 +605,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-    }
+    }    
 
     if (status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK) {
         for (size_t i = 0; i < output_buffers_desc.cBuffers; ++i) {
@@ -632,9 +635,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
             sc_handler->read_extra = input_buffers[1].cbBuffer;
-        }
-        else {
-            sc_handler->read_extra = 0;
         }
     }
 
@@ -790,6 +790,7 @@ static int s_process_read_message(
 
         int err = AWS_OP_SUCCESS;
         while (!err && message_cursor.len) {
+
             size_t available_buffer_space = sc_handler->buffered_read_in_data_buf.capacity -
                 sc_handler->buffered_read_in_data_buf.len;
             size_t available_message_len = message_cursor.len;
@@ -817,6 +818,8 @@ static int s_process_read_message(
                         err = AWS_OP_SUCCESS;
                     }
                 }
+                aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
+                continue;
             }
             else if (err) {
                 break;
