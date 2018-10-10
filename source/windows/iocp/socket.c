@@ -66,7 +66,7 @@ struct socket_vtable {
     int (*close)(struct aws_socket *socket);
     int (*connect)(
         struct aws_socket *socket,
-        struct aws_socket_endpoint *remote_endpoint,
+        const struct aws_socket_endpoint *remote_endpoint,
         struct aws_event_loop *connect_loop,
         aws_socket_on_connection_result_fn *on_connection_result,
         void *user_data);
@@ -76,7 +76,7 @@ struct socket_vtable {
         aws_socket_on_accept_result_fn *on_accept_result,
         void *user_data);
     int (*stop_accept)(struct aws_socket *socket);
-    int (*bind)(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
+    int (*bind)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
     int (*listen)(struct aws_socket *socket, int backlog_size);
     int (*read)(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
     int (*subscribe_to_read)(struct aws_socket *socket, aws_socket_on_readable_fn *on_readable, void *user_data);
@@ -88,31 +88,31 @@ static void s_connection_error(struct aws_socket *socket, int error_code);
 static int s_local_and_udp_connection_success(struct aws_socket *socket);
 static int s_ipv4_stream_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
 static int s_ipv4_dgram_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
 static int s_ipv6_stream_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
 static int s_ipv6_dgram_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
 static int s_local_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
@@ -142,11 +142,11 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
 static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
 static int s_socket_close(struct aws_socket *socket);
 static int s_local_close(struct aws_socket *socket);
-static int s_ipv4_stream_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
-static int s_ipv4_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
-static int s_ipv6_stream_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
-static int s_ipv6_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
-static int s_local_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
+static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 static int s_stream_subscribe_to_read(
     struct aws_socket *socket,
@@ -298,7 +298,7 @@ struct iocp_socket {
     volatile uint8_t pending_operations;
 };
 
-static int create_socket(struct aws_socket *sock, struct aws_socket_options *options) {
+static int create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
     SOCKET handle = socket(convert_domain(options->domain), convert_type(options->type), 0);
     u_long non_blocking = 1;
     if (handle != INVALID_SOCKET && !ioctlsocket(handle, FIONBIO, &non_blocking)) {
@@ -315,7 +315,7 @@ static int create_socket(struct aws_socket *sock, struct aws_socket_options *opt
 static int s_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
-    struct aws_socket_options *options,
+    const struct aws_socket_options *options,
     bool create_underlying_socket) {
     assert(options->domain <= AWS_SOCKET_LOCAL);
     assert(options->type <= AWS_SOCKET_DGRAM);
@@ -355,7 +355,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, struct aws_socket_options *options) {
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     assert(options);
 
     aws_check_and_init_winsock();
@@ -388,7 +388,7 @@ void aws_socket_clean_up(struct aws_socket *socket) {
 
 int aws_socket_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -396,7 +396,7 @@ int aws_socket_connect(
     return socket_impl->vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
-int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->vtable->bind(socket, local_endpoint);
 }
@@ -702,7 +702,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
 /* initiate an outbound tcp connection (client mode). */
 static inline int s_tcp_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     struct sockaddr *bind_addr,
     struct sockaddr *socket_addr,
@@ -789,7 +789,7 @@ static inline int s_convert_pton_error(int pton_err) {
 /* initiate TCP ipv4 outbound connection. */
 static int s_ipv4_stream_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -827,7 +827,7 @@ static int s_ipv4_stream_connect(
 /* initiate TCP ipv6 outbound connection. */
 static int s_ipv6_stream_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -874,7 +874,7 @@ static void s_connection_success_task(struct aws_task *task, void *arg, enum aws
 /* initiate the client end of a named pipe. */
 static int s_local_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -919,7 +919,7 @@ static int s_local_connect(
 /* connect generic udp outbound */
 static inline int s_dgram_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     struct sockaddr *socket_addr,
     size_t sock_size) {
@@ -982,7 +982,7 @@ static inline int s_dgram_connect(
 
 static int s_ipv4_dgram_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -1004,7 +1004,7 @@ static int s_ipv4_dgram_connect(
 
 static int s_ipv6_dgram_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
@@ -1027,7 +1027,7 @@ static int s_ipv6_dgram_connect(
 
 static inline int s_tcp_bind(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *local_endpoint,
+    const struct aws_socket_endpoint *local_endpoint,
     struct sockaddr *sock_addr,
     size_t sock_size) {
     socket->local_endpoint = *local_endpoint;
@@ -1044,7 +1044,7 @@ static inline int s_tcp_bind(
     return aws_raise_error(error);
 }
 
-static int s_ipv4_stream_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
     int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
 
@@ -1058,7 +1058,7 @@ static int s_ipv4_stream_bind(struct aws_socket *socket, struct aws_socket_endpo
     return s_tcp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in, sizeof(addr_in));
 }
 
-static int s_ipv6_stream_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
 
@@ -1074,7 +1074,7 @@ static int s_ipv6_stream_bind(struct aws_socket *socket, struct aws_socket_endpo
 
 static inline int s_udp_bind(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *local_endpoint,
+    const struct aws_socket_endpoint *local_endpoint,
     struct sockaddr *sock_addr,
     size_t sock_size) {
     socket->local_endpoint = *local_endpoint;
@@ -1091,7 +1091,7 @@ static inline int s_udp_bind(
     return aws_raise_error(error);
 }
 
-static int s_ipv4_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
     int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
 
@@ -1105,7 +1105,7 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoi
     return s_udp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in, sizeof(addr_in));
 }
 
-static int s_ipv6_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
 
@@ -1119,7 +1119,7 @@ static int s_ipv6_dgram_bind(struct aws_socket *socket, struct aws_socket_endpoi
     return s_udp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
 }
 
-static int s_local_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint) {
+static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     socket->local_endpoint = *local_endpoint;
     socket->io_handle.data.handle = CreateNamedPipeA(
         local_endpoint->address,
@@ -1500,7 +1500,7 @@ static int s_dgram_stop_accept(struct aws_socket *socket) {
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
-int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options) {
+int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options) {
     socket->options = *options;
 
     int reuse = 1;
@@ -1943,7 +1943,7 @@ static void s_socket_written_event(
 
 int aws_socket_write(
     struct aws_socket *socket,
-    struct aws_byte_cursor *cursor,
+    const struct aws_byte_cursor *cursor,
     aws_socket_on_write_completed_fn *written_fn,
     void *user_data) {
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
