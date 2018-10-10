@@ -104,7 +104,7 @@ struct socket_io_args {
     struct aws_byte_cursor *to_write;
     struct aws_byte_buf *to_read;
     struct aws_byte_buf *read_data;
-    struct aws_byte_cursor *written_data;
+    const struct aws_byte_cursor *written_data;
     size_t amount_read;
     int error_code;
     bool close_completed;
@@ -115,7 +115,7 @@ struct socket_io_args {
 static void s_on_written(
     struct aws_socket *socket,
     int error_code,
-    struct aws_byte_cursor *data_written,
+    const struct aws_byte_cursor *data_written,
     void *user_data) {
     (void)socket;
     struct socket_io_args *write_args = user_data;

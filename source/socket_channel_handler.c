@@ -54,7 +54,7 @@ static int s_socket_process_read_message(
 static void s_on_socket_write_complete(
     struct aws_socket *socket,
     int error_code,
-    struct aws_byte_cursor *data_written,
+    const struct aws_byte_cursor *data_written,
     void *user_data) {
     (void)data_written;
     (void)socket;
@@ -193,7 +193,7 @@ int socket_increment_read_window(struct aws_channel_handler *handler, struct aws
     return AWS_OP_SUCCESS;
 }
 
-static void s_shutdown_task(struct aws_task *task, void *arg, aws_task_status status) {
+static void s_close_task(struct aws_task *task, void *arg, aws_task_status status) {
     (void)status;
     (void)task;
 
@@ -233,7 +233,7 @@ static int s_socket_shutdown(
      * pending, if abort is true, we've mitigated the worries that the socket is still being abused by a hostile peer.
      * But the final shutdown notification needs to happen after we've done the socket shutdown to make sure we don't
      * pick up an errant events and crash. */
-    socket_handler->shutdown_task_storage.fn = s_shutdown_task;
+    socket_handler->shutdown_task_storage.fn = s_close_task;
     socket_handler->shutdown_task_storage.arg = handler;
 
     socket_handler->shutdown_err_code = error_code;
