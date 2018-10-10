@@ -104,7 +104,7 @@ struct socket_io_args {
     struct aws_byte_cursor *to_write;
     struct aws_byte_buf *to_read;
     struct aws_byte_buf *read_data;
-    const struct aws_byte_cursor *written_data;
+    size_t amount_written;
     size_t amount_read;
     int error_code;
     bool close_completed;
@@ -115,13 +115,13 @@ struct socket_io_args {
 static void s_on_written(
     struct aws_socket *socket,
     int error_code,
-    const struct aws_byte_cursor *data_written,
+    size_t amount_written,
     void *user_data) {
     (void)socket;
     struct socket_io_args *write_args = user_data;
     aws_mutex_lock(write_args->mutex);
     write_args->error_code = error_code;
-    write_args->written_data = data_written;
+    write_args->amount_written = amount_written;
     aws_condition_variable_notify_one(&write_args->condition_variable);
     aws_mutex_unlock(write_args->mutex);
 }
@@ -129,7 +129,7 @@ static void s_on_written(
 static bool s_write_completed_predicate(void *arg) {
     struct socket_io_args *io_args = arg;
 
-    return io_args->written_data != NULL;
+    return io_args->amount_written;
 }
 
 static void s_write_task(struct aws_task *task, void *args, enum aws_task_status status) {
@@ -295,7 +295,7 @@ static int s_test_socket(
         .read_data = &write_buffer,
         .mutex = &mutex,
         .amount_read = 0,
-        .written_data = NULL,
+        .amount_written = 0,
         .error_code = 0,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .close_completed = false,
@@ -326,7 +326,7 @@ static int s_test_socket(
         write_buffer.len = 0;
 
         io_args.error_code = 0;
-        io_args.written_data = NULL;
+        io_args.amount_written = 0;
         io_args.socket = server_sock;
         aws_event_loop_schedule_task_now(event_loop, &write_task);
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);

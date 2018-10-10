@@ -1899,7 +1899,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
 struct write_cb_args {
     struct aws_overlapped write_overlap;
     struct aws_socket *socket;
-    struct aws_byte_cursor cursor;
+    size_t original_buffer_len;
     aws_socket_on_write_completed_fn *user_callback;
     void *user_data;
 };
@@ -1930,15 +1930,14 @@ static void s_socket_written_event(
     if (status_code) {
         err_code = s_determine_socket_error(WSAGetLastError());
     } else {
-        assert(num_bytes_transferred == write_cb_args->cursor.len);
+        assert(num_bytes_transferred == write_cb_args->original_buffer_len);
     }
 
-    struct aws_byte_cursor cursor = write_cb_args->cursor;
     void *user_data = write_cb_args->user_data;
     aws_socket_on_write_completed_fn *callback = write_cb_args->user_callback;
     aws_mem_release(write_cb_args->socket->allocator, write_cb_args);
 
-    callback(socket, err_code, &cursor, user_data);
+    callback(socket, err_code, write_cb_args->original_buffer_len, user_data);
 }
 
 int aws_socket_write(
@@ -1963,7 +1962,7 @@ int aws_socket_write(
     write_cb_data->socket = socket;
     write_cb_data->user_callback = written_fn;
     write_cb_data->user_data = user_data;
-    write_cb_data->cursor = *cursor;
+    write_cb_data->original_buffer_len = cursor->len;
 
     aws_overlapped_init(&write_cb_data->write_overlap, s_socket_written_event, write_cb_data);
     write_cb_data->write_overlap.alloc = socket->allocator;

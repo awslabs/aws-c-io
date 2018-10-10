@@ -88,7 +88,7 @@ typedef void(aws_socket_on_accept_result_fn)(
 typedef void(aws_socket_on_write_completed_fn)(
     struct aws_socket *socket,
     int error_code,
-    const struct aws_byte_cursor *original_cursor,
+    size_t bytes_written,
     void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
