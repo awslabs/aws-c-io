@@ -252,8 +252,6 @@ size_t socket_initial_window_size(struct aws_channel_handler *handler) {
 }
 
 void socket_destroy(struct aws_channel_handler *handler) {
-    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
-    aws_socket_clean_up(socket_handler->socket);
     aws_mem_release(handler->alloc, handler);
 }
 

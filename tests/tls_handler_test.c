@@ -337,7 +337,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
     ASSERT_SUCCESS(aws_server_bootstrap_set_tls_ctx(&server_bootstrap, server_ctx));
 
-    struct aws_socket *listener = aws_server_bootstrap_add_tls_socket_listener(
+    struct aws_socket *listener = aws_server_bootstrap_new_tls_socket_listener(
         &server_bootstrap,
         &endpoint,
         &options,
@@ -439,7 +439,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
     aws_client_bootstrap_clean_up(&client_bootstrap);
-    ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
     aws_server_bootstrap_clean_up(&server_bootstrap);
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_destroy(server_ctx);
