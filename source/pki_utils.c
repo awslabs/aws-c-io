@@ -381,6 +381,7 @@ int aws_import_public_and_private_keys_to_identity(
         bool cleanup_import_output = status != errSecDuplicateItem;
         status = SecIdentityCreateWithCertificate(import_keychain, certificate_ref, &identity_output);
 
+        CFRelease(certificate_ref);
         CFRelease(import_keychain);
         if (import_output && cleanup_import_output) {
             CFRelease(import_output);
@@ -391,6 +392,8 @@ int aws_import_public_and_private_keys_to_identity(
             *identity = CFArrayCreate(cf_alloc, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
             return AWS_OP_SUCCESS;
         }
+    } else {
+        CFRelease(import_keychain);
     }
 
     return AWS_OP_ERR;
