@@ -23,6 +23,8 @@
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
 
+#include <aws/io/socket.h>
+
 const uint64_t NS_PER_SEC = 1000000000;
 
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
@@ -69,6 +71,28 @@ void aws_host_address_clean_up(struct aws_host_address *address) {
         aws_string_destroy((void *)address->host);
     }
     AWS_ZERO_STRUCT(*address);
+}
+
+void aws_host_address_to_endpoint_options(
+    const struct aws_host_address *address,
+    struct aws_socket_endpoint *endpoint,
+    struct aws_socket_options *options) {
+
+    assert(address);
+    assert(address->address);
+    assert(endpoint);
+    assert(options);
+
+    switch (address->record_type) {
+        case AWS_ADDRESS_RECORD_TYPE_A:
+            options->domain = AWS_SOCKET_IPV4;
+            break;
+        case AWS_ADDRESS_RECORD_TYPE_AAAA:
+            options->domain = AWS_SOCKET_IPV6;
+            break;
+    }
+
+    strncpy(endpoint->address, (const char *)aws_string_bytes(address->address), address->address->len + 1);
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
