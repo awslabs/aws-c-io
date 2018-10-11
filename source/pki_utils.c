@@ -371,6 +371,7 @@ int aws_import_public_and_private_keys_to_identity(
             CFRelease(root_cert_data);
         }
 
+        aws_cert_chain_clean_up(&cert_chain_list);
         aws_array_list_clean_up(&cert_chain_list);
     } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(import_output, 0);
