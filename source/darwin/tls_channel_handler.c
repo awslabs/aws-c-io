@@ -760,6 +760,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
         }
 
         if (aws_byte_buf_init_from_file(&private_key, secure_transport_ctx->allocator, options->private_key_path)) {
+            aws_secure_zero(cert_chain.buffer, cert_chain.len);
+            aws_byte_buf_clean_up(&cert_chain);
             goto cleanup_wrapped_allocator;
         }
 
@@ -770,8 +772,17 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
                 &cert_chain,
                 &private_key,
                 &secure_transport_ctx->certs)) {
+            aws_secure_zero(cert_chain.buffer, cert_chain.len);
+            aws_byte_buf_clean_up(&cert_chain);
+            aws_secure_zero(private_key.buffer, private_key.len);
+            aws_byte_buf_clean_up(&private_key);
             goto cleanup_wrapped_allocator;
         }
+
+        aws_secure_zero(cert_chain.buffer, cert_chain.len);
+        aws_byte_buf_clean_up(&cert_chain);
+        aws_secure_zero(private_key.buffer, private_key.len);
+        aws_byte_buf_clean_up(&private_key);
     } else if (options->pkcs12_path) {
         struct aws_byte_buf pkcs12_blob;
 
