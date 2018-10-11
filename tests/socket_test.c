@@ -735,7 +735,8 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
     aws_socket_bind(&socket, &endpoint);
     aws_socket_assign_to_event_loop(&socket, event_loop);
     aws_socket_subscribe_to_readable_events(&socket, s_on_null_readable_notification, NULL);
-    ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_read(&socket, NULL, NULL));
+    size_t amount_read = 0;
+    ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_read(&socket, NULL, &amount_read));
     ASSERT_ERROR(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY, aws_socket_write(&socket, NULL, NULL, NULL));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;

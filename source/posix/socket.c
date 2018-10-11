@@ -193,6 +193,7 @@ static int s_socket_init(
     posix_socket->continue_accept = false;
     posix_socket->currently_in_event = false;
     posix_socket->clean_yourself_up = false;
+    posix_socket->connect_args = NULL;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -315,10 +316,12 @@ static void s_socket_connect_event(
     struct posix_socket_connect_args *socket_args = (struct posix_socket_connect_args *)user_data;
 
     if (socket_args->socket) {
+        struct posix_socket *socket_impl = socket_args->socket->impl;
         if (!(events & AWS_IO_EVENT_TYPE_ERROR || events & AWS_IO_EVENT_TYPE_CLOSED) &&
             (events & AWS_IO_EVENT_TYPE_READABLE || events & AWS_IO_EVENT_TYPE_WRITABLE)) {
             struct aws_socket *socket = socket_args->socket;
             socket_args->socket = NULL;
+            socket_impl->connect_args = NULL;
             s_on_connection_success(socket);
             return;
         }
@@ -332,6 +335,7 @@ static void s_socket_connect_event(
         aws_raise_error(aws_error);
         s_on_connection_error(socket_args->socket, aws_error);
         socket_args->socket = NULL;
+        socket_impl->connect_args = NULL;
     }
 }
 
