@@ -405,7 +405,7 @@ static void resolver_thread_fn(void *arg) {
 }
 
 static void on_host_key_removed(void *key) {
-    aws_string_destroy(key);
+    (void)key;
 }
 
 static void on_host_value_removed(void *value) {
@@ -436,6 +436,7 @@ static void on_host_value_removed(void *value) {
     aws_lru_cache_clean_up(&host_entry->a_records);
     aws_lru_cache_clean_up(&host_entry->failed_connection_a_records);
     aws_lru_cache_clean_up(&host_entry->failed_connection_aaaa_records);
+    aws_string_destroy((void *)host_entry->host_name);
     aws_mem_release(host_entry->allocator, host_entry);
 }
 
