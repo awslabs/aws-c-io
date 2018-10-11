@@ -154,6 +154,7 @@ struct posix_socket {
     bool continue_accept;
     bool currently_in_event;
     bool clean_yourself_up;
+    bool *shutdown_happened;
     struct posix_socket_connect_args *connect_args;
 };
 
@@ -194,6 +195,7 @@ static int s_socket_init(
     posix_socket->currently_in_event = false;
     posix_socket->clean_yourself_up = false;
     posix_socket->connect_args = NULL;
+    posix_socket->shutdown_happened = NULL;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -683,7 +685,16 @@ static void s_socket_accept_event(
             flags |= O_NONBLOCK | O_CLOEXEC;
             fcntl(in_fd, F_SETFL, flags);
 
+            bool shutdown_occured = false;
+            socket_impl->shutdown_happened = &shutdown_occured;
             socket->accept_result_fn(socket, AWS_ERROR_SUCCESS, new_sock, socket->connect_accept_user_data);
+
+            if (shutdown_occured) {
+                return;
+            }
+            else {
+                socket_impl->shutdown_happened = NULL;
+            }
         }
     }
 }
@@ -910,6 +921,10 @@ int aws_socket_close(struct aws_socket *socket) {
             socket_impl->currently_subscribed = false;
             socket->event_loop = NULL;
         }
+    }
+
+    if (socket_impl->shutdown_happened) {
+        *socket_impl->shutdown_happened = true;
     }
 
     if (socket_impl->connect_args) {
