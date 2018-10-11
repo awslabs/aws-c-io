@@ -93,6 +93,7 @@ static int s_determine_socket_error(int error) {
             return AWS_IO_SOCKET_CONNECTION_REFUSED;
         case ETIMEDOUT:
             return AWS_IO_SOCKET_TIMEOUT;
+        case EHOSTUNREACH:
         case ENETUNREACH:
             return AWS_IO_SOCKET_NO_ROUTE_TO_HOST;
         case EADDRNOTAVAIL:
