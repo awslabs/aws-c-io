@@ -90,9 +90,13 @@ void aws_host_address_to_endpoint_options(
         case AWS_ADDRESS_RECORD_TYPE_AAAA:
             options->domain = AWS_SOCKET_IPV6;
             break;
+        default:
+            assert(false);
+            break;
     }
 
-    strncpy(endpoint->address, (const char *)aws_string_bytes(address->address), address->address->len + 1);
+    assert(sizeof(endpoint->address) <= address->address->len + 1);
+    strncpy(endpoint->address, (const char *)aws_string_bytes(address->address), sizeof(endpoint->address));
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
