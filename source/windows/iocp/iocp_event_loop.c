@@ -19,6 +19,11 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+/* The next set of struct definitions are taken directly from the 
+    windows documentation. We can't include the header files directly
+    due to winsock. Also some of the definitions here aren't in the public API
+    but it's the only way to do the thing we need to do. So we just declare it
+    here and use dynamic binding to do the voodoo magic. */
 struct FILE_BASIC_INFORMATION {
     LARGE_INTEGER CreationTime;
     LARGE_INTEGER LastAccessTime;
@@ -52,6 +57,7 @@ typedef NTSTATUS(NTAPI NTSetInformationFile)(
     enum FILE_INFORMATION_CLASS file_information_class);
 
 NTSetInformationFile *s_set_info_fn = NULL;
+/* END of windows hackery here. */
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -122,6 +128,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     assert(alloc);
     assert(clock);
 
+    /* load the windows dlls and dynamically bind our soul to Satan's dark angels. */
     if (!s_set_info_fn) {
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
 

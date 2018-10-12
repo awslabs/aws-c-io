@@ -62,13 +62,13 @@ void aws_check_and_init_winsock(void) {
             exit(-1);
         }
 
-        GUID accept_ex_guoid = WSAID_ACCEPTEX;
+        GUID accept_ex_guid = WSAID_ACCEPTEX;
         bytes_written = 0;
         rc = WSAIoctl(
             dummy_socket,
             SIO_GET_EXTENSION_FUNCTION_POINTER,
-            &accept_ex_guoid,
-            sizeof(accept_ex_guoid),
+            &accept_ex_guid,
+            sizeof(accept_ex_guid),
             &s_accept_ex_fn,
             sizeof(s_accept_ex_fn),
             &bytes_written,
