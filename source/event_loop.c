@@ -93,6 +93,9 @@ void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
 
 struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group) {
     size_t loop_count = aws_array_list_length(&el_group->event_loops);
+    if (loop_count == 0) {
+        return NULL;
+    }
 
     /* thread safety: we don't really care. It's always incrementing and it doesn't have to be perfect, this
      * is only for load balancing across loops. Also, we don't care about the overflow. */

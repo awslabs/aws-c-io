@@ -171,7 +171,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         $<INSTALL_INTERFACE:include>)
 
 find_package(aws-c-common REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} aws-c-common ${PLATFORM_LIBS})
+target_link_libraries(${CMAKE_PROJECT_NAME} AWS::aws-c-common ${PLATFORM_LIBS})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
