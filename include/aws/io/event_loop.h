@@ -300,9 +300,9 @@ AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 /**
-* Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
-* event loop.
-*/
+ * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
+ * event loop.
+ */
 AWS_IO_API
 int aws_event_loop_group_init(
     struct aws_event_loop_group *el_group,
@@ -313,10 +313,10 @@ int aws_event_loop_group_init(
     void *new_loop_user_data);
 
 /**
-* Initializes an event loop group with platform defaults. If max_threads == 0, then the
-* loop count will be the number of available processors on the machine. Otherwise, max_threads
-* will be the number of event loops in the group.
-*/
+ * Initializes an event loop group with platform defaults. If max_threads == 0, then the
+ * loop count will be the number of available processors on the machine. Otherwise, max_threads
+ * will be the number of event loops in the group.
+ */
 AWS_IO_API
 int aws_event_loop_group_default_init(
     struct aws_event_loop_group *el_group,
@@ -324,8 +324,8 @@ int aws_event_loop_group_default_init(
     uint16_t max_threads);
 
 /**
-* Destroys each event loop in the event loop group and then cleans up resources.
-*/
+ * Destroys each event loop in the event loop group and then cleans up resources.
+ */
 AWS_IO_API
 void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
 
@@ -336,13 +336,12 @@ AWS_IO_API
 size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group);
 
 /**
-* Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
-* this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
-* style.
-*/
+ * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
+ * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
+ * style.
+ */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
-
 
 #ifdef __cplusplus
 }

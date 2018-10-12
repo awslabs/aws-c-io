@@ -85,11 +85,8 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  */
-typedef void(aws_socket_on_write_completed_fn)(
-    struct aws_socket *socket,
-    int error_code,
-    size_t bytes_written,
-    void *user_data);
+typedef void(
+    aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_ERROR_SUCCESS.
@@ -99,8 +96,8 @@ typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_cod
 #ifdef _WIN32
 #    define AWS_ADDRESS_MAX_LEN 256
 #else
-#include <sys/un.h>
-#    define AWS_ADDRESS_MAX_LEN sizeof(((struct sockaddr_un*)0)->sun_path)
+#    include <sys/un.h>
+#    define AWS_ADDRESS_MAX_LEN sizeof(((struct sockaddr_un *)0)->sun_path)
 #endif
 struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];

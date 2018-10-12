@@ -183,9 +183,11 @@ static int s_socket_init(
             aws_mem_release(alloc, posix_socket);
             return AWS_OP_ERR;
         }
-    }
-    else {
-        socket->io_handle = (struct aws_io_handle){.data = { .fd = existing_socket_fd}, .additional_data = NULL,};
+    } else {
+        socket->io_handle = (struct aws_io_handle){
+            .data = {.fd = existing_socket_fd},
+            .additional_data = NULL,
+        };
         aws_socket_set_options(socket, options);
     }
 
@@ -462,8 +464,7 @@ int aws_socket_connect(
 
     struct posix_socket *socket_impl = socket->impl;
 
-    socket_impl->connect_args =
-        aws_mem_acquire(socket->allocator, sizeof(struct posix_socket_connect_args));
+    socket_impl->connect_args = aws_mem_acquire(socket->allocator, sizeof(struct posix_socket_connect_args));
 
     if (!socket_impl->connect_args) {
         return AWS_OP_ERR;
@@ -485,15 +486,17 @@ int aws_socket_connect(
         aws_event_loop_schedule_task_now(event_loop, &socket_impl->connect_args->task);
     }
 
-
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
             socket_impl->currently_subscribed = true;
             /* This event is for when the connection finishes. (the fd will flip writable). */
             if (aws_event_loop_subscribe_to_io_events(
-                    event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_WRITABLE,
-                    s_socket_connect_event, socket_impl->connect_args)) {
+                    event_loop,
+                    &socket->io_handle,
+                    AWS_IO_EVENT_TYPE_WRITABLE,
+                    s_socket_connect_event,
+                    socket_impl->connect_args)) {
                 socket_impl->currently_subscribed = false;
                 socket->event_loop = NULL;
                 goto err_clean_up;
@@ -904,14 +907,12 @@ int aws_socket_close(struct aws_socket *socket) {
             }
 
             return AWS_OP_SUCCESS;
-
         }
 
         if (socket_impl->currently_subscribed) {
             if (socket->state & LISTENING) {
                 aws_socket_stop_accept(socket);
-            }
-            else {
+            } else {
                 int err_code = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
 
                 if (err_code) {
@@ -1032,8 +1033,7 @@ static int s_process_write_requests(struct aws_socket *socket, bool spawned_from
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
-            write_request->written_fn(
-                socket, aws_error, 0, write_request->write_user_data);
+            write_request->written_fn(socket, aws_error, 0, write_request->write_user_data);
             aws_mem_release(socket->allocator, write_request);
         }
     }

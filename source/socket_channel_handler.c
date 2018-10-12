@@ -256,13 +256,13 @@ void socket_destroy(struct aws_channel_handler *handler) {
 }
 
 static struct aws_channel_handler_vtable s_vtable = {
-            .process_read_message = s_socket_process_read_message,
-            .destroy = socket_destroy,
-            .process_write_message = s_socket_process_write_message,
-            .initial_window_size = socket_initial_window_size,
-            .increment_read_window = socket_increment_read_window,
-            .shutdown = s_socket_shutdown,
-        };
+    .process_read_message = s_socket_process_read_message,
+    .destroy = socket_destroy,
+    .process_write_message = s_socket_process_write_message,
+    .initial_window_size = socket_initial_window_size,
+    .increment_read_window = socket_increment_read_window,
+    .shutdown = s_socket_shutdown,
+};
 
 struct aws_channel_handler *aws_socket_handler_new(
     struct aws_allocator *allocator,
@@ -279,8 +279,8 @@ struct aws_channel_handler *aws_socket_handler_new(
 
     struct socket_handler *impl = NULL;
 
-    if (!aws_mem_acquire_many(allocator, 2, &handler,
-            sizeof(struct aws_channel_handler), &impl, sizeof(struct socket_handler))) {
+    if (!aws_mem_acquire_many(
+            allocator, 2, &handler, sizeof(struct aws_channel_handler), &impl, sizeof(struct socket_handler))) {
         return NULL;
     }
 

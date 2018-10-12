@@ -25,11 +25,11 @@
 #include <assert.h>
 
 #if _MSC_VER
- /* non-constant aggregate initializer */
+/* non-constant aggregate initializer */
 #    pragma warning(disable : 4204)
- /* allow automatic variable to escape scope
-    (it's intenional and we make sure it doesn't actually return
-     before the task is finished).*/
+/* allow automatic variable to escape scope
+   (it's intenional and we make sure it doesn't actually return
+    before the task is finished).*/
 #    pragma warning(disable : 4221)
 #endif
 
@@ -436,7 +436,8 @@ int aws_client_bootstrap_new_socket_channel(
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    return s_new_client_channel(bootstrap, remote_endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
+    return s_new_client_channel(
+        bootstrap, remote_endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
 int aws_server_bootstrap_init(
@@ -830,7 +831,8 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
 }
 
 int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
-    struct server_connection_args *server_connection_args = AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
+    struct server_connection_args *server_connection_args =
+        AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
     aws_socket_stop_accept(listener);
     aws_socket_clean_up(listener);

@@ -19,7 +19,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
-/* The next set of struct definitions are taken directly from the 
+/* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
     due to winsock. Also some of the definitions here aren't in the public API
     but it's the only way to do the thing we need to do. So we just declare it
