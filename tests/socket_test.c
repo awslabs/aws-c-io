@@ -999,6 +999,7 @@ static void s_write_task_destroy(struct aws_task *task, void *args, enum aws_tas
 }
 
 static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator, void *user_data) {
+    (void)user_data;
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 

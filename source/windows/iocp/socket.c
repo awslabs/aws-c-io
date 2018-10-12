@@ -288,12 +288,18 @@ static int convert_type(enum aws_socket_type type) {
 
 #define SOCK_STORAGE_SIZE (sizeof(struct sockaddr_storage) + 16)
 
+struct socket_connect_args {
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+};
+
 struct iocp_socket {
     struct socket_vtable *vtable;
     struct aws_overlapped *read_signal;
     struct aws_socket *incoming_socket;
     uint8_t accept_buffer[SOCK_STORAGE_SIZE * 2];
     struct aws_task sequential_task_storage;
+    struct socket_connect_args *connect_args;
     volatile bool stop_accept;
     volatile uint8_t pending_operations;
 };
@@ -347,7 +353,7 @@ static int s_socket_init(
     socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
     socket->state = INIT;
     socket->impl = impl;
-    socket->options = *options;
+    socket->options = *options;    
 
     if (options->domain != AWS_SOCKET_LOCAL && create_underlying_socket) {
         return create_socket(socket, options);
@@ -640,11 +646,6 @@ static void s_connection_error(struct aws_socket *socket, int error) {
     }
 }
 
-struct socket_connect_args {
-    struct aws_allocator *allocator;
-    struct aws_socket *socket;
-};
-
 /* Named Pipes and TCP connection callbacks from the event loop. */
 void s_socket_connection_completion(
     struct aws_event_loop *event_loop,
@@ -660,21 +661,25 @@ void s_socket_connection_completion(
     }
 
     struct socket_connect_args *socket_args = (struct socket_connect_args *)overlapped->user_data;
-    struct iocp_socket *socket_impl = socket_args->socket->impl;
-    socket_impl->pending_operations = socket_impl->pending_operations & ~PENDING_CONNECT;
 
-    struct aws_socket *socket = socket_args->socket;
-    socket->readable_fn = NULL;
-    socket->readable_user_data = NULL;
-    socket_args->socket = NULL;
+    if (socket_args->socket) {
+        struct iocp_socket *socket_impl = socket_args->socket->impl;
+        socket_impl->pending_operations = socket_impl->pending_operations & ~PENDING_CONNECT;
 
-    if (!status_code) {
-        socket_impl->vtable->connection_success(socket);
-    } else {
-        int error = s_determine_socket_error(status_code);
-        socket_impl->vtable->connection_error(socket, error);
+        struct aws_socket *socket = socket_args->socket;
+        socket->readable_fn = NULL;
+        socket->readable_user_data = NULL;
+        socket_args->socket = NULL;
+        socket_impl->connect_args = NULL;
+
+        if (!status_code) {
+            socket_impl->vtable->connection_success(socket);
+        }
+        else {
+            int error = s_determine_socket_error(status_code);
+            socket_impl->vtable->connection_error(socket, error);
+        }
     }
-    return;
 }
 
 /* outgoing tcp connection. If this task runs before `s_socket_connection_completion()`, then the
@@ -686,11 +691,12 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
         if (socket_args->socket) {
             socket_args->socket->state = TIMEDOUT;
             socket_args->socket->event_loop = NULL;
-            aws_socket_close(socket_args->socket);
-
             aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
             socket_args->socket->connection_result_fn(
                 socket_args->socket, AWS_IO_SOCKET_TIMEOUT, socket_args->socket->connect_accept_user_data);
+
+            /* socket close will set the connection args to NULL etc...*/
+            aws_socket_close(socket_args->socket);
         }
     }
 
@@ -739,7 +745,7 @@ static inline int s_tcp_connect(
     connect_fn = (LPFN_CONNECTEX)aws_winsock_get_connectex_fn();
     aws_overlapped_init(socket_impl->read_signal, s_socket_connection_completion, connect_args);
     int fake_buffer = 0;
-
+    socket_impl->connect_args = connect_args;
     BOOL connect_res = false;
     bind((SOCKET)socket->io_handle.data.handle, bind_addr, (int)sock_size);
     connect_res = connect_fn(
@@ -763,6 +769,7 @@ static inline int s_tcp_connect(
         if (error_code != ERROR_IO_PENDING) {
             aws_mem_release(socket->allocator, connect_args);
             aws_mem_release(socket->allocator, timeout_task);
+            socket_impl->connect_args = NULL;
 
             int aws_err = s_determine_socket_error(error_code);
             socket_impl->vtable->connection_error(socket, error_code);
@@ -1536,6 +1543,13 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 }
 
 static int s_socket_close(struct aws_socket *socket) {
+    struct iocp_socket *socket_impl = socket->impl;
+
+    if (socket_impl->connect_args) {
+        socket_impl->connect_args->socket = NULL;
+        socket_impl->connect_args = NULL;
+    }
+
     if (socket->io_handle.data.handle != INVALID_HANDLE_VALUE) {
         shutdown((SOCKET)socket->io_handle.data.handle, SD_BOTH);
         closesocket((SOCKET)socket->io_handle.data.handle);
@@ -1546,6 +1560,13 @@ static int s_socket_close(struct aws_socket *socket) {
 }
 
 static int s_local_close(struct aws_socket *socket) {
+    struct iocp_socket *socket_impl = socket->impl;
+
+    if (socket_impl->connect_args) {
+        socket_impl->connect_args->socket = NULL;
+        socket_impl->connect_args = NULL;
+    }
+
     if (socket->io_handle.data.handle != INVALID_HANDLE_VALUE) {
         aws_socket_stop_accept(socket);
         CloseHandle(socket->io_handle.data.handle);
