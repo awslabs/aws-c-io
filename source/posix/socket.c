@@ -693,9 +693,8 @@ static void s_socket_accept_event(
             if (shutdown_occured) {
                 return;
             }
-            else {
-                socket_impl->shutdown_happened = NULL;
-            }
+
+            socket_impl->shutdown_happened = NULL;
         }
     }
 }
@@ -1176,11 +1175,12 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     /* read_val of 0 means EOF which we'll treat as AWS_IO_SOCKET_CLOSED */
     if (read_val == 0) {
         *amount_read = 0;
+
         if (buffer->capacity - buffer->len > 0) {
             return aws_raise_error(AWS_IO_SOCKET_CLOSED);
-        } else {
-            return AWS_OP_SUCCESS;
         }
+
+        return AWS_OP_SUCCESS;
     }
 
     int error = errno;

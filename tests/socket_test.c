@@ -868,8 +868,8 @@ static void s_local_listener_incoming_destroy_listener(
     aws_mutex_unlock(listener_args->mutex);
 }
 
-static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -998,8 +998,8 @@ static void s_write_task_destroy(struct aws_task *task, void *args, enum aws_tas
     aws_socket_write(io_args->socket, io_args->to_write, s_on_written_destroy, io_args);
 }
 
-static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 

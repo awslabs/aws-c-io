@@ -364,6 +364,7 @@ int aws_import_public_and_private_keys_to_identity(
 
         struct aws_byte_buf *root_cert_ptr = NULL;
         aws_array_list_get_at_ptr(&cert_chain_list, (void **)&root_cert_ptr, 0);
+        assert(root_cert_ptr);
         CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->buffer, root_cert_ptr->len);
 
         if (root_cert_data) {
@@ -375,6 +376,8 @@ int aws_import_public_and_private_keys_to_identity(
         aws_array_list_clean_up(&cert_chain_list);
     } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(import_output, 0);
+        /* SecCertificateCreateWithData returns an object with +1 retain, so we need to match that behavior here */
+        CFRetain(certificate_ref);
     }
 
     if (certificate_ref) {
