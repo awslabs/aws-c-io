@@ -51,7 +51,6 @@ struct aws_overlapped {
     OVERLAPPED overlapped;
     aws_event_loop_on_completion_fn *on_completion;
     void *user_data;
-    struct aws_allocator *alloc;
 };
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
@@ -280,6 +279,10 @@ int aws_event_loop_subscribe_to_io_events(
 /**
  * Unsubscribes handle from event-loop notifications.
  * This function is not thread safe and should be called inside the event-loop's thread.
+ *
+ * NOTE: if you are using io completion ports, this is a risky call. We use it in places, but only when we're certain
+ * there's no pending events. If you want to use it, it's your job to make sure you don't have pending events before
+ * calling it.
  */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);

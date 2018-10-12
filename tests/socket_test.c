@@ -1110,4 +1110,3 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     return 0;
 }
 AWS_TEST_CASE(cleanup_in_write_cb_doesnt_explode, s_cleanup_in_write_cb_doesnt_explode)
-
