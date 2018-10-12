@@ -34,19 +34,20 @@ struct aws_socket_endpoint;
  * This function does NOT mean "success", if error_code is AWS_OP_SUCCESS then everything was successful, otherwise an
  * error condition occurred.
  */
-typedef int (aws_client_bootstrap_on_channel_setup_fn)(
+typedef int(aws_client_bootstrap_on_channel_setup_fn)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
     void *user_data);
 
 /**
- * Once the channel shuts down, this function will be invoked within the thread of the event-loop that the channel is assigned to.
+ * Once the channel shuts down, this function will be invoked within the thread of the event-loop that the channel is
+ * assigned to.
  *
- * Note: this function is only invoked if the channel was successfully setup, e.g. aws_client_bootstrap_on_channel_setup_fn()
- * was invoked without an error code.
+ * Note: this function is only invoked if the channel was successfully setup, e.g.
+ * aws_client_bootstrap_on_channel_setup_fn() was invoked without an error code.
  */
-typedef int (aws_client_bootstrap_on_channel_shutdown_fn)(
+typedef int(aws_client_bootstrap_on_channel_shutdown_fn)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -87,8 +88,8 @@ struct aws_server_bootstrap;
  *
  * This function is always called within the thread of the event-loop that the new channel is assigned to upon success.
  *
- * On failure, the channel might not be assigned to an event loop yet, and will thus be invoked on the listener's event-loop
- * thread.
+ * On failure, the channel might not be assigned to an event loop yet, and will thus be invoked on the listener's
+ * event-loop thread.
  *
  * This function does NOT mean "success", if error_code is AWS_OP_SUCCESS then everything was successful, otherwise an
  * error condition occurred.
@@ -96,20 +97,20 @@ struct aws_server_bootstrap;
  * If an error occurred, you do not need to shutdown the channel. The `aws_channel_client_shutdown_callback` will be
  * invoked once the channel has finished shutting down.
  */
-typedef int (aws_server_bootstrap_on_accept_channel_setup_fn)(
+typedef int(aws_server_bootstrap_on_accept_channel_setup_fn)(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
     void *user_data);
 
 /**
- * Once the channel shuts down, this function will be invoked within the thread of 
+ * Once the channel shuts down, this function will be invoked within the thread of
  * the event-loop that the channel is assigned to.
  *
  * Note: this function is only invoked if the channel was successfully setup,
  * e.g. aws_server_bootstrap_on_accept_channel_setup_fn() was invoked without an error code.
  */
-typedef int (aws_server_bootsrap_on_accept_channel_shutdown_fn)(
+typedef int(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -160,10 +161,10 @@ AWS_IO_API int aws_client_bootstrap_set_alpn_callback(
 
 /**
  * Sets up a client socket channel. If you are planning on using tls, use `aws_client_bootstrap_new_tls_socket_channel`
- * instead. The connection is made to `remote_endpoint` using socket options `options`. `setup_callback` will be invoked once
- * the channel is ready for use or if an error is encountered. `shutdown_callback` will be invoked once the channel has
- * shutdown. Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks
- * are invoked in the thread of the event-loop that the new channel is assigned to.
+ * instead. The connection is made to `remote_endpoint` using socket options `options`. `setup_callback` will be invoked
+ * once the channel is ready for use or if an error is encountered. `shutdown_callback` will be invoked once the channel
+ * has shutdown. Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All
+ * callbacks are invoked in the thread of the event-loop that the new channel is assigned to.
  */
 AWS_IO_API int aws_client_bootstrap_new_socket_channel(
     struct aws_client_bootstrap *bootstrap,
@@ -174,8 +175,8 @@ AWS_IO_API int aws_client_bootstrap_new_socket_channel(
     void *user_data);
 
 /**
- * Sets up a client tls socket channel. The connection is made to `remote_endpoint` using socket options `options`, and tls
- * options `connection_options`. `setup_callback` will be invoked once the channel is ready for use and TLS has been
+ * Sets up a client tls socket channel. The connection is made to `remote_endpoint` using socket options `options`, and
+ * tls options `connection_options`. `setup_callback` will be invoked once the channel is ready for use and TLS has been
  * negotiated, or if an error is encountered. `shutdown_callback` will be invoked once the channel has shutdown.
  * Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked
  * in the thread of the event-loop that the new channel is assigned to.
@@ -222,10 +223,10 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
 
 /**
  * Sets up a server socket listener. If you are planning on using tls, use
- * `aws_server_bootstrap_new_tls_socket_listener` instead. This creates a socket listener bound to `local_endpoint` using
- * socket options `options`. `incoming_callback` will be invoked once an incoming channel is ready for use or if an
- * error is encountered. `shutdown_callback` will be invoked once the channel has shutdown. Immediately after the
- * `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked the thread of 
+ * `aws_server_bootstrap_new_tls_socket_listener` instead. This creates a socket listener bound to `local_endpoint`
+ * using socket options `options`. `incoming_callback` will be invoked once an incoming channel is ready for use or if
+ * an error is encountered. `shutdown_callback` will be invoked once the channel has shutdown. Immediately after the
+ * `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked the thread of
  * the event-loop that the listening socket is assigned to
  *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
@@ -263,9 +264,9 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still
  * be active.
  *
- * Note: this function should be called by either a user thread (like the main entry point, or from the event-loop the listener
- * is assigned to. Otherwise a deadlock is possible. If you call this function from outside the assigned event-loop, this function
- * will block waiting on the assigned event-loop runs the close sequence in its thread.
+ * Note: this function should be called by either a user thread (like the main entry point, or from the event-loop the
+ * listener is assigned to. Otherwise a deadlock is possible. If you call this function from outside the assigned
+ * event-loop, this function will block waiting on the assigned event-loop runs the close sequence in its thread.
  */
 AWS_IO_API int aws_server_bootstrap_destroy_socket_listener(
     struct aws_server_bootstrap *bootstrap,

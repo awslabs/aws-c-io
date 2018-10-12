@@ -392,7 +392,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
             outgoing_args.negotiated_protocol.buffer,
             outgoing_args.negotiated_protocol.len);
     }
-    
+
     ASSERT_FALSE(outgoing_args.error_invoked);
 
     /* Do the IO operations */
@@ -595,8 +595,8 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -607,8 +607,8 @@ static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocato
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel_negotiation_error_expired_fn)
 
-static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -619,8 +619,8 @@ static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_alloc
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
 
-static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -631,8 +631,8 @@ static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allo
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_channel_negotiation_error_self_signed_fn)
 
-static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -645,8 +645,8 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_untrusted_root,
     s_tls_client_channel_negotiation_error_untrusted_root_fn)
 
-static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -657,8 +657,8 @@ static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocato
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
 
-static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -782,8 +782,8 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *user_data) {
-    (void)user_data;
+static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "www.amazon.com");
     ASSERT_NOT_NULL(host_name);

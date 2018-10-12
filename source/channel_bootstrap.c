@@ -25,12 +25,12 @@
 #include <assert.h>
 
 #if _MSC_VER
- /* non-constant aggregate initializer */
-#    pragma warning(disable : 4204) 
- /* allow automatic variable to escape scope
-    (it's intenional and we make sure it doesn't actually return
-     before the task is finished).*/
-#    pragma warning(disable : 4221) 
+/* non-constant aggregate initializer */
+#    pragma warning(disable : 4204)
+/* allow automatic variable to escape scope
+   (it's intenional and we make sure it doesn't actually return
+    before the task is finished).*/
+#    pragma warning(disable : 4221)
 #endif
 
 struct tl_shutdown_task_data {
@@ -331,7 +331,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         }
 
         return;
-    } 
+    }
 
 error:
     aws_socket_clean_up(socket);
@@ -436,7 +436,8 @@ int aws_client_bootstrap_new_socket_channel(
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    return s_new_client_channel(bootstrap, remote_endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
+    return s_new_client_channel(
+        bootstrap, remote_endpoint, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
 int aws_server_bootstrap_init(
@@ -558,8 +559,8 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
     }
 
     aws_channel_slot_insert_end(channel, tls_slot);
-    
-    if (aws_channel_slot_set_handler(tls_slot, tls_handler)) {        
+
+    if (aws_channel_slot_set_handler(tls_slot, tls_handler)) {
         return AWS_OP_ERR;
     }
 
@@ -579,7 +580,7 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
         }
 
         aws_channel_slot_insert_right(tls_slot, alpn_slot);
-        
+
         if (aws_channel_slot_set_handler(alpn_slot, alpn_handler)) {
             return AWS_OP_ERR;
         }
@@ -702,13 +703,12 @@ void s_on_server_connection_result(
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
         }
-
-        return;
     } else {
         connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         aws_server_bootstrap_destroy_socket_listener(connection_args->bootstrap, &connection_args->listener);
-        return;
     }
+
+    return;
 
 error_cleanup:
     connection_args->incoming_callback(connection_args->bootstrap, aws_last_error(), NULL, connection_args->user_data);
@@ -831,7 +831,8 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
 }
 
 int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
-    struct server_connection_args *server_connection_args = AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
+    struct server_connection_args *server_connection_args =
+        AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
     aws_socket_stop_accept(listener);
     aws_socket_clean_up(listener);
