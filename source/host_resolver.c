@@ -96,7 +96,15 @@ void aws_host_address_to_endpoint_options(
     }
 
     assert(sizeof(endpoint->address) <= address->address->len + 1);
+
+#if defined(_MSC_VER)
+#    pragma warning(push)
+#    pragma warning(disable : 4996) /* strncpy is insecure or whatever, but we don't have strncpy_s until C11 */
+#endif
     strncpy(endpoint->address, (const char *)aws_string_bytes(address->address), sizeof(endpoint->address));
+#if defined(_MSC_VER)
+#    pragma warning(pop)
+#endif
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
