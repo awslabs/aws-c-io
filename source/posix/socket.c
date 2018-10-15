@@ -155,7 +155,7 @@ struct posix_socket {
     bool continue_accept;
     bool currently_in_event;
     bool clean_yourself_up;
-    bool *shutdown_happened;
+    bool *close_happened;
     struct posix_socket_connect_args *connect_args;
 };
 
@@ -198,7 +198,7 @@ static int s_socket_init(
     posix_socket->currently_in_event = false;
     posix_socket->clean_yourself_up = false;
     posix_socket->connect_args = NULL;
-    posix_socket->shutdown_happened = NULL;
+    posix_socket->close_happened = NULL;
     socket->impl = posix_socket;
     return AWS_OP_SUCCESS;
 }
@@ -689,15 +689,15 @@ static void s_socket_accept_event(
             flags |= O_NONBLOCK | O_CLOEXEC;
             fcntl(in_fd, F_SETFL, flags);
 
-            bool shutdown_occured = false;
-            socket_impl->shutdown_happened = &shutdown_occured;
+            bool close_occured = false;
+            socket_impl->close_happened = &close_occured;
             socket->accept_result_fn(socket, AWS_ERROR_SUCCESS, new_sock, socket->connect_accept_user_data);
 
-            if (shutdown_occured) {
+            if (close_occured) {
                 return;
             }
 
-            socket_impl->shutdown_happened = NULL;
+            socket_impl->close_happened = NULL;
         }
     }
 }
@@ -844,7 +844,7 @@ struct write_request {
     size_t original_buffer_len;
 };
 
-struct posix_socket_shutdown_args {
+struct posix_socket_close_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
     struct aws_socket *socket;
@@ -852,26 +852,26 @@ struct posix_socket_shutdown_args {
     int ret_code;
 };
 
-static bool s_shutdown_predicate(void *arg) {
-    struct posix_socket_shutdown_args *shutdown_args = arg;
-    return shutdown_args->invoked;
+static bool s_close_predicate(void *arg) {
+    struct posix_socket_close_args *close_args = arg;
+    return close_args->invoked;
 }
 
 static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
 
-    struct posix_socket_shutdown_args *shutdown_args = arg;
-    aws_mutex_lock(&shutdown_args->mutex);
-    shutdown_args->ret_code = AWS_OP_SUCCESS;
+    struct posix_socket_close_args *close_args = arg;
+    aws_mutex_lock(&close_args->mutex);
+    close_args->ret_code = AWS_OP_SUCCESS;
 
-    if (aws_socket_close(shutdown_args->socket)) {
-        shutdown_args->ret_code = aws_last_error();
+    if (aws_socket_close(close_args->socket)) {
+        close_args->ret_code = aws_last_error();
     }
 
-    shutdown_args->invoked = true;
-    aws_condition_variable_notify_one(&shutdown_args->condition_variable);
-    aws_mutex_unlock(&shutdown_args->mutex);
+    close_args->invoked = true;
+    aws_condition_variable_notify_one(&close_args->condition_variable);
+    aws_mutex_unlock(&close_args->mutex);
 }
 
 int aws_socket_close(struct aws_socket *socket) {
@@ -886,7 +886,7 @@ int aws_socket_close(struct aws_socket *socket) {
                 return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
             }
 
-            struct posix_socket_shutdown_args args = {
+            struct posix_socket_close_args args = {
                 .mutex = AWS_MUTEX_INIT,
                 .condition_variable = AWS_CONDITION_VARIABLE_INIT,
                 .socket = socket,
@@ -894,14 +894,14 @@ int aws_socket_close(struct aws_socket *socket) {
                 .invoked = false,
             };
 
-            struct aws_task shutdown_task = {
+            struct aws_task close_task = {
                 .fn = s_close_task,
                 .arg = &args,
             };
 
             aws_mutex_lock(&args.mutex);
-            aws_event_loop_schedule_task_now(socket->event_loop, &shutdown_task);
-            aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_shutdown_predicate, &args);
+            aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
+            aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
 
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
@@ -925,8 +925,8 @@ int aws_socket_close(struct aws_socket *socket) {
         }
     }
 
-    if (socket_impl->shutdown_happened) {
-        *socket_impl->shutdown_happened = true;
+    if (socket_impl->close_happened) {
+        *socket_impl->close_happened = true;
     }
 
     if (socket_impl->connect_args) {
@@ -939,7 +939,7 @@ int aws_socket_close(struct aws_socket *socket) {
         socket->io_handle.data.fd = -1;
         socket->state = CLOSED;
 
-        /* after shutdown, just go ahead and clear out the pending writes queue
+        /* after close, just go ahead and clear out the pending writes queue
          * and tell the user they were cancelled. */
         while (!aws_linked_list_empty(&socket_impl->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
