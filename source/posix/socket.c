@@ -891,6 +891,7 @@ int aws_socket_close(struct aws_socket *socket) {
                 .condition_variable = AWS_CONDITION_VARIABLE_INIT,
                 .socket = socket,
                 .ret_code = AWS_OP_SUCCESS,
+                .invoked = false,
             };
 
             struct aws_task shutdown_task = {
