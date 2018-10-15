@@ -290,7 +290,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
-    struct aws_socket *listener = aws_server_bootstrap_add_socket_listener(
+    struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(
         &server_bootstrap,
         &endpoint,
         &options,
@@ -360,7 +360,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
 
     aws_mutex_unlock(&mutex);
-    ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;
@@ -433,7 +433,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
-    struct aws_socket *listener = aws_server_bootstrap_add_socket_listener(
+    struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(
         &server_bootstrap,
         &endpoint,
         &options,
@@ -470,7 +470,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, outgoing_args.error_code);
 
-    ASSERT_SUCCESS(aws_server_bootstrap_remove_socket_listener(&server_bootstrap, listener));
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;

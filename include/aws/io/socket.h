@@ -71,7 +71,9 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
  * performing IO operations.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
- * If error_code is non-zero, an error occurred and you should shutdown the socket.
+ * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
+ *
+ * Do not call aws_socket_clean_up() from this callback.
  */
 typedef void(aws_socket_on_accept_result_fn)(
     struct aws_socket *socket,
@@ -83,19 +85,22 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  */
-typedef void(aws_socket_on_write_completed_fn)(
-    struct aws_socket *socket,
-    int error_code,
-    struct aws_byte_cursor *original_cursor,
-    void *user_data);
+typedef void(
+    aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_ERROR_SUCCESS.
  */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
+#ifdef _WIN32
+#    define AWS_ADDRESS_MAX_LEN 256
+#else
+#    include <sys/un.h>
+#    define AWS_ADDRESS_MAX_LEN sizeof(((struct sockaddr_un *)0)->sun_path)
+#endif
 struct aws_socket_endpoint {
-    char address[108];
+    char address[AWS_ADDRESS_MAX_LEN];
     uint16_t port;
 };
 
@@ -139,7 +144,7 @@ extern "C" {
 AWS_IO_API int aws_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
-    struct aws_socket_options *options);
+    const struct aws_socket_options *options);
 
 /**
  * Shuts down any pending operations on the socket, and cleans up state. The socket object can be re-initialized after
@@ -147,7 +152,7 @@ AWS_IO_API int aws_socket_init(
  * socket, all of the rules for aws_socket_close() apply here. In this case it will not fail if you use the function
  * improperly, but on some platforms you will certainly leak memory.
  *
- * If the socket has already been closed, you can safely call this from any thread.
+ * If the socket has already been closed, you can safely, call this from any thread.
  */
 AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
 
@@ -158,11 +163,14 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP amd LOCAL, this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
- * on_connection_result and user_data are ignored for UDP and connectionless sockets.
+ * If an event_loop is provided for UDP sockets, a notification will be sent on
+ * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
+ * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
+ * aws_socket_assign_to_event_loop before use.
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
-    struct aws_socket_endpoint *remote_endpoint,
+    const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data);
@@ -172,7 +180,7 @@ AWS_IO_API int aws_socket_connect(
  * connection oriented modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the
  * socket. local_endpoint is copied.
  */
-AWS_IO_API int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
+AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 /**
  * TCP and LOCAL only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
@@ -192,7 +200,8 @@ AWS_IO_API int aws_socket_start_accept(
     void *user_data);
 
 /**
- * TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after
+ * TCP and LOCAL only. The listening socket will stop accepting new connections.
+ * It is safe to call `aws_socket_start_accept()` again after
  * this operation. This can be called from any thread but be aware,
  * on some platforms, if you call this from outside of the current event loop's thread, it will block
  * until the event loop finishes processing the request for unsubscribe in it's own thread.
@@ -203,7 +212,7 @@ AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
  * from the event-loop's thread unless this is a listening socket. If it's a listening socket it can be called from any
  * non-event-loop thread or the event-loop the socket is currently assigned to. If called from outside the event-loop,
- * this function will block waiting on the socket to shutdown. If this is called from an event-loop thread other than
+ * this function will block waiting on the socket to close. If this is called from an event-loop thread other than
  * the one it's assigned to, it presents the possibility of a deadlock, so don't do it.
  */
 AWS_IO_API int aws_socket_close(struct aws_socket *socket);
@@ -217,7 +226,7 @@ AWS_IO_API int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_chann
  * Sets new socket options on the underlying socket. This is mainly useful in context of accepting a new connection via:
  * `on_incoming_connection()`. options is copied.
  */
-AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
+AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 
 /**
  * Assigns the socket to the event-loop. The socket will begin receiving read/write/error notifications after this call.
@@ -275,7 +284,7 @@ AWS_IO_API int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *b
  */
 AWS_IO_API int aws_socket_write(
     struct aws_socket *socket,
-    struct aws_byte_cursor *cursor,
+    const struct aws_byte_cursor *cursor,
     aws_socket_on_write_completed_fn *written_fn,
     void *user_data);
 

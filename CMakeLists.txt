@@ -3,6 +3,9 @@ project(aws-c-io C)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
 
+include(AwsCFlags)
+include(Sanitizers)
+
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
         OFF)
@@ -54,7 +57,7 @@ if (WIN32)
     #platform libs come from aws-c-common transitively, so we don't specify them here, but for documentation purposes,
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
     #Also note, you don't get a choice on TLS implementation for Windows.
-    set(PLATFORM_LIBS Secur32)
+    set(PLATFORM_LIBS Secur32 Crypt32)
     set(TLS_STACK_DETERMINED ON)
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -129,22 +132,8 @@ file(GLOB IO_SRC
         )
 
 add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES LINKER_LANGUAGE C)
-
-set(CMAKE_C_FLAGS_DEBUGOPT "")
-set_property(TARGET ${CMAKE_PROJECT_NAME} PROPERTY C_STANDARD 99)
-
-#set warnings
-if (MSVC)
-    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE /W4 /WX)
-else ()
-    target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE -Wall -Wno-long-long -pedantic -Werror)
-endif ()
-
-if (BUILD_SHARED_LIBS AND WIN32)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_IO_EXPORTS")
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DUSE_IMPORT_EXPORT")
-endif ()
+aws_set_common_properties(${CMAKE_PROJECT_NAME})
+aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 
 if (USE_IO_COMPLETION_PORTS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
@@ -162,16 +151,12 @@ if (BUILD_RELOCATABLE_BINARIES)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")
 endif()
 
-if (CMAKE_BUILD_TYPE STREQUAL "" OR CMAKE_BUILD_TYPE MATCHES Debug)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DDEBUG_BUILD")
-endif ()
-
 target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
 
 find_package(aws-c-common REQUIRED)
-target_link_libraries(${CMAKE_PROJECT_NAME} aws-c-common ${PLATFORM_LIBS})
+target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC AWS::aws-c-common ${PLATFORM_LIBS})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")

@@ -15,21 +15,13 @@ add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
 add_pipe_test_case(pipe_read_write_large_buffer)
 add_pipe_test_case(pipe_readable_event_sent_after_write)
+add_pipe_test_case(pipe_readable_event_sent_once)
 add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
 add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
 add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
-
-if (NOT UNIX) # TODO: these shouldn't fail
-    add_pipe_test_case(pipe_readable_event_not_sent_again_until_all_data_read)
-    add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
-    add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
-endif ()
-
-if (NOT WIN32)
-    #this one is flaky on windows, we'll revisit soon
-    add_pipe_test_case(pipe_writes_are_fifo)
-endif ()
-
+add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
+add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
+add_pipe_test_case(pipe_writes_are_fifo)
 add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
 
 add_test_case(event_loop_xthread_scheduled_tasks_execute)
@@ -57,11 +49,21 @@ add_test_case(outgoing_tcp_sock_error)
 add_test_case(incoming_tcp_sock_errors)
 add_test_case(incoming_udp_sock_errors)
 add_test_case(wrong_thread_read_write_fails)
+add_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
+add_test_case(cleanup_in_accept_doesnt_explode)
+add_test_case(cleanup_in_write_cb_doesnt_explode)
+
+if (WIN32)
+    add_test_case(local_socket_pipe_connected_race)
+endif()
 
 add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
-#DISABLED DUE TO HANG ON WINDOWS add_test_case(channel_message_passing)
+#TODO find the deadlock in this test on windows
+if (NOT WIN32)
+    add_test_case(channel_message_passing)
+endif()
 #DISABLED DUE TO FAILURE ON WINDOWS add_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_default_with_ipv4_only_lookup)
 #DISABLED DUE TO FAILURE ON WINDOWS add_test_case(test_default_with_multiple_lookups)
