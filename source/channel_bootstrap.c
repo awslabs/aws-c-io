@@ -20,7 +20,6 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
-#include <aws/io/tls_channel_handler.h>
 
 #include <assert.h>
 
