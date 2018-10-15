@@ -53,7 +53,6 @@ void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
 struct client_channel_data {
     struct aws_channel channel;
     struct aws_socket socket;
-
 };
 
 struct client_connection_args {
@@ -195,8 +194,7 @@ int aws_client_bootstrap_new_tls_socket_channel(
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
 
-    return s_new_client_channel(
-        bootstrap, remote_endpoint, options, setup_callback, shutdown_callback, user_data);
+    return s_new_client_channel(bootstrap, remote_endpoint, options, setup_callback, shutdown_callback, user_data);
 }
 
 int aws_client_bootstrap_new_socket_channel(
@@ -206,8 +204,7 @@ int aws_client_bootstrap_new_socket_channel(
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    return s_new_client_channel(
-        bootstrap, remote_endpoint, options, setup_callback, shutdown_callback, user_data);
+    return s_new_client_channel(bootstrap, remote_endpoint, options, setup_callback, shutdown_callback, user_data);
 }
 
 int aws_server_bootstrap_init(
