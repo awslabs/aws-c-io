@@ -173,3 +173,4 @@ install(EXPORT ${CMAKE_PROJECT_NAME}-config DESTINATION "${CMAKE_INSTALL_PREFIX}
 
 include(CTest)
 add_subdirectory(tests)
+
