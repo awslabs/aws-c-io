@@ -823,6 +823,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -872,6 +873,7 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
