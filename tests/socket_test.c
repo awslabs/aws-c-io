@@ -426,6 +426,7 @@ AWS_TEST_CASE(udp_socket_communication, s_test_udp_socket_communication)
 
 struct test_host_callback_data {
     struct aws_host_address a_address;
+    struct aws_mutex *mutex;
     bool has_a_address;
     struct aws_condition_variable condition_variable;
     bool invoked;
@@ -450,6 +451,7 @@ static void s_test_host_resolved_test_callback(
 
     struct test_host_callback_data *callback_data = user_data;
 
+    aws_mutex_lock(callback_data->mutex);
     struct aws_host_address *host_address = NULL;
 
     if (aws_array_list_length(host_addresses) == 1) {
@@ -461,6 +463,7 @@ static void s_test_host_resolved_test_callback(
 
     callback_data->invoked = true;
     aws_condition_variable_notify_one(&callback_data->condition_variable);
+    aws_mutex_unlock(callback_data->mutex);
 }
 
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
@@ -490,6 +493,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
@@ -793,6 +797,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */

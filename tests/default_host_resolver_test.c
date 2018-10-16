@@ -30,6 +30,7 @@ struct default_host_callback_data {
     bool has_a_address;
     struct aws_condition_variable condition_variable;
     bool invoked;
+    struct aws_mutex *mutex;
 };
 
 static bool s_default_host_resolved_predicate(void *arg) {
@@ -51,6 +52,7 @@ static void s_default_host_resolved_test_callback(
 
     struct default_host_callback_data *callback_data = user_data;
 
+    aws_mutex_lock(callback_data->mutex);
     struct aws_host_address *host_address = NULL;
 
     if (aws_array_list_length(host_addresses) >= 2) {
@@ -72,6 +74,7 @@ static void s_default_host_resolved_test_callback(
 
     callback_data->invoked = true;
     aws_condition_variable_notify_one(&callback_data->condition_variable);
+    aws_mutex_unlock(callback_data->mutex);
 }
 
 static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *ctx) {
@@ -95,6 +98,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -154,6 +158,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -216,6 +221,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -367,6 +373,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -522,6 +529,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -539,9 +547,12 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_address_clean_up(&callback_data.a_address);
 
     callback_data.invoked = false;
+    /* this should still be cached don't need the mutex here. */
+    aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -556,10 +567,12 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 
     /* following the LRU policy, address 1 should be what gets returned here, however we marked it as failed, so it
      * should be skipped and address 2 should be returned. */
+    aws_mutex_unlock(&mutex);
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
@@ -572,11 +585,14 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_2_ipv4));
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     /* here address 1 should be returned since it is now the least recently used address and all of them have failed..
      */
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
@@ -588,9 +604,12 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
      * and we kept them as bad addresses. */
     aws_condition_variable_wait_pred(
@@ -691,6 +710,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
         .invoked = false,
         .has_aaaa_address = false,
         .has_a_address = false,
+        .mutex = &mutex,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -709,9 +729,12 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_host_address_clean_up(&callback_data.a_address);
 
     callback_data.invoked = false;
+    /* this will resolve in the calling thread, so don't take the lock. */
+    aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -727,10 +750,13 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     /* now we loop back around, we resolved, but the TTLs should not have expired at all (they were actually refreshed).
      */
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     /* here address 1 should be returned since it is now the least recently used address.. */
+    aws_mutex_lock(&mutex);
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -745,9 +771,12 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     /* let it re-resolve, we should get addr 2 back, but with a later expiry than before.. */
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
      * and we kept them as bad addresses. */
     aws_condition_variable_wait_pred(
