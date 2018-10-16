@@ -525,7 +525,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&condition_variable, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
 
     aws_socket_clean_up(&outgoing);

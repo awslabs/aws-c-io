@@ -720,11 +720,11 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             socket_args->socket->state = TIMEDOUT;
             socket_args->socket->event_loop = NULL;
             aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
-            socket_args->socket->connection_result_fn(
-                socket_args->socket, AWS_IO_SOCKET_TIMEOUT, socket_args->socket->connect_accept_user_data);
-
+            struct aws_socket *socket = socket_args->socket;
             /* socket close will set the connection args to NULL etc...*/
-            aws_socket_close(socket_args->socket);
+            aws_socket_close(socket);
+            socket->connection_result_fn(
+                socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
         }
     }
 
