@@ -66,8 +66,13 @@ static void s_default_host_resolved_test_callback(
     } else if (aws_array_list_length(host_addresses) == 1) {
         aws_array_list_get_at(host_addresses, &host_address, 0);
 
-        aws_host_address_copy(host_address, &callback_data->a_address);
-        callback_data->has_a_address = true;
+        if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_A) {
+            aws_host_address_copy(host_address, &callback_data->a_address);
+            callback_data->has_a_address = true;
+        } else if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA) {
+            aws_host_address_copy(host_address, &callback_data->aaaa_address);
+            callback_data->has_aaaa_address = true;
+        }
     }
 
     callback_data->invoked = true;
@@ -767,3 +772,101 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(test_resolver_ttl_refreshes_on_resolve, s_test_resolver_ttl_refreshes_on_resolve_fn)
+
+static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_host_resolver resolver;
+
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
+    ASSERT_NOT_NULL(host_name);
+
+    struct aws_host_resolution_config config = {
+        .max_ttl = 10,
+        .impl = aws_default_dns_resolve,
+        .impl_data = NULL,
+    };
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    callback_data.invoked = false;
+    ASSERT_TRUE(callback_data.has_a_address);
+    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, callback_data.a_address.record_type);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        aws_string_bytes(host_name),
+        host_name->len,
+        aws_string_bytes(callback_data.a_address.host),
+        callback_data.a_address.host->len);
+    ASSERT_TRUE(callback_data.a_address.address->len > 1);
+    ASSERT_FALSE(callback_data.has_aaaa_address);
+
+    aws_host_address_clean_up(&callback_data.a_address);
+    aws_string_destroy((void *)host_name);
+    aws_host_resolver_clean_up(&resolver);
+
+    return 0;
+}
+AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lookup_fn)
+
+static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_host_resolver resolver;
+
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "::1");
+    ASSERT_NOT_NULL(host_name);
+
+    struct aws_host_resolution_config config = {
+        .max_ttl = 10,
+        .impl = aws_default_dns_resolve,
+        .impl_data = NULL,
+    };
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    callback_data.invoked = false;
+    ASSERT_FALSE(callback_data.has_a_address);
+    ASSERT_TRUE(callback_data.has_aaaa_address);
+    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_AAAA, callback_data.aaaa_address.record_type);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        aws_string_bytes(host_name),
+        host_name->len,
+        aws_string_bytes(callback_data.aaaa_address.host),
+        callback_data.aaaa_address.host->len);
+    ASSERT_TRUE(callback_data.aaaa_address.address->len > 1);
+
+    aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_string_destroy((void *)host_name);
+    aws_host_resolver_clean_up(&resolver);
+
+    return 0;
+}
+AWS_TEST_CASE(test_resolver_ipv6_address_lookup, s_test_resolver_ipv6_address_lookup_fn)
