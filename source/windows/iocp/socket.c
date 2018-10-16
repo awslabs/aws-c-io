@@ -723,8 +723,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             struct aws_socket *socket = socket_args->socket;
             /* socket close will set the connection args to NULL etc...*/
             aws_socket_close(socket);
-            socket->connection_result_fn(
-                socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
+            socket->connection_result_fn(socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
         }
     }
 
@@ -1797,10 +1796,10 @@ static int s_socket_close(struct aws_socket *socket) {
         if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
             return s_wait_on_close(socket);
         }
-    }
 
-    if (socket->state & LISTENING && !socket_impl->stop_accept) {
-        aws_socket_stop_accept(socket);
+        if (socket->state & LISTENING && !socket_impl->stop_accept) {
+            aws_socket_stop_accept(socket);
+        }
     }
 
     if (socket_impl->connect_args) {
