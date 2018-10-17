@@ -502,6 +502,100 @@ void aws_release_certificates(CFArrayRef certs) {
 
 #    include <aws/common/clock.h>
 
+#    if _MSC_VER
+#        pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
+#        pragma warning(disable : 4204) /* non-constant aggregate initializer */
+#    endif
+
+#    define CERT_HASH_STR_LEN 40
+#    define CERT_HASH_LEN 20
+
+bool aws_is_system_cert_store(
+    const char *cert_path,
+    HCERTSTORE *cert_store,
+    PCCERT_CONTEXT *certs) {
+    bool load_store_and_cert = false;
+
+    if (cert_store && certs) {
+        *cert_store = NULL;
+        *certs = NULL;
+        load_store_and_cert = true;
+    }
+
+    char *location_of_next_segment = strchr(cert_path, '\\');
+
+    if (!location_of_next_segment) {
+        return false;
+    }
+
+    size_t store_name_len = location_of_next_segment - cert_path;
+    DWORD store_val = 0;
+
+    if (!strncmp(cert_path, "CurrentUser", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_CURRENT_USER;
+    } else if (!strncmp(cert_path, "LocalMachine", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE;
+    } else if (!strncmp(cert_path, "CurrentService", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_CURRENT_SERVICE;
+    } else if (!strncmp(cert_path, "Services", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_SERVICES;
+    } else if (!strncmp(cert_path, "Users", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_USERS;
+    } else if (!strncmp(cert_path, "CurrentUserGroupPolicy", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY;
+    } else if (!strncmp(cert_path, "LocalMachineGroupPolicy", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY;
+    } else if (!strncmp(cert_path, "LocalMachineEnterprise", store_name_len)) {
+        store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE;
+    } else {
+        return false;
+    }
+
+    location_of_next_segment += 1;
+    location_of_next_segment = strchr(location_of_next_segment, '\\');
+    
+    if (!location_of_next_segment) {
+        return false;
+    }
+
+    location_of_next_segment += 1;
+    if (strlen(location_of_next_segment) != CERT_HASH_STR_LEN) {
+        return false;
+    }
+
+    if (!load_store_and_cert) {
+        return true;
+    }
+
+    *cert_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, (HCRYPTPROV)NULL, 
+        CERT_STORE_OPEN_EXISTING_FLAG | store_val, cert_path);
+
+    if (!cert_store) {
+        return true;
+    }
+
+    BYTE cert_hash_data[CERT_HASH_LEN];
+    CRYPT_HASH_BLOB cert_hash = {
+        .pbData = cert_hash_data,
+        .cbData = CERT_HASH_LEN,
+    };
+
+    if (!CryptStringToBinaryA(location_of_next_segment, CERT_HASH_STR_LEN, CRYPT_STRING_HEX, 
+        cert_hash.pbData, &cert_hash.cbData, NULL, NULL)) {
+        return true;
+    }
+
+    *certs = CertFindCertificateInStore(*cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+        0, CERT_FIND_HASH, cert_hash.pbData, NULL);
+
+    if (!certs) {
+        aws_close_cert_store(*cert_store);
+        return true;
+    }
+
+    return true;
+}
+
 int aws_import_trusted_certificates(
     struct aws_allocator *alloc,
     struct aws_byte_buf *certificates_blob,
@@ -575,19 +669,6 @@ clean_up:
 
 void aws_close_cert_store(HCERTSTORE cert_store) {
     CertCloseStore(cert_store, 0);
-}
-
-int aws_import_installed_cert_to_cert_context(
-    HCERTSTORE cert_store,
-    struct aws_allocator *alloc,
-    const char *path,
-    PCCERT_CONTEXT *certs) {
-    (void)cert_store;
-    (void)alloc;
-    (void)path;
-    (void)certs;
-
-    return AWS_OP_SUCCESS;
 }
 
 int aws_import_key_pair_to_cert_context(
@@ -670,6 +751,7 @@ int aws_import_key_pair_to_cert_context(
     aws_high_res_clock_get_ticks(&hw_time);
     aws_sys_clock_get_ticks(&sys_time);
 
+    /* TODO: implement a real GUID .... This will do for now.*/
     wchar_t temp_guid[128];
     memset(temp_guid, 0, sizeof(temp_guid));
     swprintf_s(temp_guid, 128, L"%llu_%llu", hw_time, sys_time);
@@ -680,7 +762,6 @@ int aws_import_key_pair_to_cert_context(
     aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, 0);
     BYTE *key = NULL;
 
-    // PCRYPT_PRIVATE_KEY_INFO key_info = 0;
     DWORD decoded_len = 0;
     success = CryptDecodeObjectEx(
         X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
@@ -723,22 +804,6 @@ clean_up:
     }
 
     return error_code;
-}
-
-int aws_import_pkcs12_to_cert_context(
-    struct aws_allocator *alloc,
-    struct aws_byte_buf *pkcs12_buffer,
-    PCCERT_CONTEXT *certs) {
-    (void)alloc;
-    (void)pkcs12_buffer;
-    (void)certs;
-    HCERTSTORE cert_store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
-
-    if (!cert_store) {
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 #endif /* _WIN32 */
