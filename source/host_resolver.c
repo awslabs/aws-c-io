@@ -95,7 +95,7 @@ void aws_host_address_to_endpoint_options(
             break;
     }
 
-    assert(sizeof(endpoint->address) <= address->address->len + 1);
+    assert(sizeof(endpoint->address) >= address->address->len + 1);
 
 #if defined(_MSC_VER)
 #    pragma warning(push)
