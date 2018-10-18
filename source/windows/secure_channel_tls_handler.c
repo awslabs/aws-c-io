@@ -1246,7 +1246,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .process_write_message = s_process_write_message,
     .shutdown = s_handler_shutdown,
     .increment_read_window = s_increment_read_window,
-    .initial_window_size = s_get_current_window_size,
+    .initial_window_size = s_initial_window_size,
 };
 
 static struct aws_channel_handler *s_tls_handler_new(struct aws_allocator *alloc, struct aws_tls_ctx *ctx,
