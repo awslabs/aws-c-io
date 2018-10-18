@@ -1093,7 +1093,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     return AWS_OP_SUCCESS;
 }
 
-static size_t s_get_current_window_size(struct aws_channel_handler *handler) {
+static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
     /* set this to just enough for the handshake, once the handshake completes, the downstream

@@ -26,9 +26,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
+#define EST_TLS_RECORD_OVERHEAD  53 /* 5 byte header + 32 + 16 bytes for padding */
+#define KB_1  1024
+#define MAX_RECORD_SIZE (KB_1 * 16)
+#define EST_HANDSHAKE_SIZE  (7 * KB_1)
+
 
 struct s2n_handler {
+    struct aws_channel_handler handler;
     struct s2n_connection *connection;
     struct aws_channel_slot *slot;
     struct aws_linked_list input_queue;
@@ -42,6 +47,7 @@ struct s2n_handler {
 };
 
 struct s2n_ctx {
+    struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
 };
 
@@ -157,7 +163,6 @@ static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
         s2n_connection_free(s2n_handler->connection);
         aws_mem_release(handler->alloc, (void *)s2n_handler);
-        aws_mem_release(handler->alloc, (void *)handler);
     }
 }
 
@@ -294,7 +299,15 @@ static int s_s2n_handler_process_read_message(
             outgoing_read_message->message_data.capacity,
             &blocked);
 
-        if (read <= 0) {
+        /* weird race where we received an alert from the peer, but s2n doesn't tell us about it.....
+         * if this happens, it's a graceful shutdown, so kick it off here. */
+        if (read == 0) {
+            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            return AWS_OP_SUCCESS;
+        }
+
+        if (read < 0) {
             aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
             continue;
         };
@@ -382,9 +395,18 @@ static int s_s2n_handler_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-    aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
-
+    (void)size;
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+
+    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+    size_t current_window_size = slot->window_size;
+
+    if (downstream_size <= current_window_size) {
+        size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
+        size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
+        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+        aws_channel_slot_increment_read_window(slot, window_update_size);
+    }
 
     if (s2n_handler->negotiation_finished) {
         /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
@@ -398,13 +420,10 @@ static int s_s2n_handler_increment_read_window(
     return AWS_OP_SUCCESS;
 }
 
-static size_t s_s2n_handler_get_current_window_size(struct aws_channel_handler *handler) {
+static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
-    /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
-     * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
-     * with it large, and then take the downstream window when it notifies us.*/
-    return SIZE_MAX;
+    return EST_HANDSHAKE_SIZE;
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
@@ -423,7 +442,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .process_write_message = s_s2n_handler_process_write_message,
     .shutdown = s_s2n_handler_shutdown,
     .increment_read_window = s_s2n_handler_increment_read_window,
-    .initial_window_size = s_s2n_handler_get_current_window_size,
+    .initial_window_size = s_s2n_handler_initial_window_size,
 };
 
 static int s_parse_protocol_preferences(
@@ -466,23 +485,17 @@ static int s_parse_protocol_preferences(
     return AWS_OP_SUCCESS;
 }
 
-struct aws_channel_handler *s_new_tls_handler(
+static struct aws_channel_handler *s_new_tls_handler(
     struct aws_allocator *allocator,
     struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     s2n_mode mode) {
-    struct aws_channel_handler *handler =
-        (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
-
-    if (!handler) {
-        return NULL;
-    }
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)aws_mem_acquire(allocator, sizeof(struct s2n_handler));
 
     if (!s2n_handler) {
-        goto cleanup_handler;
+        return NULL;
     }
 
     AWS_ZERO_STRUCT(*s2n_handler);
@@ -493,9 +506,9 @@ struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_s2n_handler;
     }
 
-    handler->impl = s2n_handler;
-    handler->alloc = allocator;
-    handler->vtable = s_handler_vtable;
+    s2n_handler->handler.impl = s2n_handler;
+    s2n_handler->handler.alloc = allocator;
+    s2n_handler->handler.vtable = s_handler_vtable;
 
     s2n_handler->options = *options;
     s2n_handler->latest_message_completion_user_data = NULL;
@@ -548,16 +561,13 @@ struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_conn;
     }
 
-    return handler;
+    return &s2n_handler->handler;
 
 cleanup_conn:
     s2n_connection_free(s2n_handler->connection);
 
 cleanup_s2n_handler:
     aws_mem_release(allocator, s2n_handler);
-
-cleanup_handler:
-    aws_mem_release(allocator, handler);
 
     return NULL;
 }
@@ -581,38 +591,48 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-    struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)ctx->impl;
+    struct s2n_ctx *s2n_ctx = ctx->impl;
 
     if (s2n_ctx) {
         s2n_config_free(s2n_ctx->s2n_config);
-        aws_mem_release(ctx->alloc, (void *)s2n_ctx);
+        aws_mem_release(ctx->alloc, s2n_ctx);
     }
-
-    aws_mem_release(ctx->alloc, ctx);
 }
 
-struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, s2n_mode mode) {
-    struct aws_tls_ctx *ctx = (struct aws_tls_ctx *)aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
-
-    if (!ctx) {
-        return NULL;
-    }
-
+static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, s2n_mode mode) {
     struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)aws_mem_acquire(alloc, sizeof(struct s2n_ctx));
 
     if (!s2n_ctx) {
-        goto cleanup_ctx;
+        return NULL;
     }
 
-    ctx->alloc = alloc;
-    ctx->impl = s2n_ctx;
+    s2n_ctx->ctx.alloc = alloc;
+    s2n_ctx->ctx.impl = s2n_ctx;
     s2n_ctx->s2n_config = s2n_config_new();
 
     if (!s2n_ctx->s2n_config) {
         goto cleanup_s2n_ctx;
     }
 
-    s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
+    switch(options->minimum_tls_version) {
+        case AWS_IO_SSLv3:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
+            break;
+        case AWS_IO_TLSv1:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2016");
+            break;
+        case AWS_IO_TLSv1_1:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-1-2016");
+            break;
+        case AWS_IO_TLSv1_2:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-2-2018");
+            break;
+        case AWS_IO_TLSv1_3:
+            /* sorry guys, we'll add this as soon as s2n does. */
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+        default:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
+    }
 
     if (options->certificate_path && options->private_key_path) {
 
@@ -664,7 +684,7 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
-    } else {
+    } else if (mode != S2N_SERVER) {
         if (s2n_config_disable_x509_verification(s2n_ctx->s2n_config)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
@@ -692,7 +712,7 @@ struct aws_tls_ctx *aws_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_
         }
     }
 
-    return ctx;
+    return &s2n_ctx->ctx;
 
 cleanup_s2n_config:
     s2n_config_free(s2n_ctx->s2n_config);
@@ -700,16 +720,13 @@ cleanup_s2n_config:
 cleanup_s2n_ctx:
     aws_mem_release(alloc, s2n_ctx);
 
-cleanup_ctx:
-    aws_mem_release(alloc, ctx);
-
     return NULL;
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    return aws_tls_ctx_new(alloc, options, S2N_SERVER);
+    return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    return aws_tls_ctx_new(alloc, options, S2N_CLIENT);
+    return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }

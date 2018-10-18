@@ -17,7 +17,7 @@
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options) {
     AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLSv1_1;
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->verify_peer = true;
 }
 
@@ -26,7 +26,7 @@ void aws_tls_ctx_options_init_client_mtls(
     const char *cert_path,
     const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLSv1_1;
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->verify_peer = true;
     options->certificate_path = cert_path;
     options->private_key_path = pkey_path;
@@ -37,7 +37,7 @@ void aws_tls_ctx_options_init_client_mtls_pkcs12(
     const char *pkcs12_path,
     const char *pkcs_pwd) {
     AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLSv1_1;
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->verify_peer = true;
     options->pkcs12_path = pkcs12_path;
     options->pkcs12_password = pkcs_pwd;
@@ -48,7 +48,7 @@ void aws_tls_ctx_options_init_default_server(
     const char *cert_path,
     const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLSv1_1;
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->verify_peer = false;
     options->certificate_path = cert_path;
     options->private_key_path = pkey_path;
@@ -59,7 +59,7 @@ void aws_tls_ctx_options_init_server_pkcs12(
     const char *pkcs12_path,
     const char *pkcs_pwd) {
     AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLSv1_1;
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->verify_peer = false;
     options->pkcs12_path = pkcs12_path;
     options->pkcs12_password = pkcs_pwd;
