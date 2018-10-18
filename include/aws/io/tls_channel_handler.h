@@ -25,7 +25,8 @@ typedef enum aws_tls_versions {
     AWS_IO_TLSv1,
     AWS_IO_TLSv1_1,
     AWS_IO_TLSv1_2,
-    AWS_IO_TLSv1_3
+    AWS_IO_TLSv1_3,
+    AWS_IO_TLS_VER_SYS_DEFAULTS = 128,
 } aws_tls_versions;
 
 struct aws_tls_ctx {
@@ -53,25 +54,95 @@ typedef void(aws_tls_on_error_fn)(
     void *user_data);
 
 struct aws_tls_connection_options {
+    /** semi-colon delimited list of protocols. Example:
+     *  h2;http/1.1 
+     */
     const char *alpn_list;
+    /**
+     * Serves two purposes. If SNI is supported (hint... it is),
+     * this sets the SNI extension. 
+     *
+     * For X.509 validation this also sets the name that will be used
+     * for verifying the subj alt name and common name of the peer's certificate.
+     */
     const char *server_name;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
     void *user_data;
+    /**
+     * default is true for clients and false for servers. 
+     * You should not change this default for clients unless
+     * you're testing and don't want to fool around with CA trust stores.
+     * Before you release to production, you'll want to turn this back on
+     * and add your custom CA to the aws_tls_ctx_options. 
+     *
+     * If you set this in server mode, it enforces client authentication.
+     */
     bool verify_peer;
     bool advertise_alpn_message;
 };
 
 struct aws_tls_ctx_options {
+    /** minium tls version to use. If you just want us to use the
+     *  system defaults, you can set: AWS_IO_TLS_VER_SYS_DEFAULTS. This
+     *  has the added benefit of automatically picking up new TLS versions
+     *  as your OS or distribution adds support. 
+     */
     aws_tls_versions minimum_tls_version;
+    /**
+     * A PEM armored PKCS#7 collection of CAs you want to trust. Only
+     * use this if it's a CA not currently installed on your system.
+     */
     const char *ca_file;
+    /**
+     * Only used on Unix systems using an openssl style trust API.
+     * this is typically something like /etc/pki/tls/certs/"
+     */
     const char *ca_path;
+    /**
+     * Sets ctx wide alpn string. This is most usefull for servers.
+     * This is a semi-colon delimited list. example:
+     * h2;http/1.1
+     */
     const char *alpn_list;
+    /**
+     * This is the path to PEM armored PKCS#7
+     * certificate file. It is supported on every
+     * operating system.
+     *
+     * Also, on windows, this can be the path to a system
+     * installed certficate/private key pair. Example:
+     * CurrentUser\\MY\\<thumprint>
+     */
     const char *certificate_path;
+    /**
+     * The path to a PEM armored PKCS#7 private key.
+     *
+     * On windows, this field should be NULL only if you are 
+     * using a system installed certficate.
+     */
     const char *private_key_path;
+    /**
+     * Apple Only!
+     *
+     * On Apple OS you can also use a pkcs#12 file for your certificate
+     * and private key. This is the path to that file.
+     */
     const char *pkcs12_path;
+    /**
+     * Password for the pkcs12 file in pkcs12_path.
+     */
     const char *pkcs12_password;
+    /**
+     * default is true for clients and false for servers. 
+     * You should not change this default for clients unless
+     * you're testing and don't want to fool around with CA trust stores.
+     * Before you release to production, you'll want to turn this back on
+     * and add your custom CA to the aws_tls_ctx_options. 
+     *
+     * If you set this in server mode, it enforces client authentication.
+     */
     bool verify_peer;
 };
 

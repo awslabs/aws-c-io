@@ -50,6 +50,7 @@ void aws_tls_clean_up_tl_state(void) {}
 void aws_tls_clean_up_static_state(void) {}
 
 struct secure_channel_ctx {
+    struct aws_tls_ctx ctx;
     struct aws_tls_ctx_options options;
     SCHANNEL_CRED credentials;
     PCERT_CONTEXT pcerts;
@@ -58,6 +59,7 @@ struct secure_channel_ctx {
 };
 
 struct secure_channel_handler {
+    struct aws_channel_handler handler;
     CtxtHandle sec_handle;
     CredHandle creds;
     PCCERT_CONTEXT cert_context[1];
@@ -86,28 +88,31 @@ bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-    /* come back to this later
-    OSVERSIONINFOEXA os_version = { sizeof(os_version), 0, 0, 0, 0, {0}, 0, 0 };
-    DWORDLONG const condition_mask = VerSetConditionMask(
-        VerSetConditionMask(
-            VerSetConditionMask(0, VER_MAJORVERSION, VER_GREATER_EQUAL),
-            VER_MINORVERSION, VER_GREATER_EQUAL),
-        VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
+    /* make sure we're on windows 8.1 or later. */
+    OSVERSIONINFOEX os_version;
+    DWORDLONG condition_mask = 0;
+    VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMINOR, VER_GREATER_EQUAL);
 
+    AWS_ZERO_STRUCT(os_version);
     os_version.dwMajorVersion = HIBYTE(_WIN32_WINNT_WIN8);
     os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
-    os_version.wServicePackMajor = 1;
-    return VerifyVersionInfoA(&os_version, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR, condition_mask);
-    */
-    return true;
+    os_version.wServicePackMajor = 0;
+    os_version.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    return VerifyVersionInfo(&os_version, VER_MAJORVERSION | VER_MINORVERSION 
+        | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR, condition_mask);   
 #else
     return false;
 #endif /*SECBUFFER_APPLICATION_PROTOCOLS */
 }
 
+/* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
+    /* get the peer's certificate so we can validated it.*/
     CERT_CONTEXT *peer_certificate = NULL;
     SECURITY_STATUS status =
         QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &peer_certificate);
@@ -116,6 +121,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         return AWS_OP_ERR;
     }
 
+    /* this next bit scours the custom trust store to try and load a chain to verify
+       the leaf certificate against. */
     CERT_CHAIN_ENGINE_CONFIG engine_config;
     AWS_ZERO_STRUCT(engine_config);
     engine_config.cbSize = sizeof(engine_config);
@@ -147,6 +154,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         return AWS_OP_ERR;
     }
 
+    /* if the chain was trusted, then we're good to go, if it was not
+       we bail out. */
     CERT_SIMPLE_CHAIN *simple_chain = cert_chain_ctx->rgpChain[0];
     DWORD trust_mask = ~(DWORD)CERT_TRUST_IS_NOT_TIME_NESTED;
     trust_mask &= simple_chain->TrustStatus.dwErrorStatus;
@@ -169,6 +178,7 @@ static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int 
 static void s_on_negotiation_success(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
+    /* if the user provided an ALPN handler to the channel, we need to let them know what their protocol is. */
     if (sc_handler->slot->adj_right && sc_handler->options.advertise_alpn_message && sc_handler->protocol.len) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             sc_handler->slot->channel,
@@ -214,13 +224,19 @@ static int s_determine_sspi_error(int sspi_status) {
     }
 }
 
+#define CHECK_ALPN_BUFFER_SIZE(s, i, b) if (s <= i) {                                        \
+                                             aws_array_list_clean_up(&b);                    \
+                                             return aws_raise_error(AWS_ERROR_SHORT_BUFFER); \
+                                        }                                                    \
+
+/* construct ALPN extension data... apparently this works on big-endian machines? but I don't beleive the docs
+   if you're running ARM and you find ALPN isn't working, it's probably because I trusted the documentation
+   and your bug is in here. */
 static int s_fillin_alpn_data(
     struct aws_channel_handler *handler,
     unsigned char *alpn_buffer_data,
     size_t buffer_size,
     size_t *written) {
-    /* come back and do bounds checking on this later. */
-    (void)buffer_size;
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -235,12 +251,16 @@ static int s_fillin_alpn_data(
     size_t protocols_count = aws_array_list_length(&alpn_buffers);
 
     size_t index = 0;
+    CHECK_ALPN_BUFFER_SIZE(buffer_size, index + sizeof(uint32_t), alpn_buffers)
     uint32_t *extension_length = (uint32_t *)&alpn_buffer_data[index];
     index += sizeof(uint32_t);
+    CHECK_ALPN_BUFFER_SIZE(buffer_size, index + sizeof(uint32_t), alpn_buffers)
     uint32_t *extension_name = (uint32_t *)&alpn_buffer_data[index];
     index += sizeof(uint32_t);
+    CHECK_ALPN_BUFFER_SIZE(buffer_size, index + sizeof(uint32_t), alpn_buffers)
     uint16_t *protocols_byte_length = (uint16_t *)&alpn_buffer_data[index];
     index += sizeof(uint16_t);
+    CHECK_ALPN_BUFFER_SIZE(buffer_size, index + sizeof(uint16_t), alpn_buffers)
 
     *extension_length += sizeof(uint32_t) + sizeof(uint16_t);
 
@@ -252,7 +272,9 @@ static int s_fillin_alpn_data(
         assert(protocol_ptr);
         *extension_length += (uint32_t)protocol_ptr->len + 1;
         *protocols_byte_length += (uint16_t)protocol_ptr->len + 1;
+        CHECK_ALPN_BUFFER_SIZE(buffer_size, index + 1, alpn_buffers)
         alpn_buffer_data[index++] = (unsigned char)protocol_ptr->len;
+        CHECK_ALPN_BUFFER_SIZE(buffer_size, index + protocol_ptr->len, alpn_buffers)
         memcpy(alpn_buffer_data + index, protocol_ptr->ptr, protocol_ptr->len);
         index += protocol_ptr->len;
     }
@@ -271,6 +293,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler);
 
 static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handler);
 
+/** invoked during the first step of the server's negotiation. It receives the client hello,
+    adds its alpn data if available, and if everything is good, sends out the server hello. */
 static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -325,6 +349,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         .pBuffers = &output_buffer,
     };
 
+    /* process the client hello. */
     SECURITY_STATUS status = AcceptSecurityContext(
         &sc_handler->creds,
         NULL,
@@ -345,6 +370,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
     size_t data_to_write_len = output_buffer.cbBuffer;
 
+    /* send the server hello. */
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
     if (!outgoing_message) {
@@ -369,6 +395,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     return AWS_OP_SUCCESS;
 }
 
+/* cipher change, key exchange, mutual TLS stuff. */
 static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -462,10 +489,21 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_E_OK) {
+        /* if a custom CA store was configured, we have to do the verification ourselves. */
+        if (sc_handler->custom_ca_store) {
+            if (s_manually_verify_peer_cert(handler)) {
+                aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+        }
         /* do all the negotiation completion callbacks here. also, invoke it in a task so that we don't have a race
         in the next section where we handle any left over data recieved from the server. */
         sc_handler->negotiation_finished = true;
 
+        /*
+           grab the negotiated protocol out of the session.
+        */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
         if (sc_handler->options.alpn_list) {
             SecPkgContext_ApplicationProtocol alpn_result;
@@ -493,6 +531,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
 static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handler);
 
+/* send the client hello */
 static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -511,6 +550,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     SecBufferDesc *alpn_sspi_data = NULL;
 
+    /* add alpn data to the client hello if it's supported. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->options.alpn_list && aws_tls_is_alpn_available()) {
         size_t extension_length = 0;
@@ -589,6 +629,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     return AWS_OP_SUCCESS;
 }
 
+/* cipher exchange, key exchange etc.... */
 static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     SecBuffer input_buffers[] = {
@@ -686,6 +727,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_E_OK) {
+        /* if a custom CA store was configured, we have to do the verification ourselves. */
         if (sc_handler->custom_ca_store) {
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -801,6 +843,10 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                 sc_handler->buffered_read_out_data_buf.len - copy_size);
             sc_handler->buffered_read_out_data_buf.len -= copy_size;
 
+            if (sc_handler->options.on_data_read) {
+                sc_handler->options.on_data_read(handler, sc_handler->slot,
+                    &read_out_msg->message_data, sc_handler->options.user_data);
+            }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(sc_handler->slot->channel, read_out_msg);
                 return AWS_OP_ERR;
@@ -808,7 +854,10 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
 
             downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
         } else {
-            /* TODO: invoke the on read callback here.*/
+            if (sc_handler->options.on_data_read) {
+                sc_handler->options.on_data_read(handler, sc_handler->slot, 
+                    &sc_handler->buffered_read_out_data_buf, sc_handler->options.user_data);
+            }
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
@@ -1029,8 +1078,9 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     size_t current_window_size = slot->window_size;
 
     if (downstream_size <= current_window_size) {
-        size_t window_update_size = (downstream_size - current_window_size) + sc_handler->stream_sizes.cbHeader +
-                                    sc_handler->stream_sizes.cbTrailer;
+        size_t likely_records_count = (downstream_size - current_window_size) % READ_IN_SIZE;
+        size_t offset_size = likely_records_count * (sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
+        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
@@ -1160,7 +1210,6 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
     }
 
     aws_mem_release(handler->alloc, sc_handler);
-    aws_mem_release(handler->alloc, handler);
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
@@ -1200,38 +1249,32 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .initial_window_size = s_get_current_window_size,
 };
 
-struct aws_channel_handler *aws_tls_client_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
+static struct aws_channel_handler *s_tls_handler_new(struct aws_allocator *alloc, struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot) {
+    struct aws_channel_slot *slot, bool is_client_mode) {
 
-    struct secure_channel_handler *sc_handler = aws_mem_acquire(allocator, sizeof(struct secure_channel_handler));
+    struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
 
     if (!sc_handler) {
         return NULL;
     }
 
-    struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
-
-    if (!handler) {
-        aws_mem_release(allocator, sc_handler);
-        return NULL;
-    }
-
     AWS_ZERO_STRUCT(*sc_handler);
-    AWS_ZERO_STRUCT(*handler);
-
-    handler->alloc = allocator;
-    handler->impl = sc_handler;
-    handler->vtable = s_handler_vtable;
+    sc_handler->handler.alloc = alloc;
+    sc_handler->handler.impl = sc_handler;
+    sc_handler->handler.vtable = s_handler_vtable;
 
     struct secure_channel_ctx *sc_ctx = ctx->impl;
+
+    unsigned long credential_use = SECPKG_CRED_INBOUND;
+    if (is_client_mode) {
+        credential_use = SECPKG_CRED_OUTBOUND;
+    }
 
     SECURITY_STATUS status = AcquireCredentialsHandleA(
         NULL,
         UNISP_NAME,
-        SECPKG_CRED_OUTBOUND,
+        credential_use,
         NULL,
         &sc_ctx->credentials,
         NULL,
@@ -1245,9 +1288,18 @@ struct aws_channel_handler *aws_tls_client_handler_new(
         sc_handler->options.alpn_list = sc_ctx->options.alpn_list;
     }
 
-    sc_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
+    if (options->server_name) {
+        sc_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
+    }
+
     sc_handler->slot = slot;
-    sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_1;
+
+    if (is_client_mode) {
+        sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_1;
+    } else {
+        sc_handler->s_connection_state_fn = s_do_server_side_negotiation_step_1;
+    }
+
     sc_handler->custom_ca_store = sc_ctx->custom_trust_store;
     sc_handler->buffered_read_in_data_buf =
         aws_byte_buf_from_array(sc_handler->buffered_read_in_data, sizeof(sc_handler->buffered_read_in_data));
@@ -1256,7 +1308,15 @@ struct aws_channel_handler *aws_tls_client_handler_new(
         aws_byte_buf_from_array(sc_handler->buffered_read_out_data, sizeof(sc_handler->buffered_read_out_data));
     sc_handler->buffered_read_out_data_buf.len = 0;
 
-    return handler;
+    return &sc_handler->handler;
+}
+struct aws_channel_handler *aws_tls_client_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_ctx *ctx,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot) {
+
+    return s_tls_handler_new(allocator, ctx, options, slot, true);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
@@ -1265,56 +1325,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    struct secure_channel_handler *sc_handler = aws_mem_acquire(allocator, sizeof(struct secure_channel_handler));
-
-    if (!sc_handler) {
-        return NULL;
-    }
-
-    struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
-
-    if (!handler) {
-        aws_mem_release(allocator, sc_handler);
-        return NULL;
-    }
-
-    AWS_ZERO_STRUCT(*sc_handler);
-    AWS_ZERO_STRUCT(*handler);
-
-    handler->alloc = allocator;
-    handler->impl = sc_handler;
-    handler->vtable = s_handler_vtable;
-
-    struct secure_channel_ctx *sc_ctx = ctx->impl;
-
-    SECURITY_STATUS status = AcquireCredentialsHandleA(
-        NULL,
-        UNISP_NAME,
-        SECPKG_CRED_INBOUND,
-        NULL,
-        &sc_ctx->credentials,
-        NULL,
-        NULL,
-        &sc_handler->creds,
-        &sc_handler->sspi_timestamp);
-    (void)status;
-    sc_handler->options = *options;
-
-    if (!sc_handler->options.alpn_list) {
-        sc_handler->options.alpn_list = sc_ctx->options.alpn_list;
-    }
-
-    sc_handler->slot = slot;
-    sc_handler->s_connection_state_fn = s_do_server_side_negotiation_step_1;
-    sc_handler->buffered_read_in_data_buf =
-        aws_byte_buf_from_array(sc_handler->buffered_read_in_data, sizeof(sc_handler->buffered_read_in_data));
-    sc_handler->buffered_read_in_data_buf.len = 0;
-
-    sc_handler->buffered_read_out_data_buf =
-        aws_byte_buf_from_array(sc_handler->buffered_read_out_data, sizeof(sc_handler->buffered_read_out_data));
-    sc_handler->buffered_read_out_data_buf.len = 0;
-
-    return handler;
+    return s_tls_handler_new(allocator, ctx, options, slot, false);
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
@@ -1333,33 +1344,111 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     }
 
     aws_mem_release(ctx->alloc, secure_channel_ctx);
-    aws_mem_release(ctx->alloc, ctx);
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    struct aws_tls_ctx *tls_ctx = aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
-
-    if (!tls_ctx) {
-        return NULL;
-    }
-
+struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, bool is_client_mode) {
     struct secure_channel_ctx *secure_channel_ctx = aws_mem_acquire(alloc, sizeof(struct secure_channel_ctx));
 
     if (!secure_channel_ctx) {
-        aws_mem_release(alloc, tls_ctx);
         return NULL;
     }
 
     AWS_ZERO_STRUCT(*secure_channel_ctx);
     secure_channel_ctx->options = *options;
     secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
-    // secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
-    secure_channel_ctx->credentials.grbitEnabledProtocols =
-        SP_PROT_TLS1_0_SERVER | SP_PROT_TLS1_1_SERVER | SP_PROT_TLS1_2_SERVER;
-    tls_ctx->alloc = alloc;
-    tls_ctx->impl = secure_channel_ctx;
 
-    if (options->certificate_path && options->private_key_path) {
+    secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
+
+    if (is_client_mode) {
+        switch (options->minimum_tls_version) {
+        case AWS_IO_SSLv3:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+        case AWS_IO_TLSv1:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
+        case AWS_IO_TLSv1_1:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
+        case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+        case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_3_CLIENT)
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
+#endif
+            break;
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
+            break;
+        }
+    }
+    else {
+        switch (options->minimum_tls_version) {
+        case AWS_IO_SSLv3:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+        case AWS_IO_TLSv1:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
+        case AWS_IO_TLSv1_1:
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
+        case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_SERVER)
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+        case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_3_SERVER)
+            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
+#endif
+            break;
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
+            break;
+        }
+    }
+       
+    secure_channel_ctx->ctx.alloc = alloc;
+    secure_channel_ctx->ctx.impl = secure_channel_ctx;
+
+    if (options->verify_peer && options->ca_file) {
+        secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
+
+        struct aws_byte_buf ca_blob;
+
+        if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
+            goto clean_up;
+        }
+
+        int error = aws_import_trusted_certificates(alloc, &ca_blob, &secure_channel_ctx->custom_trust_store);
+
+        aws_secure_zero(ca_blob.buffer, ca_blob.len);
+        aws_byte_buf_clean_up(&ca_blob);
+
+        if (error) {
+            goto clean_up;
+        }
+    }
+    else if (is_client_mode) {
+        secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
+    }
+
+    if (is_client_mode && !options->verify_peer) {
+        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
+            SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
+            SCH_CRED_MANUAL_CRED_VALIDATION;
+    }
+    else if (is_client_mode) {
+        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN;
+    }
+
+    /* if using a system store. */
+    if (options->certificate_path && !options->private_key_path) {
+        if (aws_load_cert_from_system_cert_store(options->certificate_path,
+            &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts)) {
+            goto clean_up;
+        }
+
+        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
+        secure_channel_ctx->credentials.cCreds = 1;
+        /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
+    } else if (options->certificate_path && options->private_key_path) {
         struct aws_byte_buf certificate_chain, private_key;
 
         if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
@@ -1387,98 +1476,21 @@ struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct a
         secure_channel_ctx->credentials.cCreds = 1;
     }
 
-    return tls_ctx;
+    return &secure_channel_ctx->ctx;
 
 clean_up:
+    if (secure_channel_ctx->custom_trust_store) {
+        aws_close_cert_store(secure_channel_ctx->custom_trust_store);
+    }
+
     aws_mem_release(alloc, secure_channel_ctx);
-    aws_mem_release(alloc, tls_ctx);
     return NULL;
 }
 
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+    return s_ctx_new(alloc, options, false);
+}
+
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    struct aws_tls_ctx *tls_ctx = aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
-
-    if (!tls_ctx) {
-        return NULL;
-    }
-
-    struct secure_channel_ctx *secure_channel_ctx = aws_mem_acquire(alloc, sizeof(struct secure_channel_ctx));
-
-    if (!secure_channel_ctx) {
-        aws_mem_release(alloc, tls_ctx);
-        return NULL;
-    }
-
-    AWS_ZERO_STRUCT(*secure_channel_ctx);
-    secure_channel_ctx->options = *options;
-
-    if (options->certificate_path && options->private_key_path) {
-        struct aws_byte_buf certificate_chain, private_key;
-
-        if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
-            goto clean_up;
-        }
-
-        if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
-            aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
-            aws_byte_buf_clean_up(&certificate_chain);
-            goto clean_up;
-        }
-
-        int error = aws_import_key_pair_to_cert_context(
-            alloc, &certificate_chain, &private_key, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
-
-        aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
-        aws_byte_buf_clean_up(&certificate_chain);
-        aws_secure_zero(private_key.buffer, private_key.len);
-        aws_byte_buf_clean_up(&private_key);
-
-        if (error) {
-            goto clean_up;
-        }
-
-        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials.cCreds = 1;
-    }
-
-    if (options->verify_peer && options->ca_file) {
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
-
-        struct aws_byte_buf ca_blob;
-
-        if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
-            goto clean_up;
-        }
-
-        int error = aws_import_trusted_certificates(alloc, &ca_blob, &secure_channel_ctx->custom_trust_store);
-
-        aws_secure_zero(ca_blob.buffer, ca_blob.len);
-        aws_byte_buf_clean_up(&ca_blob);
-
-        if (error) {
-            goto clean_up;
-        }
-    } else {
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
-    }
-
-    if (!options->verify_peer) {
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-                                                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-                                                   SCH_CRED_MANUAL_CRED_VALIDATION;
-    } else {
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN;
-    }
-
-    secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
-    secure_channel_ctx->credentials.grbitEnabledProtocols =
-        SP_PROT_TLS1_0_CLIENT | SP_PROT_TLS1_1_CLIENT | SP_PROT_TLS1_2_CLIENT;
-    tls_ctx->alloc = alloc;
-    tls_ctx->impl = secure_channel_ctx;
-    return tls_ctx;
-
-clean_up:
-    aws_mem_release(alloc, secure_channel_ctx);
-    aws_mem_release(alloc, tls_ctx);
-    return NULL;
+    return s_ctx_new(alloc, options, true);
 }

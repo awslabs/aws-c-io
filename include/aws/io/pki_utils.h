@@ -107,15 +107,11 @@ void aws_release_certificates(CFArrayRef certs);
 
 #ifdef _WIN32
 /**
- * Returns true if cert_path is a system path to a certificate stored on the machine.
- * If cert_store and certs are not NULL, and we were able to successfully load the certificate,
- * then cert_store and certs will be set to the certificate and store represented by cert_path.
+ * Returns AWS_OP_SUCCESS if we were able to successfully load the certificate and cert_store.
  *
- * This function will always return true if cert_path is a legitimate cert store. 
- * however, if we were unable to load the certificate, it will still return true, but the values
- * in cert_store and certs respectively will be NULL.
+ * Returns AWS_OP_ERR otherwise.
  */
-AWS_IO_API bool aws_is_system_cert_store(
+AWS_IO_API int aws_load_cert_from_system_cert_store(
     const char *cert_path,    
     HCERTSTORE *cert_store,
     PCCERT_CONTEXT *certs);
