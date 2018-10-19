@@ -126,7 +126,7 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
 
         if (!message) {
             errno = ENOMEM;
-            return AWS_OP_ERR;
+            return -1;
         }
 
         struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
@@ -140,7 +140,11 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
             handler->latest_message_completion_user_data = NULL;
         }
 
-        aws_channel_slot_send_message(handler->slot, message, AWS_CHANNEL_DIR_WRITE);
+        if (aws_channel_slot_send_message(handler->slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            aws_channel_release_message_to_pool(handler->slot->channel, message);
+            errno = EPIPE;
+            return -1;
+        }
     }
 
     if (processed) {
