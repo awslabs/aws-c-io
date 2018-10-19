@@ -34,7 +34,7 @@ struct aws_socket_endpoint;
  * This function does NOT mean "success", if error_code is AWS_OP_SUCCESS then everything was successful, otherwise an
  * error condition occurred.
  */
-typedef int(aws_client_bootstrap_on_channel_setup_fn)(
+typedef void(aws_client_bootstrap_on_channel_setup_fn)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -47,7 +47,7 @@ typedef int(aws_client_bootstrap_on_channel_setup_fn)(
  * Note: this function is only invoked if the channel was successfully setup, e.g.
  * aws_client_bootstrap_on_channel_setup_fn() was invoked without an error code.
  */
-typedef int(aws_client_bootstrap_on_channel_shutdown_fn)(
+typedef void(aws_client_bootstrap_on_channel_shutdown_fn)(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -94,7 +94,7 @@ struct aws_server_bootstrap;
  * If an error occurred, you do not need to shutdown the channel. The `aws_channel_client_shutdown_callback` will be
  * invoked once the channel has finished shutting down.
  */
-typedef int(aws_server_bootstrap_on_accept_channel_setup_fn)(
+typedef void(aws_server_bootstrap_on_accept_channel_setup_fn)(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -107,7 +107,7 @@ typedef int(aws_server_bootstrap_on_accept_channel_setup_fn)(
  * Note: this function is only invoked if the channel was successfully setup,
  * e.g. aws_server_bootstrap_on_accept_channel_setup_fn() was invoked without an error code.
  */
-typedef int(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
+typedef void(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,

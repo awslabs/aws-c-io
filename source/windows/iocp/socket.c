@@ -822,11 +822,9 @@ static inline int s_tcp_connect(
 
         time_to_run +=
             aws_timestamp_convert(socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-    }
-    else {
+    } else {
         /*add 500 ms just in case we're under heavy load*/
-        time_to_run +=
-            aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        time_to_run += aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
     aws_event_loop_schedule_task_future(socket->event_loop, &connect_args->timeout_task, time_to_run);
@@ -982,7 +980,7 @@ static int s_local_connect(
         aws_event_loop_schedule_task_now(connect_loop, &socket_impl->read_io_data->sequential_task_storage);
         return AWS_OP_SUCCESS;
     }
- 
+
 error:
     socket->state = ERRORED;
     int win_error = GetLastError();
@@ -1060,7 +1058,7 @@ static inline int s_dgram_connect(
         socket_impl->read_io_data->sequential_task_storage.arg = socket_impl->read_io_data;
         socket_impl->read_io_data->in_use = true;
         aws_event_loop_schedule_task_now(connect_loop, &socket_impl->read_io_data->sequential_task_storage);
-    } 
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -1282,6 +1280,11 @@ static void s_incoming_pipe_connection_event(
         return;
     }
 
+    if (status_code == IO_OPERATION_CANCELLED) {
+        operation_data->in_use = false;
+        return;
+    }
+
     struct iocp_socket *socket_impl = socket->impl;
 
     if (status_code) {
@@ -1362,7 +1365,7 @@ static void s_incoming_pipe_connection_event(
             aws_mem_release(operation_data->allocator, operation_data);
             return;
         }
-       
+
         socket_impl->read_io_data->in_use = true;
         BOOL res = ConnectNamedPipe(socket->io_handle.data.handle, &socket_impl->read_io_data->signal.overlapped);
 
@@ -1376,10 +1379,9 @@ static void s_incoming_pipe_connection_event(
                 int aws_err = s_determine_socket_error(error_code);
                 socket_impl->vtable->connection_error(socket, aws_err);
                 return;
-            }
-            else if (error_code == ERROR_PIPE_CONNECTED) {
+            } else if (error_code == ERROR_PIPE_CONNECTED) {
                 continue_accept_loop = true;
-            }           
+            }
         }
     } while (continue_accept_loop && !socket_impl->stop_accept);
 }
@@ -1474,6 +1476,7 @@ static void s_tcp_accept_event(
     }
 
     if (status_code == IO_OPERATION_CANCELLED || status_code == WSAECONNRESET) {
+        operation_data->in_use = false;
         return;
     }
 
@@ -1657,10 +1660,10 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
         aws_socket_clean_up(socket_impl->incoming_socket);
         aws_mem_release(socket->allocator, socket_impl->incoming_socket);
         socket_impl->incoming_socket = NULL;
-    } else if (socket_impl->read_io_data) {
+    } /*else if (socket_impl->read_io_data) {
         socket_impl->read_io_data->socket = NULL;
         socket_impl->read_io_data = NULL;
-    }
+    }*/
 
     return AWS_OP_SUCCESS;
 }
@@ -1678,6 +1681,8 @@ static void s_named_pipe_is_ridiculus_task(struct aws_task *task, void *args, en
         io_data->sequential_task_storage.fn = NULL;
         io_data->sequential_task_storage.arg = NULL;
         s_incoming_pipe_connection_event(io_data->socket->event_loop, &io_data->signal, AWS_OP_SUCCESS, 0);
+    } else {
+        io_data->in_use = false;
     }
 }
 
@@ -1718,6 +1723,7 @@ static int s_local_start_accept(
     socket_impl->read_io_data->in_use = true;
 
     if (!socket->event_loop && aws_socket_assign_to_event_loop(socket, accept_loop)) {
+        socket_impl->read_io_data->in_use = false;
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1732,6 +1738,8 @@ static int s_local_start_accept(
             int aws_err = s_determine_socket_error(error_code);
             return aws_raise_error(aws_err);
         } else if (error_code == ERROR_PIPE_CONNECTED) {
+            /* There will be no IO-completion event in the case of ERROR_PIPE_CONNECTED,
+            so schedule a task to finish the connection */
             socket_impl->read_io_data->sequential_task_storage.fn = s_named_pipe_is_ridiculus_task;
             socket_impl->read_io_data->sequential_task_storage.arg = socket_impl->read_io_data;
             aws_event_loop_schedule_task_now(socket->event_loop, &socket_impl->read_io_data->sequential_task_storage);
@@ -1842,7 +1850,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
     if (socket->state != LISTENING) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
-         
+
     struct close_args args = {
         .mutex = AWS_MUTEX_INIT,
         .condition_var = AWS_CONDITION_VARIABLE_INIT,
@@ -1850,13 +1858,13 @@ static int s_wait_on_close(struct aws_socket *socket) {
         .ret_code = AWS_OP_SUCCESS,
     };
 
-    struct aws_task shutdown_task = {
+    struct aws_task close_task = {
         .fn = s_close_task,
         .arg = &args,
     };
 
     aws_mutex_lock(&args.mutex);
-    aws_event_loop_schedule_task_now(socket->event_loop, &shutdown_task);
+    aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
     aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_close_predicate, &args);
 
     if (args.ret_code) {
@@ -1886,6 +1894,9 @@ static int s_socket_close(struct aws_socket *socket) {
 
     if (socket_impl->read_io_data && socket_impl->read_io_data->in_use) {
         socket_impl->read_io_data->socket = NULL;
+        socket_impl->read_io_data = NULL;
+    } else if (socket_impl->read_io_data) {
+        aws_mem_release(socket->allocator, socket_impl->read_io_data);
         socket_impl->read_io_data = NULL;
     }
 
@@ -1924,6 +1935,9 @@ static int s_local_close(struct aws_socket *socket) {
 
     if (socket_impl->read_io_data && socket_impl->read_io_data->in_use) {
         socket_impl->read_io_data->socket = NULL;
+        socket_impl->read_io_data = NULL;
+    } else if (socket_impl->read_io_data) {
+        aws_mem_release(socket->allocator, socket_impl->read_io_data);
         socket_impl->read_io_data = NULL;
     }
 
@@ -2095,6 +2109,8 @@ static int s_stream_subscribe_to_read(
         int wsa_err = WSAGetLastError();
         if (wsa_err != ERROR_IO_PENDING) {
             iocp_socket->read_io_data->in_use = false;
+            socket->state &= ~CONNECTED_WAITING_ON_READABLE;
+
             int aws_error = s_determine_socket_error(wsa_err);
             if (aws_error == AWS_IO_SOCKET_CLOSED) {
                 socket->state = CLOSED;
@@ -2111,7 +2127,7 @@ static int s_dgram_subscribe_to_read(
     struct aws_socket *socket,
     aws_socket_on_readable_fn *on_readable,
     void *user_data) {
-    
+
     socket->readable_fn = on_readable;
     socket->readable_user_data = user_data;
 
@@ -2153,7 +2169,7 @@ static int s_dgram_subscribe_to_read(
     return AWS_OP_SUCCESS;
 }
 
-static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {    
+static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
     DWORD bytes_available = 0;
     BOOL peek_success = PeekNamedPipe(socket->io_handle.data.handle, NULL, 0, NULL, &bytes_available, NULL);
 
@@ -2360,7 +2376,7 @@ static void s_socket_written_event(
         aws_raise_error(aws_error_code);
     }
 
-    if (!socket) {        
+    if (!socket) {
         void *user_data = write_cb_args->user_data;
         aws_socket_on_write_completed_fn *callback = write_cb_args->user_callback;
         callback(NULL, aws_error_code, num_bytes_transferred, user_data);
@@ -2428,7 +2444,7 @@ int aws_socket_write(
 
     if (!res) {
         int error_code = GetLastError();
-        if (error_code != ERROR_IO_PENDING) {            
+        if (error_code != ERROR_IO_PENDING) {
             aws_linked_list_remove(&write_cb_data->io_data.node);
             aws_mem_release(socket->allocator, write_cb_data);
             int aws_error = s_determine_socket_error(error_code);
