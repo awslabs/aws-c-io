@@ -576,10 +576,10 @@ static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, 
     (void)status;
 
     struct handle_data *handle_data = user_data;
-
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
     impl->thread_data.connected_handle_count--;
+
     aws_mem_release(handle_data->event_loop->alloc, handle_data);
 }
 
@@ -754,12 +754,12 @@ static void s_event_thread_main(void *user_data) {
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
-            if (kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
+            if ((int)kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
                 should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */
                 uint32_t read_whatever;
-                while (read(kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
+                while (read((int)kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
                 }
 
                 continue;
