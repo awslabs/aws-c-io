@@ -22,7 +22,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 struct task_args {
-    int8_t invoked;
+    bool invoked;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
 };
@@ -33,7 +33,7 @@ static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_st
     struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
-    args->invoked += 1;
+    args->invoked = true;
     aws_condition_variable_notify_one(&args->condition_variable);
     aws_mutex_unlock((&args->mutex));
 }
@@ -54,7 +54,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -68,18 +68,18 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
     /* Test "now" tasks */
-    task_args.invoked = 0;
+    task_args.invoked = false;
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
     aws_event_loop_schedule_task_now(event_loop, &task);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
     aws_event_loop_destroy(event_loop);
@@ -897,7 +897,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -908,7 +908,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
 
     ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
     ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
@@ -916,10 +916,10 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
     aws_event_loop_schedule_task_now(event_loop, &task);
 
-    task_args.invoked = 0;
+    task_args.invoked = false;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
 
     aws_event_loop_destroy(event_loop);
 
