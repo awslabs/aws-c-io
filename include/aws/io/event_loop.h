@@ -79,9 +79,8 @@ struct aws_event_loop_vtable {
         int events,
         aws_event_loop_on_event_fn *on_event,
         void *user_data);
-
-    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #endif
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -132,40 +131,6 @@ void aws_overlapped_init(
 AWS_IO_API
 void aws_overlapped_reset(struct aws_overlapped *overlapped);
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
-
-/**
- * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
- * event loop.
- */
-AWS_IO_API
-int aws_event_loop_group_init(
-    struct aws_event_loop_group *el_group,
-    struct aws_allocator *alloc,
-    aws_io_clock_fn *clock,
-    uint16_t el_count,
-    aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data);
-
-/**
- * Initializes an event loop group with platform defaults. loop count will be the number of available processors on the
- * machine.
- */
-AWS_IO_API
-int aws_event_loop_group_default_init(struct aws_event_loop_group *el_group, struct aws_allocator *alloc);
-
-/**
- * Destroys each event loop in the event loop group and then cleans up resources.
- */
-AWS_IO_API
-void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
-
-/**
- * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
- * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
- * style.
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
@@ -314,6 +279,10 @@ int aws_event_loop_subscribe_to_io_events(
 /**
  * Unsubscribes handle from event-loop notifications.
  * This function is not thread safe and should be called inside the event-loop's thread.
+ *
+ * NOTE: if you are using io completion ports, this is a risky call. We use it in places, but only when we're certain
+ * there's no pending events. If you want to use it, it's your job to make sure you don't have pending events before
+ * calling it.
  */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
@@ -329,6 +298,50 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
+
+/**
+ * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
+ * event loop.
+ */
+AWS_IO_API
+int aws_event_loop_group_init(
+    struct aws_event_loop_group *el_group,
+    struct aws_allocator *alloc,
+    aws_io_clock_fn *clock,
+    uint16_t el_count,
+    aws_new_event_loop_fn *new_loop_fn,
+    void *new_loop_user_data);
+
+/**
+ * Initializes an event loop group with platform defaults. If max_threads == 0, then the
+ * loop count will be the number of available processors on the machine. Otherwise, max_threads
+ * will be the number of event loops in the group.
+ */
+AWS_IO_API
+int aws_event_loop_group_default_init(
+    struct aws_event_loop_group *el_group,
+    struct aws_allocator *alloc,
+    uint16_t max_threads);
+
+/**
+ * Destroys each event loop in the event loop group and then cleans up resources.
+ */
+AWS_IO_API
+void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
+
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
+
+AWS_IO_API
+size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group);
+
+/**
+ * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
+ * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
+ * style.
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
 #ifdef __cplusplus
 }

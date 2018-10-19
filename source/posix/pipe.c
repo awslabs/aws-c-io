@@ -301,6 +301,9 @@ static void s_read_end_on_event(
     int events,
     void *user_data) {
 
+    (void)event_loop;
+    (void)handle;
+
     /* Note that it should be impossible for this to run after read-end has been unsubscribed or cleaned up */
     struct aws_pipe_read_end *read_end = user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
@@ -484,6 +487,9 @@ static void s_write_end_on_event(
     struct aws_io_handle *handle,
     int events,
     void *user_data) {
+
+    (void)event_loop;
+    (void)handle;
 
     /* Note that it should be impossible for this to run after write-end has been unsubscribed or cleaned up */
     struct aws_pipe_write_end *write_end = user_data;

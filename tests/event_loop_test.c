@@ -22,7 +22,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 struct task_args {
-    int8_t invoked;
+    bool invoked;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
 };
@@ -33,7 +33,7 @@ static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_st
     struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
-    args->invoked += 1;
+    args->invoked = true;
     aws_condition_variable_notify_one(&args->condition_variable);
     aws_mutex_unlock((&args->mutex));
 }
@@ -54,7 +54,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -68,18 +68,18 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
     /* Test "now" tasks */
-    task_args.invoked = 0;
+    task_args.invoked = false;
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
     aws_event_loop_schedule_task_now(event_loop, &task);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
     aws_event_loop_destroy(event_loop);
@@ -897,7 +897,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = 0};
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -908,7 +908,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
 
     ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
     ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
@@ -916,10 +916,10 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
     aws_event_loop_schedule_task_now(event_loop, &task);
 
-    task_args.invoked = 0;
+    task_args.invoked = false;
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_INT_EQUALS(1, task_args.invoked);
+    ASSERT_TRUE(task_args.invoked);
 
     aws_event_loop_destroy(event_loop);
 
@@ -932,15 +932,15 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
     size_t cpu_count = aws_system_info_processor_count();
     size_t el_count = 1;
 
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     struct aws_event_loop *first_loop = event_loop;
 
-    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
@@ -948,7 +948,7 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     ASSERT_INT_EQUALS(cpu_count, el_count);
     el_count = 1;
     /* now do it again to make sure the counter turns over. */
-    while ((event_loop = aws_event_loop_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
@@ -965,17 +965,17 @@ static int test_event_loop_group_counter_overflow(struct aws_allocator *allocato
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
-    struct aws_event_loop *first_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *first_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(first_loop);
 
     /*this hurts my feelings to modify the internals of a struct to write a test, but it takes too long to
      * increment UINT32_MAX times. */
     event_loop_group.current_index = UINT32_MAX;
-    struct aws_event_loop *event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
-    event_loop = aws_event_loop_get_next_loop(&event_loop_group);
+    event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
     ASSERT_NOT_NULL(event_loop);
     ASSERT_PTR_EQUALS(first_loop, event_loop);
 

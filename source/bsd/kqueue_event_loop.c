@@ -754,12 +754,12 @@ static void s_event_thread_main(void *user_data) {
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
-            if (kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
+            if ((int)kevent->ident == impl->cross_thread_signal_pipe[READ_FD]) {
                 should_process_cross_thread_data = true;
 
                 /* Drain whatever data was written to the signaling pipe */
                 uint32_t read_whatever;
-                while (read(kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
+                while (read((int)kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
                 }
 
                 continue;
@@ -825,7 +825,7 @@ static void s_event_thread_main(void *user_data) {
 
             uint64_t timeout_remainder_ns = 0;
             uint64_t timeout_sec =
-                aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, &timeout_remainder_ns);
+                aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, &timeout_remainder_ns);
 
             if (timeout_sec > LONG_MAX) { /* Check for overflow. On Darwin, these values are stored as longs */
                 timeout_sec = LONG_MAX;

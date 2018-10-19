@@ -72,6 +72,11 @@ struct aws_io_message {
     size_t copy_mark;
 
     /**
+     * The channel that the message is bound to.
+     */
+    struct aws_channel *owning_channel;
+
+    /**
      * Invoked by the channel once the entire message has been written to the data sink.
      */
     aws_channel_on_message_write_completed_fn *on_completion;
@@ -93,6 +98,7 @@ enum aws_io_errors {
     AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
     AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
     AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
+    AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED,
     AWS_IO_SYS_CALL_FAILURE,
     AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
     AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
@@ -105,6 +111,7 @@ enum aws_io_errors {
     AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY,
     AWS_ERROR_IO_ALREADY_SUBSCRIBED,
     AWS_ERROR_IO_NOT_SUBSCRIBED,
+    AWS_ERROR_IO_OPERATION_CANCELLED,
     AWS_IO_READ_WOULD_BLOCK,
     AWS_IO_BROKEN_PIPE,
     AWS_IO_MAX_FDS_EXCEEDED,

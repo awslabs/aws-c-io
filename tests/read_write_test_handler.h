@@ -17,6 +17,8 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/task_scheduler.h>
+
 struct aws_byte_buf;
 struct aws_channel_handler;
 struct aws_channel_slot;
@@ -42,5 +44,16 @@ void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_cha
 bool rw_handler_shutdown_called(struct aws_channel_handler *handler);
 
 bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler);
+
+void rw_handler_trigger_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t window_update);
+
+void increment_read_window_task(void *arg, enum aws_task_status task_status);
+
+int rw_handler_last_error_code(struct aws_channel_handler *handler);
+
+int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler);
 
 #endif /* AWS_READ_WRITE_TEST_HANDLER */
