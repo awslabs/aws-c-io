@@ -39,12 +39,12 @@ enum aws_socket_type {
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
+    uint32_t connect_timeout_ms;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
      * If interval or timeout are zero, then default values are used. */
     uint16_t keep_alive_interval_sec;
     uint16_t keep_alive_timeout_sec;
-    uint32_t connect_timeout_ms;
     bool keepalive;
 };
 
