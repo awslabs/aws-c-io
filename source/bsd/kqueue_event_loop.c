@@ -759,7 +759,7 @@ static void s_event_thread_main(void *user_data) {
 
                 /* Drain whatever data was written to the signaling pipe */
                 uint32_t read_whatever;
-                while (read(kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
+                while (read((int)kevent->ident, &read_whatever, sizeof(read_whatever)) > 0) {
                 }
 
                 continue;

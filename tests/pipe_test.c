@@ -107,7 +107,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
 
         state->buffers.src.len = state->buffer_size;
         for (size_t i = 0; i < state->buffer_size; ++i) {
-            state->buffers.src.buffer[i] = rand() % 256;
+            state->buffers.src.buffer[i] = (uint8_t)(rand() % 256);
         }
 
         /* Create empty dst buffer, with zeroed out content */

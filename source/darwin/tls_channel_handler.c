@@ -14,6 +14,7 @@
  */
 #include <aws/common/encoding.h>
 #include <aws/common/task_scheduler.h>
+
 #include <aws/io/channel.h>
 #include <aws/io/tls_channel_handler.h>
 
@@ -27,6 +28,11 @@
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wunused-function"
+
+#define EST_TLS_RECORD_OVERHEAD  53 /* 5 byte header + 32 + 16 bytes for padding */
+#define KB_1  1024
+#define MAX_RECORD_SIZE (KB_1 * 16)
+#define EST_HANDSHAKE_SIZE  (7 * KB_1)
 
 /* I'm tired of trying to make SSLSetALPNFunc work, upgrade your operating system if you want ALPN support. */
 #if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) ||                                                       \
@@ -44,8 +50,6 @@ bool aws_tls_is_alpn_available(void) {
     return ALPN_AVAILABLE;
 }
 
-static const size_t EST_TLS_RECORD_OVERHEAD = 53; /* 5 byte header + 32 + 16 bytes for padding */
-
 void aws_tls_init_static_state(struct aws_allocator *alloc) { /* no op */
     (void)alloc;
 }
@@ -57,6 +61,7 @@ void aws_tls_clean_up_static_state(void) { /* no op */
 }
 
 struct secure_transport_handler {
+    struct aws_channel_handler handler;
     SSLContextRef ctx;
     CFAllocatorRef wrapped_allocator;
     struct aws_linked_list input_queue;
@@ -75,7 +80,7 @@ struct secure_transport_handler {
     bool verify_peer;
 };
 
-static OSStatus s_aws_tls_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
+static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
     struct secure_transport_handler *handler = (struct secure_transport_handler *)conn;
 
     size_t written = 0;
@@ -115,7 +120,7 @@ static OSStatus s_aws_tls_read_cb(SSLConnectionRef conn, void *data, size_t *len
     return errSSLWouldBlock;
 }
 
-static OSStatus s_aws_tls_write_cb(SSLConnectionRef conn, const void *data, size_t *len) {
+static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len) {
     struct secure_transport_handler *handler = (struct secure_transport_handler *)conn;
 
     struct aws_byte_buf buf = aws_byte_buf_from_array((const uint8_t *)data, *len);
@@ -142,6 +147,7 @@ static OSStatus s_aws_tls_write_cb(SSLConnectionRef conn, const void *data, size
 
         if (aws_channel_slot_send_message(handler->parent_slot, message, AWS_CHANNEL_DIR_WRITE)) {
             aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+            return errSSLClosedNoNotify;
         }
     }
 
@@ -153,17 +159,16 @@ static OSStatus s_aws_tls_write_cb(SSLConnectionRef conn, const void *data, size
     return errSSLWouldBlock;
 }
 
-static void s_secure_transport_handler_destroy(struct aws_channel_handler *handler) {
+static void s_destroy(struct aws_channel_handler *handler) {
     if (handler) {
-        struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+        struct secure_transport_handler *secure_transport_handler = handler->impl;
         CFRelease(secure_transport_handler->ctx);
 
         if (secure_transport_handler->protocol) {
             CFRelease(secure_transport_handler->protocol);
         }
 
-        aws_mem_release(handler->alloc, (void *)secure_transport_handler);
-        aws_mem_release(handler->alloc, (void *)handler);
+        aws_mem_release(handler->alloc, secure_transport_handler);
     }
 }
 
@@ -201,7 +206,8 @@ static void s_set_protocols(
     (void)handler;
     (void)alloc;
     (void)alpn_list;
-
+/* I have no idea if this code is correct, I can't test it until I have a machine with high-sierra on it
+ * but my employer hasn't pushed it out yet so.... sorry about that. */
 #if ALPN_AVAILABLE
     struct aws_byte_buf alpn_data = aws_byte_buf_from_c_str(alpn_list);
     struct aws_array_list alpn_list_array;
@@ -245,7 +251,7 @@ static void s_set_protocols(
 }
 
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (secure_transport_handler->options.on_negotiation_result) {
         secure_transport_handler->options.on_negotiation_result(
@@ -254,7 +260,7 @@ static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, i
 }
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
 
@@ -360,7 +366,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 }
 
 static void s_negotiation_task(struct aws_task *task, void *arg, aws_task_status status) {
-    struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
+    struct aws_channel_handler *handler = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         s_drive_negotiation(handler);
@@ -370,7 +376,7 @@ static void s_negotiation_task(struct aws_task *task, void *arg, aws_task_status
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (aws_channel_thread_is_callers_thread(secure_transport_handler->parent_slot->channel)) {
         return s_drive_negotiation(handler);
@@ -388,11 +394,11 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
     return AWS_OP_SUCCESS;
 }
 
-static int s_secure_transport_handler_process_write_message(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_io_message *message) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+static int s_process_write_message(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (AWS_UNLIKELY(!secure_transport_handler->negotiation_finished)) {
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
@@ -405,22 +411,22 @@ static int s_secure_transport_handler_process_write_message(
     OSStatus status =
         SSLWrite(secure_transport_handler->ctx, message->message_data.buffer, message->message_data.len, &processed);
 
-    aws_channel_release_message_to_pool(slot->channel, message);
-
     if (status != noErr) {
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
+    aws_channel_release_message_to_pool(slot->channel, message);
+
     return AWS_OP_SUCCESS;
 }
 
-static int s_secure_transport_handler_shutdown(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    enum aws_channel_direction dir,
-    int error_code,
-    bool abort_immediately) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+static int s_handle_shutdown(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        enum aws_channel_direction dir,
+        int error_code,
+        bool abort_immediately) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
         SSLClose(secure_transport_handler->ctx);
@@ -435,12 +441,12 @@ static int s_secure_transport_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-static int s_secure_transport_handler_process_read_message(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_io_message *message) {
+static int s_process_read_message(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message) {
 
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (message) {
         aws_linked_list_push_back(&secure_transport_handler->input_queue, &message->queueing_handle);
@@ -490,7 +496,10 @@ static int s_secure_transport_handler_process_read_message(
         }
 
         if (slot->adj_right) {
-            aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ);
+            if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
+                aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+                return AWS_OP_ERR;
+            }
         } else {
             aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
         }
@@ -502,68 +511,72 @@ static int s_secure_transport_handler_process_read_message(
 static void s_run_read(struct aws_task *task, void *arg, aws_task_status status) {
     (void)task;
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
-        struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+        struct aws_channel_handler *handler = arg;
+        struct secure_transport_handler *secure_transport_handler = handler->impl;
         secure_transport_handler->read_task_pending = false;
-        s_secure_transport_handler_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
+        s_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
     }
 }
 
-static int s_secure_transport_handler_on_window_update(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    size_t size) {
+static int s_increment_read_window(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        size_t size) {
     aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+
+    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+    size_t current_window_size = slot->window_size;
+
+    if (downstream_size <= current_window_size) {
+        size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
+        size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
+        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+        aws_channel_slot_increment_read_window(slot, window_update_size);
+    }
 
     if (secure_transport_handler->negotiation_finished) {
         /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
-         * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
+         * to read). Alternatively, tls needs entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
-        if (!secure_transport_handler->read_task_pending) {
-            secure_transport_handler->read_task_pending = true;
-            secure_transport_handler->read_task.fn = s_run_read;
-            secure_transport_handler->read_task.arg = handler;
-        }
-
+        secure_transport_handler->read_task_pending = true;
+        secure_transport_handler->read_task.fn = s_run_read;
+        secure_transport_handler->read_task.arg = handler;
         aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static size_t s_secure_transport_handler_get_current_window_size(struct aws_channel_handler *handler) {
+static size_t s_initial_window_size(struct aws_channel_handler* handler) {
     (void)handler;
-    /* This is going to end up getting reset as soon as an downstream handler is added to the channel, but
-     * we don't actually care about our window, we just want to honor the downstream handler's window. Start off
-     * with it large, and then take the downstream window when it notifies us.*/
-    return SIZE_MAX;
+    return EST_HANDSHAKE_SIZE;
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
     return aws_byte_buf_from_array(
         (uint8_t *)CFStringGetCStringPtr(secure_transport_handler->protocol, kCFStringEncodingUTF8),
         (size_t)CFStringGetLength(secure_transport_handler->protocol));
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
-    struct secure_transport_handler *secure_transport_handler = (struct secure_transport_handler *)handler->impl;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
     return secure_transport_handler->server_name;
 }
 
 static struct aws_channel_handler_vtable s_handler_vtable = {
-    .destroy = s_secure_transport_handler_destroy,
-    .process_read_message = s_secure_transport_handler_process_read_message,
-    .process_write_message = s_secure_transport_handler_process_write_message,
-    .shutdown = s_secure_transport_handler_shutdown,
-    .increment_read_window = s_secure_transport_handler_on_window_update,
-    .initial_window_size = s_secure_transport_handler_get_current_window_size,
+    .destroy = s_destroy,
+    .process_read_message = s_process_read_message,
+    .process_write_message = s_process_write_message,
+    .shutdown = s_handle_shutdown,
+    .increment_read_window = s_increment_read_window,
+    .initial_window_size = s_initial_window_size,
 };
 
 struct secure_transport_ctx {
-    struct aws_allocator *allocator;
+    struct aws_tls_ctx ctx;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     CFArrayRef ca_cert;
@@ -578,24 +591,19 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     SSLProtocolSide protocol_side) {
-    struct secure_transport_ctx *secure_transport_ctx = (struct secure_transport_ctx *)ctx->impl;
-    struct aws_channel_handler *channel_handler =
-        (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
-
-    if (!channel_handler) {
-        return NULL;
-    }
-
-    channel_handler->alloc = allocator;
+    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
 
     struct secure_transport_handler *secure_transport_handler =
         (struct secure_transport_handler *)aws_mem_acquire(allocator, sizeof(struct secure_transport_handler));
 
     if (!secure_transport_handler) {
-        goto cleanup_channel_handler;
+        return NULL;
     }
 
     AWS_ZERO_STRUCT(*secure_transport_handler);
+    secure_transport_handler->handler.alloc = allocator;
+    secure_transport_handler->handler.impl = secure_transport_handler;
+    secure_transport_handler->handler.vtable = s_handler_vtable;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
     secure_transport_handler->protocol = NULL;
     secure_transport_handler->ctx =
@@ -631,13 +639,15 @@ static struct aws_channel_handler *s_tls_handler_new(
             assert(0);
 #endif
             break;
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
         default:
-            /* you have to make a decision on this! It's important!!!! */
-            assert(0);
+            /* kSSLProtocolUnknown means use system defaults. */
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocolUnknown);
+
             break;
     }
 
-    if (SSLSetIOFuncs(secure_transport_handler->ctx, s_aws_tls_read_cb, s_aws_tls_write_cb) != noErr ||
+    if (SSLSetIOFuncs(secure_transport_handler->ctx, s_read_cb, s_write_cb) != noErr ||
         SSLSetConnection(secure_transport_handler->ctx, secure_transport_handler) != noErr) {
         /* TODO raise error here */
         goto cleanup_ssl_ctx;
@@ -690,18 +700,14 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     secure_transport_handler->options = *options;
 
-    channel_handler->impl = secure_transport_handler;
-    channel_handler->vtable = s_handler_vtable;
-    return channel_handler;
+
+    return &secure_transport_handler->handler;
 
 cleanup_ssl_ctx:
     CFRelease(secure_transport_handler->ctx);
 
 cleanup_st_handler:
-    aws_mem_release(allocator, (void *)secure_transport_handler);
-
-cleanup_channel_handler:
-    aws_mem_release(allocator, (void *)channel_handler);
+    aws_mem_release(allocator, secure_transport_handler);
 
     return NULL;
 }
@@ -723,17 +729,10 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    struct aws_tls_ctx *ctx = (struct aws_tls_ctx *)aws_mem_acquire(alloc, sizeof(struct aws_tls_ctx));
-
-    if (!ctx) {
-        return NULL;
-    }
-
-    struct secure_transport_ctx *secure_transport_ctx =
-        (struct secure_transport_ctx *)aws_mem_acquire(alloc, sizeof(struct secure_transport_ctx));
+    struct secure_transport_ctx *secure_transport_ctx = aws_mem_acquire(alloc, sizeof(struct secure_transport_ctx));
 
     if (!secure_transport_ctx) {
-        goto cleanup_ctx;
+        return NULL;
     }
 
     AWS_ZERO_STRUCT(*secure_transport_ctx);
@@ -748,18 +747,19 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
-    secure_transport_ctx->allocator = alloc;
+    secure_transport_ctx->ctx.alloc = alloc;
+    secure_transport_ctx->ctx.impl = secure_transport_ctx;
 
     if (options->certificate_path && options->private_key_path) {
 
         struct aws_byte_buf cert_chain;
         struct aws_byte_buf private_key;
 
-        if (aws_byte_buf_init_from_file(&cert_chain, secure_transport_ctx->allocator, options->certificate_path)) {
+        if (aws_byte_buf_init_from_file(&cert_chain, alloc, options->certificate_path)) {
             goto cleanup_wrapped_allocator;
         }
 
-        if (aws_byte_buf_init_from_file(&private_key, secure_transport_ctx->allocator, options->private_key_path)) {
+        if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
             aws_secure_zero(cert_chain.buffer, cert_chain.len);
             aws_byte_buf_clean_up(&cert_chain);
             goto cleanup_wrapped_allocator;
@@ -767,7 +767,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
 
         void *identity = NULL;
         if (aws_import_public_and_private_keys_to_identity(
-                secure_transport_ctx->allocator,
+                alloc,
                 secure_transport_ctx->wrapped_allocator,
                 &cert_chain,
                 &private_key,
@@ -786,7 +786,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     } else if (options->pkcs12_path) {
         struct aws_byte_buf pkcs12_blob;
 
-        if (aws_byte_buf_init_from_file(&pkcs12_blob, secure_transport_ctx->allocator, options->pkcs12_path)) {
+        if (aws_byte_buf_init_from_file(&pkcs12_blob, alloc, options->pkcs12_path)) {
             goto cleanup_wrapped_allocator;
         }
 
@@ -822,19 +822,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
 
         aws_byte_buf_clean_up(&ca_blob);
     }
-    ctx->alloc = alloc;
-    ctx->impl = secure_transport_ctx;
 
-    return ctx;
+
+    return &secure_transport_ctx->ctx;
 
 cleanup_wrapped_allocator:
     aws_wrapped_cf_allocator_destroy(secure_transport_ctx->wrapped_allocator);
 
 cleanup_secure_transport_ctx:
     aws_mem_release(alloc, secure_transport_ctx);
-
-cleanup_ctx:
-    aws_mem_release(alloc, ctx);
 
     return NULL;
 }
@@ -848,7 +844,7 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct a
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-    struct secure_transport_ctx *secure_transport_ctx = (struct secure_transport_ctx *)ctx->impl;
+    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
 
     if (secure_transport_ctx->certs) {
         aws_release_identity(secure_transport_ctx->certs);
@@ -859,8 +855,7 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     }
 
     CFRelease(secure_transport_ctx->wrapped_allocator);
-    aws_mem_release(secure_transport_ctx->allocator, secure_transport_ctx);
-    aws_mem_release(ctx->alloc, ctx);
+    aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
 }
 
 #pragma clang diagnostic pop

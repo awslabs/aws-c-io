@@ -33,6 +33,7 @@ struct socket_handler {
     struct aws_task read_task_storage;
     struct aws_task shutdown_task_storage;
     int shutdown_err_code;
+    struct aws_io_message *current_write_message;
     bool shutdown_in_progress;
 };
 
@@ -67,7 +68,17 @@ static void s_on_socket_write_complete(
             message->on_completion(channel, message, error_code, message->user_data);
         }
 
-        aws_channel_release_message_to_pool(channel, message);
+        /* this isn't the simplest way to handle this BUT in order to keep the contract of "release your message
+         * if the channel says the message send fails", we need to not release it if we failed to send AND
+         * we told the caller that we failed. */
+        struct socket_handler *handler = channel->first->handler->impl;
+        if (!error_code || handler->current_write_message != message) {
+            aws_channel_release_message_to_pool(channel, message);
+        }
+
+        if (handler->current_write_message == message) {
+            handler->current_write_message = NULL;
+        }
 
         if (error_code) {
             aws_channel_shutdown(channel, error_code);
@@ -80,13 +91,21 @@ static int s_socket_process_write_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
     (void)slot;
-    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
+    struct socket_handler *socket_handler = handler->impl;
+
+    /* you'll see why we do this in a sec. */
+    assert(message->owning_channel->first->handler->impl == socket_handler);
 
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
+    /* this isn't the simplest way to handle this BUT in order to keep the contract of "release your message
+     * if the channel says the message send fails", we need to not release it if we failed to send AND
+     * we told the caller that we failed. */
+    socket_handler->current_write_message = message;
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
         return AWS_OP_ERR;
     }
 
+    socket_handler->current_write_message = NULL;
     return AWS_OP_SUCCESS;
 }
 
@@ -290,6 +309,7 @@ struct aws_channel_handler *aws_socket_handler_new(
     impl->read_task_storage.fn = NULL;
     impl->read_task_storage.arg = NULL;
     impl->shutdown_in_progress = false;
+    impl->current_write_message = NULL;
 
     handler->alloc = allocator;
     handler->impl = impl;
