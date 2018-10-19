@@ -253,6 +253,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_host_address_copy(&callback_data.a_address, &host_2_original_ipv4_resolve);
     aws_host_address_clean_up(&callback_data.a_address);
 
+    /* this will invoke in the calling thread since the address is already cached. */
+    aws_mutex_unlock(&mutex);
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
@@ -268,6 +270,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
+    /* this will invoke in the calling thread since the address is already cached. */
+    aws_mutex_unlock(&mutex);
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         &resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
