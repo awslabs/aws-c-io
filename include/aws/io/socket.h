@@ -39,12 +39,12 @@ enum aws_socket_type {
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
+    uint32_t connect_timeout_ms;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
      * If interval or timeout are zero, then default values are used. */
     uint16_t keep_alive_interval_sec;
     uint16_t keep_alive_timeout_sec;
-    uint32_t connect_timeout_ms;
     bool keepalive;
 };
 
@@ -163,7 +163,7 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP amd LOCAL, this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
- * If an event_loop is provided for UDP sockets, a notification will be sent on 
+ * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.

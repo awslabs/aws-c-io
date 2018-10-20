@@ -510,10 +510,7 @@ void aws_release_certificates(CFArrayRef certs) {
 #    define CERT_HASH_STR_LEN 40
 #    define CERT_HASH_LEN 20
 
-int aws_load_cert_from_system_cert_store(
-    const char *cert_path,
-    HCERTSTORE *cert_store,
-    PCCERT_CONTEXT *certs) {
+int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
 
     char *location_of_next_segment = strchr(cert_path, '\\');
 
@@ -547,7 +544,7 @@ int aws_load_cert_from_system_cert_store(
     location_of_next_segment += 1;
     char *store_path_start = location_of_next_segment;
     location_of_next_segment = strchr(location_of_next_segment, '\\');
-    
+
     if (!location_of_next_segment) {
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
@@ -555,12 +552,12 @@ int aws_load_cert_from_system_cert_store(
     /* according to the docs, this has to be the System Store by itself to open the cert store
        successfully. There are some libraries such as libcurl that don't do this copy with just the
        System Store. I haven't been able to make that work. I suspect mutual TLS just doesn't work
-       in curl on windows? However, this does work, so this is what we're doing. 
-       
+       in curl on windows? However, this does work, so this is what we're doing.
+       
        As far as the 128 byte length, according to the msdn documentation here:
        https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations
        this value should be more than enough. We'll add an assert just in case. */
-    char store_path[128] = { 0 };
+    char store_path[128] = {0};
     assert(location_of_next_segment - store_path_start < sizeof(store_path));
     memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
 
@@ -569,8 +566,8 @@ int aws_load_cert_from_system_cert_store(
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
-    *cert_store = CertOpenStore(CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, 
-        CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
+    *cert_store = CertOpenStore(
+        CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!cert_store) {
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
@@ -582,13 +579,19 @@ int aws_load_cert_from_system_cert_store(
         .cbData = CERT_HASH_LEN,
     };
 
-    if (!CryptStringToBinaryA(location_of_next_segment, CERT_HASH_STR_LEN, CRYPT_STRING_HEX, 
-        cert_hash.pbData, &cert_hash.cbData, NULL, NULL)) {
+    if (!CryptStringToBinaryA(
+            location_of_next_segment,
+            CERT_HASH_STR_LEN,
+            CRYPT_STRING_HEX,
+            cert_hash.pbData,
+            &cert_hash.cbData,
+            NULL,
+            NULL)) {
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
-    *certs = CertFindCertificateInStore(*cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
-        0, CERT_FIND_HASH, &cert_hash, NULL);
+    *certs = CertFindCertificateInStore(
+        *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
     if (!certs) {
         aws_close_cert_store(*cert_store);

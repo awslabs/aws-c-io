@@ -283,4 +283,3 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     assert(event_loop->clock);
     return event_loop->clock(time_nanos);
 }
-

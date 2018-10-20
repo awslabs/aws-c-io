@@ -357,11 +357,11 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
         struct posix_socket *socket_impl = socket_args->socket->impl;
         socket_impl->currently_subscribed = false;
         aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
-        s_on_connection_error(socket_args->socket, AWS_IO_SOCKET_TIMEOUT);
-
+        struct aws_socket *socket = socket_args->socket;
         /*socket close sets socket_args->socket to NULL and
          * socket_impl->connect_args to NULL. */
-        aws_socket_close(socket_args->socket);
+        aws_socket_close(socket);
+        s_on_connection_error(socket, AWS_IO_SOCKET_TIMEOUT);
     }
 
     aws_mem_release(socket_args->allocator, socket_args);

@@ -55,12 +55,12 @@ typedef void(aws_tls_on_error_fn)(
 
 struct aws_tls_connection_options {
     /** semi-colon delimited list of protocols. Example:
-     *  h2;http/1.1 
+     *  h2;http/1.1
      */
     const char *alpn_list;
     /**
      * Serves two purposes. If SNI is supported (hint... it is),
-     * this sets the SNI extension. 
+     * this sets the SNI extension.
      *
      * For X.509 validation this also sets the name that will be used
      * for verifying the subj alt name and common name of the peer's certificate.
@@ -71,11 +71,11 @@ struct aws_tls_connection_options {
     aws_tls_on_error_fn *on_error;
     void *user_data;
     /**
-     * default is true for clients and false for servers. 
+     * default is true for clients and false for servers.
      * You should not change this default for clients unless
      * you're testing and don't want to fool around with CA trust stores.
      * Before you release to production, you'll want to turn this back on
-     * and add your custom CA to the aws_tls_ctx_options. 
+     * and add your custom CA to the aws_tls_ctx_options.
      *
      * If you set this in server mode, it enforces client authentication.
      */
@@ -87,7 +87,7 @@ struct aws_tls_ctx_options {
     /** minium tls version to use. If you just want us to use the
      *  system defaults, you can set: AWS_IO_TLS_VER_SYS_DEFAULTS. This
      *  has the added benefit of automatically picking up new TLS versions
-     *  as your OS or distribution adds support. 
+     *  as your OS or distribution adds support.
      */
     aws_tls_versions minimum_tls_version;
     /**
@@ -119,7 +119,7 @@ struct aws_tls_ctx_options {
     /**
      * The path to a PEM armored PKCS#7 private key.
      *
-     * On windows, this field should be NULL only if you are 
+     * On windows, this field should be NULL only if you are
      * using a system installed certficate.
      */
     const char *private_key_path;
@@ -135,11 +135,11 @@ struct aws_tls_ctx_options {
      */
     const char *pkcs12_password;
     /**
-     * default is true for clients and false for servers. 
+     * default is true for clients and false for servers.
      * You should not change this default for clients unless
      * you're testing and don't want to fool around with CA trust stores.
      * Before you release to production, you'll want to turn this back on
-     * and add your custom CA to the aws_tls_ctx_options. 
+     * and add your custom CA to the aws_tls_ctx_options.
      *
      * If you set this in server mode, it enforces client authentication.
      */

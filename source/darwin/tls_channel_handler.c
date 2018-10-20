@@ -29,10 +29,10 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wunused-function"
 
-#define EST_TLS_RECORD_OVERHEAD  53 /* 5 byte header + 32 + 16 bytes for padding */
-#define KB_1  1024
+#define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+#define KB_1 1024
 #define MAX_RECORD_SIZE (KB_1 * 16)
-#define EST_HANDSHAKE_SIZE  (7 * KB_1)
+#define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 /* I'm tired of trying to make SSLSetALPNFunc work, upgrade your operating system if you want ALPN support. */
 #if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) ||                                                       \
@@ -395,9 +395,9 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
 }
 
 static int s_process_write_message(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        struct aws_io_message *message) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (AWS_UNLIKELY(!secure_transport_handler->negotiation_finished)) {
@@ -421,11 +421,11 @@ static int s_process_write_message(
 }
 
 static int s_handle_shutdown(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        enum aws_channel_direction dir,
-        int error_code,
-        bool abort_immediately) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool abort_immediately) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
@@ -442,9 +442,9 @@ static int s_handle_shutdown(
 }
 
 static int s_process_read_message(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        struct aws_io_message *message) {
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
@@ -518,10 +518,7 @@ static void s_run_read(struct aws_task *task, void *arg, aws_task_status status)
     }
 }
 
-static int s_increment_read_window(
-        struct aws_channel_handler *handler,
-        struct aws_channel_slot *slot,
-        size_t size) {
+static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
@@ -549,7 +546,7 @@ static int s_increment_read_window(
     return AWS_OP_SUCCESS;
 }
 
-static size_t s_initial_window_size(struct aws_channel_handler* handler) {
+static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
     return EST_HANDSHAKE_SIZE;
 }
@@ -700,7 +697,6 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     secure_transport_handler->options = *options;
 
-
     return &secure_transport_handler->handler;
 
 cleanup_ssl_ctx:
@@ -822,7 +818,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
 
         aws_byte_buf_clean_up(&ca_blob);
     }
-
 
     return &secure_transport_ctx->ctx;
 

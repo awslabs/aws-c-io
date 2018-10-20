@@ -101,8 +101,8 @@ bool aws_tls_is_alpn_available(void) {
     os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
     os_version.wServicePackMajor = 0;
     os_version.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    return VerifyVersionInfo(&os_version, VER_MAJORVERSION | VER_MINORVERSION 
-        | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR, condition_mask);   
+    return VerifyVersionInfo(
+        &os_version, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR, condition_mask);
 #else
     return false;
 #endif /*SECBUFFER_APPLICATION_PROTOCOLS */
@@ -224,10 +224,11 @@ static int s_determine_sspi_error(int sspi_status) {
     }
 }
 
-#define CHECK_ALPN_BUFFER_SIZE(s, i, b) if (s <= i) {                                        \
-                                             aws_array_list_clean_up(&b);                    \
-                                             return aws_raise_error(AWS_ERROR_SHORT_BUFFER); \
-                                        }                                                    \
+#define CHECK_ALPN_BUFFER_SIZE(s, i, b)                                                                                \
+    if (s <= i) {                                                                                                      \
+        aws_array_list_clean_up(&b);                                                                                   \
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);                                                                \
+    }
 
 /* construct ALPN extension data... apparently this works on big-endian machines? but I don't beleive the docs
    if you're running ARM and you find ALPN isn't working, it's probably because I trusted the documentation
@@ -844,8 +845,8 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len -= copy_size;
 
             if (sc_handler->options.on_data_read) {
-                sc_handler->options.on_data_read(handler, sc_handler->slot,
-                    &read_out_msg->message_data, sc_handler->options.user_data);
+                sc_handler->options.on_data_read(
+                    handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->options.user_data);
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_channel_release_message_to_pool(sc_handler->slot->channel, read_out_msg);
@@ -855,8 +856,8 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
         } else {
             if (sc_handler->options.on_data_read) {
-                sc_handler->options.on_data_read(handler, sc_handler->slot, 
-                    &sc_handler->buffered_read_out_data_buf, sc_handler->options.user_data);
+                sc_handler->options.on_data_read(
+                    handler, sc_handler->slot, &sc_handler->buffered_read_out_data_buf, sc_handler->options.user_data);
             }
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
@@ -1079,7 +1080,8 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 
     if (downstream_size <= current_window_size) {
         size_t likely_records_count = (downstream_size - current_window_size) % READ_IN_SIZE;
-        size_t offset_size = likely_records_count * (sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
+        size_t offset_size =
+            likely_records_count * (sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
         size_t window_update_size = (downstream_size - current_window_size) + offset_size;
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
@@ -1249,9 +1251,12 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .initial_window_size = s_initial_window_size,
 };
 
-static struct aws_channel_handler *s_tls_handler_new(struct aws_allocator *alloc, struct aws_tls_ctx *ctx,
+static struct aws_channel_handler *s_tls_handler_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot, bool is_client_mode) {
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
 
     struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
 
@@ -1361,49 +1366,48 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
 
     if (is_client_mode) {
         switch (options->minimum_tls_version) {
-        case AWS_IO_SSLv3:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
-        case AWS_IO_TLSv1:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
-        case AWS_IO_TLSv1_1:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
-        case AWS_IO_TLSv1_2:
+            case AWS_IO_SSLv3:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_TLSv1:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1_1:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_2:
 #if defined(SP_PROT_TLS1_2_CLIENT)
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
 #endif
-        case AWS_IO_TLSv1_3:
+            case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_CLIENT)
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
 #endif
-            break;
-        case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-            break;
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
+                break;
         }
-    }
-    else {
+    } else {
         switch (options->minimum_tls_version) {
-        case AWS_IO_SSLv3:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
-        case AWS_IO_TLSv1:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
-        case AWS_IO_TLSv1_1:
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
-        case AWS_IO_TLSv1_2:
+            case AWS_IO_SSLv3:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_TLSv1:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1_1:
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_2:
 #if defined(SP_PROT_TLS1_2_SERVER)
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
 #endif
-        case AWS_IO_TLSv1_3:
+            case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_SERVER)
-            secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
+                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
 #endif
-            break;
-        case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-            break;
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
+                break;
         }
     }
-       
+
     secure_channel_ctx->ctx.alloc = alloc;
     secure_channel_ctx->ctx.impl = secure_channel_ctx;
 
@@ -1424,24 +1428,22 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         if (error) {
             goto clean_up;
         }
-    }
-    else if (is_client_mode) {
+    } else if (is_client_mode) {
         secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
     }
 
     if (is_client_mode && !options->verify_peer) {
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-            SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-            SCH_CRED_MANUAL_CRED_VALIDATION;
-    }
-    else if (is_client_mode) {
+                                                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
+                                                   SCH_CRED_MANUAL_CRED_VALIDATION;
+    } else if (is_client_mode) {
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN;
     }
 
     /* if using a system store. */
     if (options->certificate_path && !options->private_key_path) {
-        if (aws_load_cert_from_system_cert_store(options->certificate_path,
-            &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts)) {
+        if (aws_load_cert_from_system_cert_store(
+                options->certificate_path, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts)) {
             goto clean_up;
         }
 

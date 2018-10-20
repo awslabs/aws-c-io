@@ -63,7 +63,7 @@ static bool s_tls_channel_setup_predicate(void *user_data) {
     return setup_test_args->tls_negotiated || setup_test_args->error_invoked;
 }
 
-static int s_tls_handler_test_client_setup_callback(
+static void s_tls_handler_test_client_setup_callback(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -88,11 +88,9 @@ static int s_tls_handler_test_client_setup_callback(
     }
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-
-    return AWS_OP_SUCCESS;
 }
 
-static int s_tls_handler_test_server_setup_callback(
+static void s_tls_handler_test_server_setup_callback(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -119,11 +117,9 @@ static int s_tls_handler_test_server_setup_callback(
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
-
-    return AWS_OP_SUCCESS;
 }
 
-static int s_tls_handler_test_client_shutdown_callback(
+static void s_tls_handler_test_client_shutdown_callback(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -139,11 +135,9 @@ static int s_tls_handler_test_client_shutdown_callback(
     setup_test_args->shutdown_finished = true;
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
-
-    return 0;
 }
 
-static int s_tls_handler_test_server_shutdown_callback(
+static void s_tls_handler_test_server_shutdown_callback(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -159,7 +153,6 @@ static int s_tls_handler_test_server_shutdown_callback(
     setup_test_args->shutdown_finished = true;
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
-    return 0;
 }
 
 static void s_tls_on_negotiated(

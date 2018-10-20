@@ -26,11 +26,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define EST_TLS_RECORD_OVERHEAD  53 /* 5 byte header + 32 + 16 bytes for padding */
-#define KB_1  1024
+#define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+#define KB_1 1024
 #define MAX_RECORD_SIZE (KB_1 * 16)
-#define EST_HANDSHAKE_SIZE  (7 * KB_1)
-
+#define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 struct s2n_handler {
     struct aws_channel_handler handler;
@@ -603,7 +602,10 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     }
 }
 
-static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, s2n_mode mode) {
+static struct aws_tls_ctx *s_tls_ctx_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_ctx_options *options,
+    s2n_mode mode) {
     struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)aws_mem_acquire(alloc, sizeof(struct s2n_ctx));
 
     if (!s2n_ctx) {
@@ -618,7 +620,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
         goto cleanup_s2n_ctx;
     }
 
-    switch(options->minimum_tls_version) {
+    switch (options->minimum_tls_version) {
         case AWS_IO_SSLv3:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
             break;

@@ -53,7 +53,7 @@ static bool s_channel_shutdown_predicate(void *user_data) {
     return finished;
 }
 
-static int s_socket_handler_test_client_setup_callback(
+static void s_socket_handler_test_client_setup_callback(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -73,10 +73,9 @@ static int s_socket_handler_test_client_setup_callback(
     setup_test_args->rw_slot = rw_slot;
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-    return 0;
 }
 
-static int s_socket_handler_test_server_setup_callback(
+static void s_socket_handler_test_server_setup_callback(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -96,10 +95,9 @@ static int s_socket_handler_test_server_setup_callback(
     setup_test_args->rw_slot = rw_slot;
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-    return 0;
 }
 
-static int s_socket_handler_test_client_shutdown_callback(
+static void s_socket_handler_test_client_shutdown_callback(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -115,11 +113,9 @@ static int s_socket_handler_test_client_shutdown_callback(
     aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-
-    return 0;
 }
 
-static int s_socket_handler_test_server_shutdown_callback(
+static void s_socket_handler_test_server_shutdown_callback(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
@@ -136,8 +132,6 @@ static int s_socket_handler_test_server_shutdown_callback(
     aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
-
-    return 0;
 }
 
 struct socket_test_rw_args {

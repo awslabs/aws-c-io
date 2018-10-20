@@ -112,7 +112,7 @@ void aws_release_certificates(CFArrayRef certs);
  * Returns AWS_OP_ERR otherwise.
  */
 AWS_IO_API int aws_load_cert_from_system_cert_store(
-    const char *cert_path,    
+    const char *cert_path,
     HCERTSTORE *cert_store,
     PCCERT_CONTEXT *certs);
 
