@@ -16,6 +16,7 @@
  * permissions and limitations under the License.
  */
 #include <aws/io/channel.h>
+#include <aws/io/host_resolver.h>
 
 struct aws_client_bootstrap;
 struct aws_socket;
@@ -70,7 +71,10 @@ struct aws_event_loop_group;
 struct aws_client_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
+    struct aws_host_resolver *host_resolver;
+    struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
+    bool owns_resolver;
 };
 
 struct aws_server_bootstrap;
@@ -128,12 +132,16 @@ extern "C" {
 
 /**
  * Initializes the client bootstrap with `allocator` and `el_group`. This object manages client connections and
- * channels.
+ * channels. If host_resolver is NULL, the default configuration will be used. Otherwise, the provided host_resolver
+ * will be used for resolving host names. If host_resolution_config is NULL, the default will be used.
+ * host_resolution_config will be copied.
  */
 AWS_IO_API int aws_client_bootstrap_init(
     struct aws_client_bootstrap *bootstrap,
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group);
+    struct aws_event_loop_group *el_group,
+    struct aws_host_resolver *host_resolver,
+    struct aws_host_resolution_config *host_resolution_config);
 
 /**
  * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
@@ -143,14 +151,17 @@ AWS_IO_API void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *boots
 
 /**
  * Sets up a client socket channel. If you are planning on using tls, use `aws_client_bootstrap_new_tls_socket_channel`
- * instead. The connection is made to `remote_endpoint` using socket options `options`. `setup_callback` will be invoked
- * once the channel is ready for use or if an error is encountered. `shutdown_callback` will be invoked once the channel
- * has shutdown. Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All
- * callbacks are invoked in the thread of the event-loop that the new channel is assigned to.
+ * instead. The connection is made to `host_name` and `port` using socket options `options`. If AWS_SOCKET_LOCAL is
+ * used, host_name should be the name of the socket or named pipe, and port is ignored. If `host_name` is a dns address,
+ * it will be resolved prior to attempting a connection. `setup_callback` will be invoked once the channel is ready for
+ * use or if an error is encountered. `shutdown_callback` will be invoked once the channel has shutdown. Immediately
+ * after the `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked in the
+ * thread of the event-loop that the new channel is assigned to.
  */
 AWS_IO_API int aws_client_bootstrap_new_socket_channel(
     struct aws_client_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *remote_endpoint,
+    const char *host_name,
+    uint16_t port,
     const struct aws_socket_options *options,
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
