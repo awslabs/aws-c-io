@@ -20,32 +20,45 @@
 struct aws_channel_slot;
 struct aws_channel_handler;
 
-typedef enum aws_tls_versions {
+enum aws_tls_versions {
     AWS_IO_SSLv3,
     AWS_IO_TLSv1,
     AWS_IO_TLSv1_1,
     AWS_IO_TLSv1_2,
     AWS_IO_TLSv1_3,
     AWS_IO_TLS_VER_SYS_DEFAULTS = 128,
-} aws_tls_versions;
+};
 
 struct aws_tls_ctx {
     struct aws_allocator *alloc;
     void *impl;
 };
 
+/**
+ * Invoked upon completion of the TLS handshake. If successful error_code will be AWS_OP_SUCCESS, otherwise
+ * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
+ */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data);
 
+/**
+ * Only used if the TLS handler is the last handler in the channel. This allows you to read any data that
+ * was read and decrypted by the handler. If you have application protocol channel handlers, this function
+ * is not necessary and certainly not recommended.
+ */
 typedef void(aws_tls_on_data_read_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
     void *user_data);
 
+/**
+ * Invoked when an error occurs in the TLS state machine AFTER the handshake has completed. This function should only
+ * be used in conjunction with the rules of aws_tls_on_data_read_fn.
+ */
 typedef void(aws_tls_on_error_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -84,12 +97,13 @@ struct aws_tls_connection_options {
 };
 
 struct aws_tls_ctx_options {
-    /** minium tls version to use. If you just want us to use the
+    /**
+     *  minimum tls version to use. If you just want us to use the
      *  system defaults, you can set: AWS_IO_TLS_VER_SYS_DEFAULTS. This
      *  has the added benefit of automatically picking up new TLS versions
      *  as your OS or distribution adds support.
      */
-    aws_tls_versions minimum_tls_version;
+    enum aws_tls_versions minimum_tls_version;
     /**
      * A PEM armored PKCS#7 collection of CAs you want to trust. Only
      * use this if it's a CA not currently installed on your system.
@@ -206,37 +220,89 @@ AWS_IO_API void aws_tls_connection_options_set_verify_peer(
     bool verify_peer);
 
 /********************************* stuff that actually does work *********************************/
+/**
+ * Initializes static state for the tls implementation. This must be called before any attempts
+ * to create an aws_tls_ctx or tls handler.
+ */
 AWS_IO_API void aws_tls_init_static_state(struct aws_allocator *alloc);
-AWS_IO_API void aws_tls_clean_up_static_state(void);
-AWS_IO_API void aws_tls_clean_up_tl_state(void);
 
+/**
+ * Cleans up static state for the tls implementation.
+ */
+AWS_IO_API void aws_tls_clean_up_static_state(void);
+
+/**
+ * Cleans up any lazily initialized thread local state for the tls implementation.
+ */
+AWS_IO_API void aws_tls_clean_up_thread_local_state(void);
+
+/**
+ * Returns true if alpn is available in the underlying tls implementation.
+ * This function should always be called before setting an alpn list.
+ */
 AWS_IO_API bool aws_tls_is_alpn_available(void);
 
+/**
+ * Creates a new tls channel handler in client mode. Options will be copied.
+ * You must call aws_tls_client_handler_start_negotiation and wait on the
+ * aws_tls_on_negotiation_result_fn callback before the handler can begin processing
+ * application data.
+ */
 AWS_IO_API struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 
+/**
+ * Creates a new tls channel handler in server mode. Options will be copied.
+ * You must wait on the aws_tls_on_negotiation_result_fn callback before the handler can begin processing
+ * application data.
+ */
 AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 
+/**
+ * Creates a channel handler, for client or server mode, that handles alpn. This isn't necessarily required
+ * since you can always call, aws_tls_handler_protocol in the aws_tls_on_negotiation_result_fn callback, but
+ * this makes channel bootstrap easier to handle.
+ */
 AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(
     struct aws_allocator *allocator,
     aws_tls_on_protocol_negotiated on_protocol_negotiated,
     void *user_data);
 
+/**
+ * Kicks off the negotiation process. This function must be called when in client mode to initiate the
+ * TLS handshake. Once the handshake has completed the aws_tls_on_negotiation_result_fn will be invoked.
+ */
 AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
 
+/**
+ * Creates a new server ctx. This ctx can be used for the lifetime of the application assuming you want the same
+ * options for every incoming connection. Options will be copied.
+ */
 AWS_IO_API struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options);
 
+/**
+ * Creates a new client ctx. This ctx can be used for the lifetime of the application assuming you want the same
+ * options for every outgoing connection. Options will be copied.
+ */
 AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options);
 
+/**
+ * Destroys the output from aws_tls_server_ctx_new and aws_tls_client_ctx_new.
+ */
 AWS_IO_API void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx);
 
+/**
+ * Not necessary if you are installing more handlers into the channel, but if you just want to have TLS for arbitrary
+ * data and use the channel handler directly, this function allows you to write data to the channel and have it
+ * encrypted.
+ */
 AWS_IO_API int aws_tls_handler_write(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -244,7 +310,15 @@ AWS_IO_API int aws_tls_handler_write(
     aws_channel_on_message_write_completed_fn *on_write_completed,
     void *completion_user_data);
 
+/**
+ * Returns a byte buffer by copy of the negotiated protocols. If there is no agreed upon protocol, len will be 0 and
+ * buffer will be NULL.
+ */
 AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler);
+
+/**
+ * Client mode only. This is the server name that was used for SNI and host name validation.
+ */
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);
 
 #ifdef __cplusplus

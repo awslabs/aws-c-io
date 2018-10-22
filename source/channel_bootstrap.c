@@ -50,7 +50,7 @@ static void s_handle_tl_cleanup_task(struct aws_task *task, void *arg, enum aws_
     struct tl_shutdown_task_data *shutdown_task_data = arg;
 
     aws_mutex_lock(shutdown_task_data->mutex);
-    aws_tls_clean_up_tl_state();
+    aws_tls_clean_up_thread_local_state();
     shutdown_task_data->invoked = true;
     aws_condition_variable_notify_one(shutdown_task_data->condition_variable);
     aws_mutex_unlock(shutdown_task_data->mutex);

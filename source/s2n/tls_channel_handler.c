@@ -59,7 +59,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     s2n_init();
 }
 
-void aws_tls_clean_up_tl_state(void) {
+void aws_tls_clean_up_thread_local_state(void) {
     /* if you're wondering why this function exists, this is why.... s2n_cleanup() cleans up some allocated
      * memory in thread local state (sigh.....). */
     s2n_cleanup();

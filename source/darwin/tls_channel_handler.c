@@ -54,7 +54,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) { /* no op */
     (void)alloc;
 }
 
-void aws_tls_clean_up_tl_state(void) { /* no op */
+void aws_tls_clean_up_thread_local_state(void) { /* no op */
 }
 
 void aws_tls_clean_up_static_state(void) { /* no op */
