@@ -577,7 +577,7 @@ struct secure_transport_ctx {
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     CFArrayRef ca_cert;
-    aws_tls_versions minimum_version;
+    enum aws_tls_versions minimum_version;
     const char *alpn_list;
     bool veriify_peer;
 };
