@@ -186,8 +186,11 @@ AWS_IO_API int aws_client_bootstrap_new_socket_channel(
     void *user_data);
 
 /**
- * Sets up a client tls socket channel. The connection is made to `remote_endpoint` using socket options `options`, and
- * tls options `connection_options`. `setup_callback` will be invoked once the channel is ready for use and TLS has been
+ * Sets up a client tls socket channel.The connection is made to `host_name` and `port` using socket options `options`
+ * and `connection_options` for tls configuration.
+ * If AWS_SOCKET_LOCAL is used, host_name should be the name of the socket or named pipe, and port is ignored.
+ * If `host_name` is a dns address, it will be resolved prior to attempting a connection.
+ * `setup_callback` will be invoked once the channel is ready for use and TLS has been
  * negotiated, or if an error is encountered. `shutdown_callback` will be invoked once the channel has shutdown.
  * Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked
  * in the thread of the event-loop that the new channel is assigned to.
