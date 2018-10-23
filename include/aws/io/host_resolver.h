@@ -146,19 +146,19 @@ AWS_IO_API int aws_default_dns_resolve(
  * When you request an address, it checks the cache. If the entry isn't in the cache it creates a new one.
  * Each entry has a potentially short lived back-ground thread based on ttl for the records. Once we've populated the
  * cache and you keep the resolver active, the resolution callback will be invoked immediately. When it's idle, it will
- * take a little while in the background thread to fetch more, evaluate ttl's etc... In that case your callback will be
+ * take a little while in the background thread to fetch more, evaluate TTLs etc... In that case your callback will be
  * invoked from the background thread.
  *
  * --------------------------------------------------------------------------------------------------------------------
  *
- * A few things to note about ttls and connection failures.
+ * A few things to note about TTLs and connection failures.
  *
  * We attempt to honor your max ttl but will not honor it if dns queries are failing or all of your connections are
- * marked as failed. Once we are able to query dns again, we will re-evaluate the ttls.
+ * marked as failed. Once we are able to query dns again, we will re-evaluate the TTLs.
  *
  * Upon notification connection failures, we move them to a separate list. Eventually we retry them when it's likely
  * that the endpoint is healthy again or we don't really have another choice, but we try to keep them out of your
- * hotpath.
+ * hot path.
  *
  * ---------------------------------------------------------------------------------------------------------------------
  *

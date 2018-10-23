@@ -342,14 +342,15 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_NOT_NULL(listener);
 
     struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group));
+    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL));
     ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         &client_bootstrap,
-        &endpoint,
+        endpoint.address,
+        0,
         &options,
         &tls_client_conn_options,
         s_tls_handler_test_client_setup_callback,
@@ -454,48 +455,6 @@ struct default_host_callback_data {
     bool invoked;
 };
 
-static bool s_default_host_resolved_predicate(void *arg) {
-    struct default_host_callback_data *callback_data = arg;
-
-    return callback_data->invoked;
-}
-
-static void s_default_host_resolved_test_callback(
-    struct aws_host_resolver *resolver,
-    const struct aws_string *host_name,
-    int err_code,
-    const struct aws_array_list *host_addresses,
-    void *user_data) {
-
-    (void)resolver;
-    (void)host_name;
-    (void)err_code;
-
-    struct default_host_callback_data *callback_data = user_data;
-
-    struct aws_host_address *host_address = NULL;
-
-    if (aws_array_list_length(host_addresses) >= 2) {
-        aws_array_list_get_at(host_addresses, &host_address, 0);
-
-        aws_host_address_copy(host_address, &callback_data->aaaa_address);
-
-        aws_array_list_get_at(host_addresses, &host_address, 1);
-
-        aws_host_address_copy(host_address, &callback_data->a_address);
-        callback_data->has_aaaa_address = true;
-        callback_data->has_a_address = true;
-    } else if (aws_array_list_length(host_addresses) == 1) {
-        aws_array_list_get_at(host_addresses, &host_address, 0);
-
-        aws_host_address_copy(host_address, &callback_data->a_address);
-        callback_data->has_a_address = true;
-    }
-
-    callback_data->invoked = true;
-    aws_condition_variable_notify_one(&callback_data->condition_variable);
-}
-
 static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
 
     aws_tls_init_static_state(allocator);
@@ -534,38 +493,21 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
-
-    struct aws_host_resolution_config resolution_config = {
-        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
-
     struct default_host_callback_data host_callback_data = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
     };
 
     aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &resolution_config, &host_callback_data));
-
-    aws_condition_variable_wait_pred(
-        &host_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &host_callback_data);
-
-    aws_host_resolver_clean_up(&resolver);
-
-    ASSERT_TRUE(host_callback_data.has_a_address);
-    struct aws_socket_endpoint endpoint = {.port = 443};
-
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group)));
+    ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL)));
     ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         &client_bootstrap,
-        &endpoint,
+        (const char *)aws_string_bytes(host_name),
+        443,
         &options,
         &tls_client_conn_options,
         s_tls_handler_test_client_setup_callback,
@@ -702,40 +644,16 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
-
-    struct aws_host_resolution_config resolution_config = {
-        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
-
-    struct default_host_callback_data host_callback_data = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .invoked = false,
-    };
-
     aws_mutex_lock(&mutex);
-    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &resolution_config, &host_callback_data));
-
-    aws_condition_variable_wait_pred(
-        &host_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &host_callback_data);
-
-    aws_host_resolver_clean_up(&resolver);
-
-    ASSERT_TRUE(host_callback_data.has_a_address);
-    struct aws_socket_endpoint endpoint = {
-        .port = 443,
-    };
-
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group)));
+    ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL)));
     ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         &client_bootstrap,
-        &endpoint,
+        (const char *)aws_string_bytes(host_name),
+        443,
         &options,
         &tls_client_conn_options,
         s_tls_handler_test_client_setup_callback,
@@ -766,7 +684,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_client_bootstrap_clean_up(&client_bootstrap);
 
-    aws_host_address_clean_up(&host_callback_data.a_address);
     aws_tls_ctx_destroy(client_ctx);
 
     aws_event_loop_group_clean_up(&el_group);
