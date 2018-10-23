@@ -114,17 +114,17 @@ int aws_client_bootstrap_init(
             return AWS_OP_ERR;
         }
 
-        if (host_resolution_config) {
-            bootstrap->host_resolver_config = *host_resolution_config;
-        } else {
-            bootstrap->host_resolver_config = (struct aws_host_resolution_config){
-                .impl = aws_default_dns_resolve,
-                .max_ttl = DEFAULT_DNS_TTL,
-                .impl_data = NULL,
-            };
-        }
-
         bootstrap->owns_resolver = true;
+    }
+
+    if (host_resolution_config) {
+        bootstrap->host_resolver_config = *host_resolution_config;
+    } else {
+        bootstrap->host_resolver_config = (struct aws_host_resolution_config){
+            .impl = aws_default_dns_resolve,
+            .max_ttl = DEFAULT_DNS_TTL,
+            .impl_data = NULL,
+        };
     }
 
     return AWS_OP_SUCCESS;
@@ -458,10 +458,13 @@ static void s_on_host_resolved(
 
             struct aws_socket_endpoint connection_endpoint;
             connection_endpoint.port = client_connection_args->outgoing_port;
+
+            assert(sizeof(connection_endpoint.address) >= host_address_ptr->address->len + 1);
             memcpy(
                 connection_endpoint.address,
                 aws_string_bytes(host_address_ptr->address),
                 host_address_ptr->address->len);
+            connection_endpoint.address[host_address_ptr->address->len] = 0;
 
             struct aws_socket_options options = client_connection_args->outgoing_options;
             options.domain =
@@ -487,7 +490,7 @@ static void s_on_host_resolved(
                     client_connection_args->bootstrap->host_resolver, host_address_ptr);
                 aws_socket_clean_up(outgoing_socket);
                 aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
-                break;
+                continue;
             }
         }
 
