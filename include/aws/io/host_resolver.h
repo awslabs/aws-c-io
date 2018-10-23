@@ -25,8 +25,6 @@ typedef enum aws_address_record_type {
 } aws_address_record_type;
 
 struct aws_string;
-struct aws_socket_endpoint;
-struct aws_socket_options;
 
 struct aws_host_address {
     struct aws_allocator *allocator;
@@ -119,15 +117,6 @@ AWS_IO_API void aws_host_address_move(struct aws_host_address *from, struct aws_
  * Cleans up the memory for `address`
  */
 AWS_IO_API void aws_host_address_clean_up(struct aws_host_address *address);
-
-/**
- * Helper for initializing a socket endpoint from an address.
- * Populates endpoint->address and options->domain.
- */
-AWS_IO_API void aws_host_address_to_endpoint_options(
-    const struct aws_host_address *address,
-    struct aws_socket_endpoint *endpoint,
-    struct aws_socket_options *options);
 
 /** WARNING! do not call this function directly (getaddrinfo()): it blocks. Provide a pointer to this function for other
  * resolution functions. */
