@@ -339,10 +339,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
 error:
-    struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
-    void *setup_user_data = connection_args->user_data;
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
-    setup_callback(bootstrap, err_code, NULL, setup_user_data);
+    connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
 
     aws_channel_clean_up(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
