@@ -63,6 +63,33 @@ static bool s_tls_channel_setup_predicate(void *user_data) {
     return setup_test_args->tls_negotiated || setup_test_args->error_invoked;
 }
 
+static void s_tls_handler_test_client_setup_callback(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+
+    struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
+
+    if (!error_code) {
+        setup_test_args->channel = channel;
+        if (setup_test_args->rw_handler) {
+            struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+            aws_channel_slot_insert_end(channel, rw_slot);
+            aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+            setup_test_args->rw_slot = rw_slot;
+        }
+        setup_test_args->tls_negotiated = true;
+    } else {
+        setup_test_args->error_invoked = true;
+        setup_test_args->last_error_code = error_code;
+    }
+
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+}
+
 static void s_tls_handler_test_server_setup_callback(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
