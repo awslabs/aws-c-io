@@ -357,16 +357,18 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
     void *shutdown_user_data = connection_args->user_data;
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = connection_args->shutdown_callback;
+    struct aws_allocator *allocator = bootstrap->allocator;
     shutdown_callback(bootstrap, error_code, channel, shutdown_user_data);
+    /* note it's not safe to reference the bootstrap from here out.*/
 
     aws_channel_clean_up(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
-    aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
+    aws_mem_release(allocator, connection_args->channel_data.socket);
     if (connection_args->host_name) {
         aws_string_destroy((void *)connection_args->host_name);
     }
 
-    aws_mem_release(connection_args->bootstrap->allocator, connection_args);
+    aws_mem_release(allocator, connection_args);
 }
 
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
