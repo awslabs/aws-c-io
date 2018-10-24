@@ -1897,13 +1897,6 @@ static int s_socket_close(struct aws_socket *socket) {
         socket_impl->read_io_data = NULL;
     }
 
-    while (!aws_linked_list_empty(&socket_impl->pending_io_operations)) {
-        struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->pending_io_operations);
-        struct io_operation_data *op_data = AWS_CONTAINER_OF(node, struct io_operation_data, node);
-        op_data->socket = NULL;
-        aws_linked_list_pop_front(&socket_impl->pending_io_operations);
-    }
-
     if (socket->io_handle.data.handle != INVALID_HANDLE_VALUE) {
         shutdown((SOCKET)socket->io_handle.data.handle, SD_BOTH);
         closesocket((SOCKET)socket->io_handle.data.handle);
@@ -1911,6 +1904,14 @@ static int s_socket_close(struct aws_socket *socket) {
     }
 
     socket->state = CLOSED;
+
+    while (!aws_linked_list_empty(&socket_impl->pending_io_operations)) {
+        struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->pending_io_operations);
+        struct io_operation_data *op_data = AWS_CONTAINER_OF(node, struct io_operation_data, node);
+        op_data->socket = NULL;
+        aws_linked_list_pop_front(&socket_impl->pending_io_operations);
+    }
+
     socket->event_loop = NULL;
 
     return AWS_OP_SUCCESS;
@@ -2030,7 +2031,12 @@ static void s_stream_readable_event(
     socket->readable_fn(socket, err_code, socket->readable_user_data);
 
     if (operation_data->socket && socket_impl->read_io_data) {
-        socket_impl->read_io_data->in_use = false;
+        /* recursion and what not.... what if someone calls read from the callback
+           until it says, HEY I'm out of data, then they toggle this flag? So check that
+           they didn't go back into the CONNECTED_WAITING_ON_READABLE before clearing this flag. */
+        if (!(socket->state & CONNECTED_WAITING_ON_READABLE)) {
+            socket_impl->read_io_data->in_use = false;
+        }
     }
 
     if (!operation_data->socket) {
@@ -2078,7 +2084,12 @@ static void s_dgram_readable_event(
     socket->readable_fn(socket, err_code, socket->readable_user_data);
 
     if (operation_data->socket && socket_impl->read_io_data) {
-        socket_impl->read_io_data->in_use = false;
+        /* recursion and what not.... what if someone calls read from the callback
+        until it says, HEY I'm out of data, then they toggle this flag? So check that
+        they didn't go back into the CONNECTED_WAITING_ON_READABLE before clearing this flag. */
+        if (!(socket->state & CONNECTED_WAITING_ON_READABLE)) {
+            socket_impl->read_io_data->in_use = false;
+        }
     }
 
     if (!operation_data->socket) {

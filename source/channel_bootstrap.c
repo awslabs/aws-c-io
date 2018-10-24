@@ -339,6 +339,11 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
 error:
+    struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
+    void *setup_user_data = connection_args->user_data;
+    aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
+    setup_callback(bootstrap, err_code, NULL, setup_user_data);
+
     aws_channel_clean_up(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
@@ -346,16 +351,17 @@ error:
         aws_string_destroy((void *)connection_args->host_name);
     }
 
-    struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
-    void *setup_user_data = connection_args->user_data;
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
     aws_mem_release(connection_args->bootstrap->allocator, connection_args);
-    setup_callback(bootstrap, err_code, NULL, setup_user_data);
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
+    struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
+    void *shutdown_user_data = connection_args->user_data;
+    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = connection_args->shutdown_callback;
+    shutdown_callback(bootstrap, error_code, channel, shutdown_user_data);
+
     aws_channel_clean_up(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
@@ -363,12 +369,7 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
         aws_string_destroy((void *)connection_args->host_name);
     }
 
-    struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
-    void *shutdown_user_data = connection_args->user_data;
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = connection_args->shutdown_callback;
     aws_mem_release(connection_args->bootstrap->allocator, connection_args);
-
-    shutdown_callback(bootstrap, error_code, channel, shutdown_user_data);
 }
 
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
