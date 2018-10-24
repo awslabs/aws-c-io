@@ -493,11 +493,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct default_host_callback_data host_callback_data = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .invoked = false,
-    };
-
     aws_mutex_lock(&mutex);
 
     struct aws_client_bootstrap client_bootstrap;
@@ -521,7 +516,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
     aws_client_bootstrap_clean_up(&client_bootstrap);
 
-    aws_host_address_clean_up(&host_callback_data.a_address);
     aws_tls_ctx_destroy(client_ctx);
 
     aws_event_loop_group_clean_up(&el_group);
