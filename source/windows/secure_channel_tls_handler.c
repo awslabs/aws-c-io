@@ -1267,7 +1267,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     AWS_ZERO_STRUCT(*sc_handler);
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
-    sc_handler->handler.vtable = s_handler_vtable;
+    sc_handler->handler.vtable = &s_handler_vtable;
 
     struct secure_channel_ctx *sc_ctx = ctx->impl;
 

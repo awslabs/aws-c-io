@@ -72,8 +72,8 @@ void aws_host_address_clean_up(struct aws_host_address *address) {
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable.destroy);
-    resolver->vtable.destroy(resolver);
+    assert(resolver->vtable && resolver->vtable->destroy);
+    resolver->vtable->destroy(resolver);
 }
 
 int aws_host_resolver_resolve_host(
@@ -82,18 +82,18 @@ int aws_host_resolver_resolve_host(
     aws_on_host_resolved_result_fn *res,
     struct aws_host_resolution_config *config,
     void *user_data) {
-    assert(resolver->vtable.resolve_host);
-    return resolver->vtable.resolve_host(resolver, host_name, res, config, user_data);
+    assert(resolver->vtable && resolver->vtable->resolve_host);
+    return resolver->vtable->resolve_host(resolver, host_name, res, config, user_data);
 }
 
 int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable.purge_cache);
-    return resolver->vtable.purge_cache(resolver);
+    assert(resolver->vtable && resolver->vtable->purge_cache);
+    return resolver->vtable->purge_cache(resolver);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
-    assert(resolver->vtable.record_connection_failure);
-    return resolver->vtable.record_connection_failure(resolver, address);
+    assert(resolver->vtable && resolver->vtable->record_connection_failure);
+    return resolver->vtable->record_connection_failure(resolver, address);
 }
 
 struct default_host_resolver {
@@ -680,7 +680,7 @@ static int default_resolve_host(
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_host_resolver_vtable vtable = {
+static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
@@ -713,7 +713,7 @@ int aws_host_resolver_init_default(
         return AWS_OP_ERR;
     }
 
-    resolver->vtable = vtable;
+    resolver->vtable = &s_vtable;
     resolver->allocator = allocator;
     resolver->impl = default_host_resolver;
 

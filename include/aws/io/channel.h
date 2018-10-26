@@ -138,7 +138,7 @@ struct aws_channel_handler_vtable {
 };
 
 struct aws_channel_handler {
-    struct aws_channel_handler_vtable vtable;
+    struct aws_channel_handler_vtable *vtable;
     struct aws_allocator *alloc;
     void *impl;
 };

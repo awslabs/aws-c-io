@@ -536,7 +536,7 @@ Channel Handlers are runtime polymorphic. Here's some details on the virtual tab
 
 #### Layout
     struct aws_channel_handler {
-        struct aws_channel_handler_vtable vtable;
+        struct aws_channel_handler_vtable *vtable;
         struct aws_allocator *alloc;
         void *impl;
     };

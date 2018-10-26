@@ -600,7 +600,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     AWS_ZERO_STRUCT(*secure_transport_handler);
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
-    secure_transport_handler->handler.vtable = s_handler_vtable;
+    secure_transport_handler->handler.vtable = &s_handler_vtable;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
     secure_transport_handler->protocol = NULL;
     secure_transport_handler->ctx =

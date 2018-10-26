@@ -64,6 +64,12 @@ static void s_alpn_test_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, (void *)handler);
 }
 
+struct aws_channel_handler_vtable s_alpn_test_vtable = {
+    .destroy = s_alpn_test_destroy,
+    .shutdown = s_alpn_test_shutdown,
+    .initial_window_size = s_alpn_test_initial_window_size,
+};
+
 static struct aws_channel_handler *s_alpn_tls_successful_negotiation(
     struct aws_channel_slot *new_slot,
     struct aws_byte_buf *protocol,
@@ -77,9 +83,7 @@ static struct aws_channel_handler *s_alpn_tls_successful_negotiation(
     negotiation_args->protocol = *protocol;
     negotiation_args->new_slot = new_slot;
 
-    handler->vtable.destroy = s_alpn_test_destroy;
-    handler->vtable.shutdown = s_alpn_test_shutdown;
-    handler->vtable.initial_window_size = s_alpn_test_initial_window_size;
+    handler->vtable = &s_alpn_test_vtable;
     handler->alloc = negotiation_args->allocator;
 
     return handler;
@@ -209,14 +213,16 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     /*this is just for the test since it's the only slot in the channel */
-    handler->vtable.shutdown = s_alpn_test_shutdown;
+    handler->vtable->shutdown = s_alpn_test_shutdown;
 
-    struct aws_io_message message = {.allocator = NULL,
-                                     .user_data = NULL,
-                                     .message_tag = 0,
-                                     .copy_mark = 0,
-                                     .on_completion = NULL,
-                                     .message_type = AWS_IO_MESSAGE_APPLICATION_DATA};
+    struct aws_io_message message = {
+        .allocator = NULL,
+        .user_data = NULL,
+        .message_tag = 0,
+        .copy_mark = 0,
+        .on_completion = NULL,
+        .message_type = AWS_IO_MESSAGE_APPLICATION_DATA,
+    };
 
     ASSERT_ERROR(AWS_IO_MISSING_ALPN_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
@@ -293,7 +299,7 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     /*this is just for the test since it's the only slot in the channel */
-    handler->vtable.shutdown = s_alpn_test_shutdown;
+    handler->vtable->shutdown = s_alpn_test_shutdown;
 
     ASSERT_ERROR(
         AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));

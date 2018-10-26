@@ -511,7 +511,7 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     s2n_handler->handler.impl = s2n_handler;
     s2n_handler->handler.alloc = allocator;
-    s2n_handler->handler.vtable = s_handler_vtable;
+    s2n_handler->handler.vtable = &s_handler_vtable;
 
     s2n_handler->options = *options;
     s2n_handler->latest_message_completion_user_data = NULL;

@@ -151,7 +151,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     epoll_loop->should_continue = false;
 
     loop->impl_data = epoll_loop;
-    loop->vtable = s_vtable;
+    loop->vtable = &s_vtable;
 
     return loop;
 

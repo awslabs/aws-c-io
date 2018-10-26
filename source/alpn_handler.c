@@ -75,6 +75,15 @@ void alpn_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, handler);
 }
 
+struct aws_channel_handler_vtable s_alpn_handler_vtable = {
+    .initial_window_size = alpn_get_current_window_size,
+    .increment_read_window = NULL,
+    .shutdown = alpn_shutdown,
+    .process_write_message = NULL,
+    .process_read_message = alpn_process_read_message,
+    .destroy = alpn_destroy,
+};
+
 struct aws_channel_handler *aws_tls_alpn_handler_new(
     struct aws_allocator *allocator,
     aws_tls_on_protocol_negotiated on_protocol_negotiated,
@@ -98,12 +107,7 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(
     channel_handler->impl = alpn_handler;
     channel_handler->alloc = allocator;
 
-    channel_handler->vtable = (struct aws_channel_handler_vtable){.initial_window_size = alpn_get_current_window_size,
-                                                                  .increment_read_window = NULL,
-                                                                  .shutdown = alpn_shutdown,
-                                                                  .process_write_message = NULL,
-                                                                  .process_read_message = alpn_process_read_message,
-                                                                  .destroy = alpn_destroy};
+    channel_handler->vtable = &s_alpn_handler_vtable;
 
     return channel_handler;
 }
