@@ -105,6 +105,18 @@ enum {
     MAX_EVENTS = 100,          /* Max kevents to process per loop of the event-thread */
 };
 
+struct aws_event_loop_vtable s_kqueue_vtable = {
+    .destroy = s_destroy,
+    .run = s_run,
+    .stop = s_stop,
+    .wait_for_stop_completion = s_wait_for_stop_completion,
+    .schedule_task_now = s_schedule_task_now,
+    .schedule_task_future = s_schedule_task_future,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
+    .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+    .is_on_callers_thread = s_is_event_thread,
+};
+
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
@@ -202,15 +214,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     event_loop->impl_data = impl;
 
-    event_loop->vtable.destroy = s_destroy;
-    event_loop->vtable.run = s_run;
-    event_loop->vtable.stop = s_stop;
-    event_loop->vtable.wait_for_stop_completion = s_wait_for_stop_completion;
-    event_loop->vtable.schedule_task_now = s_schedule_task_now;
-    event_loop->vtable.schedule_task_future = s_schedule_task_future;
-    event_loop->vtable.subscribe_to_io_events = s_subscribe_to_io_events;
-    event_loop->vtable.unsubscribe_from_io_events = s_unsubscribe_from_io_events;
-    event_loop->vtable.is_on_callers_thread = s_is_event_thread;
+    event_loop->vtable = &s_kqueue_vtable;
 
     /* success */
     return event_loop;

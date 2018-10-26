@@ -313,7 +313,7 @@ struct aws_channel_handler *aws_socket_handler_new(
 
     handler->alloc = allocator;
     handler->impl = impl;
-    handler->vtable = s_vtable;
+    handler->vtable = &s_vtable;
     if (aws_socket_subscribe_to_readable_events(socket, s_on_readable_notification, impl)) {
         goto cleanup_handler;
     }

@@ -85,7 +85,7 @@ struct aws_event_loop_vtable {
 };
 
 struct aws_event_loop {
-    struct aws_event_loop_vtable vtable;
+    struct aws_event_loop_vtable *vtable;
     struct aws_allocator *alloc;
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;

@@ -104,7 +104,7 @@ static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator
     aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
     event_loop->impl_data = testing_loop;
-    event_loop->vtable = s_testing_loop_vtable;
+    event_loop->vtable = &s_testing_loop_vtable;
 
     return event_loop;
 }
@@ -187,7 +187,7 @@ static struct aws_channel_handler *s_new_testing_channel_handler(struct aws_allo
     aws_linked_list_init(&testing_handler->messages);
     testing_handler->latest_window_update = 0;
     handler->impl = testing_handler;
-    handler->vtable = s_testing_channel_handler_vtable;
+    handler->vtable = &s_testing_channel_handler_vtable;
     handler->alloc = allocator;
 
     return handler;

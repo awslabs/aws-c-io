@@ -306,7 +306,7 @@ bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
 
 int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_channel_handler *handler) {
     slot->handler = handler;
-    return aws_channel_slot_increment_read_window(slot, slot->handler->vtable.initial_window_size(handler));
+    return aws_channel_slot_increment_read_window(slot, slot->handler->vtable->initial_window_size(handler));
 }
 
 int aws_channel_slot_remove(struct aws_channel_slot *slot) {
@@ -523,8 +523,8 @@ size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
-    assert(handler->vtable.destroy);
-    handler->vtable.destroy(handler);
+    assert(handler->vtable && handler->vtable->destroy);
+    handler->vtable->destroy(handler);
 }
 
 int aws_channel_handler_process_read_message(
@@ -532,8 +532,8 @@ int aws_channel_handler_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    assert(handler->vtable.process_read_message);
-    return handler->vtable.process_read_message(handler, slot, message);
+    assert(handler->vtable && handler->vtable->process_read_message);
+    return handler->vtable->process_read_message(handler, slot, message);
 }
 
 int aws_channel_handler_process_write_message(
@@ -541,8 +541,8 @@ int aws_channel_handler_process_write_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    assert(handler->vtable.process_write_message);
-    return handler->vtable.process_write_message(handler, slot, message);
+    assert(handler->vtable && handler->vtable->process_write_message);
+    return handler->vtable->process_write_message(handler, slot, message);
 }
 
 int aws_channel_handler_increment_read_window(
@@ -550,8 +550,8 @@ int aws_channel_handler_increment_read_window(
     struct aws_channel_slot *slot,
     size_t size) {
 
-    assert(handler->vtable.increment_read_window);
-    return handler->vtable.increment_read_window(handler, slot, size);
+    assert(handler->vtable && handler->vtable->increment_read_window);
+    return handler->vtable->increment_read_window(handler, slot, size);
 }
 
 int aws_channel_handler_shutdown(
@@ -561,11 +561,11 @@ int aws_channel_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    assert(handler->vtable.shutdown);
-    return handler->vtable.shutdown(handler, slot, dir, error_code, free_scarce_resources_immediately);
+    assert(handler->vtable && handler->vtable->shutdown);
+    return handler->vtable->shutdown(handler, slot, dir, error_code, free_scarce_resources_immediately);
 }
 
 size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
-    assert(handler->vtable.initial_window_size);
-    return handler->vtable.initial_window_size(handler);
+    assert(handler->vtable && handler->vtable->initial_window_size);
+    return handler->vtable->initial_window_size(handler);
 }

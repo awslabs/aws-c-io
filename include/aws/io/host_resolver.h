@@ -95,7 +95,7 @@ struct aws_host_resolver_vtable {
 struct aws_host_resolver {
     struct aws_allocator *allocator;
     void *impl;
-    struct aws_host_resolver_vtable vtable;
+    struct aws_host_resolver_vtable *vtable;
 };
 
 #ifdef __cplusplus
