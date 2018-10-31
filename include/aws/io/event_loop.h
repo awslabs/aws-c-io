@@ -19,8 +19,6 @@
 #include <aws/common/hash_table.h>
 #include <aws/io/io.h>
 
-#include <Windows.h>
-
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
@@ -33,6 +31,8 @@ struct aws_event_loop;
 struct aws_task;
 
 #if AWS_USE_IO_COMPLETION_PORTS
+#include <Windows.h>
+
 struct aws_overlapped;
 
 typedef void(aws_event_loop_on_completion_fn)(
