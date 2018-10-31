@@ -31,7 +31,7 @@ struct aws_event_loop;
 struct aws_task;
 
 #if AWS_USE_IO_COMPLETION_PORTS
-#include <Windows.h>
+#    include <Windows.h>
 
 struct aws_overlapped;
 
