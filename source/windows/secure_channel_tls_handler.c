@@ -21,6 +21,8 @@
 
 #include <aws/common/task_scheduler.h>
 
+#include <Windows.h>
+
 #include <schannel.h>
 #include <security.h>
 

@@ -502,6 +502,8 @@ void aws_release_certificates(CFArrayRef certs) {
 
 #    include <aws/common/clock.h>
 
+#    include <Windows.h>
+
 #    if _MSC_VER
 #        pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #        pragma warning(disable : 4204) /* non-constant aggregate initializer */

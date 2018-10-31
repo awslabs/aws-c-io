@@ -19,6 +19,8 @@
 #include <aws/common/hash_table.h>
 #include <aws/io/io.h>
 
+#include <Windows.h>
+
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,

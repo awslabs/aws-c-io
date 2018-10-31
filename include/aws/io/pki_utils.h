@@ -106,6 +106,9 @@ void aws_release_certificates(CFArrayRef certs);
 #endif /* __MACH__ */
 
 #ifdef _WIN32
+typedef void *HCERTSTORE;
+struct _CERT_CONTEXT;
+typedef const struct _CERT_CONTEXT *PCCERT_CONTEXT;
 /**
  * Returns AWS_OP_SUCCESS if we were able to successfully load the certificate and cert_store.
  *
