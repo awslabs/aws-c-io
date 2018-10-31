@@ -1166,8 +1166,7 @@ static int s_handler_shutdown(
                 slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
 
             if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
-                aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, AWS_IO_SYS_CALL_FAILURE, true);
+                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
             }
             memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
 
