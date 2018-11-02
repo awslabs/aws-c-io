@@ -900,11 +900,8 @@ static int s_process_read_message(
 
         /* the SSPI interface forces us to manage incomplete records manually. So when we had extra after
            the previous read, it needs to be shifted to the beginning of the current read, then the current
-           read data is appended to it.
-           
-           If we had an incomplete record, we don't need to shift anything but we do need to append
-           the current read data to the end of the incomplete record from the previous read.
-           
+           read data is appended to it. If we had an incomplete record, we don't need to shift anything but
+           we do need to append the current read data to the end of the incomplete record from the previous read.
            Keep going until we've processed everything in the message we were just passed. */
         int err = AWS_OP_SUCCESS;
         while (!err && message_cursor.len) {

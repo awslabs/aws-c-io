@@ -140,7 +140,6 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     assert(alloc);
     assert(clock);
 
-    /* load the windows dlls and dynamically bind our soul to Satan's dark angels. */
     if (!s_set_info_fn) {
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
 
