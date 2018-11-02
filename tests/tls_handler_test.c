@@ -489,7 +489,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    /* badssl.com is great but has occasional lags, make this timeout longer so we have a 
+    /* badssl.com is great but has occasional lags, make this timeout longer so we have a
        higher chance of actually testing something. */
     options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
@@ -521,7 +521,9 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     if (outgoing_args.last_error_code != AWS_IO_SOCKET_TIMEOUT) {
         ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
     } else {
-        fprintf(stderr, "Warning: the connection timed out and we're not completely certain"
+        fprintf(
+            stderr,
+            "Warning: the connection timed out and we're not completely certain"
             " that this fails for the right reasons. Maybe run the test again?\n");
     }
     aws_client_bootstrap_clean_up(&client_bootstrap);
