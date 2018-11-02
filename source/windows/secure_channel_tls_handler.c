@@ -64,7 +64,8 @@ struct secure_channel_handler {
     struct aws_channel_handler handler;
     CtxtHandle sec_handle;
     CredHandle creds;
-    /* The SSPI API expects an array of len 1 of these where it's the leaf certificate associated with its private key.*/
+    /* The SSPI API expects an array of len 1 of these where it's the leaf certificate associated with its private
+     * key.*/
     PCCERT_CONTEXT cert_context[1];
     HCERTSTORE cert_store;
     HCERTSTORE custom_ca_store;
@@ -806,8 +807,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         }
 
         return AWS_OP_SUCCESS;
-    /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to 
-       append our next read to it and try again. */
+        /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
+           append our next read to it and try again. */
     } else if (status == SEC_E_INCOMPLETE_MESSAGE) {
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
@@ -900,10 +901,10 @@ static int s_process_read_message(
         /* the SSPI interface forces us to manage incomplete records manually. So when we had extra after
            the previous read, it needs to be shifted to the beginning of the current read, then the current
            read data is appended to it.
-           
+           
            If we had an incomplete record, we don't need to shift anything but we do need to append
            the current read data to the end of the incomplete record from the previous read.
-           
+           
            Keep going until we've processed everything in the message we were just passed. */
         int err = AWS_OP_SUCCESS;
         while (!err && message_cursor.len) {
@@ -927,8 +928,8 @@ static int s_process_read_message(
                     /* throw this one as a protocol error. */
                     aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
                 } else {
-                    /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete record,
-                       and the amount they're requesting is less than the size of a tls record. */
+                    /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
+                       record, and the amount they're requesting is less than the size of a tls record. */
                     size_t window_size = slot->window_size;
                     if (!window_size &&
                         aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
@@ -969,7 +970,7 @@ static int s_process_read_message(
             aws_channel_release_message_to_pool(slot->channel, message);
             return AWS_OP_SUCCESS;
         }
-        
+
         aws_channel_shutdown(slot->channel, err);
         return AWS_OP_ERR;
     }

@@ -227,11 +227,11 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         if (cached_address) {
             address_copy = aws_mem_acquire(resolver->allocator, sizeof(struct aws_host_address));
 
-            if (!address_copy || aws_host_address_copy(address, address_copy)) {
+            if (!address_copy || aws_host_address_copy(cached_address, address_copy)) {
                 goto error_host_entry_cleanup;
             }
 
-            if (aws_lru_cache_remove(address_table, address->address)) {
+            if (aws_lru_cache_remove(address_table, cached_address->address)) {
                 goto error_host_entry_cleanup;
             }
 
