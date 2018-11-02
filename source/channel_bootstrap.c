@@ -37,30 +37,30 @@
 #define MAX_HOST_RESOLVER_ENTRIES 64
 #define DEFAULT_DNS_TTL 30
 
-struct tl_shutdown_task_data {
+struct thread_local_shutdown_task_data {
     struct aws_condition_variable *condition_variable;
     struct aws_mutex *mutex;
     bool invoked;
 };
 
 static bool s_tl_cleanup_predicate(void *arg) {
-    struct tl_shutdown_task_data *shutdown_task_data = arg;
+    struct thread_local_shutdown_task_data *shutdown_task_data = arg;
     return shutdown_task_data->invoked;
 }
 
-static void s_handle_tl_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_handle_thread_local_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
-    struct tl_shutdown_task_data *shutdown_task_data = arg;
+    struct thread_local_shutdown_task_data *shutdown_task_data = arg;
 
     aws_mutex_lock(shutdown_task_data->mutex);
     aws_tls_clean_up_thread_local_state();
     shutdown_task_data->invoked = true;
-    aws_condition_variable_notify_one(shutdown_task_data->condition_variable);
     aws_mutex_unlock(shutdown_task_data->mutex);
+    aws_condition_variable_notify_one(shutdown_task_data->condition_variable);
 }
 
-static void s_ensure_tl_state_is_cleaned_up(struct aws_event_loop_group *el_group) {
+static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_group *el_group) {
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
@@ -69,19 +69,19 @@ static void s_ensure_tl_state_is_cleaned_up(struct aws_event_loop_group *el_grou
     for (size_t i = 0; i < len; ++i) {
         struct aws_event_loop *el = aws_event_loop_group_get_loop_at(el_group, i);
 
-        struct tl_shutdown_task_data tl_shutdown = {
+        struct thread_local_shutdown_task_data thread_local_shutdown = {
             .mutex = &mutex,
             .condition_variable = &condition_variable,
             .invoked = false,
         };
 
         struct aws_task task = {
-            .fn = s_handle_tl_cleanup_task,
-            .arg = &tl_shutdown,
+            .fn = s_handle_thread_local_cleanup_task,
+            .arg = &thread_local_shutdown,
         };
 
         aws_event_loop_schedule_task_now(el, &task);
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tl_cleanup_predicate, &tl_shutdown);
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tl_cleanup_predicate, &thread_local_shutdown);
     }
     aws_mutex_unlock(&mutex);
 }
@@ -148,7 +148,7 @@ int aws_client_bootstrap_set_alpn_callback(
 
 void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
     if (bootstrap->tls_ctx) {
-        s_ensure_tl_state_is_cleaned_up(bootstrap->event_loop_group);
+        s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     }
 
     if (bootstrap->host_resolver && bootstrap->owns_resolver) {
@@ -197,16 +197,8 @@ static void s_tls_client_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);
     }
 
-    if (!err_code) {
-        connection_args->setup_callback(
-            connection_args->bootstrap,
-            AWS_OP_SUCCESS,
-            &connection_args->channel_data.channel,
-            connection_args->user_data);
-    } else {
-        /* the tls handler is responsible for calling shutdown when this fails. */
-        connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
-    }
+    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? &connection_args->channel_data.channel : NULL;
+    connection_args->setup_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
@@ -261,7 +253,7 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
     }
 
     aws_channel_slot_insert_end(channel, tls_slot);
-    if (aws_channel_slot_set_handler(tls_slot, tls_handler)) {
+    if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
         return AWS_OP_ERR;
     }
 
@@ -283,12 +275,12 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
         }
 
         aws_channel_slot_insert_right(tls_slot, alpn_slot);
-        if (aws_channel_slot_set_handler(alpn_slot, alpn_handler)) {
+        if (aws_channel_slot_set_handler(alpn_slot, alpn_handler) != AWS_OP_SUCCESS) {
             return AWS_OP_ERR;
         }
     }
 
-    if (aws_tls_client_handler_start_negotiation(tls_handler)) {
+    if (aws_tls_client_handler_start_negotiation(tls_handler) != AWS_OP_SUCCESS) {
         return AWS_OP_ERR;
     }
 
@@ -631,7 +623,12 @@ int aws_client_bootstrap_new_tls_socket_channel(
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
     assert(connection_options);
+    assert(options->type == AWS_SOCKET_STREAM);
     assert(bootstrap->tls_ctx);
+
+    if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
 
     return s_new_client_channel(
         bootstrap, host_name, port, options, connection_options, setup_callback, shutdown_callback, user_data);
@@ -666,7 +663,7 @@ int aws_server_bootstrap_init(
 
 void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap) {
     if (bootstrap->tls_ctx) {
-        s_ensure_tl_state_is_cleaned_up(bootstrap->event_loop_group);
+        s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     }
     AWS_ZERO_STRUCT(*bootstrap);
 }
@@ -703,13 +700,8 @@ static void s_tls_server_on_negotiation_result(
         connection_args->user_on_negotiation_result(handler, slot, err_code, connection_args->tls_user_data);
     }
 
-    if (!err_code) {
-        connection_args->incoming_callback(
-            connection_args->bootstrap, AWS_OP_SUCCESS, slot->channel, connection_args->user_data);
-    } else {
-        /* the tls handler is responsible for calling shutdown when this fails. */
-        connection_args->shutdown_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
-    }
+    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? slot->channel : NULL;
+    connection_args->incoming_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
@@ -1034,7 +1026,14 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
     assert(connection_options);
+    assert(options->type == AWS_SOCKET_STREAM);
     assert(bootstrap->tls_ctx);
+
+    if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
+        aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        return NULL;
+    }
+
     return s_server_new_socket_listener(
         bootstrap, local_endpoint, options, connection_options, incoming_callback, shutdown_callback, user_data);
 }

@@ -95,7 +95,6 @@ static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf)
         message->copy_mark += to_write;
 
         if (message->copy_mark == message->message_data.len) {
-            /* note: value is the first member of the allocated struct */
             aws_channel_release_message_to_pool(handler->slot->channel, message);
         } else {
             aws_linked_list_push_front(&handler->input_queue, &message->queueing_handle);
@@ -303,7 +302,11 @@ static int s_s2n_handler_process_read_message(
             &blocked);
 
         /* weird race where we received an alert from the peer, but s2n doesn't tell us about it.....
-         * if this happens, it's a graceful shutdown, so kick it off here. */
+         * if this happens, it's a graceful shutdown, so kick it off here.
+         *
+         * In other words, s2n, upon graceful shutdown, follows the unix EOF idiom. So just shutdown with
+         * SUCCESS.
+         */
         if (read == 0) {
             aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
@@ -412,7 +415,10 @@ static int s_s2n_handler_increment_read_window(
     }
 
     if (s2n_handler->negotiation_finished) {
-        /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
+        /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
+         * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
+         *
+         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
         s2n_handler->sequential_tasks.fn = s_run_read;
@@ -635,6 +641,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLSv1_3:
             /* sorry guys, we'll add this as soon as s2n does. */
+            aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
+            goto cleanup_s2n_ctx;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
         default:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");

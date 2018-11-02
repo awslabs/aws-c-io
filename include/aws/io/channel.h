@@ -307,6 +307,11 @@ int aws_channel_slot_insert_left(struct aws_channel_slot *slot, struct aws_chann
 
 /**
  * Sends a message to the adjacent slot in the channel based on dir. Also does window size checking.
+ *
+ * NOTE: if this function returns an error code, it is the caller's responsibility to release message
+ * back to the pool. If this function returns AWS_OP_SUCCESS, the recipient of the message has taken
+ * ownership of the message. So, for example, don't release a message to the pool and then return an error.
+ * If you encounter an error condition in this case, shutdown the channel with the appropriate error code.
  */
 AWS_IO_API
 int aws_channel_slot_send_message(

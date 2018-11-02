@@ -41,7 +41,7 @@ struct aws_tls_ctx {
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
-    int err_code,
+    int error_code,
     void *user_data);
 
 /**
@@ -115,7 +115,7 @@ struct aws_tls_ctx_options {
      */
     const char *ca_path;
     /**
-     * Sets ctx wide alpn string. This is most usefull for servers.
+     * Sets ctx wide alpn string. This is most useful for servers.
      * This is a semi-colon delimited list. example:
      * h2;http/1.1
      */
@@ -219,7 +219,7 @@ AWS_IO_API void aws_tls_connection_options_set_verify_peer(
     struct aws_tls_connection_options *conn_options,
     bool verify_peer);
 
-/********************************* stuff that actually does work *********************************/
+/********************************* TLS context and state management *********************************/
 /**
  * Initializes static state for the tls implementation. This must be called before any attempts
  * to create an aws_tls_ctx or tls handler.
@@ -267,7 +267,7 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
 
 /**
  * Creates a channel handler, for client or server mode, that handles alpn. This isn't necessarily required
- * since you can always call, aws_tls_handler_protocol in the aws_tls_on_negotiation_result_fn callback, but
+ * since you can always call aws_tls_handler_protocol in the aws_tls_on_negotiation_result_fn callback, but
  * this makes channel bootstrap easier to handle.
  */
 AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(

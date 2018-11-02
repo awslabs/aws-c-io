@@ -39,7 +39,6 @@ static int s_translate_and_raise_file_open_error(int error_no) {
 }
 
 int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocator *alloc, const char *filename) {
-/* yeah yeah, I know and I don't care. */
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
 #endif                              /* _MSC_VER */
@@ -54,17 +53,14 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         }
 
         size_t allocation_size = (size_t)ftell(fp) + 1;
-        /* yes I know this breaks the coding conventions rule on init and free being at the same scope,
-         * but in this case that doesn't make sense since the user would have to know the length of the file.
-         * We'll tell the user that we allocate here and if we succeed they free. */
+        /* Tell the user that we allocate here and if success they're responsible for the free. */
         if (aws_byte_buf_init(alloc, out_buf, allocation_size)) {
             fclose(fp);
             return AWS_OP_ERR;
         }
 
-        /* while WE ban null terminator APIs, unfortunately much of the world is still stuck in the dark ages of
-         * 1970 and we unfortunately have to call into their code on occasion.
-         * Go ahead and add one here, but don't make it part of the length. */
+        /* Ensure compatibility with null-terminated APIs, but don't consider
+         * the null terminator part of the length of the payload */
         out_buf->len = out_buf->capacity - 1;
         out_buf->buffer[out_buf->len] = 0;
 
@@ -349,7 +345,7 @@ int aws_import_public_and_private_keys_to_identity(
 
     SecCertificateRef certificate_ref = NULL;
 
-    /* if it's already there, just conver this over to a cert and then let the keychain give it back to us. */
+    /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
     if (status == errSecDuplicateItem) {
         struct aws_array_list cert_chain_list;
 
