@@ -35,7 +35,7 @@
 #if _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
-#    pragma warning(disable : 4306) /* msft doesn't trust us to do pointer arithmetic. */
+#    pragma warning(disable : 4306) /* Identifier is type cast to a larger pointer. */
 #endif
 
 #define KB_1 1024
@@ -64,6 +64,7 @@ struct secure_channel_handler {
     struct aws_channel_handler handler;
     CtxtHandle sec_handle;
     CredHandle creds;
+    /* The SSPI API expects an array of len 1 of these where it's the leaf certificate associated with its private key.*/
     PCCERT_CONTEXT cert_context[1];
     HCERTSTORE cert_store;
     HCERTSTORE custom_ca_store;
@@ -232,9 +233,10 @@ static int s_determine_sspi_error(int sspi_status) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);                                                                \
     }
 
-/* construct ALPN extension data... apparently this works on big-endian machines? but I don't beleive the docs
+/* construct ALPN extension data... apparently this works on big-endian machines? but I don't believe the docs
    if you're running ARM and you find ALPN isn't working, it's probably because I trusted the documentation
-   and your bug is in here. */
+   and your bug is in here. Note, dotnet's corefx also acts like endianness isn't at play so if this is broken
+   so is everyone's dotnet code. */
 static int s_fillin_alpn_data(
     struct aws_channel_handler *handler,
     unsigned char *alpn_buffer_data,
@@ -459,7 +461,8 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     };
-
+    /* any output buffers that were filled in with SECBUFFER_TOKEN need to be sent,
+       SECBUFFER_EXTRA means we need to account for extra data and shift everything for the next run. */
     if (status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK) {
         for (size_t i = 0; i < output_buffers_desc.cBuffers; ++i) {
             SecBuffer *buf_ptr = &output_buffers[i];
@@ -500,8 +503,6 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 return AWS_OP_ERR;
             }
         }
-        /* do all the negotiation completion callbacks here. also, invoke it in a task so that we don't have a race
-        in the next section where we handle any left over data recieved from the server. */
         sc_handler->negotiation_finished = true;
 
         /*
@@ -783,6 +784,10 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
     if (status == SEC_E_OK) {
+        /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
+           If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
+           everything before doing another decrypt operation.
+           As far as I can tell, we don't care what's in the third buffer for TLS usage.*/
         if (input_buffers[1].BufferType == SECBUFFER_DATA) {
             size_t decrypted_length = input_buffers[1].cbBuffer;
 
@@ -801,6 +806,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         }
 
         return AWS_OP_SUCCESS;
+    /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to 
+       append our next read to it and try again. */
     } else if (status == SEC_E_INCOMPLETE_MESSAGE) {
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
@@ -890,6 +897,14 @@ static int s_process_read_message(
     if (message) {
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
+        /* the SSPI interface forces us to manage incomplete records manually. So when we had extra after
+           the previous read, it needs to be shifted to the beginning of the current read, then the current
+           read data is appended to it.
+           
+           If we had an incomplete record, we don't need to shift anything but we do need to append
+           the current read data to the end of the incomplete record from the previous read.
+           
+           Keep going until we've processed everything in the message we were just passed. */
         int err = AWS_OP_SUCCESS;
         while (!err && message_cursor.len) {
 
@@ -912,6 +927,8 @@ static int s_process_read_message(
                     /* throw this one as a protocol error. */
                     aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
                 } else {
+                    /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete record,
+                       and the amount they're requesting is less than the size of a tls record. */
                     size_t window_size = slot->window_size;
                     if (!window_size &&
                         aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
@@ -927,6 +944,7 @@ static int s_process_read_message(
                 break;
             }
 
+            /* handle any left over extra data from the decrypt operation here. */
             if (sc_handler->read_extra) {
                 size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
                 memmove(
@@ -951,7 +969,7 @@ static int s_process_read_message(
             aws_channel_release_message_to_pool(slot->channel, message);
             return AWS_OP_SUCCESS;
         }
-
+        
         aws_channel_shutdown(slot->channel, err);
         return AWS_OP_ERR;
     }
@@ -979,6 +997,7 @@ static int s_process_write_message(
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
         while (message_cursor.len) {
+            /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
             size_t requested_length =
                 message_cursor.len + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
             size_t to_write = sc_handler->stream_sizes.cbMaximumMessage < requested_length
@@ -1066,7 +1085,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     (void)size;
     struct secure_channel_handler *sc_handler = (struct secure_channel_handler *)handler->impl;
 
-    if (!sc_handler->stream_sizes.cbMaximumMessage) {
+    if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
         SECURITY_STATUS status =
             QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
 
@@ -1080,6 +1099,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
 
+    /* expand our window when the downstream window is larger than ours. This keeps us from buffering too much data. */
     if (downstream_size <= current_window_size) {
         size_t likely_records_count = (downstream_size - current_window_size) % READ_IN_SIZE;
         size_t offset_size =
@@ -1114,6 +1134,7 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
+        /* send a TLS alert. */
         SECURITY_STATUS status;
 
         DWORD shutdown_code = SCHANNEL_SHUTDOWN;
@@ -1129,6 +1150,7 @@ static int s_handler_shutdown(
             .pBuffers = &shutdown_buffer,
         };
 
+        /* this updates the SSPI internal state machine. */
         status = ApplyControlToken(&sc_handler->sec_handle, &shutdown_buffer_desc);
 
         if (status != SEC_E_OK) {
@@ -1149,6 +1171,7 @@ static int s_handler_shutdown(
         };
 
         struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+        /* this acutally gives us an Alert record to send. */
         status = InitializeSecurityContextA(
             &sc_handler->creds,
             &sc_handler->sec_handle,

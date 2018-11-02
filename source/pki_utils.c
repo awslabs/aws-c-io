@@ -547,13 +547,9 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
-    /* according to the docs, this has to be the System Store by itself to open the cert store
-       successfully. There are some libraries such as libcurl that don't do this copy with just the
-       System Store. I haven't been able to make that work. I suspect mutual TLS just doesn't work
-       in curl on windows? However, this does work, so this is what we're doing.
-       As far as the 128 byte length, according to the msdn documentation here:
-       https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations
-       this value should be more than enough. We'll add an assert just in case. */
+    /* The store_val value has to be only the path segment related to the physical store. Looking
+       at the docs, 128 bytes should be plenty to store that segment.
+       https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations */
     char store_path[128] = {0};
     assert(location_of_next_segment - store_path_start < sizeof(store_path));
     memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
