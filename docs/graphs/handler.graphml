@@ -58,7 +58,7 @@ data_out ( msg, promise, promise_user_data )
 update_window ( window_size )
 shutdown_notify ( error )
 shutdown_direction ( direction )
-get_current_window_size ()
+initial_window_size ()
 destroy ( )<y:LabelModel>
                   <y:SmartNodeLabelModel distance="4.0"/>
                 </y:LabelModel>

@@ -17,11 +17,9 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include <aws/io/host_resolver.h>
-
 #include <aws/common/string.h>
-
-static bool s_wsa_init = false;
+#include <aws/io/host_resolver.h>
+#include <aws/io/socket.h>
 
 int aws_default_dns_resolve(
     struct aws_allocator *allocator,
@@ -33,13 +31,7 @@ int aws_default_dns_resolve(
     ADDRINFOA *result = NULL;
     const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
 
-    if (!s_wsa_init) {
-        /* request latest, it will fallback if it doesn't have it.*/
-        WORD requested_version = MAKEWORD(2, 2);
-        WSADATA wsa_data;
-        WSAStartup(requested_version, &wsa_data);
-        s_wsa_init = true;
-    }
+    aws_check_and_init_winsock();
 
     ADDRINFOA hints;
     AWS_ZERO_STRUCT(hints);

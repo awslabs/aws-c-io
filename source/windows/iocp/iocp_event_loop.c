@@ -19,6 +19,11 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+/* The next set of struct definitions are taken directly from the
+    windows documentation. We can't include the header files directly
+    due to winsock. Also some of the definitions here aren't in the public API
+    but it's the only way to do the thing we need to do. So we just declare it
+    here and use dynamic binding to do the voodoo magic. */
 struct FILE_BASIC_INFORMATION {
     LARGE_INTEGER CreationTime;
     LARGE_INTEGER LastAccessTime;
@@ -52,6 +57,7 @@ typedef NTSTATUS(NTAPI NTSetInformationFile)(
     enum FILE_INFORMATION_CLASS file_information_class);
 
 NTSetInformationFile *s_set_info_fn = NULL;
+/* END of windows hackery here. */
 
 typedef enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -117,6 +123,18 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped) {
     assert(overlapped);
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
+
+struct aws_event_loop_vtable s_iocp_vtable = {
+    .destroy = s_destroy,
+    .run = s_run,
+    .stop = s_stop,
+    .wait_for_stop_completion = s_wait_for_stop_completion,
+    .schedule_task_now = s_schedule_task_now,
+    .schedule_task_future = s_schedule_task_future,
+    .connect_to_io_completion_port = s_connect_to_io_completion_port,
+    .is_on_callers_thread = s_is_event_thread,
+    .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+};
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
@@ -197,15 +215,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     event_loop->impl_data = impl;
 
-    event_loop->vtable.destroy = s_destroy;
-    event_loop->vtable.run = s_run;
-    event_loop->vtable.stop = s_stop;
-    event_loop->vtable.wait_for_stop_completion = s_wait_for_stop_completion;
-    event_loop->vtable.schedule_task_now = s_schedule_task_now;
-    event_loop->vtable.schedule_task_future = s_schedule_task_future;
-    event_loop->vtable.connect_to_io_completion_port = s_connect_to_io_completion_port;
-    event_loop->vtable.is_on_callers_thread = s_is_event_thread;
-    event_loop->vtable.unsubscribe_from_io_events = s_unsubscribe_from_io_events;
+    event_loop->vtable = &s_iocp_vtable;
 
     return event_loop;
 

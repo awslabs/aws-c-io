@@ -31,6 +31,8 @@ struct aws_event_loop;
 struct aws_task;
 
 #if AWS_USE_IO_COMPLETION_PORTS
+#    include <Windows.h>
+
 struct aws_overlapped;
 
 typedef void(aws_event_loop_on_completion_fn)(
@@ -85,7 +87,7 @@ struct aws_event_loop_vtable {
 };
 
 struct aws_event_loop {
-    struct aws_event_loop_vtable vtable;
+    struct aws_event_loop_vtable *vtable;
     struct aws_allocator *alloc;
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;

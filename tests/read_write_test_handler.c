@@ -119,6 +119,15 @@ static void s_rw_handler_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, handler);
 }
 
+struct aws_channel_handler_vtable s_rw_test_vtable = {
+    .shutdown = s_rw_handler_shutdown,
+    .increment_read_window = s_rw_handler_increment_read_window,
+    .initial_window_size = s_rw_handler_get_current_window_size,
+    .process_read_message = s_rw_handler_process_read,
+    .process_write_message = s_rw_handler_process_write_message,
+    .destroy = s_rw_handler_destroy,
+};
+
 struct aws_channel_handler *rw_handler_new(
     struct aws_allocator *allocator,
     rw_handler_driver_fn *on_read,
@@ -129,14 +138,7 @@ struct aws_channel_handler *rw_handler_new(
 
     struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
     handler->alloc = allocator;
-    handler->vtable = (struct aws_channel_handler_vtable){
-        .shutdown = s_rw_handler_shutdown,
-        .increment_read_window = s_rw_handler_increment_read_window,
-        .initial_window_size = s_rw_handler_get_current_window_size,
-        .process_read_message = s_rw_handler_process_read,
-        .process_write_message = s_rw_handler_process_write_message,
-        .destroy = s_rw_handler_destroy,
-    };
+    handler->vtable = &s_rw_test_vtable;
 
     struct rw_test_handler_impl *handler_impl = aws_mem_acquire(allocator, sizeof(struct rw_test_handler_impl));
     handler_impl->shutdown_called = false;

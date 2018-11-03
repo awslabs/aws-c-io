@@ -57,7 +57,7 @@ if (WIN32)
     #platform libs come from aws-c-common transitively, so we don't specify them here, but for documentation purposes,
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
     #Also note, you don't get a choice on TLS implementation for Windows.
-    set(PLATFORM_LIBS Secur32)
+    set(PLATFORM_LIBS Secur32 Crypt32)
     set(TLS_STACK_DETERMINED ON)
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -173,3 +173,4 @@ install(EXPORT ${CMAKE_PROJECT_NAME}-config DESTINATION "${CMAKE_INSTALL_PREFIX}
 
 include(CTest)
 add_subdirectory(tests)
+

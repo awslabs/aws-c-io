@@ -12,6 +12,7 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/host_resolver.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
@@ -21,7 +22,6 @@
 #include <aws/common/rw_lock.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
-#include <aws/io/host_resolver.h>
 
 const uint64_t NS_PER_SEC = 1000000000;
 
@@ -72,8 +72,8 @@ void aws_host_address_clean_up(struct aws_host_address *address) {
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable.destroy);
-    resolver->vtable.destroy(resolver);
+    assert(resolver->vtable && resolver->vtable->destroy);
+    resolver->vtable->destroy(resolver);
 }
 
 int aws_host_resolver_resolve_host(
@@ -82,18 +82,18 @@ int aws_host_resolver_resolve_host(
     aws_on_host_resolved_result_fn *res,
     struct aws_host_resolution_config *config,
     void *user_data) {
-    assert(resolver->vtable.resolve_host);
-    return resolver->vtable.resolve_host(resolver, host_name, res, config, user_data);
+    assert(resolver->vtable && resolver->vtable->resolve_host);
+    return resolver->vtable->resolve_host(resolver, host_name, res, config, user_data);
 }
 
 int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable.purge_cache);
-    return resolver->vtable.purge_cache(resolver);
+    assert(resolver->vtable && resolver->vtable->purge_cache);
+    return resolver->vtable->purge_cache(resolver);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
-    assert(resolver->vtable.record_connection_failure);
-    return resolver->vtable.record_connection_failure(resolver, address);
+    assert(resolver->vtable && resolver->vtable->record_connection_failure);
+    return resolver->vtable->record_connection_failure(resolver, address);
 }
 
 struct default_host_resolver {
@@ -227,11 +227,11 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         if (cached_address) {
             address_copy = aws_mem_acquire(resolver->allocator, sizeof(struct aws_host_address));
 
-            if (!address_copy || aws_host_address_copy(address, address_copy)) {
+            if (!address_copy || aws_host_address_copy(cached_address, address_copy)) {
                 goto error_host_entry_cleanup;
             }
 
-            if (aws_lru_cache_remove(address_table, address->address)) {
+            if (aws_lru_cache_remove(address_table, cached_address->address)) {
                 goto error_host_entry_cleanup;
             }
 
@@ -405,7 +405,7 @@ static void resolver_thread_fn(void *arg) {
 }
 
 static void on_host_key_removed(void *key) {
-    aws_string_destroy(key);
+    (void)key;
 }
 
 static void on_host_value_removed(void *value) {
@@ -436,6 +436,7 @@ static void on_host_value_removed(void *value) {
     aws_lru_cache_clean_up(&host_entry->a_records);
     aws_lru_cache_clean_up(&host_entry->failed_connection_a_records);
     aws_lru_cache_clean_up(&host_entry->failed_connection_aaaa_records);
+    aws_string_destroy((void *)host_entry->host_name);
     aws_mem_release(host_entry->allocator, host_entry);
 }
 
@@ -679,7 +680,7 @@ static int default_resolve_host(
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_host_resolver_vtable vtable = {
+static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
@@ -712,7 +713,7 @@ int aws_host_resolver_init_default(
         return AWS_OP_ERR;
     }
 
-    resolver->vtable = vtable;
+    resolver->vtable = &s_vtable;
     resolver->allocator = allocator;
     resolver->impl = default_host_resolver;
 
