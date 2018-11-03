@@ -19,11 +19,11 @@
 #include <Security/Security.h>
 
 int aws_import_public_and_private_keys_to_identity(
-        struct aws_allocator *alloc,
-        CFAllocatorRef cf_alloc,
-        struct aws_byte_buf *public_cert_chain,
-        struct aws_byte_buf *private_key,
-        CFArrayRef *identity) {
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *public_cert_chain,
+    struct aws_byte_buf *private_key,
+    CFArrayRef *identity) {
 
     size_t total_len = public_cert_chain->len + private_key->len;
     struct aws_byte_buf aggregate_buffer;
@@ -53,7 +53,7 @@ int aws_import_public_and_private_keys_to_identity(
     SecKeychainCopyDefault(&import_keychain);
 
     OSStatus status = SecItemImport(
-            aggregate_certificate_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &import_output);
+        aggregate_certificate_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &import_output);
 
     CFRelease(aggregate_certificate_data);
     aws_secure_zero(aggregate_buffer.buffer, aggregate_buffer.len);
@@ -120,10 +120,10 @@ int aws_import_public_and_private_keys_to_identity(
 }
 
 int aws_import_pkcs12_to_identity(
-        CFAllocatorRef cf_alloc,
-        struct aws_byte_buf *pkcs12_buffer,
-        struct aws_byte_buf *password,
-        CFArrayRef *identity) {
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *pkcs12_buffer,
+    struct aws_byte_buf *password,
+    CFArrayRef *identity) {
     CFDataRef pkcs12_data = CFDataCreate(cf_alloc, pkcs12_buffer->buffer, pkcs12_buffer->len);
     CFArrayRef items = NULL;
 
@@ -162,10 +162,10 @@ int aws_import_pkcs12_to_identity(
 }
 
 int aws_import_trusted_certificates(
-        struct aws_allocator *alloc,
-        CFAllocatorRef cf_alloc,
-        struct aws_byte_buf *certificates_blob,
-        CFArrayRef *certs) {
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    struct aws_byte_buf *certificates_blob,
+    CFArrayRef *certs) {
     struct aws_array_list certificates;
 
     if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {

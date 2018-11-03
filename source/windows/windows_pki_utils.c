@@ -18,6 +18,8 @@
 #include <aws/common/clock.h>
 
 #include <Windows.h>
+#include <stdio.h>
+#include <string.h>
 
 #if _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
@@ -79,7 +81,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     }
 
     *cert_store = CertOpenStore(
-            CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
+        CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!cert_store) {
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
@@ -87,8 +89,8 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     BYTE cert_hash_data[CERT_HASH_LEN];
     CRYPT_HASH_BLOB cert_hash = {
-            .pbData = cert_hash_data,
-            .cbData = CERT_HASH_LEN,
+        .pbData = cert_hash_data,
+        .cbData = CERT_HASH_LEN,
     };
 
     if (!CryptStringToBinaryA(
@@ -103,7 +105,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     }
 
     *certs = CertFindCertificateInStore(
-            *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
+        *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
     if (!certs) {
         aws_close_cert_store(*cert_store);
@@ -115,9 +117,9 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 }
 
 int aws_import_trusted_certificates(
-        struct aws_allocator *alloc,
-        struct aws_byte_buf *certificates_blob,
-        HCERTSTORE *cert_store) {
+    struct aws_allocator *alloc,
+    struct aws_byte_buf *certificates_blob,
+    HCERTSTORE *cert_store) {
     struct aws_array_list certificates;
     *cert_store = NULL;
 
@@ -134,7 +136,7 @@ int aws_import_trusted_certificates(
     size_t cert_count = aws_array_list_length(&certificates);
 
     HCERTSTORE tmp_cert_store =
-            CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
+        CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
         error_code = aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
@@ -153,17 +155,17 @@ int aws_import_trusted_certificates(
 
         DWORD content_type = 0;
         BOOL query_res = CryptQueryObject(
-                CERT_QUERY_OBJECT_BLOB,
-                &cert_blob,
-                CERT_QUERY_CONTENT_FLAG_CERT,
-                CERT_QUERY_FORMAT_FLAG_ALL,
-                0,
-                NULL,
-                &content_type,
-                NULL,
-                NULL,
-                NULL,
-                &cert_context);
+            CERT_QUERY_OBJECT_BLOB,
+            &cert_blob,
+            CERT_QUERY_CONTENT_FLAG_CERT,
+            CERT_QUERY_FORMAT_FLAG_ALL,
+            0,
+            NULL,
+            &content_type,
+            NULL,
+            NULL,
+            NULL,
+            &cert_context);
 
         if (!query_res) {
             error_code = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
@@ -174,7 +176,7 @@ int aws_import_trusted_certificates(
         CertFreeCertificateContext(cert_context);
     }
 
-    clean_up:
+clean_up:
     aws_cert_chain_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
 
@@ -190,11 +192,11 @@ void aws_close_cert_store(HCERTSTORE cert_store) {
 }
 
 int aws_import_key_pair_to_cert_context(
-        struct aws_allocator *alloc,
-        struct aws_byte_buf *public_cert_chain,
-        struct aws_byte_buf *private_key,
-        HCERTSTORE *store,
-        PCCERT_CONTEXT *certs) {
+    struct aws_allocator *alloc,
+    struct aws_byte_buf *public_cert_chain,
+    struct aws_byte_buf *private_key,
+    HCERTSTORE *store,
+    PCCERT_CONTEXT *certs) {
 
     struct aws_array_list certificates, private_keys;
     *certs = NULL;
@@ -238,17 +240,17 @@ int aws_import_key_pair_to_cert_context(
 
         DWORD content_type = 0;
         BOOL query_res = CryptQueryObject(
-                CERT_QUERY_OBJECT_BLOB,
-                &cert_blob,
-                CERT_QUERY_CONTENT_FLAG_CERT,
-                CERT_QUERY_FORMAT_FLAG_ALL,
-                0,
-                NULL,
-                &content_type,
-                NULL,
-                NULL,
-                NULL,
-                &cert_context);
+            CERT_QUERY_OBJECT_BLOB,
+            &cert_blob,
+            CERT_QUERY_CONTENT_FLAG_CERT,
+            CERT_QUERY_FORMAT_FLAG_ALL,
+            0,
+            NULL,
+            &content_type,
+            NULL,
+            NULL,
+            NULL,
+            &cert_context);
 
         if (!query_res) {
             error_code = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
@@ -282,14 +284,14 @@ int aws_import_key_pair_to_cert_context(
 
     DWORD decoded_len = 0;
     success = CryptDecodeObjectEx(
-            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-            PKCS_RSA_PRIVATE_KEY,
-            private_key_ptr->buffer,
-            (DWORD)private_key_ptr->len,
-            CRYPT_DECODE_ALLOC_FLAG,
-            0,
-            &key,
-            &decoded_len);
+        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+        PKCS_RSA_PRIVATE_KEY,
+        private_key_ptr->buffer,
+        (DWORD)private_key_ptr->len,
+        CRYPT_DECODE_ALLOC_FLAG,
+        0,
+        &key,
+        &decoded_len);
     HCRYPTKEY h_key = 0;
     success = CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key);
     LocalFree(key);
@@ -305,7 +307,7 @@ int aws_import_key_pair_to_cert_context(
     CryptReleaseContext(crypto_prov, 0);
     (void)success;
 
-    clean_up:
+clean_up:
     aws_cert_chain_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
     aws_cert_chain_clean_up(&private_keys);
