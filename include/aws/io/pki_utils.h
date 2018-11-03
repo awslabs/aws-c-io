@@ -60,8 +60,8 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
     struct aws_array_list *cert_chain_or_key);
 
 #ifdef __MACH__
-#    include <CoreFoundation/CoreFoundation.h>
-
+struct __CFArray;
+typedef const struct __CFArray *CFArrayRef;
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
  * into identity for use with SecurityFramework.

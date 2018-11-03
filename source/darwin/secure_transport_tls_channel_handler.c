@@ -34,7 +34,7 @@
 #define MAX_RECORD_SIZE (KB_1 * 16)
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
-/* I'm tired of trying to make SSLSetALPNFunc work, upgrade your operating system if you want ALPN support. */
+/* We couldn't make SSLSetALPNFunc work, so we have to use the public API which isn't available until High-Sierra */
 #if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) ||                                                       \
     (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                 \
     (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                         \
@@ -215,7 +215,7 @@ static void s_set_protocols(
         return;
     }
 
-    if (aws_byte_buf_split_on_char(&alpn_data, ',', &alpn_list_array)) {
+    if (aws_byte_buf_split_on_char(&alpn_data, ';', &alpn_list_array)) {
         return;
     }
 
@@ -463,6 +463,7 @@ static int s_process_read_message(
         }
     }
 
+    /* process as much as we have queued that will fit in the downstream window. */
     size_t downstream_window = aws_channel_slot_downstream_read_window(slot);
     size_t processed = 0;
 
@@ -534,9 +535,13 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     }
 
     if (secure_transport_handler->negotiation_finished) {
-        /* we have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
-         * to read). Alternatively, tls needs entire records at a time, so we'll need to grab whatever we can and we
-         * have no idea what's going on inside there. So we need to attempt another read.*/
+        /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
+         * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
+         *
+         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
+         * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
+         * have no idea what's going on inside there. So we need to attempt another read.
+         */
         secure_transport_handler->read_task_pending = true;
         secure_transport_handler->read_task.fn = s_run_read;
         secure_transport_handler->read_task.arg = handler;
@@ -607,7 +612,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
     if (!secure_transport_handler->ctx) {
-        /* TODO raise error here. */
+        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto cleanup_st_handler;
     }
 
