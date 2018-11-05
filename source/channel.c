@@ -133,6 +133,11 @@ int aws_channel_init(
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
+    aws_linked_list_init(&channel->pending_tasks);
+    aws_linked_list_init(&channel->x_thread_pending_tasks);
+    channel->x_thread_task_lock = (struct aws_mutex)AWS_MUTEX_INIT;
+
+
     setup_args->alloc = alloc;
     setup_args->channel = channel;
     setup_args->on_setup_completed = callbacks->on_setup_completed;
@@ -220,7 +225,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
         task_args->alloc = channel->alloc;
         aws_task_init(&task_args->task, s_shutdown_task, task_args);
 
-        aws_channel_schedule_task_now(channel, &task_args->task);
+        aws_event_loop_schedule_task_now(channel->loop, &task_args->task);
     }
 
     return AWS_OP_SUCCESS;
@@ -292,12 +297,72 @@ int aws_channel_remove_local_object(
     return aws_event_loop_remove_local_object(channel->loop, (void *)key, removed_obj);
 }
 
-void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task *task) {
-    aws_event_loop_schedule_task_now(channel->loop, task);
+static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct aws_channel_task *channel_task = AWS_CONTAINER_OF(task, struct aws_channel_task, channel_task);
+    struct aws_channel *channel = arg;
+
+    /* we only remove it here when task status is READY. Cancellation can only happen
+     * when the event loop is shutting down (which should never happen when there's an active
+     * channel), or when the channel is shutting down. In the latter case, we're already handling
+     * the clearing of the queue and the mutex acquisition. */
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        if (channel_task->x_thread) {
+            aws_mutex_lock(&channel->x_thread_task_lock);
+        }
+
+        aws_linked_list_remove(&channel_task->node);
+
+        if (channel_task->x_thread) {
+            aws_mutex_unlock(&channel->x_thread_task_lock);
+        }
+    }
+
+    channel_task->user_task_fn(channel_task, channel_task->task_data, status);
 }
 
-void aws_channel_schedule_task_future(struct aws_channel *channel, struct aws_task *task, uint64_t run_at_nanos) {
-    aws_event_loop_schedule_task_future(channel->loop, task, run_at_nanos);
+void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *user_data) {
+    AWS_ZERO_STRUCT(*channel_task);
+    channel_task->channel_task.fn = s_channel_task_run;
+    channel_task->channel_task.arg = NULL;
+    channel_task->user_task_fn = task_fn;
+    channel_task->task_data = user_data;
+    channel_task->x_thread = false;
+    aws_linked_list_node_reset(&channel_task->node);
+}
+
+static void s_register_pending_task(struct aws_channel *channel, struct aws_channel_task *task) {
+    task->channel_task.arg = channel;
+    if (aws_channel_thread_is_callers_thread(channel)) {
+        aws_linked_list_push_back(&channel->pending_tasks, &task->node);
+    } else {
+        task->x_thread = true;
+        aws_mutex_lock(&channel->x_thread_task_lock);
+        aws_linked_list_push_back(&channel->x_thread_pending_tasks, &task->node);
+        aws_mutex_unlock(&channel->x_thread_task_lock);
+    }
+}
+
+void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task) {
+    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+        task->user_task_fn(task, task->task_data, AWS_TASK_STATUS_CANCELED);
+        return;
+    }
+
+    s_register_pending_task(channel, task);
+    aws_event_loop_schedule_task_now(channel->loop, &task->channel_task);
+}
+
+void aws_channel_schedule_task_future(
+    struct aws_channel *channel,
+    struct aws_channel_task *task,
+    uint64_t run_at_nanos) {
+    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+        task->user_task_fn(task, task->task_data, AWS_TASK_STATUS_CANCELED);
+        return;
+    }
+
+    s_register_pending_task(channel, task);
+    aws_event_loop_schedule_task_future(channel->loop, &task->channel_task, run_at_nanos);
 }
 
 bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
@@ -447,28 +512,45 @@ int aws_channel_slot_shutdown(
 }
 
 static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)status;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
-        struct aws_channel *channel = arg;
-        channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
+    struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
+    struct aws_channel *channel = arg;
+
+    /* the channel task fn only mutates these lists if the task is run ready. This allows this code to grab the lock
+     * and mutate the lists since we're cancelling here without fear of conflict later on. */
+    while(!aws_linked_list_empty(&channel->pending_tasks)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->pending_tasks);
+        struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
+        aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
     }
+
+    aws_mutex_lock(&channel->x_thread_task_lock);
+    while(!aws_linked_list_empty(&channel->x_thread_pending_tasks)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->x_thread_pending_tasks);
+
+        struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
+        aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
+    }
+    aws_mutex_unlock(&channel->x_thread_task_lock);
+
+    channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
 }
 
 static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)arg;
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
-        task->fn = NULL;
-        task->arg = NULL;
-        struct aws_channel_slot *slot = shutdown_notify->slot;
-        aws_channel_handler_shutdown(
-            slot->handler,
-            slot,
-            AWS_CHANNEL_DIR_WRITE,
-            shutdown_notify->error_code,
-            shutdown_notify->shutdown_immediately);
-    }
+    (void)status;
+
+    struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
+    task->fn = NULL;
+    task->arg = NULL;
+    struct aws_channel_slot *slot = shutdown_notify->slot;
+    aws_channel_handler_shutdown(
+        slot->handler,
+        slot,
+        AWS_CHANNEL_DIR_WRITE,
+        shutdown_notify->error_code,
+        shutdown_notify->shutdown_immediately);
 }
 
 int aws_channel_slot_on_handler_shutdown_complete(
@@ -495,7 +577,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
         slot->channel->shutdown_notify_task.task.fn = s_run_shutdown_write_direction;
         slot->channel->shutdown_notify_task.task.arg = NULL;
 
-        aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+        aws_event_loop_schedule_task_now(slot->channel->loop, &slot->channel->shutdown_notify_task.task);
         return AWS_OP_SUCCESS;
     }
 
@@ -510,7 +592,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
             slot->channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
             slot->channel->shutdown_notify_task.task.arg = slot->channel;
             slot->channel->shutdown_notify_task.error_code = err_code;
-            aws_channel_schedule_task_now(slot->channel, &slot->channel->shutdown_notify_task.task);
+            aws_event_loop_schedule_task_now(slot->channel->loop, &slot->channel->shutdown_notify_task.task);
         }
     }
 

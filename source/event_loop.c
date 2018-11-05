@@ -244,6 +244,12 @@ void aws_event_loop_schedule_task_future(
     event_loop->vtable->schedule_task_future(event_loop, task, run_at_nanos);
 }
 
+void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    assert(event_loop->vtable && event_loop->vtable->cancel_task);
+    assert(task);
+    event_loop->vtable->cancel_task(event_loop, task);
+}
+
 #if AWS_USE_IO_COMPLETION_PORTS
 
 int aws_event_loop_connect_handle_to_io_completion_port(

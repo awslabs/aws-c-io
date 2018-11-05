@@ -72,6 +72,7 @@ struct aws_event_loop_vtable {
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
     void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
     void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+    void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
 #if AWS_USE_IO_COMPLETION_PORTS
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 #else
@@ -241,6 +242,13 @@ void aws_event_loop_schedule_task_future(
     struct aws_event_loop *event_loop,
     struct aws_task *task,
     uint64_t run_at_nanos);
+
+/**
+ * Cancels task. This function must be called from the event loop's thread. The task will be executed
+ * with the AWS_TASK_STATUS_CANCELED status inside this call.
+ */
+AWS_IO_API
+void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 
 #if AWS_USE_IO_COMPLETION_PORTS
 

@@ -17,6 +17,7 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 
 enum aws_channel_direction {
@@ -59,6 +60,9 @@ struct aws_channel {
     struct aws_shutdown_notification_task shutdown_notify_task;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
+    struct aws_linked_list pending_tasks;
+    struct aws_mutex x_thread_task_lock;
+    struct aws_linked_list x_thread_pending_tasks;
 };
 
 struct aws_channel_creation_callbacks {
@@ -77,6 +81,17 @@ struct aws_channel_slot {
     struct aws_channel_slot *adj_right;
     struct aws_channel_handler *handler;
     size_t window_size;
+};
+
+struct aws_channel_task;
+typedef void (aws_channel_task_fn)(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
+
+struct aws_channel_task {
+    struct aws_task channel_task;
+    aws_channel_task_fn *user_task_fn;
+    void *task_data;
+    struct aws_linked_list_node node;
+    bool x_thread;
 };
 
 struct aws_channel_handler_vtable {
@@ -146,6 +161,12 @@ struct aws_channel_handler {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * Initializes channel_task for use.
+ */
+AWS_IO_API
+void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *user_data);
 
 /**
  * Initializes the channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
@@ -245,7 +266,7 @@ void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws
  * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task *task);
+void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task);
 
 /**
  * Schedules a task to run on the event loop at the specified time.
@@ -256,7 +277,10 @@ void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task 
  * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-void aws_channel_schedule_task_future(struct aws_channel *channel, struct aws_task *task, uint64_t run_at_nanos);
+void aws_channel_schedule_task_future(
+    struct aws_channel *channel,
+    struct aws_channel_task *task,
+    uint64_t run_at_nanos);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use
