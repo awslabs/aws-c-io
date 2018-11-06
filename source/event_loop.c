@@ -246,6 +246,7 @@ void aws_event_loop_schedule_task_future(
 
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     assert(event_loop->vtable && event_loop->vtable->cancel_task);
+    assert(aws_event_loop_thread_is_callers_thread(event_loop));
     assert(task);
     event_loop->vtable->cancel_task(event_loop, task);
 }

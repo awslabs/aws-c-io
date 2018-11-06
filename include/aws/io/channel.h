@@ -60,9 +60,13 @@ struct aws_channel {
     struct aws_shutdown_notification_task shutdown_notify_task;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
-    struct aws_linked_list pending_tasks;
-    struct aws_mutex x_thread_task_lock;
-    struct aws_linked_list x_thread_pending_tasks;
+    struct {
+        struct aws_linked_list pending_tasks;
+    } channel_thread_task_queue;
+    struct {
+        struct aws_mutex x_thread_task_lock;
+        struct aws_linked_list x_thread_pending_tasks;
+    } x_thread_task_queue;
 };
 
 struct aws_channel_creation_callbacks {

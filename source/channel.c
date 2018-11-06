@@ -133,9 +133,9 @@ int aws_channel_init(
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
-    aws_linked_list_init(&channel->pending_tasks);
-    aws_linked_list_init(&channel->x_thread_pending_tasks);
-    channel->x_thread_task_lock = (struct aws_mutex)AWS_MUTEX_INIT;
+    aws_linked_list_init(&channel->channel_thread_task_queue.pending_tasks);
+    aws_linked_list_init(&channel->x_thread_task_queue.x_thread_pending_tasks);
+    channel->x_thread_task_queue.x_thread_task_lock = (struct aws_mutex)AWS_MUTEX_INIT;
 
     setup_args->alloc = alloc;
     setup_args->channel = channel;
@@ -316,13 +316,13 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
      * the clearing of the queue and the mutex acquisition. */
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (channel_task->x_thread) {
-            aws_mutex_lock(&channel->x_thread_task_lock);
+            aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
         }
 
         aws_linked_list_remove(&channel_task->node);
 
         if (channel_task->x_thread) {
-            aws_mutex_unlock(&channel->x_thread_task_lock);
+            aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
         }
     }
 
@@ -342,12 +342,12 @@ void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_ta
 static void s_register_pending_task(struct aws_channel *channel, struct aws_channel_task *task) {
     task->channel_task.arg = channel;
     if (aws_channel_thread_is_callers_thread(channel)) {
-        aws_linked_list_push_back(&channel->pending_tasks, &task->node);
+        aws_linked_list_push_back(&channel->channel_thread_task_queue.pending_tasks, &task->node);
     } else {
         task->x_thread = true;
-        aws_mutex_lock(&channel->x_thread_task_lock);
-        aws_linked_list_push_back(&channel->x_thread_pending_tasks, &task->node);
-        aws_mutex_unlock(&channel->x_thread_task_lock);
+        aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
+        aws_linked_list_push_back(&channel->x_thread_task_queue.x_thread_pending_tasks, &task->node);
+        aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
     }
 }
 
@@ -528,20 +528,22 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 
     /* the channel task fn only mutates these lists if the task is run ready. This allows this code to grab the lock
      * and mutate the lists since we're cancelling here without fear of conflict later on. */
-    while (!aws_linked_list_empty(&channel->pending_tasks)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->pending_tasks);
+    while (!aws_linked_list_empty(&channel->channel_thread_task_queue.pending_tasks)) {
+        struct aws_linked_list_node *node =
+            aws_linked_list_pop_front(&channel->channel_thread_task_queue.pending_tasks);
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
         aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
     }
 
-    aws_mutex_lock(&channel->x_thread_task_lock);
-    while (!aws_linked_list_empty(&channel->x_thread_pending_tasks)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->x_thread_pending_tasks);
+    aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
+    while (!aws_linked_list_empty(&channel->x_thread_task_queue.x_thread_pending_tasks)) {
+        struct aws_linked_list_node *node =
+            aws_linked_list_pop_front(&channel->x_thread_task_queue.x_thread_pending_tasks);
 
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
         aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
     }
-    aws_mutex_unlock(&channel->x_thread_task_lock);
+    aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
 
     channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
 }
