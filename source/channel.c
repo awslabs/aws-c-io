@@ -32,6 +32,31 @@ enum {
     KB_16 = 16 * 1024,
 };
 
+enum aws_channel_state {
+    AWS_CHANNEL_SETTING_UP,
+    AWS_CHANNEL_ACTIVE,
+    AWS_CHANNEL_SHUTTING_DOWN,
+    AWS_CHANNEL_SHUT_DOWN,
+};
+
+struct aws_shutdown_notification_task {
+    struct aws_task task;
+    int error_code;
+    struct aws_channel_slot *slot;
+    bool shutdown_immediately;
+};
+
+struct aws_channel {
+    struct aws_allocator *alloc;
+    struct aws_event_loop *loop;
+    struct aws_channel_slot *first;
+    struct aws_message_pool *msg_pool;
+    enum aws_channel_state channel_state;
+    struct aws_shutdown_notification_task shutdown_notify_task;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
+    void *shutdown_user_data;
+};
+
 struct channel_setup_args {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -115,11 +140,15 @@ cleanup_setup_args:
     aws_mem_release(setup_args->alloc, setup_args);
 }
 
-int aws_channel_init(
-    struct aws_channel *channel,
+struct aws_channel *aws_channel_new(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
+
+    struct aws_channel *channel = aws_mem_acquire(alloc, sizeof(struct aws_channel));
+    if (!channel) {
+        return NULL;
+    }
     AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
@@ -129,7 +158,8 @@ int aws_channel_init(
 
     struct channel_setup_args *setup_args = aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
     if (!setup_args) {
-        return AWS_OP_ERR;
+        aws_mem_release(alloc, channel);
+        return NULL;
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
@@ -141,7 +171,7 @@ int aws_channel_init(
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args);
     aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
 
-    return AWS_OP_SUCCESS;
+    return channel;
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {
@@ -154,28 +184,18 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
     }
 }
 
-void aws_channel_clean_up(struct aws_channel *channel) {
+void aws_channel_destroy(struct aws_channel *channel) {
+
+    channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
 
     struct aws_channel_slot *current = channel->first;
-
-    if (!current) {
-        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        return;
-    }
-
-    if (!current->handler) {
-        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-    }
-
-    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
-
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
         s_cleanup_slot(current);
         current = tmp;
     }
 
-    AWS_ZERO_STRUCT(*channel);
+    aws_mem_release(channel->alloc, channel);
 }
 
 struct channel_shutdown_task_args {

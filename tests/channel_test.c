@@ -43,11 +43,11 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_NOT_NULL(event_loop, "Event loop creation faÍiled with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_channel channel_1;
-    struct aws_channel channel_2;
+    struct aws_channel *channel_1;
+    struct aws_channel *channel_2;
 
     struct channel_setup_test_args test_args = {
         .error_code = 0,
@@ -63,19 +63,18 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel_1, allocator, event_loop, &callbacks));
+    channel_1 = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel_1);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
-    ASSERT_SUCCESS(aws_channel_init(&channel_2, allocator, event_loop, &callbacks));
+    channel_2 = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel_2);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
-
-    /* the msg pool should have been setup and the same msg pool should be used*/
-    ASSERT_PTR_EQUALS(channel_1.msg_pool, channel_2.msg_pool);
 
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
-    aws_channel_clean_up(&channel_1);
-    aws_channel_clean_up(&channel_2);
+    aws_channel_destroy(channel_1);
+    aws_channel_destroy(channel_2);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
@@ -90,7 +89,7 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct channel_setup_test_args test_args = {
         .error_code = 0,
@@ -106,14 +105,15 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
     struct aws_channel_slot *slot;
-    slot = aws_channel_slot_new(&channel);
+    slot = aws_channel_slot_new(channel);
     ASSERT_NOT_NULL(slot);
 
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
@@ -128,7 +128,7 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct channel_setup_test_args test_args = {
         .error_code = 0,
@@ -144,23 +144,22 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
     struct aws_channel_slot *slot_1, *slot_2, *slot_3, *slot_4, *slot_5;
-    slot_1 = aws_channel_slot_new(&channel);
-    slot_2 = aws_channel_slot_new(&channel);
-    slot_3 = aws_channel_slot_new(&channel);
-    slot_4 = aws_channel_slot_new(&channel);
-    slot_5 = aws_channel_slot_new(&channel);
+    slot_1 = aws_channel_slot_new(channel);
+    slot_2 = aws_channel_slot_new(channel);
+    slot_3 = aws_channel_slot_new(channel);
+    slot_4 = aws_channel_slot_new(channel);
+    slot_5 = aws_channel_slot_new(channel);
 
     ASSERT_NOT_NULL(slot_1);
     ASSERT_NOT_NULL(slot_2);
     ASSERT_NOT_NULL(slot_3);
     ASSERT_NOT_NULL(slot_4);
     ASSERT_NOT_NULL(slot_5);
-
-    ASSERT_PTR_EQUALS(channel.first, slot_1);
 
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
     ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
@@ -186,7 +185,7 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
     ASSERT_PTR_EQUALS(slot_5->adj_right, slot_3);
     ASSERT_PTR_EQUALS(slot_3->adj_left, slot_5);
 
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
@@ -281,7 +280,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct channel_setup_test_args test_args = {
         .error_code = 0, .mutex = AWS_MUTEX_INIT, .condition_variable = AWS_CONDITION_VARIABLE_INIT};
@@ -322,13 +321,14 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
     struct aws_channel_slot *slot_1, *slot_2, *slot_3;
-    slot_1 = aws_channel_slot_new(&channel);
-    slot_2 = aws_channel_slot_new(&channel);
-    slot_3 = aws_channel_slot_new(&channel);
+    slot_1 = aws_channel_slot_new(channel);
+    slot_2 = aws_channel_slot_new(channel);
+    slot_3 = aws_channel_slot_new(channel);
 
     ASSERT_NOT_NULL(slot_1);
     ASSERT_NOT_NULL(slot_2);
@@ -367,7 +367,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
                                                            "handler 3 written, handler 2 written, handler 1 written, ");
     ASSERT_BIN_ARRAYS_EQUALS(expected.buffer, expected.len, final_message.buffer, final_message.len);
 
-    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    aws_channel_shutdown(channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &shutdown_condition, &shutdown_mutex, s_rw_test_shutdown_predicate, &handler_1_args));
 
@@ -379,7 +379,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_TRUE(rw_handler_increment_read_window_called(handler_1));
     ASSERT_TRUE(rw_handler_increment_read_window_called(handler_2));
 
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
