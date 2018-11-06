@@ -131,7 +131,8 @@ struct aws_channel *aws_channel_new(
     struct aws_channel_creation_callbacks *callbacks);
 
 /**
- * Destroy the channel, along with all slots and handlers. Must be called after shutdown has completed.
+ * Destroy the channel, along with all slots and handlers.
+ * Must be called after shutdown has completed.
  * Can be called from any thread assuming 'aws_channel_shutdown()' has completed.
  */
 AWS_IO_API
