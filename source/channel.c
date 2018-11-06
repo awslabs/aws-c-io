@@ -211,14 +211,14 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
 
             if (slot) {
                 return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, error_code != AWS_OP_SUCCESS);
-            } else {
-                channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-                if (channel->on_shutdown_completed) {
-                    channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
-                    channel->shutdown_notify_task.task.arg = channel;
-                    channel->shutdown_notify_task.error_code = error_code;
-                    aws_event_loop_schedule_task_now(channel->loop, &channel->shutdown_notify_task.task);
-                }
+            }
+
+            channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+            if (channel->on_shutdown_completed) {
+                channel->shutdown_notify_task.task.fn = s_on_shutdown_completion_task;
+                channel->shutdown_notify_task.task.arg = channel;
+                channel->shutdown_notify_task.error_code = error_code;
+                aws_event_loop_schedule_task_now(channel->loop, &channel->shutdown_notify_task.task);
             }
         }
     } else {

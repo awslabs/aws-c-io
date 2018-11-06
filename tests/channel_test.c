@@ -483,7 +483,7 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
     struct aws_channel_task task;
     aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
     /* schedule WAY in the future. */
-    aws_channel_schedule_task_future(&channel, &task, SIZE_MAX);
+    aws_channel_schedule_task_future(&channel, &task, UINT64_MAX - 1);
     /* make sure it hasn't been invoked yet. */
     ASSERT_INT_EQUALS(100, test_args.task_status);
 
