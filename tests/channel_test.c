@@ -193,6 +193,65 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(channel_slots_clean_up, s_test_channel_slots_clean_up)
 
+static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    ASSERT_NOT_NULL(event_loop);
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    /* Create channel */
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_setup_test_on_setup_completed,
+        .shutdown_user_data = &test_args,
+    };
+
+    struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+
+    /* Add handler to channel */
+    struct aws_channel_slot *slot = aws_channel_slot_new(channel);
+    ASSERT_NOT_NULL(slot);
+
+    struct aws_channel_handler *handler = rw_handler_new(allocator, NULL, NULL, false, 10000, NULL);
+
+    bool destroy_called = false;
+    rw_handler_set_destroy_called_ref(handler, &destroy_called);
+
+    ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
+
+    /* Shut down channel */
+    ASSERT_SUCCESS(aws_channel_shutdown(channel, 0));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+
+    /* Acquire 2 holds on channel and try to destroy it. The holds should prevent memory from being freed yet */
+    aws_channel_acquire_hold(channel);
+    aws_channel_acquire_hold(channel);
+    aws_channel_destroy(channel);
+    ASSERT_FALSE(destroy_called);
+
+    /* Release hold 1/2. Handler shouldn't get destroyed. */
+    aws_channel_release_hold(channel);
+    ASSERT_FALSE(destroy_called);
+
+    /* Release hold 2/2. The handler and channel should be destroyed. */
+    aws_channel_release_hold(channel);
+    ASSERT_TRUE(destroy_called);
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(channel_refcount, s_test_channel_refcount)
+
 struct channel_rw_test_args {
     struct aws_byte_buf read_tag;
     struct aws_byte_buf write_tag;

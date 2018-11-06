@@ -37,6 +37,8 @@ struct aws_channel_handler *rw_handler_new(
     size_t window,
     void *ctx);
 
+void rw_handler_set_destroy_called_ref(struct aws_channel_handler *handler, bool *destroy_called_ref);
+
 void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer);
 
 void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot);

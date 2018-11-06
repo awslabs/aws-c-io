@@ -27,6 +27,7 @@
 struct rw_test_handler_impl {
     bool shutdown_called;
     bool increment_read_window_called;
+    bool *destroy_called;
     rw_handler_driver_fn *on_read;
     rw_handler_driver_fn *on_write;
     bool event_loop_driven;
@@ -115,6 +116,11 @@ static size_t s_rw_handler_get_current_window_size(struct aws_channel_handler *h
 
 static void s_rw_handler_destroy(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
+
+    if (handler_impl->destroy_called) {
+        *handler_impl->destroy_called = true;
+    }
+
     aws_mem_release(handler->alloc, handler_impl);
     aws_mem_release(handler->alloc, handler);
 }
@@ -141,14 +147,11 @@ struct aws_channel_handler *rw_handler_new(
     handler->vtable = &s_rw_test_vtable;
 
     struct rw_test_handler_impl *handler_impl = aws_mem_acquire(allocator, sizeof(struct rw_test_handler_impl));
-    handler_impl->shutdown_called = false;
-    handler_impl->increment_read_window_called = false;
-
+    AWS_ZERO_STRUCT(*handler_impl);
     handler_impl->on_read = on_read;
     handler_impl->on_write = on_write;
     handler_impl->ctx = ctx;
     handler_impl->event_loop_driven = event_loop_driven;
-    handler_impl->shutdown_error = 0;
     handler_impl->window = window;
     handler_impl->condition_variable = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
     handler_impl->mutex = (struct aws_mutex)AWS_MUTEX_INIT;
@@ -156,6 +159,11 @@ struct aws_channel_handler *rw_handler_new(
     handler->impl = handler_impl;
 
     return handler;
+}
+
+void rw_handler_set_destroy_called_ref(struct aws_channel_handler *handler, bool *destroy_called_ref) {
+    struct rw_test_handler_impl *handler_impl = handler->impl;
+    handler_impl->destroy_called = destroy_called_ref;
 }
 
 void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {
