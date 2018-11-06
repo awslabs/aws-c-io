@@ -186,9 +186,15 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
 
 void aws_channel_destroy(struct aws_channel *channel) {
 
-    channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-
     struct aws_channel_slot *current = channel->first;
+
+    if (!current || !current->handler) {
+        /* Allow channels with no valid slots to shutdown process */
+        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+    }
+
+    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
+
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
         s_cleanup_slot(current);
