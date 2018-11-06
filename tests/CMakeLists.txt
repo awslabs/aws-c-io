@@ -60,6 +60,8 @@ endif()
 add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
+add_test_case(channel_rejects_post_shutdown_tasks)
+add_test_case(channel_cancels_pending_tasks)
 
 if (NOT WIN32)
     add_test_case(channel_message_passing)

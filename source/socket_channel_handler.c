@@ -226,7 +226,7 @@ static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_stat
         /* we also don't care about the free_scarce_resource_immediately
          * code since we're always the last one in the shutdown sequence. */
         aws_channel_slot_on_handler_shutdown_complete(
-                socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
+            socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
     }
 }
 

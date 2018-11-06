@@ -386,7 +386,7 @@ static int s_s2n_handler_shutdown(
 }
 
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    task->user_task_fn= NULL;
+    task->user_task_fn = NULL;
     task->task_data = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {

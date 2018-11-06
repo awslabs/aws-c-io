@@ -84,7 +84,7 @@ struct aws_channel_slot {
 };
 
 struct aws_channel_task;
-typedef void (aws_channel_task_fn)(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
+typedef void(aws_channel_task_fn)(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
 
 struct aws_channel_task {
     struct aws_task channel_task;
