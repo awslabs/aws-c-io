@@ -36,21 +36,21 @@
 /* this is completely absurd and the reason I hate dependencies, but I'm assuming
  * you don't want your older versions of openssl's libcrypto crashing on you. */
 #if defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER == 0x20000000L)
-#undef OPENSSL_VERSION_NUMBER
-#define OPENSSL_VERSION_NUMBER 0x1000107fL
+#    undef OPENSSL_VERSION_NUMBER
+#    define OPENSSL_VERSION_NUMBER 0x1000107fL
 #endif
 #define OPENSSL_VERSION_LESS_1_1 (OPENSSL_VERSION_NUMBER < 0x10100003L)
 
 #if OPENSSL_VERSION_LESS_1_1
-#include <aws/common/mutex.h>
-#include <aws/common/thread.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/thread.h>
 
 static struct aws_mutex *s_libcrypto_locks = NULL;
 static struct aws_allocator *s_libcrypto_allocator = NULL;
 
-static void s_locking_fn(int mode, int n, const char* unused0, int unused1) {
-(void)unused0;
-(void)unused1;
+static void s_locking_fn(int mode, int n, const char *unused0, int unused1) {
+    (void)unused0;
+    (void)unused1;
 
     if (mode & CRYPTO_LOCK) {
         aws_mutex_lock(&s_libcrypto_locks[n]);
@@ -107,7 +107,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         CRYPTO_set_id_callback(s_id_fn);
     }
 #endif
-
 }
 
 void aws_tls_clean_up_thread_local_state(void) {
