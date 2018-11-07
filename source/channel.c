@@ -368,7 +368,7 @@ void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_ta
     channel_task->wrapper_task.fn = s_channel_task_run;
     channel_task->wrapper_task.arg = NULL;
     channel_task->task_fn = task_fn;
-    channel_task->arg = user_data;
+    channel_task->arg = arg;
     channel_task->is_cross_thread = false;
     aws_linked_list_node_reset(&channel_task->node);
 }
