@@ -235,8 +235,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 }
 
 static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    task->user_task_fn = NULL;
-    task->task_data = NULL;
+    task->task_fn = NULL;
+    task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
@@ -386,8 +386,8 @@ static int s_s2n_handler_shutdown(
 }
 
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    task->user_task_fn = NULL;
-    task->task_data = NULL;
+    task->task_fn = NULL;
+    task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;

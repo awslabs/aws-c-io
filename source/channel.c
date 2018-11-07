@@ -16,6 +16,7 @@
 #include <aws/io/channel.h>
 
 #include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/message_pool.h>
@@ -30,6 +31,38 @@ static size_t s_message_pool_key = 0; /* Address of variable serves as key in ha
 
 enum {
     KB_16 = 16 * 1024,
+};
+
+enum aws_channel_state {
+    AWS_CHANNEL_SETTING_UP,
+    AWS_CHANNEL_ACTIVE,
+    AWS_CHANNEL_SHUTTING_DOWN,
+    AWS_CHANNEL_SHUT_DOWN,
+};
+
+struct aws_shutdown_notification_task {
+    struct aws_task task;
+    int error_code;
+    struct aws_channel_slot *slot;
+    bool shutdown_immediately;
+};
+
+struct aws_channel {
+    struct aws_allocator *alloc;
+    struct aws_event_loop *loop;
+    struct aws_channel_slot *first;
+    struct aws_message_pool *msg_pool;
+    enum aws_channel_state channel_state;
+    struct aws_shutdown_notification_task shutdown_notify_task;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
+    void *shutdown_user_data;
+    struct {
+        struct aws_linked_list list;
+    } channel_thread_tasks;
+    struct {
+        struct aws_mutex lock;
+        struct aws_linked_list list;
+    } cross_thread_tasks;
 };
 
 struct channel_setup_args {
@@ -115,11 +148,15 @@ cleanup_setup_args:
     aws_mem_release(setup_args->alloc, setup_args);
 }
 
-int aws_channel_init(
-    struct aws_channel *channel,
+struct aws_channel *aws_channel_new(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
+
+    struct aws_channel *channel = aws_mem_acquire(alloc, sizeof(struct aws_channel));
+    if (!channel) {
+        return NULL;
+    }
     AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
@@ -129,7 +166,8 @@ int aws_channel_init(
 
     struct channel_setup_args *setup_args = aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
     if (!setup_args) {
-        return AWS_OP_ERR;
+        aws_mem_release(alloc, channel);
+        return NULL;
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
@@ -145,7 +183,7 @@ int aws_channel_init(
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args);
     aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
 
-    return AWS_OP_SUCCESS;
+    return channel;
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {
@@ -158,16 +196,12 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
     }
 }
 
-void aws_channel_clean_up(struct aws_channel *channel) {
+void aws_channel_destroy(struct aws_channel *channel) {
 
     struct aws_channel_slot *current = channel->first;
 
-    if (!current) {
-        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-        return;
-    }
-
-    if (!current->handler) {
+    if (!current || !current->handler) {
+        /* Allow channels with no valid slots to shutdown process */
         channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
     }
 
@@ -179,7 +213,7 @@ void aws_channel_clean_up(struct aws_channel *channel) {
         current = tmp;
     }
 
-    AWS_ZERO_STRUCT(*channel);
+    aws_mem_release(channel->alloc, channel);
 }
 
 struct channel_shutdown_task_args {
@@ -529,16 +563,14 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
     /* the channel task fn only mutates these lists if the task is run ready. This allows this code to grab the lock
      * and mutate the lists since we're cancelling here without fear of conflict later on. */
     while (!aws_linked_list_empty(&channel->channel_thread_tasks.list)) {
-        struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&channel->channel_thread_tasks.list);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->channel_thread_tasks.list);
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
         aws_event_loop_cancel_task(channel->loop, &channel_task->wrapper_task);
     }
 
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
     while (!aws_linked_list_empty(&channel->cross_thread_tasks.list)) {
-        struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&channel->cross_thread_tasks.list);
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&channel->cross_thread_tasks.list);
 
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
         aws_event_loop_cancel_task(channel->loop, &channel_task->wrapper_task);

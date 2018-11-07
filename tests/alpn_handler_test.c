@@ -113,7 +113,7 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct alpn_channel_setup_test_args test_args = {
         .error_code = 0, .condition_variable = AWS_CONDITION_VARIABLE_INIT, .shutdown_finished = false};
@@ -128,10 +128,11 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &mutex));
 
-    struct aws_channel_slot *slot = aws_channel_slot_new(&channel);
+    struct aws_channel_slot *slot = aws_channel_slot_new(channel);
     ASSERT_NOT_NULL(slot);
 
     struct alpn_test_on_negotiation_args on_negotiation_args = {
@@ -155,19 +156,16 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
         .message_type = AWS_IO_MESSAGE_APPLICATION_DATA};
 
     ASSERT_SUCCESS(aws_channel_handler_process_read_message(handler, slot, &message));
-    ASSERT_PTR_EQUALS(on_negotiation_args.new_slot, channel.first);
-    ASSERT_PTR_EQUALS(on_negotiation_args.new_handler, channel.first->handler);
-    ASSERT_NULL(channel.first->adj_right);
     ASSERT_BIN_ARRAYS_EQUALS(
         protocol_message.protocol.buffer,
         protocol_message.protocol.len,
         on_negotiation_args.protocol.buffer,
         on_negotiation_args.protocol.len);
 
-    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    aws_channel_shutdown(channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate, &test_args));
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
@@ -183,7 +181,7 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct alpn_channel_setup_test_args test_args = {
         .error_code = 0, .condition_variable = AWS_CONDITION_VARIABLE_INIT, .shutdown_finished = false};
@@ -198,10 +196,11 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &mutex));
 
-    struct aws_channel_slot *slot = aws_channel_slot_new(&channel);
+    struct aws_channel_slot *slot = aws_channel_slot_new(channel);
     ASSERT_NOT_NULL(slot);
 
     struct alpn_test_on_negotiation_args on_negotiation_args = {
@@ -226,10 +225,10 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
 
     ASSERT_ERROR(AWS_IO_MISSING_ALPN_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
-    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    aws_channel_shutdown(channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate, &test_args));
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
@@ -257,7 +256,7 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-    struct aws_channel channel;
+    struct aws_channel *channel;
 
     struct alpn_channel_setup_test_args test_args = {
         .error_code = 0, .condition_variable = AWS_CONDITION_VARIABLE_INIT, .shutdown_finished = false};
@@ -272,10 +271,11 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    ASSERT_SUCCESS(aws_channel_init(&channel, allocator, event_loop, &callbacks));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &mutex));
 
-    struct aws_channel_slot *slot = aws_channel_slot_new(&channel);
+    struct aws_channel_slot *slot = aws_channel_slot_new(channel);
     ASSERT_NOT_NULL(slot);
 
     struct aws_tls_negotiated_protocol_message protocol_message = {.protocol = aws_byte_buf_from_c_str("h2")};
@@ -304,10 +304,10 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
     ASSERT_ERROR(
         AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE, aws_channel_handler_process_read_message(handler, slot, &message));
 
-    aws_channel_shutdown(&channel, AWS_OP_SUCCESS);
+    aws_channel_shutdown(channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &test_args.condition_variable, &mutex, s_alpn_test_shutdown_predicate, &test_args));
-    aws_channel_clean_up(&channel);
+    aws_channel_destroy(channel);
     aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;

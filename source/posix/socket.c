@@ -972,10 +972,10 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
 }
 
 /* this gets called in two scenarios.
- * 1st scenario, someone called write and we want to at least try and make a write call if we can or return an
- * error if something bad has happened to the socket.
- * 2nd scenario, the event loop notified us that the socket went writable. */
-static int s_process_write_requests(struct aws_socket *socket, bool spawned_from_event) {
+ * 1st scenario, someone called aws_socket_write() and we want to try writing now, so an error can be returned
+ * immediately if something bad has happened to the socket. In this case, `parent_request` is set.
+ * 2nd scenario, the event loop notified us that the socket went writable. In this case `parent_request` is NULL */
+static int s_process_write_requests(struct aws_socket *socket, struct write_request *parent_request) {
     struct posix_socket *socket_impl = socket->impl;
     struct aws_allocator *allocator = socket->allocator;
 
@@ -984,12 +984,13 @@ static int s_process_write_requests(struct aws_socket *socket, bool spawned_from
      * that we don't allow reentrancy in that case. */
     socket_impl->write_in_progress = true;
 
-    if (!spawned_from_event) {
+    if (parent_request) {
         socket_impl->currently_in_event = true;
     }
 
     bool purge = false;
     int aws_error = AWS_OP_SUCCESS;
+    bool parent_request_failed = false;
 
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
     while (!aws_linked_list_empty(&socket_impl->write_queue)) {
@@ -1029,19 +1030,25 @@ static int s_process_write_requests(struct aws_socket *socket, bool spawned_from
     }
 
     if (purge) {
-        aws_raise_error(aws_error);
         while (!aws_linked_list_empty(&socket_impl->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
-            write_request->written_fn(socket, aws_error, 0, write_request->write_user_data);
+            /* If this fn was invoked directly from aws_socket_write(), don't invoke the error callback
+             * as the user will be able to rely on the return value from aws_socket_write() */
+            if (write_request == parent_request) {
+                parent_request_failed = true;
+            } else {
+                write_request->written_fn(socket, aws_error, 0, write_request->write_user_data);
+            }
+
             aws_mem_release(socket->allocator, write_request);
         }
     }
 
     socket_impl->write_in_progress = false;
 
-    if (!spawned_from_event) {
+    if (parent_request) {
         socket_impl->currently_in_event = false;
     }
 
@@ -1049,10 +1056,12 @@ static int s_process_write_requests(struct aws_socket *socket, bool spawned_from
         aws_mem_release(allocator, socket_impl);
     }
 
-    if (!aws_error) {
+    /* Only report error if aws_socket_write() invoked this function and its write_request failed */
+    if (!parent_request_failed) {
         return AWS_OP_SUCCESS;
     }
 
+    aws_raise_error(aws_error);
     return AWS_OP_ERR;
 }
 
@@ -1098,7 +1107,7 @@ static void s_on_socket_io_event(
     /* if socket closed in between these branches, the currently_subscribed will be false and socket_impl will not
      * have been cleaned up, so this next branch is safe. */
     if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        s_process_write_requests(socket, true);
+        s_process_write_requests(socket, NULL);
     }
 
 end_check:
@@ -1226,7 +1235,7 @@ int aws_socket_write(
 
     /* avoid reentrancy when a user calls write after receiving their completion callback. */
     if (!socket_impl->write_in_progress) {
-        return s_process_write_requests(socket, false);
+        return s_process_write_requests(socket, write_request);
     }
 
     return AWS_OP_SUCCESS;
