@@ -61,12 +61,12 @@ struct aws_channel {
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
     struct {
-        struct aws_linked_list pending_tasks;
-    } channel_thread_task_queue;
+        struct aws_linked_list list;
+    } channel_thread_tasks;
     struct {
-        struct aws_mutex x_thread_task_lock;
-        struct aws_linked_list x_thread_pending_tasks;
-    } x_thread_task_queue;
+        struct aws_mutex lock;
+        struct aws_linked_list list;
+    } cross_thread_tasks;
 };
 
 struct aws_channel_creation_callbacks {
@@ -91,11 +91,11 @@ struct aws_channel_task;
 typedef void(aws_channel_task_fn)(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
 
 struct aws_channel_task {
-    struct aws_task channel_task;
-    aws_channel_task_fn *user_task_fn;
-    void *task_data;
+    struct aws_task wrapper_task;
+    aws_channel_task_fn *task_fn;
+    void *arg;
     struct aws_linked_list_node node;
-    bool x_thread;
+    bool is_cross_thread;
 };
 
 struct aws_channel_handler_vtable {
@@ -170,7 +170,7 @@ extern "C" {
  * Initializes channel_task for use.
  */
 AWS_IO_API
-void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *user_data);
+void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *arg);
 
 /**
  * Initializes the channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when

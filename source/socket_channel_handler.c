@@ -171,7 +171,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
      * again. */
     if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size &&
-        !socket_handler->read_task_storage.user_task_fn) {
+        !socket_handler->read_task_storage.task_fn) {
 
         aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
         aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
@@ -193,8 +193,8 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
 
 /* Either the result of a context switch (for fairness in the event loop), or a window update. */
 static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    task->user_task_fn = NULL;
-    task->task_data = NULL;
+    task->task_fn = NULL;
+    task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_handler *socket_handler = arg;
@@ -207,7 +207,7 @@ int socket_increment_read_window(struct aws_channel_handler *handler, struct aws
 
     struct socket_handler *socket_handler = handler->impl;
 
-    if (!socket_handler->shutdown_in_progress && !socket_handler->read_task_storage.user_task_fn) {
+    if (!socket_handler->shutdown_in_progress && !socket_handler->read_task_storage.task_fn) {
         aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
         aws_channel_schedule_task_now(slot->channel, &socket_handler->read_task_storage);
     }

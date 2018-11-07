@@ -133,9 +133,9 @@ int aws_channel_init(
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
-    aws_linked_list_init(&channel->channel_thread_task_queue.pending_tasks);
-    aws_linked_list_init(&channel->x_thread_task_queue.x_thread_pending_tasks);
-    channel->x_thread_task_queue.x_thread_task_lock = (struct aws_mutex)AWS_MUTEX_INIT;
+    aws_linked_list_init(&channel->channel_thread_tasks.list);
+    aws_linked_list_init(&channel->cross_thread_tasks.list);
+    channel->cross_thread_tasks.lock = (struct aws_mutex)AWS_MUTEX_INIT;
 
     setup_args->alloc = alloc;
     setup_args->channel = channel;
@@ -307,7 +307,7 @@ int aws_channel_remove_local_object(
 }
 
 static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_status status) {
-    struct aws_channel_task *channel_task = AWS_CONTAINER_OF(task, struct aws_channel_task, channel_task);
+    struct aws_channel_task *channel_task = AWS_CONTAINER_OF(task, struct aws_channel_task, wrapper_task);
     struct aws_channel *channel = arg;
 
     /* we only remove it here when task status is READY. Cancellation can only happen
@@ -315,50 +315,50 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
      * channel), or when the channel is shutting down. In the latter case, we're already handling
      * the clearing of the queue and the mutex acquisition. */
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (channel_task->x_thread) {
-            aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
+        if (channel_task->is_cross_thread) {
+            aws_mutex_lock(&channel->cross_thread_tasks.lock);
         }
 
         aws_linked_list_remove(&channel_task->node);
 
-        if (channel_task->x_thread) {
-            aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
+        if (channel_task->is_cross_thread) {
+            aws_mutex_unlock(&channel->cross_thread_tasks.lock);
         }
     }
 
-    channel_task->user_task_fn(channel_task, channel_task->task_data, status);
+    channel_task->task_fn(channel_task, channel_task->arg, status);
 }
 
 void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *user_data) {
     AWS_ZERO_STRUCT(*channel_task);
-    channel_task->channel_task.fn = s_channel_task_run;
-    channel_task->channel_task.arg = NULL;
-    channel_task->user_task_fn = task_fn;
-    channel_task->task_data = user_data;
-    channel_task->x_thread = false;
+    channel_task->wrapper_task.fn = s_channel_task_run;
+    channel_task->wrapper_task.arg = NULL;
+    channel_task->task_fn = task_fn;
+    channel_task->arg = user_data;
+    channel_task->is_cross_thread = false;
     aws_linked_list_node_reset(&channel_task->node);
 }
 
 static void s_register_pending_task(struct aws_channel *channel, struct aws_channel_task *task) {
-    task->channel_task.arg = channel;
+    task->wrapper_task.arg = channel;
     if (aws_channel_thread_is_callers_thread(channel)) {
-        aws_linked_list_push_back(&channel->channel_thread_task_queue.pending_tasks, &task->node);
+        aws_linked_list_push_back(&channel->channel_thread_tasks.list, &task->node);
     } else {
-        task->x_thread = true;
-        aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
-        aws_linked_list_push_back(&channel->x_thread_task_queue.x_thread_pending_tasks, &task->node);
-        aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
+        task->is_cross_thread = true;
+        aws_mutex_lock(&channel->cross_thread_tasks.lock);
+        aws_linked_list_push_back(&channel->cross_thread_tasks.list, &task->node);
+        aws_mutex_unlock(&channel->cross_thread_tasks.lock);
     }
 }
 
 void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task) {
     if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
-        task->user_task_fn(task, task->task_data, AWS_TASK_STATUS_CANCELED);
+        task->task_fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
         return;
     }
 
     s_register_pending_task(channel, task);
-    aws_event_loop_schedule_task_now(channel->loop, &task->channel_task);
+    aws_event_loop_schedule_task_now(channel->loop, &task->wrapper_task);
 }
 
 void aws_channel_schedule_task_future(
@@ -366,12 +366,12 @@ void aws_channel_schedule_task_future(
     struct aws_channel_task *task,
     uint64_t run_at_nanos) {
     if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
-        task->user_task_fn(task, task->task_data, AWS_TASK_STATUS_CANCELED);
+        task->task_fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
         return;
     }
 
     s_register_pending_task(channel, task);
-    aws_event_loop_schedule_task_future(channel->loop, &task->channel_task, run_at_nanos);
+    aws_event_loop_schedule_task_future(channel->loop, &task->wrapper_task, run_at_nanos);
 }
 
 bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
@@ -528,22 +528,22 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 
     /* the channel task fn only mutates these lists if the task is run ready. This allows this code to grab the lock
      * and mutate the lists since we're cancelling here without fear of conflict later on. */
-    while (!aws_linked_list_empty(&channel->channel_thread_task_queue.pending_tasks)) {
+    while (!aws_linked_list_empty(&channel->channel_thread_tasks.list)) {
         struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&channel->channel_thread_task_queue.pending_tasks);
+            aws_linked_list_pop_front(&channel->channel_thread_tasks.list);
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
-        aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
+        aws_event_loop_cancel_task(channel->loop, &channel_task->wrapper_task);
     }
 
-    aws_mutex_lock(&channel->x_thread_task_queue.x_thread_task_lock);
-    while (!aws_linked_list_empty(&channel->x_thread_task_queue.x_thread_pending_tasks)) {
+    aws_mutex_lock(&channel->cross_thread_tasks.lock);
+    while (!aws_linked_list_empty(&channel->cross_thread_tasks.list)) {
         struct aws_linked_list_node *node =
-            aws_linked_list_pop_front(&channel->x_thread_task_queue.x_thread_pending_tasks);
+            aws_linked_list_pop_front(&channel->cross_thread_tasks.list);
 
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
-        aws_event_loop_cancel_task(channel->loop, &channel_task->channel_task);
+        aws_event_loop_cancel_task(channel->loop, &channel_task->wrapper_task);
     }
-    aws_mutex_unlock(&channel->x_thread_task_queue.x_thread_task_lock);
+    aws_mutex_unlock(&channel->cross_thread_tasks.lock);
 
     channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
 }
