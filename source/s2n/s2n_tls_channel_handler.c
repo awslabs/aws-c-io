@@ -95,8 +95,8 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     if (!CRYPTO_get_locking_callback()) {
         s_libcrypto_allocator = alloc;
         s_libcrypto_locks = aws_mem_acquire(alloc, sizeof(struct aws_mutex) * CRYPTO_num_locks());
-        assert(s_libcrypto_locks);
-        size_t lock_count = CRYPTO_num_locks();
+        AWS_FATAL_ASSERT(s_libcrypto_locks);
+        size_t lock_count = (size_t)CRYPTO_num_locks();
         for (size_t i = 0; i < lock_count; ++i) {
             aws_mutex_init(&s_libcrypto_locks[i]);
         }
@@ -121,7 +121,7 @@ void aws_tls_clean_up_static_state(void) {
 #if OPENSSL_VERSION_LESS_1_1
     if (CRYPTO_get_locking_callback() == s_locking_fn) {
         CRYPTO_set_locking_callback(NULL);
-        size_t lock_count = CRYPTO_num_locks();
+        size_t lock_count = (size_t)CRYPTO_num_locks();
         for (size_t i = 0; i < lock_count; ++i) {
             aws_mutex_clean_up(&s_libcrypto_locks[i]);
         }
