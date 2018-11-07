@@ -250,7 +250,7 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
 
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(channel_refcount, s_test_channel_refcount)
+AWS_TEST_CASE(channel_refcount_delays_clean_up, s_test_channel_refcount)
 
 struct channel_rw_test_args {
     struct aws_byte_buf read_tag;
