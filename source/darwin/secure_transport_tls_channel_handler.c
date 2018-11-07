@@ -74,10 +74,10 @@ struct secure_transport_handler {
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
-    struct aws_task read_task;
-    bool read_task_pending;
+    struct aws_channel_task read_task;
     bool negotiation_finished;
     bool verify_peer;
+    bool read_task_pending;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -365,7 +365,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_negotiation_task(struct aws_task *task, void *arg, aws_task_status status) {
+static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
     struct aws_channel_handler *handler = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -382,14 +382,13 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return s_drive_negotiation(handler);
     }
 
-    struct aws_task *negotiation_task = aws_mem_acquire(handler->alloc, sizeof(struct aws_task));
+    struct aws_channel_task *negotiation_task = aws_mem_acquire(handler->alloc, sizeof(struct aws_task));
 
     if (!negotiation_task) {
         return AWS_OP_ERR;
     }
 
-    negotiation_task->fn = s_negotiation_task;
-    negotiation_task->arg = handler;
+    aws_channel_task_init(negotiation_task, s_negotiation_task, handler);
     aws_channel_schedule_task_now(secure_transport_handler->parent_slot->channel, negotiation_task);
     return AWS_OP_SUCCESS;
 }
@@ -509,7 +508,7 @@ static int s_process_read_message(
     return AWS_OP_SUCCESS;
 }
 
-static void s_run_read(struct aws_task *task, void *arg, aws_task_status status) {
+static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
     (void)task;
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
@@ -543,8 +542,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
          * have no idea what's going on inside there. So we need to attempt another read.
          */
         secure_transport_handler->read_task_pending = true;
-        secure_transport_handler->read_task.fn = s_run_read;
-        secure_transport_handler->read_task.arg = handler;
+        aws_channel_task_init(&secure_transport_handler->read_task, s_run_read, handler);
         aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
     }
 

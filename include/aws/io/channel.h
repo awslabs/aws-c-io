@@ -51,6 +51,17 @@ struct aws_channel_slot {
     size_t window_size;
 };
 
+struct aws_channel_task;
+typedef void(aws_channel_task_fn)(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status);
+
+struct aws_channel_task {
+    struct aws_task wrapper_task;
+    aws_channel_task_fn *task_fn;
+    void *arg;
+    struct aws_linked_list_node node;
+    bool is_cross_thread;
+};
+
 struct aws_channel_handler_vtable {
     /**
      * Called by the channel when a message is available for processing in the read direction. It is your
@@ -118,6 +129,12 @@ struct aws_channel_handler {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * Initializes channel_task for use.
+ */
+AWS_IO_API
+void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *arg);
 
 /**
  * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
@@ -235,7 +252,7 @@ void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws
  * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task *task);
+void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task);
 
 /**
  * Schedules a task to run on the event loop at the specified time.
@@ -246,7 +263,10 @@ void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_task 
  * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
-void aws_channel_schedule_task_future(struct aws_channel *channel, struct aws_task *task, uint64_t run_at_nanos);
+void aws_channel_schedule_task_future(
+    struct aws_channel *channel,
+    struct aws_channel_task *task,
+    uint64_t run_at_nanos);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use

@@ -31,6 +31,7 @@ static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -113,6 +114,7 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .subscribe_to_io_events = s_subscribe_to_io_events,
+    .cancel_task = s_cancel_task,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .is_on_callers_thread = s_is_event_thread,
 };
@@ -433,6 +435,11 @@ static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_ta
 
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
     s_schedule_task_common(event_loop, task, run_at_nanos);
+}
+
+static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    struct kqueue_loop *kqueue_loop = event_loop->impl_data;
+    aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
 }
 
 /* Scheduled task that connects aws_io_handle with the kqueue */

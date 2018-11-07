@@ -27,6 +27,7 @@ struct channel_setup_test_args {
     struct aws_condition_variable condition_variable;
     bool shutdown_completed;
     int error_code;
+    enum aws_task_status task_status;
 };
 
 static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
@@ -445,3 +446,117 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(channel_message_passing, s_test_channel_message_passing)
+
+static void s_channel_post_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct channel_setup_test_args *test_args = arg;
+    test_args->task_status = status;
+}
+
+static void s_channel_test_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
+    (void)error_code;
+
+    struct channel_setup_test_args *test_args = user_data;
+    aws_mutex_lock(&test_args->mutex);
+    test_args->shutdown_completed = true;
+    aws_mutex_unlock(&test_args->mutex);
+    aws_condition_variable_notify_one(&test_args->condition_variable);
+}
+
+static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_channel *channel = NULL;
+
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_completed = false,
+        .task_status = 100,
+    };
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_INT_EQUALS(0, test_args.error_code);
+
+    ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+
+    struct aws_channel_task task;
+    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
+    aws_channel_schedule_task_now(channel, &task);
+    ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, test_args.task_status);
+
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_rejects_post_shutdown_tasks, s_test_channel_rejects_post_shutdown_tasks)
+
+static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_channel *channel = NULL;
+
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_completed = false,
+        .task_status = 100,
+    };
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_INT_EQUALS(0, test_args.error_code);
+
+    struct aws_channel_task task;
+    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
+    /* schedule WAY in the future. */
+    aws_channel_schedule_task_future(channel, &task, UINT64_MAX - 1);
+    /* make sure it hasn't been invoked yet. */
+    ASSERT_INT_EQUALS(100, test_args.task_status);
+
+    ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+
+    ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, test_args.task_status);
+
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_cancels_pending_tasks, s_test_channel_cancels_pending_tasks)

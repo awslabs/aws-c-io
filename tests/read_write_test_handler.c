@@ -184,10 +184,10 @@ struct rw_handler_write_task_args {
     struct aws_channel_handler *handler;
     struct aws_channel_slot *slot;
     struct aws_byte_buf *buffer;
-    struct aws_task task;
+    struct aws_channel_task task;
 };
 
-static void s_rw_handler_write_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+static void s_rw_handler_write_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
     (void)task_status;
     struct rw_handler_write_task_args *write_task_args = arg;
@@ -221,7 +221,7 @@ void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_sl
         write_task_args->handler = handler;
         write_task_args->buffer = buffer;
         write_task_args->slot = slot;
-        aws_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args);
+        aws_channel_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args);
 
         aws_channel_schedule_task_now(slot->channel, &write_task_args->task);
     }
@@ -231,10 +231,10 @@ struct increment_read_window_task_args {
     size_t window_update;
     struct aws_channel_handler *handler;
     struct aws_channel_slot *slot;
-    struct aws_task task;
+    struct aws_channel_task task;
 };
 
-static void s_increment_read_window_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+static void s_increment_read_window_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
     (void)task_status;
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
@@ -263,7 +263,7 @@ void rw_handler_trigger_increment_read_window(
         increment_read_window_task_args->handler = handler;
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
-        aws_task_init(
+        aws_channel_task_init(
             &increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
 
         aws_channel_schedule_task_now(slot->channel, &increment_read_window_task_args->task);
