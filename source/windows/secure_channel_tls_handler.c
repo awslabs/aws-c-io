@@ -86,7 +86,7 @@ struct secure_channel_handler {
     size_t read_extra;
     uint8_t buffered_read_out_data[READ_OUT_SIZE];
     struct aws_byte_buf buffered_read_out_data_buf;
-    struct aws_task sequential_task_storage;
+    struct aws_channel_task sequential_task_storage;
     bool negotiation_finished;
 };
 
@@ -878,7 +878,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     return AWS_OP_SUCCESS;
 }
 
-static void s_process_pending_output_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_process_pending_output_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     struct aws_channel_handler *handler = arg;
 
@@ -1110,9 +1110,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     }
 
     if (sc_handler->negotiation_finished) {
-        sc_handler->sequential_task_storage.fn = s_process_pending_output_task;
-        sc_handler->sequential_task_storage.arg = handler;
-
+        aws_channel_task_init(&sc_handler->sequential_task_storage, s_process_pending_output_task, handler);
         aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
     }
     return AWS_OP_SUCCESS;
@@ -1206,7 +1204,7 @@ static int s_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-static void s_do_negotiation_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
     struct aws_channel_handler *handler = arg;
@@ -1250,9 +1248,7 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return err;
     }
 
-    sc_handler->sequential_task_storage.fn = s_do_negotiation_task;
-    sc_handler->sequential_task_storage.arg = handler;
-
+    aws_channel_task_init(&sc_handler->sequential_task_storage, s_do_negotiation_task, handler);
     aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->sequential_task_storage);
     return AWS_OP_SUCCESS;
 }
