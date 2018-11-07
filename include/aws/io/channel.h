@@ -25,41 +25,15 @@ enum aws_channel_direction {
 };
 
 struct aws_channel;
+struct aws_channel_slot;
+struct aws_channel_handler;
 struct aws_event_loop;
 struct aws_event_loop_local_object;
-struct aws_io_message;
-struct aws_task;
-struct aws_message_pool;
 
 typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
 /* Callback called when a channel is completely shutdown. error_code refers to the reason the channel was closed. */
 typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
-
-enum aws_channel_state {
-    AWS_CHANNEL_SETTING_UP,
-    AWS_CHANNEL_ACTIVE,
-    AWS_CHANNEL_SHUTTING_DOWN,
-    AWS_CHANNEL_SHUT_DOWN,
-};
-
-struct aws_shutdown_notification_task {
-    struct aws_task task;
-    int error_code;
-    struct aws_channel_slot *slot;
-    bool shutdown_immediately;
-};
-
-struct aws_channel {
-    struct aws_allocator *alloc;
-    struct aws_event_loop *loop;
-    struct aws_channel_slot *first;
-    struct aws_message_pool *msg_pool;
-    enum aws_channel_state channel_state;
-    struct aws_shutdown_notification_task shutdown_notify_task;
-    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
-    void *shutdown_user_data;
-};
 
 struct aws_channel_creation_callbacks {
     aws_channel_on_setup_completed_fn *on_setup_completed;
@@ -67,8 +41,6 @@ struct aws_channel_creation_callbacks {
     void *setup_user_data;
     void *shutdown_user_data;
 };
-
-struct aws_channel_handler;
 
 struct aws_channel_slot {
     struct aws_allocator *alloc;
@@ -148,23 +120,23 @@ extern "C" {
 #endif
 
 /**
- * Initializes the channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
+ * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
  * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
  * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
  */
 AWS_IO_API
-int aws_channel_init(
-    struct aws_channel *channel,
+struct aws_channel *aws_channel_new(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks);
 
 /**
- * Cleans up all slots and handlers. Must be called after shutdown has completed. Can be called from any thread assuming
- * 'aws_channel_shutdown()' has completed.
+ * Destroy the channel, along with all slots and handlers.
+ * Must be called after shutdown has completed.
+ * Can be called from any thread assuming 'aws_channel_shutdown()' has completed.
  */
 AWS_IO_API
-void aws_channel_clean_up(struct aws_channel *channel);
+void aws_channel_destroy(struct aws_channel *channel);
 
 /**
  * Initiates shutdown of the channel. Shutdown will begin with the left-most slot. Each handler will invoke
