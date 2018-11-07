@@ -30,10 +30,9 @@ struct socket_handler {
     struct aws_socket *socket;
     struct aws_channel_slot *slot;
     size_t max_rw_size;
-    struct aws_task read_task_storage;
-    struct aws_task shutdown_task_storage;
+    struct aws_channel_task read_task_storage;
+    struct aws_channel_task shutdown_task_storage;
     int shutdown_err_code;
-    struct aws_io_message *current_write_message;
     bool shutdown_in_progress;
 };
 
@@ -68,17 +67,7 @@ static void s_on_socket_write_complete(
             message->on_completion(channel, message, error_code, message->user_data);
         }
 
-        /* this isn't the simplest way to handle this BUT in order to keep the contract of "release your message
-         * if the channel says the message send fails", we need to not release it if we failed to send AND
-         * we told the caller that we failed. */
-        struct socket_handler *handler = channel->first->handler->impl;
-        if (!error_code || handler->current_write_message != message) {
-            aws_channel_release_message_to_pool(channel, message);
-        }
-
-        if (handler->current_write_message == message) {
-            handler->current_write_message = NULL;
-        }
+        aws_channel_release_message_to_pool(channel, message);
 
         if (error_code) {
             aws_channel_shutdown(channel, error_code);
@@ -93,23 +82,15 @@ static int s_socket_process_write_message(
     (void)slot;
     struct socket_handler *socket_handler = handler->impl;
 
-    /* you'll see why we do this in a sec. */
-    assert(message->owning_channel->first->handler->impl == socket_handler);
-
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
-    /* this isn't the simplest way to handle this BUT in order to keep the contract of "release your message
-     * if the channel says the message send fails", we need to not release it if we failed to send AND
-     * we told the caller that we failed. */
-    socket_handler->current_write_message = message;
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
         return AWS_OP_ERR;
     }
 
-    socket_handler->current_write_message = NULL;
     return AWS_OP_SUCCESS;
 }
 
-static void s_read_task(struct aws_task *task, void *arg, aws_task_status status);
+static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_status status);
 
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data);
 
@@ -171,10 +152,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
      * again. */
     if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size &&
-        !socket_handler->read_task_storage.fn) {
-        socket_handler->read_task_storage.fn = s_read_task;
-        socket_handler->read_task_storage.arg = socket_handler;
+        !socket_handler->read_task_storage.task_fn) {
 
+        aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
         aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
     }
 }
@@ -193,41 +173,42 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
 }
 
 /* Either the result of a context switch (for fairness in the event loop), or a window update. */
-static void s_read_task(struct aws_task *task, void *arg, aws_task_status status) {
-    task->fn = NULL;
+static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
+    task->task_fn = NULL;
     task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct socket_handler *socket_handler = (struct socket_handler *)arg;
+        struct socket_handler *socket_handler = arg;
         s_do_read(socket_handler);
     }
 }
 
 int socket_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
-    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    if (!socket_handler->shutdown_in_progress && !socket_handler->read_task_storage.fn) {
-        socket_handler->read_task_storage.fn = s_read_task;
-        socket_handler->read_task_storage.arg = socket_handler;
+    struct socket_handler *socket_handler = handler->impl;
+
+    if (!socket_handler->shutdown_in_progress && !socket_handler->read_task_storage.task_fn) {
+        aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
         aws_channel_schedule_task_now(slot->channel, &socket_handler->read_task_storage);
     }
 
     return AWS_OP_SUCCESS;
 }
 
-static void s_close_task(struct aws_task *task, void *arg, aws_task_status status) {
-    (void)status;
+static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
     (void)task;
 
-    struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
-    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
+    struct aws_channel_handler *handler = arg;
+    struct socket_handler *socket_handler = handler->impl;
 
-    /* this only happens in write direction. */
-    /* we also don't care about the free_scarce_resource_immediately
-     * code since we're always the last one in the shutdown sequence. */
-    aws_channel_slot_on_handler_shutdown_complete(
-        socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        /* this only happens in write direction. */
+        /* we also don't care about the free_scarce_resource_immediately
+         * code since we're always the last one in the shutdown sequence. */
+        aws_channel_slot_on_handler_shutdown_complete(
+            socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
+    }
 }
 
 static int s_socket_shutdown(
@@ -257,9 +238,7 @@ static int s_socket_shutdown(
      * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
      * because the socket has been closed: mitigating the risk that the socket is still being abused by
      * a hostile peer. */
-    socket_handler->shutdown_task_storage.fn = s_close_task;
-    socket_handler->shutdown_task_storage.arg = handler;
-
+    aws_channel_task_init(&socket_handler->shutdown_task_storage, s_close_task, handler);
     socket_handler->shutdown_err_code = error_code;
     aws_channel_schedule_task_now(slot->channel, &socket_handler->shutdown_task_storage);
     return AWS_OP_SUCCESS;
@@ -292,7 +271,6 @@ struct aws_channel_handler *aws_socket_handler_new(
     /* make sure something has assigned this socket to an event loop, in client mode this will already have occurred.
        In server mode, someone should have assigned it before calling us.*/
     assert(aws_socket_get_event_loop(socket));
-    assert(aws_socket_get_event_loop(socket) == slot->channel->loop);
 
     struct aws_channel_handler *handler = NULL;
 
@@ -306,10 +284,9 @@ struct aws_channel_handler *aws_socket_handler_new(
     impl->socket = socket;
     impl->slot = slot;
     impl->max_rw_size = max_read_size;
-    impl->read_task_storage.fn = NULL;
-    impl->read_task_storage.arg = NULL;
+    AWS_ZERO_STRUCT(impl->read_task_storage);
+    AWS_ZERO_STRUCT(impl->shutdown_task_storage);
     impl->shutdown_in_progress = false;
-    impl->current_write_message = NULL;
 
     handler->alloc = allocator;
     handler->impl = impl;

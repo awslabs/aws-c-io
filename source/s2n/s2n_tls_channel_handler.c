@@ -73,7 +73,7 @@ struct s2n_handler {
     struct aws_byte_buf server_name;
     struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
-    struct aws_task sequential_tasks;
+    struct aws_channel_task sequential_tasks;
     void *latest_message_completion_user_data;
     bool negotiation_finished;
 };
@@ -299,12 +299,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_negotiation_task(struct aws_task *task, void *arg, aws_task_status status) {
-    task->fn = NULL;
+static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
+    task->task_fn = NULL;
     task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
+        struct aws_channel_handler *handler = arg;
         s_drive_negotiation(handler);
     }
 }
@@ -316,8 +316,7 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return s_drive_negotiation(handler);
     }
 
-    s2n_handler->sequential_tasks.fn = s_negotiation_task;
-    s2n_handler->sequential_tasks.arg = handler;
+    aws_channel_task_init(&s2n_handler->sequential_tasks, s_negotiation_task, handler);
     aws_channel_schedule_task_now(s2n_handler->slot->channel, &s2n_handler->sequential_tasks);
 
     return AWS_OP_SUCCESS;
@@ -451,8 +450,8 @@ static int s_s2n_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-static void s_run_read(struct aws_task *task, void *arg, aws_task_status status) {
-    task->fn = NULL;
+static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
+    task->task_fn = NULL;
     task->arg = NULL;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -486,8 +485,7 @@ static int s_s2n_handler_increment_read_window(
          * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
-        s2n_handler->sequential_tasks.fn = s_run_read;
-        s2n_handler->sequential_tasks.arg = handler;
+        aws_channel_task_init(&s2n_handler->sequential_tasks, s_run_read, handler);
         aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
     }
 

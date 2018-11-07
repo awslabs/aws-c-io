@@ -160,7 +160,7 @@ void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
 }
 
 struct client_channel_data {
-    struct aws_channel channel;
+    struct aws_channel *channel;
     struct aws_socket *socket;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
@@ -197,7 +197,7 @@ static void s_tls_client_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);
     }
 
-    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? &connection_args->channel_data.channel : NULL;
+    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? connection_args->channel_data.channel : NULL;
     connection_args->setup_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
 
@@ -333,7 +333,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
 error:
     connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
 
-    aws_channel_clean_up(channel);
+    aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
     if (connection_args->host_name) {
@@ -353,7 +353,7 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     shutdown_callback(bootstrap, error_code, channel, shutdown_user_data);
     /* note it's not safe to reference the bootstrap from here out.*/
 
-    aws_channel_clean_up(channel);
+    aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(allocator, connection_args->channel_data.socket);
     if (connection_args->host_name) {
@@ -406,11 +406,9 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         .on_shutdown_completed = s_on_client_channel_on_shutdown,
     };
 
-    if (aws_channel_init(
-            &connection_args->channel_data.channel,
-            connection_args->bootstrap->allocator,
-            aws_socket_get_event_loop(socket),
-            &channel_callbacks)) {
+    connection_args->channel_data.channel =
+        aws_channel_new(connection_args->bootstrap->allocator, aws_socket_get_event_loop(socket), &channel_callbacks);
+    if (!connection_args->channel_data.channel) {
 
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
@@ -684,7 +682,7 @@ struct server_connection_args {
 };
 
 struct server_channel_data {
-    struct aws_channel channel;
+    struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
 };
@@ -836,7 +834,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
 error:
-    aws_channel_clean_up(channel);
+    aws_channel_destroy(channel);
     struct aws_allocator *allocator = channel_data->socket->allocator;
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, (void *)channel_data->socket);
@@ -858,7 +856,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
 
     channel_data->server_connection_args->shutdown_callback(
         server_bootstrap, error_code, channel, server_shutdown_user_data);
-    aws_channel_clean_up(channel);
+    aws_channel_destroy(channel);
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, channel_data->socket);
     aws_mem_release(allocator, channel_data);
@@ -899,8 +897,8 @@ void s_on_server_connection_result(
             goto error_cleanup;
         }
 
-        if (aws_channel_init(
-                &channel_data->channel, connection_args->bootstrap->allocator, event_loop, &channel_callbacks)) {
+        channel_data->channel = aws_channel_new(connection_args->bootstrap->allocator, event_loop, &channel_callbacks);
+        if (!channel_data->channel) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
         }
