@@ -15,30 +15,17 @@
 
 #include <aws/io/socket.h>
 
-#include <aws/common/byte_buf.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
-#include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
 
 #include <arpa/inet.h>
-#include <assert.h>
-#include <aws/io/io.h>
 #include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <signal.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/errno.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
-#include <zconf.h>
 
 #if defined(__MACH__)
 #    define NO_SIGNAL SO_NOSIGPIPE
