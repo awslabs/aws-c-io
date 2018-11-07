@@ -26,10 +26,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <openssl/crypto.h>
+
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 #define KB_1 1024
 #define MAX_RECORD_SIZE (KB_1 * 16)
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
+
+/* this is completely absurd and the reason I hate dependencies, but I'm assuming
+ * you don't want your older versions of openssl's libcrypto crashing on you. */
+#if defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER == 0x20000000L)
+#undef OPENSSL_VERSION_NUMBER
+#define OPENSSL_VERSION_NUMBER 0x1000107fL
+#endif
+#define OPENSSL_VERSION_LESS_1_1 (OPENSSL_VERSION_NUMBER < 0x10100003L)
+
+#if OPENSSL_VERSION_LESS_1_1
+#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
+
+static struct aws_mutex *s_libcrypto_locks = NULL;
+static struct aws_allocator *s_libcrypto_allocator = NULL;
+
+static void s_locking_fn(int mode, int n, const char* unused0, int unused1) {
+(void)unused0;
+(void)unused1;
+
+    if (mode & CRYPTO_LOCK) {
+        aws_mutex_lock(&s_libcrypto_locks[n]);
+    } else {
+        aws_mutex_unlock(&s_libcrypto_locks[n]);
+    }
+}
+
+static unsigned long s_id_fn(void) {
+    return (unsigned long)aws_thread_current_thread_id();
+}
+#endif
 
 struct s2n_handler {
     struct aws_channel_handler handler;
@@ -57,6 +90,24 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
     s2n_init();
+
+#if OPENSSL_VERSION_LESS_1_1
+    if (!CRYPTO_get_locking_callback()) {
+        s_libcrypto_allocator = alloc;
+        s_libcrypto_locks = aws_mem_acquire(alloc, sizeof(struct aws_mutex) * CRYPTO_num_locks());
+        assert(s_libcrypto_locks);
+        size_t lock_count = CRYPTO_num_locks();
+        for (size_t i = 0; i < lock_count; ++i) {
+            aws_mutex_init(&s_libcrypto_locks[i]);
+        }
+        CRYPTO_set_locking_callback(s_locking_fn);
+    }
+
+    if (!CRYPTO_get_id_callback()) {
+        CRYPTO_set_id_callback(s_id_fn);
+    }
+#endif
+
 }
 
 void aws_tls_clean_up_thread_local_state(void) {
@@ -67,6 +118,21 @@ void aws_tls_clean_up_thread_local_state(void) {
 
 void aws_tls_clean_up_static_state(void) {
     s2n_cleanup();
+
+#if OPENSSL_VERSION_LESS_1_1
+    if (CRYPTO_get_locking_callback() == s_locking_fn) {
+        CRYPTO_set_locking_callback(NULL);
+        size_t lock_count = CRYPTO_num_locks();
+        for (size_t i = 0; i < lock_count; ++i) {
+            aws_mutex_clean_up(&s_libcrypto_locks[i]);
+        }
+        aws_mem_release(s_libcrypto_allocator, s_libcrypto_locks);
+    }
+
+    if (CRYPTO_get_id_callback() == s_id_fn) {
+        CRYPTO_set_id_callback(NULL);
+    }
+#endif
 }
 
 bool aws_tls_is_alpn_available(void) {
