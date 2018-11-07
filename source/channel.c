@@ -363,7 +363,7 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
     channel_task->task_fn(channel_task, channel_task->arg, status);
 }
 
-void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *user_data) {
+void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *arg) {
     AWS_ZERO_STRUCT(*channel_task);
     channel_task->wrapper_task.fn = s_channel_task_run;
     channel_task->wrapper_task.arg = NULL;
