@@ -38,7 +38,7 @@ enum aws_channel_state {
     AWS_CHANNEL_ACTIVE,
     AWS_CHANNEL_SHUTTING_DOWN,
     AWS_CHANNEL_SHUT_DOWN,
-    AWS_CHANNEL_DESTROY_ONCE_REFCOUNT_0,
+    AWS_CHANNEL_DESTROY_ON_REFCOUNT_0,
 };
 
 struct aws_shutdown_notification_task {
@@ -164,10 +164,14 @@ struct aws_channel *aws_channel_new(
     AWS_ZERO_STRUCT(*channel);
 
     channel->alloc = alloc;
-    aws_atomic_init_int(&channel->refcount, 2); /* 2 = (1 for self-reference) + (1 for setup task) */
     channel->loop = event_loop;
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
+
+    /* Start refcount at 2:
+     * 1 for self-reference, released from aws_channel_destroy()
+     * 1 for the setup task, released when task executes */
+    aws_atomic_init_int(&channel->refcount, 2);
 
     struct channel_setup_args *setup_args = aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
     if (!setup_args) {
@@ -209,7 +213,7 @@ void aws_channel_destroy(struct aws_channel *channel) {
     }
     assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
 
-    channel->channel_state = AWS_CHANNEL_DESTROY_ONCE_REFCOUNT_0;
+    channel->channel_state = AWS_CHANNEL_DESTROY_ON_REFCOUNT_0;
 
     aws_channel_release_hold(channel);
 }
@@ -241,7 +245,7 @@ void aws_channel_release_hold(struct aws_channel *channel) {
     }
 
     /* Refcount is now 0, finish cleaning up channel memory. */
-    assert(channel->channel_state == AWS_CHANNEL_DESTROY_ONCE_REFCOUNT_0);
+    assert(channel->channel_state == AWS_CHANNEL_DESTROY_ON_REFCOUNT_0);
 
     if (aws_channel_thread_is_callers_thread(channel)) {
         s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
