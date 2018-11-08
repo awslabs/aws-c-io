@@ -235,6 +235,7 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 void aws_channel_acquire_hold(struct aws_channel *channel) {
     size_t prev_refcount = aws_atomic_fetch_add(&channel->refcount, 1);
     assert(prev_refcount != 0);
+    (void)prev_refcount;
 }
 
 void aws_channel_release_hold(struct aws_channel *channel) {
