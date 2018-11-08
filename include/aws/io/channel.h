@@ -148,9 +148,11 @@ struct aws_channel *aws_channel_new(
     struct aws_channel_creation_callbacks *callbacks);
 
 /**
- * Destroy the channel, along with all slots and handlers.
+ * Mark the channel, along with all slots and handlers, for destruction.
  * Must be called after shutdown has completed.
  * Can be called from any thread assuming 'aws_channel_shutdown()' has completed.
+ * Note that memory will not be freed until all users which acquired holds on the channel via
+ * aws_channel_acquire_hold(), release them via aws_channel_release_hold().
  */
 AWS_IO_API
 void aws_channel_destroy(struct aws_channel *channel);
@@ -166,6 +168,22 @@ void aws_channel_destroy(struct aws_channel *channel);
  */
 AWS_IO_API
 int aws_channel_shutdown(struct aws_channel *channel, int error_code);
+
+/**
+ * Prevent a channel's memory from being freed.
+ * Any number of users may acquire a hold to prevent a channel and its handlers from being unexpectedly freed.
+ * Any user which acquires a hold must release it via aws_channel_release_hold().
+ * Memory will be freed once all holds are released and aws_channel_destroy() has been called.
+ */
+AWS_IO_API
+void aws_channel_acquire_hold(struct aws_channel *channel);
+
+/**
+ * Release a hold on the channel's memory, allowing it to be freed.
+ * This may be called before or after aws_channel_destroy().
+ */
+AWS_IO_API
+void aws_channel_release_hold(struct aws_channel *channel);
 
 /**
  * Allocates and initializes a new slot for use with the channel. If this is the first slot in the channel, it will

@@ -324,10 +324,11 @@ static void s_socket_connect_event(
             return;
         }
 
-        aws_raise_error(aws_error);
-        s_on_connection_error(socket_args->socket, aws_error);
+        struct aws_socket *socket = socket_args->socket;
         socket_args->socket = NULL;
         socket_impl->connect_args = NULL;
+        aws_raise_error(aws_error);
+        s_on_connection_error(socket, aws_error);
     }
 }
 
