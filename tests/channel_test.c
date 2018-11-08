@@ -13,6 +13,7 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 
@@ -194,6 +195,29 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(channel_slots_clean_up, s_test_channel_slots_clean_up)
 
+static void s_wait_a_bit_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_condition_variable *cv = arg;
+    aws_condition_variable_notify_one(cv);
+}
+
+static int s_wait_a_bit(struct aws_event_loop *loop) {
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable cv = AWS_CONDITION_VARIABLE_INIT;
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+    struct aws_task task;
+    aws_task_init(&task, s_wait_a_bit_task, &cv);
+
+    uint64_t run_at_ns;
+    ASSERT_SUCCESS(aws_event_loop_current_clock_time(loop, &run_at_ns));
+    run_at_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    aws_event_loop_schedule_task_future(loop, &task, run_at_ns);
+
+    return aws_condition_variable_wait(&cv, &mutex);
+}
+
 static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -215,6 +239,7 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
         .shutdown_user_data = &test_args,
     };
 
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
 
@@ -226,8 +251,11 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_channel_handler *handler = rw_handler_new(allocator, NULL, NULL, false, 10000, NULL);
 
-    bool destroy_called = false;
-    rw_handler_set_destroy_called_ref(handler, &destroy_called);
+    struct aws_atomic_var destroy_called = AWS_ATOMIC_INIT_INT(0);
+    struct aws_mutex destroy_mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable destroy_condition_variable = AWS_CONDITION_VARIABLE_INIT;
+    ASSERT_SUCCESS(aws_mutex_lock(&destroy_mutex));
+    rw_handler_enable_wait_on_destroy(handler, &destroy_called, &destroy_condition_variable);
 
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
@@ -239,15 +267,20 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     aws_channel_acquire_hold(channel);
     aws_channel_acquire_hold(channel);
     aws_channel_destroy(channel);
-    ASSERT_FALSE(destroy_called);
+    ASSERT_SUCCESS(s_wait_a_bit(event_loop));
+    ASSERT_FALSE(aws_atomic_load_int(&destroy_called));
 
     /* Release hold 1/2. Handler shouldn't get destroyed. */
     aws_channel_release_hold(channel);
-    ASSERT_FALSE(destroy_called);
+    ASSERT_SUCCESS(s_wait_a_bit(event_loop));
+    ASSERT_FALSE(aws_atomic_load_int(&destroy_called));
 
     /* Release hold 2/2. The handler and channel should be destroyed. */
     aws_channel_release_hold(channel);
-    ASSERT_TRUE(destroy_called);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&destroy_condition_variable, &destroy_mutex));
+    ASSERT_TRUE(aws_atomic_load_int(&destroy_called));
+
+    aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }

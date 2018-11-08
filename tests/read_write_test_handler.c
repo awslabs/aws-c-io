@@ -15,6 +15,7 @@
 
 #include "read_write_test_handler.h"
 
+#include <aws/common/atomics.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -27,7 +28,8 @@
 struct rw_test_handler_impl {
     bool shutdown_called;
     bool increment_read_window_called;
-    bool *destroy_called;
+    struct aws_atomic_var *destroy_called;
+    struct aws_condition_variable *destroy_condition_variable;
     rw_handler_driver_fn *on_read;
     rw_handler_driver_fn *on_write;
     bool event_loop_driven;
@@ -118,7 +120,8 @@ static void s_rw_handler_destroy(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
     if (handler_impl->destroy_called) {
-        *handler_impl->destroy_called = true;
+        aws_atomic_store_int(handler_impl->destroy_called, 1);
+        aws_condition_variable_notify_one(handler_impl->destroy_condition_variable);
     }
 
     aws_mem_release(handler->alloc, handler_impl);
@@ -161,9 +164,14 @@ struct aws_channel_handler *rw_handler_new(
     return handler;
 }
 
-void rw_handler_set_destroy_called_ref(struct aws_channel_handler *handler, bool *destroy_called_ref) {
+void rw_handler_enable_wait_on_destroy(
+    struct aws_channel_handler *handler,
+    struct aws_atomic_var *destroy_called,
+    struct aws_condition_variable *condition_variable) {
+
     struct rw_test_handler_impl *handler_impl = handler->impl;
-    handler_impl->destroy_called = destroy_called_ref;
+    handler_impl->destroy_called = destroy_called;
+    handler_impl->destroy_condition_variable = condition_variable;
 }
 
 void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot) {

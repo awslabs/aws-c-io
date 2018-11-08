@@ -19,9 +19,11 @@
 
 #include <aws/common/task_scheduler.h>
 
+struct aws_atomic_var;
 struct aws_byte_buf;
 struct aws_channel_handler;
 struct aws_channel_slot;
+struct aws_condition_variable;
 
 typedef struct aws_byte_buf(rw_handler_driver_fn)(
     struct aws_channel_handler *handler,
@@ -37,7 +39,10 @@ struct aws_channel_handler *rw_handler_new(
     size_t window,
     void *ctx);
 
-void rw_handler_set_destroy_called_ref(struct aws_channel_handler *handler, bool *destroy_called_ref);
+void rw_handler_enable_wait_on_destroy(
+    struct aws_channel_handler *handler,
+    struct aws_atomic_var *destroy_called,
+    struct aws_condition_variable *condition_variable);
 
 void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer);
 

@@ -38,7 +38,6 @@ enum aws_channel_state {
     AWS_CHANNEL_ACTIVE,
     AWS_CHANNEL_SHUTTING_DOWN,
     AWS_CHANNEL_SHUT_DOWN,
-    AWS_CHANNEL_DESTROY_ON_REFCOUNT_0,
 };
 
 struct aws_shutdown_notification_task {
@@ -50,7 +49,6 @@ struct aws_shutdown_notification_task {
 
 struct aws_channel {
     struct aws_allocator *alloc;
-    struct aws_atomic_var refcount;
     struct aws_event_loop *loop;
     struct aws_channel_slot *first;
     struct aws_message_pool *msg_pool;
@@ -58,6 +56,8 @@ struct aws_channel {
     struct aws_shutdown_notification_task shutdown_notify_task;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
+    struct aws_atomic_var refcount;
+    struct aws_task deletion_task;
     struct {
         struct aws_linked_list list;
     } channel_thread_tasks;
@@ -128,8 +128,8 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
         }
 
         setup_args->channel->msg_pool = message_pool;
-        setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->user_data);
         setup_args->channel->channel_state = AWS_CHANNEL_ACTIVE;
+        setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->user_data);
         aws_channel_release_hold(setup_args->channel);
         aws_mem_release(setup_args->alloc, setup_args);
         return;
@@ -206,15 +206,6 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
 }
 
 void aws_channel_destroy(struct aws_channel *channel) {
-
-    if (!channel->first || !channel->first->handler) {
-        /* Allow channels with no valid slots to skip shutdown process */
-        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
-    }
-    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
-
-    channel->channel_state = AWS_CHANNEL_DESTROY_ON_REFCOUNT_0;
-
     aws_channel_release_hold(channel);
 }
 
@@ -224,6 +215,14 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
     struct aws_channel *channel = arg;
 
     struct aws_channel_slot *current = channel->first;
+
+    if (!current || !current->handler) {
+        /* Allow channels with no valid slots to skip shutdown process */
+        channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+    }
+
+    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
+
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
         s_cleanup_slot(current);
@@ -234,24 +233,22 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 }
 
 void aws_channel_acquire_hold(struct aws_channel *channel) {
-    aws_atomic_fetch_add(&channel->refcount, 1);
+    size_t prev_refcount = aws_atomic_fetch_add(&channel->refcount, 1);
+    assert(prev_refcount != 0);
 }
 
 void aws_channel_release_hold(struct aws_channel *channel) {
     size_t prev_refcount = aws_atomic_fetch_sub(&channel->refcount, 1);
     assert(prev_refcount != 0);
-    if (prev_refcount != 1) {
-        return;
-    }
 
-    /* Refcount is now 0, finish cleaning up channel memory. */
-    assert(channel->channel_state == AWS_CHANNEL_DESTROY_ON_REFCOUNT_0);
-
-    if (aws_channel_thread_is_callers_thread(channel)) {
-        s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
-    } else {
-        aws_task_init(&channel->shutdown_notify_task.task, s_final_channel_deletion_task, channel);
-        aws_event_loop_schedule_task_now(channel->loop, &channel->shutdown_notify_task.task);
+    if (prev_refcount == 1) {
+        /* Refcount is now 0, finish cleaning up channel memory. */
+        if (aws_channel_thread_is_callers_thread(channel)) {
+            s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
+        } else {
+            aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel);
+            aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
+        }
     }
 }
 
@@ -425,7 +422,7 @@ static void s_register_pending_task(struct aws_channel *channel, struct aws_chan
 }
 
 void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task) {
-    if (channel->channel_state >= AWS_CHANNEL_SHUT_DOWN) {
+    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         task->task_fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
         return;
     }
@@ -438,7 +435,7 @@ void aws_channel_schedule_task_future(
     struct aws_channel *channel,
     struct aws_channel_task *task,
     uint64_t run_at_nanos) {
-    if (channel->channel_state >= AWS_CHANNEL_SHUT_DOWN) {
+    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         task->task_fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
         return;
     }
@@ -637,7 +634,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
     int err_code,
     bool free_scarce_resources_immediately) {
 
-    if (slot->channel->channel_state >= AWS_CHANNEL_SHUT_DOWN) {
+    if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         return AWS_OP_SUCCESS;
     }
 
