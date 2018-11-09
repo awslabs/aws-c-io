@@ -260,12 +260,13 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         } else {
             aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, run_at_nanos);
         }
+        *(volatile size_t *)&task->reserved = 0;
         return;
     }
 
     task->timestamp = run_at_nanos;
     aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
-
+    *(volatile size_t *)&task->reserved = 1;
     uint64_t counter = 1;
 
     bool is_first_task = aws_linked_list_empty(&epoll_loop->task_pre_queue);
@@ -292,7 +293,19 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
-    aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
+    if (*(volatile size_t *)&task->reserved == 1) {
+            aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+            if (*(volatile size_t *)&task->reserved == 1) {
+                aws_linked_list_remove(&task->node);
+                aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+                task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+            } else {
+                aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+                aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
+            }
+    } else {
+        aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
+    }
 }
 
 static int s_subscribe_to_io_events(
@@ -406,7 +419,13 @@ static void s_on_tasks_to_schedule(
         while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
             struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
-            aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, task->timestamp);
+            if (task->timestamp == 0) {
+                aws_task_scheduler_schedule_now(&epoll_loop->scheduler, task);
+            } else {
+                aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, task->timestamp);
+            }
+
+            *(volatile size_t *)&task->reserved = 0;
         }
 
         aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);

@@ -392,6 +392,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     /* If we're on the event-thread, just schedule it directly */
     if (s_is_event_thread(event_loop)) {
+        *(volatile size_t *)&task->reserved = 0;
         if (run_at_nanos == 0) {
             aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
         } else {
@@ -406,6 +407,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     { /* Begin critical section */
         aws_mutex_lock(&impl->synced_data.mutex);
+        *(volatile size_t *)&task->reserved = 1;
         aws_linked_list_push_back(&impl->synced_data.tasks_to_schedule, &task->node);
 
         /* Signal thread that synced_data has changed (unless it's been signaled already) */
@@ -434,7 +436,19 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct iocp_loop *iocp_loop = event_loop->impl_data;
-    aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
+    if (*(volatile size_t *)&task->reserved == 1) {
+        aws_mutex_lock(&iocp_loop->synced_data.mutex);
+        if (*(volatile size_t *)&task->reserved == 1) {
+            aws_linked_list_remove(&task->node);
+            aws_mutex_unlock(&iocp_loop->synced_data.mutex);
+            task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        } else {
+            aws_mutex_unlock(&iocp_loop->synced_data.mutex);
+            aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
+        }
+    } else {
+        aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
+    }
 }
 
 /* Called from any thread */
@@ -472,13 +486,20 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     return AWS_OP_SUCCESS;
 }
 
-/* Called from event-thread.
- * Takes tasks from tasks_to_schedule and adds them to the scheduler. */
-static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_linked_list *tasks_to_schedule) {
+/* Runs on the event-thread. */
+static void s_process_synced_data(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
 
-    while (!aws_linked_list_empty(tasks_to_schedule)) {
+    aws_mutex_lock(&impl->synced_data.mutex);
+    impl->synced_data.thread_signaled = false;
+
+    bool initiate_stop = (impl->synced_data.state == EVENT_THREAD_STATE_STOPPING) &&
+                         (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING);
+    if (AWS_UNLIKELY(initiate_stop)) {
+        impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
+    }
+
+    while (!aws_linked_list_empty(impl->synced_data.tasks_to_schedule)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
@@ -488,34 +509,10 @@ static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struc
         } else {
             aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, task->timestamp);
         }
+        *(volatile size_t *)&task->reserved = 0;
     }
-}
 
-/* Runs on the event-thread. */
-static void s_process_synced_data(struct aws_event_loop *event_loop) {
-    struct iocp_loop *impl = event_loop->impl_data;
-
-    /* If there are tasks to schedule, grab them all out of synced_data.tasks_to_schedule.
-     * We'll process them later, so that we minimize time spent holding the mutex. */
-    struct aws_linked_list tasks_to_schedule;
-    aws_linked_list_init(&tasks_to_schedule);
-
-    { /* Begin critical section */
-        aws_mutex_lock(&impl->synced_data.mutex);
-        impl->synced_data.thread_signaled = false;
-
-        bool initiate_stop = (impl->synced_data.state == EVENT_THREAD_STATE_STOPPING) &&
-                             (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING);
-        if (AWS_UNLIKELY(initiate_stop)) {
-            impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
-        }
-
-        aws_linked_list_swap_contents(&impl->synced_data.tasks_to_schedule, &tasks_to_schedule);
-
-        aws_mutex_unlock(&impl->synced_data.mutex);
-    } /* End critical section */
-
-    s_process_tasks_to_schedule(event_loop, &tasks_to_schedule);
+    aws_mutex_unlock(&impl->synced_data.mutex);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
