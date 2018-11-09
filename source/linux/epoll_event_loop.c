@@ -75,6 +75,7 @@ struct epoll_loop {
     struct aws_io_handle write_task_handle;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
+    bool should_process_task_pre_queue;
     int epoll_fd;
     bool should_continue;
     struct aws_task stop_task;
@@ -194,6 +195,13 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_wait_for_stop_completion(event_loop);
 
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
+
+    while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+        task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+    }
+
     aws_thread_clean_up(&epoll_loop->thread);
 #if USE_EFD
     close(epoll_loop->write_task_handle.data.fd);
@@ -394,22 +402,45 @@ static void s_on_tasks_to_schedule(
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
-        uint64_t count_ignore = 0;
+        epoll_loop->should_process_task_pre_queue = true;
+    }
+}
 
-        aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
+    struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-        /* several tasks could theoretically have been written (though this should never happen), make sure we drain the
-         * eventfd/pipe. */
-        while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1) {
-        }
+    if (!epoll_loop->should_process_task_pre_queue) {
+        return
+    }
 
-        while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
-            struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+    epoll_loop->should_process_task_pre_queue = false;
+
+    struct aws_linked_list task_pre_queue;
+    aws_linked_list_init(&task_pre_queue);
+
+    uint64_t count_ignore = 0;
+
+    aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+
+    /* several tasks could theoretically have been written (though this should never happen), make sure we drain the
+     * eventfd/pipe. */
+    while (read(epoll_loop->read_task_handle.data.fd, &count_ignore, sizeof(count_ignore)) > -1) {
+    }
+
+    aws_linked_list_swap_contents(&epoll_loop->task_pre_queue, &task_pre_queue);
+
+    aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+
+    while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+
+        /* Timestamp 0 is used to denote "now" tasks */
+        if (task->timestamp == 0) {
+            aws_task_scheduler_schedule_now(&epoll_loop->scheduler, task);
+        } else {
             aws_task_scheduler_schedule_future(&epoll_loop->scheduler, task, task->timestamp);
         }
-
-        aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
     }
 }
 
@@ -471,6 +502,8 @@ static void s_main_loop(void *args) {
         }
 
         /* run scheduled tasks */
+        s_process_task_pre_queue(event_loop);
+
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */

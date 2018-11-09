@@ -221,7 +221,7 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
 
 /**
  * The event loop will schedule the task and run it on the event loop thread as soon as possible.
- * Note that cancelled tasks will execute outside the event loop thread.
+ * Note that cancelled tasks may execute outside the event loop thread.
  * This function may be called from outside or inside the event loop thread.
  *
  * The task should not be cleaned up or modified until its function is executed.
@@ -232,7 +232,7 @@ void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct 
 /**
  * The event loop will schedule the task and run it at the specified time.
  * Use aws_event_loop_current_clock_time() to query the current time in nanoseconds.
- * Note that cancelled tasks will execute outside the event loop thread.
+ * Note that cancelled tasks may execute outside the event loop thread.
  * This function may be called from outside or inside the event loop thread.
  *
  * The task should not be cleaned up or modified until its function is executed.
@@ -244,8 +244,10 @@ void aws_event_loop_schedule_task_future(
     uint64_t run_at_nanos);
 
 /**
- * Cancels task. This function must be called from the event loop's thread. The task will be executed
- * with the AWS_TASK_STATUS_CANCELED status inside this call.
+ * Cancels task.
+ * This function must be called from the event loop's thread, and is only guaranteed
+ * to work properly on tasks scheduled from within the event loop's thread.
+ * The task will be executed with the AWS_TASK_STATUS_CANCELED status inside this call.
  */
 AWS_IO_API
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
