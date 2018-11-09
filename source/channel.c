@@ -475,9 +475,10 @@ static void s_register_pending_task(
     if (channel->cross_thread_tasks.is_channel_shut_down) {
         should_cancel_task = true; /* run task outside critical section to avoid deadlock */
     } else {
+        bool list_was_empty = aws_linked_list_empty(&channel->cross_thread_tasks.list);
         aws_linked_list_push_back(&channel->cross_thread_tasks.list, &channel_task->node);
 
-        if (aws_linked_list_empty(&channel->cross_thread_tasks.list)) {
+        if (list_was_empty) {
             aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
         }
     }

@@ -498,6 +498,123 @@ static void s_channel_test_shutdown(struct aws_channel *channel, int error_code,
     aws_condition_variable_notify_one(&test_args->condition_variable);
 }
 
+enum tasks_run_id {
+    TASK_NOW_OFF_THREAD,
+    TASK_NOW_ON_THREAD,
+    TASK_FUTURE_OFF_THREAD,
+    TASK_FUTURE_ON_THREAD,
+    TASK_COUNT,
+};
+
+struct tasks_run_data {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condvar;
+    bool did_task_run[TASK_COUNT];
+    bool did_task_fail[TASK_COUNT];
+    struct aws_channel_task tasks[TASK_COUNT];
+};
+
+static struct tasks_run_data s_tasks_run_data;
+
+static void s_tasks_run_fn(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    intptr_t id = (intptr_t)arg;
+
+    aws_mutex_lock(&s_tasks_run_data.mutex);
+    s_tasks_run_data.did_task_run[id] = true;
+    s_tasks_run_data.did_task_fail[id] = (status == AWS_TASK_STATUS_CANCELED);
+    aws_condition_variable_notify_one(&s_tasks_run_data.condvar);
+    aws_mutex_unlock(&s_tasks_run_data.mutex);
+}
+
+static void s_schedule_on_thread_tasks_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_channel *channel = arg;
+    aws_channel_schedule_task_now(channel, &s_tasks_run_data.tasks[TASK_NOW_ON_THREAD]);
+    aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_ON_THREAD], 1);
+}
+
+static bool s_tasks_run_done_pred(void *user_data) {
+    (void)user_data;
+    for (int i = 0; i < TASK_COUNT; ++i) {
+        if (!s_tasks_run_data.did_task_run[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop);
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_channel *channel = NULL;
+
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_completed = false,
+        .task_status = 100,
+    };
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_INT_EQUALS(0, test_args.error_code);
+    /* Channel is set up now*/
+
+    /* Set up tasks */
+    AWS_ZERO_STRUCT(s_tasks_run_data);
+    ASSERT_SUCCESS(aws_mutex_init(&s_tasks_run_data.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_init(&s_tasks_run_data.condvar));
+    for (int i = 0; i < TASK_COUNT; ++i) {
+        aws_channel_task_init(&s_tasks_run_data.tasks[i], s_tasks_run_fn, (void *)(intptr_t)i);
+    }
+
+    /* Schedule channel-tasks from outside the channel's thread */
+    ASSERT_SUCCESS(aws_mutex_lock(&s_tasks_run_data.mutex));
+    aws_channel_schedule_task_now(channel, &s_tasks_run_data.tasks[TASK_NOW_OFF_THREAD]);
+    aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_OFF_THREAD], 1);
+
+    /* Schedule task that schedules channel-tasks from on then channel's thread */
+    struct aws_task scheduler_task;
+    aws_task_init(&scheduler_task, s_schedule_on_thread_tasks_fn, channel);
+    aws_event_loop_schedule_task_now(event_loop, &scheduler_task);
+
+    /* Wait for all the tasks to finish */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &s_tasks_run_data.condvar, &s_tasks_run_data.mutex, s_tasks_run_done_pred, NULL));
+
+    /* Check that none failed */
+    bool all_succeeded = true;
+    for (int i = 0; i < TASK_COUNT; ++i) {
+        if (s_tasks_run_data.did_task_fail[i]) {
+            all_succeeded = false;
+        }
+    }
+    ASSERT_TRUE(all_succeeded);
+
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_tasks_run, s_test_channel_tasks_run);
+
 static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
