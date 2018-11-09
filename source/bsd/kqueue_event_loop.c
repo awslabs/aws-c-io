@@ -443,15 +443,15 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     struct kqueue_loop *kqueue_loop = event_loop->impl_data;
 
     if (*(volatile size_t *)task->reserved == 1) {
-            aws_mutex_lock(&kqueue_loop->cross_thread_data.mutex)
-            if (*(volatile size_t *)&task->reserved == 1) {
-                aws_linked_list_remove(&task->node);
-                aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
-                task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
-            } else {
-                aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
-                aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
-            }
+        aws_mutex_lock(&kqueue_loop->cross_thread_data.mutex) if (*(volatile size_t *)&task->reserved == 1) {
+            aws_linked_list_remove(&task->node);
+            aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
+            task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        }
+        else {
+            aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
+            aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
+        }
     } else {
         aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
     }

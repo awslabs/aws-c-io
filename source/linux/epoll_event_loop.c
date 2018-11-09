@@ -294,15 +294,15 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     if (*(volatile size_t *)&task->reserved == 1) {
-            aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
-            if (*(volatile size_t *)&task->reserved == 1) {
-                aws_linked_list_remove(&task->node);
-                aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
-                task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
-            } else {
-                aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
-                aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
-            }
+        aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
+        if (*(volatile size_t *)&task->reserved == 1) {
+            aws_linked_list_remove(&task->node);
+            aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+            task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        } else {
+            aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
+            aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
+        }
     } else {
         aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
     }

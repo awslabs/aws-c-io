@@ -115,9 +115,10 @@ static void s_cross_thread_cancellation_thread_fn(void *arg) {
     struct background_thread_schedule *background_thread_schedule = arg;
 
     for (size_t i = 0; i < TASKS_TO_SCHED_PER_THREAD; ++i) {
-        aws_event_loop_schedule_task_future(background_thread_schedule->event_loop,
-                                            &background_thread_schedule->tasks_to_run[i], INT64_MAX
-                                            - TASKS_TO_SCHED_PER_THREAD + i);
+        aws_event_loop_schedule_task_future(
+            background_thread_schedule->event_loop,
+            &background_thread_schedule->tasks_to_run[i],
+            INT64_MAX - TASKS_TO_SCHED_PER_THREAD + i);
         background_thread_schedule->tasks_scheduled += 1;
     }
 }
@@ -142,14 +143,13 @@ static void s_el_cancel_scheduled_tasks(struct aws_task *task, void *arg, enum a
     bool needs_another_task = false;
 
     for (size_t i = 0; i < background_thread_count; ++i) {
-        struct background_thread_schedule *background_thread_schedule =  &background_thread_schedule_array[i];
+        struct background_thread_schedule *background_thread_schedule = &background_thread_schedule_array[i];
         size_t scheduled = background_thread_schedule->tasks_scheduled;
 
         size_t tasks_canceled = background_thread_schedule->tasks_cancelled;
         for (; tasks_canceled < scheduled; ++tasks_canceled) {
-            aws_event_loop_cancel_task(background_thread_schedule->event_loop,
-                                       &background_thread_schedule->tasks_to_run
-                                       [tasks_canceled]);
+            aws_event_loop_cancel_task(
+                background_thread_schedule->event_loop, &background_thread_schedule->tasks_to_run[tasks_canceled]);
         }
 
         if (background_thread_schedule->tasks_cancelled < TASKS_TO_SCHED_PER_THREAD) {
@@ -159,8 +159,7 @@ static void s_el_cancel_scheduled_tasks(struct aws_task *task, void *arg, enum a
 
     if (needs_another_task) {
         aws_event_loop_schedule_task_now(background_thread_schedule_array[0].event_loop, task);
-    }
-    else {
+    } else {
         aws_mutex_lock(background_thread_schedule_array[0].mutex);
         background_thread_schedule_array[0].finished = true;
         aws_mutex_unlock(background_thread_schedule_array[0].mutex);
@@ -179,18 +178,18 @@ static int s_test_event_loop_cancellation_of_cross_thread_tasks(struct aws_alloc
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
     struct background_thread_schedule template = {
-            .mutex = &mutex,
-            .c_var = &condition_variable,
-            .finished = false,
-            .event_loop = event_loop,
-            .tasks_cancelled = 0,
-            .tasks_scheduled = 0,
-            .task_run_status = {AWS_TASK_STATUS_RUN_READY},
+        .mutex = &mutex,
+        .c_var = &condition_variable,
+        .finished = false,
+        .event_loop = event_loop,
+        .tasks_cancelled = 0,
+        .tasks_scheduled = 0,
+        .task_run_status = {AWS_TASK_STATUS_RUN_READY},
     };
 
     size_t background_thread_count = aws_system_info_processor_count() > 1 ? aws_system_info_processor_count() - 1 : 1;
     struct background_thread_schedule *background_thread_schedule_array =
-            aws_mem_acquire(allocator, sizeof(struct background_thread_schedule) * background_thread_count);
+        aws_mem_acquire(allocator, sizeof(struct background_thread_schedule) * background_thread_count);
 
     ASSERT_NOT_NULL(background_thread_schedule_array);
 
@@ -198,8 +197,10 @@ static int s_test_event_loop_cancellation_of_cross_thread_tasks(struct aws_alloc
         background_thread_schedule_array[i] = template;
 
         for (size_t j = 0; j < TASKS_TO_SCHED_PER_THREAD; ++j) {
-            aws_task_init(&background_thread_schedule_array[i].tasks_to_run[j], s_cross_thread_canceled_check_task,
-                    &background_thread_schedule_array[i]);
+            aws_task_init(
+                &background_thread_schedule_array[i].tasks_to_run[j],
+                s_cross_thread_canceled_check_task,
+                &background_thread_schedule_array[i]);
         }
     }
 
@@ -216,7 +217,7 @@ static int s_test_event_loop_cancellation_of_cross_thread_tasks(struct aws_alloc
     }
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-            &condition_variable, &mutex, s_cancelation_predicate, background_thread_schedule_array));
+        &condition_variable, &mutex, s_cancelation_predicate, background_thread_schedule_array));
     aws_mutex_unlock(&mutex);
 
     for (size_t i = 0; i < background_thread_count; ++i) {
