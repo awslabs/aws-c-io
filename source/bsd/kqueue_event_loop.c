@@ -442,7 +442,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct kqueue_loop *kqueue_loop = event_loop->impl_data;
 
-    if (*(volatile size_t *)task->reserved == 1) {
+    if (*(volatile size_t *)&task->reserved == 1) {
         aws_mutex_lock(&kqueue_loop->cross_thread_data.mutex);
         if (*(volatile size_t *)&task->reserved == 1) {
             aws_linked_list_remove(&task->node);
