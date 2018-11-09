@@ -445,8 +445,10 @@ static void s_register_pending_task(
     struct aws_channel_task *channel_task,
     uint64_t run_at_nanos) {
 
+    /* Reset every property on channel task other than user's fn & arg.*/
     aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel);
     channel_task->wrapper_task.timestamp = run_at_nanos;
+    aws_linked_list_node_reset(&channel_task->node);
 
     if (aws_channel_thread_is_callers_thread(channel)) {
         /* If channel is shut down, run task immediately as canceled */
