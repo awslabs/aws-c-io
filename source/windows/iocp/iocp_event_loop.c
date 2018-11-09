@@ -499,8 +499,8 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
         impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
     }
 
-    while (!aws_linked_list_empty(impl->synced_data.tasks_to_schedule)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
+    while (!aws_linked_list_empty(&impl->synced_data.tasks_to_schedule)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&impl->synced_data.tasks_to_schedule);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
         /* We use timestamp of 0 to denote that it's a "now" task */

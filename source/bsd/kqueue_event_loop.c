@@ -443,12 +443,12 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     struct kqueue_loop *kqueue_loop = event_loop->impl_data;
 
     if (*(volatile size_t *)task->reserved == 1) {
-        aws_mutex_lock(&kqueue_loop->cross_thread_data.mutex) if (*(volatile size_t *)&task->reserved == 1) {
+        aws_mutex_lock(&kqueue_loop->cross_thread_data.mutex);
+        if (*(volatile size_t *)&task->reserved == 1) {
             aws_linked_list_remove(&task->node);
             aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
             task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
-        }
-        else {
+        } else {
             aws_mutex_unlock(&kqueue_loop->cross_thread_data.mutex);
             aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
         }
@@ -677,8 +677,8 @@ static void s_process_cross_thread_data(struct aws_event_loop *event_loop) {
         impl->thread_data.state = EVENT_THREAD_STATE_STOPPING;
     }
 
-    while (!aws_linked_list_empty(tasks_to_schedule)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
+    while (!aws_linked_list_empty(&impl->cross_thread_data.tasks_to_schedule)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&impl->cross_thread_data.tasks_to_schedule);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
         /* Timestamp 0 is used to denote "now" tasks */
