@@ -98,7 +98,7 @@ AWS_TEST_CASE(event_loop_xthread_scheduled_tasks_execute, s_test_event_loop_xthr
  * This test has a thread per core scheduling tasks, and the event loop is canceling them as fast as possible
  * and then making sure all of the tasks are correctly cancelled.
  */
-#define TASKS_TO_SCHED_PER_THREAD 100000
+#define TASKS_TO_SCHED_PER_THREAD 10000
 
 struct background_thread_schedule {
     struct aws_event_loop *event_loop;
