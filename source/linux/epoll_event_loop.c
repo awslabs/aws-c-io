@@ -410,7 +410,7 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     if (!epoll_loop->should_process_task_pre_queue) {
-        return
+        return;
     }
 
     epoll_loop->should_process_task_pre_queue = false;
