@@ -646,7 +646,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 3000;
+    options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 

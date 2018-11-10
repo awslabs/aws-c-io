@@ -59,7 +59,6 @@ struct aws_channel_task {
     aws_channel_task_fn *task_fn;
     void *arg;
     struct aws_linked_list_node node;
-    bool is_cross_thread;
 };
 
 struct aws_channel_handler_vtable {
