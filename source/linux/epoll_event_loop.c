@@ -431,8 +431,8 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
 
     aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
 
-    while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&epoll_loop->task_pre_queue);
+    while (!aws_linked_list_empty(&task_pre_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&task_pre_queue);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
         /* Timestamp 0 is used to denote "now" tasks */
