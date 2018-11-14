@@ -352,14 +352,20 @@ static void resolver_thread_fn(void *arg) {
         aws_rw_lock_wunlock(&host_entry->entry_lock);
 
         /* now notify any subscribers that are waiting on resolutions. */
+        struct aws_linked_list pending_resolve_copy;
+        aws_linked_list_init(&pending_resolve_copy);
         aws_rw_lock_wlock(&host_entry->entry_lock);
-        while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
-            struct aws_linked_list_node *resolution_callback_node =
-                aws_linked_list_front(&host_entry->pending_resolution_callbacks);
+        aws_linked_list_swap_contents(&host_entry->pending_resolution_callbacks, &pending_resolve_copy);
+        aws_rw_lock_wunlock(&host_entry->entry_lock);
+
+        while (!aws_linked_list_empty(&pending_resolve_copy)) {
+            struct aws_linked_list_node *resolution_callback_node = aws_linked_list_pop_front(&pending_resolve_copy);
             struct pending_callback *pending_callback =
                 AWS_CONTAINER_OF(resolution_callback_node, struct pending_callback, node);
+            aws_rw_lock_wlock(&host_entry->entry_lock);
             struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
             struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
+            aws_rw_lock_wunlock(&host_entry->entry_lock);
 
             if (aaaa_address || a_address) {
                 struct aws_host_address *address_array[2];
@@ -387,10 +393,8 @@ static void resolver_thread_fn(void *arg) {
                 pending_callback->callback(
                     host_entry->resolver, host_entry->host_name, err_code, NULL, pending_callback->user_data);
             }
-            aws_linked_list_pop_front(&host_entry->pending_resolution_callbacks);
             aws_mem_release(host_entry->allocator, pending_callback);
         }
-        aws_rw_lock_wunlock(&host_entry->entry_lock);
         aws_mutex_lock(&host_entry->semaphore_mutex);
 
         /* we don't actually care about spurious wakeups here. */
