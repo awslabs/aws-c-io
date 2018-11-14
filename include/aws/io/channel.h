@@ -288,10 +288,10 @@ AWS_IO_API
 int aws_channel_slot_remove(struct aws_channel_slot *slot);
 
 /**
- * Replaces remove with new. Deallocates remove and its handler.
+ * Replaces remove with new_slot. Deallocates remove and its handler.
  */
 AWS_IO_API
-int aws_channel_slot_replace(struct aws_channel_slot *remove, struct aws_channel_slot *new);
+int aws_channel_slot_replace(struct aws_channel_slot *remove, struct aws_channel_slot *new_slot);
 
 /**
  * inserts 'to_add' to the position immediately to the right of slot. Note that the first call to

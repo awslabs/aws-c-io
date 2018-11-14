@@ -532,21 +532,21 @@ int aws_channel_slot_remove(struct aws_channel_slot *slot) {
     return AWS_OP_SUCCESS;
 }
 
-int aws_channel_slot_replace(struct aws_channel_slot *remove, struct aws_channel_slot *new) {
-    new->adj_left = remove->adj_left;
+int aws_channel_slot_replace(struct aws_channel_slot *remove, struct aws_channel_slot *new_slot) {
+    new_slot->adj_left = remove->adj_left;
 
     if (remove->adj_left) {
-        remove->adj_left->adj_right = new;
+        remove->adj_left->adj_right = new_slot;
     }
 
-    new->adj_right = remove->adj_right;
+    new_slot->adj_right = remove->adj_right;
 
     if (remove->adj_right) {
-        remove->adj_right->adj_left = new;
+        remove->adj_right->adj_left = new_slot;
     }
 
     if (remove == remove->channel->first) {
-        remove->channel->first = new;
+        remove->channel->first = new_slot;
     }
 
     s_cleanup_slot(remove);
