@@ -359,8 +359,7 @@ static void resolver_thread_fn(void *arg) {
         aws_rw_lock_wunlock(&host_entry->entry_lock);
 
         while (!aws_linked_list_empty(&pending_resolve_copy)) {
-            struct aws_linked_list_node *resolution_callback_node =
-                aws_linked_list_pop_front(&pending_resolve_copy);
+            struct aws_linked_list_node *resolution_callback_node = aws_linked_list_pop_front(&pending_resolve_copy);
             struct pending_callback *pending_callback =
                 AWS_CONTAINER_OF(resolution_callback_node, struct pending_callback, node);
             aws_rw_lock_wlock(&host_entry->entry_lock);
