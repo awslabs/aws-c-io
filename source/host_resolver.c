@@ -237,7 +237,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
 
             address_copy->connection_failure_count += 1;
 
-            if (aws_lru_cache_put(failed_table, address_copy->host, address_copy)) {
+            if (aws_lru_cache_put(failed_table, address_copy->address, address_copy)) {
                 goto error_host_entry_cleanup;
             }
         } else {
