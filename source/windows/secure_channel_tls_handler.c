@@ -1274,10 +1274,10 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *alloc,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     bool is_client_mode) {
+    assert(options->ctx);
 
     struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
 
@@ -1290,7 +1290,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
 
-    struct secure_channel_ctx *sc_ctx = ctx->impl;
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
     unsigned long credential_use = SECPKG_CRED_INBOUND;
     if (is_client_mode) {
@@ -1338,7 +1338,6 @@ static struct aws_channel_handler *s_tls_handler_new(
 }
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
@@ -1347,7 +1346,6 @@ struct aws_channel_handler *aws_tls_client_handler_new(
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 

@@ -304,11 +304,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     };
 
     struct aws_tls_connection_options tls_server_conn_options;
-    aws_tls_connection_options_init_from_ctx_options(&tls_server_conn_options, &server_ctx_options);
+    aws_tls_connection_options_init_from_ctx(&tls_server_conn_options, server_ctx);
     aws_tls_connection_options_set_callbacks(&tls_server_conn_options, s_tls_on_negotiated, NULL, NULL, &incoming_args);
 
     struct aws_tls_connection_options tls_client_conn_options;
-    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
     aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, "h2;http/1.1");
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, "localhost");
@@ -328,7 +328,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_server_bootstrap server_bootstrap;
     ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
-    ASSERT_SUCCESS(aws_server_bootstrap_set_tls_ctx(&server_bootstrap, server_ctx));
 
     struct aws_socket *listener = aws_server_bootstrap_new_tls_socket_listener(
         &server_bootstrap,
@@ -343,7 +342,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_client_bootstrap client_bootstrap;
     ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL));
-    ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
@@ -472,7 +470,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
     struct aws_tls_connection_options tls_client_conn_options;
-    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, (const char *)aws_string_bytes(host_name));
 
@@ -499,7 +497,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     struct aws_client_bootstrap client_bootstrap;
     ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL)));
-    ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         &client_bootstrap,
@@ -639,7 +636,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
     struct aws_tls_connection_options tls_client_conn_options;
-    aws_tls_connection_options_init_from_ctx_options(&tls_client_conn_options, &client_ctx_options);
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, (const char *)aws_string_bytes(host_name));
     aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, "h2;http/1.1");
@@ -654,7 +651,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_client_bootstrap client_bootstrap;
     ASSERT_SUCCESS((aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL)));
-    ASSERT_SUCCESS(aws_client_bootstrap_set_tls_ctx(&client_bootstrap, client_ctx));
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         &client_bootstrap,

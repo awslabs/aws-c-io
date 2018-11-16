@@ -97,7 +97,6 @@ int aws_client_bootstrap_init(
 
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
-    bootstrap->tls_ctx = NULL;
     bootstrap->on_protocol_negotiated = NULL;
 
     if (host_resolver) {
@@ -130,26 +129,17 @@ int aws_client_bootstrap_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_client_bootstrap_set_tls_ctx(struct aws_client_bootstrap *bootstrap, struct aws_tls_ctx *ctx) {
-    assert(ctx);
-    bootstrap->tls_ctx = ctx;
-    return AWS_OP_SUCCESS;
-}
-
 int aws_client_bootstrap_set_alpn_callback(
     struct aws_client_bootstrap *bootstrap,
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
     assert(on_protocol_negotiated);
-    assert(bootstrap->tls_ctx);
 
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
     return AWS_OP_SUCCESS;
 }
 
 void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
-    if (bootstrap->tls_ctx) {
-        s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
-    }
+    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
 
     if (bootstrap->host_resolver && bootstrap->owns_resolver) {
         aws_host_resolver_clean_up(bootstrap->host_resolver);
@@ -243,7 +233,6 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
 
     struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(
         connection_args->bootstrap->allocator,
-        connection_args->bootstrap->tls_ctx,
         &connection_args->channel_data.tls_options,
         tls_slot);
 
@@ -622,7 +611,6 @@ int aws_client_bootstrap_new_tls_socket_channel(
     void *user_data) {
     assert(connection_options);
     assert(options->type == AWS_SOCKET_STREAM);
-    assert(bootstrap->tls_ctx);
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -653,16 +641,13 @@ int aws_server_bootstrap_init(
 
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
-    bootstrap->tls_ctx = NULL;
     bootstrap->on_protocol_negotiated = NULL;
 
     return AWS_OP_SUCCESS;
 }
 
 void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap) {
-    if (bootstrap->tls_ctx) {
-        s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
-    }
+    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     AWS_ZERO_STRUCT(*bootstrap);
 }
 
@@ -746,7 +731,6 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
 
     tls_handler = aws_tls_server_handler_new(
         connection_args->bootstrap->allocator,
-        connection_args->bootstrap->tls_ctx,
         &connection_args->tls_options,
         tls_slot);
 
@@ -1025,7 +1009,6 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     void *user_data) {
     assert(connection_options);
     assert(options->type == AWS_SOCKET_STREAM);
-    assert(bootstrap->tls_ctx);
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -1046,17 +1029,10 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
     return AWS_OP_SUCCESS;
 }
 
-int aws_server_bootstrap_set_tls_ctx(struct aws_server_bootstrap *bootstrap, struct aws_tls_ctx *ctx) {
-    assert(ctx);
-    bootstrap->tls_ctx = ctx;
-    return AWS_OP_SUCCESS;
-}
-
 int aws_server_bootstrap_set_alpn_callback(
     struct aws_server_bootstrap *bootstrap,
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
     assert(on_protocol_negotiated);
-    assert(bootstrap->tls_ctx);
 
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
     return AWS_OP_SUCCESS;
