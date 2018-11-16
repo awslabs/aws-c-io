@@ -107,11 +107,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         CRYPTO_set_id_callback(s_id_fn);
     }
 #endif
-
-    /* prime the config, validators etc... to avoid extra hit to the
-     * trust store. */
-    struct s2n_connection *conn = s2n_connection_new(S2N_CLIENT);
-    s2n_connection_free(conn);
 }
 
 void aws_tls_clean_up_thread_local_state(void) {
