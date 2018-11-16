@@ -162,15 +162,23 @@ install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
 
 install(
-        TARGETS ${CMAKE_PROJECT_NAME} EXPORT ${CMAKE_PROJECT_NAME}-config
+        TARGETS ${CMAKE_PROJECT_NAME}
+        EXPORT ${CMAKE_PROJECT_NAME}-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         COMPONENT library
 )
 
-export(TARGETS ${CMAKE_PROJECT_NAME} FILE ${CMAKE_PROJECT_NAME}-config.cmake)
-install(EXPORT ${CMAKE_PROJECT_NAME}-config DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/")
+install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_PROJECT_NAME}/cmake/"
+        NAMESPACE AWS::)
+
+configure_file("cmake/${CMAKE_PROJECT_NAME}-config.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+        @ONLY)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_PROJECT_NAME}/cmake/")
 
 include(CTest)
 add_subdirectory(tests)
-
