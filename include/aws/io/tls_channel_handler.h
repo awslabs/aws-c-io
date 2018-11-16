@@ -190,7 +190,7 @@ AWS_IO_API void aws_tls_ctx_options_override_default_trust_store(
 
 AWS_IO_API void aws_tls_connection_options_init_from_ctx(
     struct aws_tls_connection_options *conn_options,
-    struct aws_tls_ctx *ctx_options);
+    struct aws_tls_ctx *ctx);
 
 AWS_IO_API void aws_tls_connection_options_set_callbacks(
     struct aws_tls_connection_options *conn_options,
