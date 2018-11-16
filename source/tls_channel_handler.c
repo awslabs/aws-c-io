@@ -111,4 +111,3 @@ void aws_tls_connection_options_set_server_name(
 void aws_tls_connection_options_set_alpn_list(struct aws_tls_connection_options *conn_options, const char *alpn_list) {
     conn_options->alpn_list = alpn_list;
 }
-

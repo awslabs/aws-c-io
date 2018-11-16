@@ -232,9 +232,7 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
     }
 
     struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(
-        connection_args->bootstrap->allocator,
-        &connection_args->channel_data.tls_options,
-        tls_slot);
+        connection_args->bootstrap->allocator, &connection_args->channel_data.tls_options, tls_slot);
 
     if (!tls_handler) {
         aws_mem_release(connection_args->bootstrap->allocator, (void *)tls_slot);
@@ -729,10 +727,8 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
         return AWS_OP_ERR;
     }
 
-    tls_handler = aws_tls_server_handler_new(
-        connection_args->bootstrap->allocator,
-        &connection_args->tls_options,
-        tls_slot);
+    tls_handler =
+        aws_tls_server_handler_new(connection_args->bootstrap->allocator, &connection_args->tls_options, tls_slot);
 
     if (!tls_handler) {
         aws_mem_release(connection_args->bootstrap->allocator, tls_slot);
