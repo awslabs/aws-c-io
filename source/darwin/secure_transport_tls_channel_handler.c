@@ -715,14 +715,14 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    return s_tls_handler_new(allocator, ctx, options, slot, kSSLClientSide);
+    return s_tls_handler_new(allocator, options, slot, kSSLClientSide);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    return s_tls_handler_new(allocator, ctx, options, slot, kSSLServerSide);
+    return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
