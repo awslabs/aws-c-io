@@ -115,7 +115,7 @@ if (NOT CUSTOM_TLS)
                 "source/s2n/*.c"
                 )
         find_package(s2n REQUIRED)
-        set(PLATFORM_LIBS ${PlATFORM_LIBS} s2n)
+        set(PLATFORM_LIBS ${PlATFORM_LIBS} AWS::s2n)
     endif ()
 endif ()
 
@@ -166,11 +166,10 @@ install(
         EXPORT ${CMAKE_PROJECT_NAME}-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        COMPONENT library
 )
 
 install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
-        DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_PROJECT_NAME}/cmake/"
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/"
         NAMESPACE AWS::)
 
 configure_file("cmake/${CMAKE_PROJECT_NAME}-config.cmake"
@@ -178,7 +177,7 @@ configure_file("cmake/${CMAKE_PROJECT_NAME}-config.cmake"
         @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
-        DESTINATION "${CMAKE_INSTALL_PREFIX}/${CMAKE_PROJECT_NAME}/cmake/")
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/")
 
 include(CTest)
 add_subdirectory(tests)
