@@ -107,6 +107,11 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         CRYPTO_set_id_callback(s_id_fn);
     }
 #endif
+
+    /* prime the config, validators etc... to avoid extra hit to the
+     * trust store. */
+    struct s2n_connection *conn = s2n_connection_new(S2N_CLIENT);
+    s2n_connection_free(conn);
 }
 
 void aws_tls_clean_up_thread_local_state(void) {
@@ -559,11 +564,11 @@ static int s_parse_protocol_preferences(
 
 static struct aws_channel_handler *s_new_tls_handler(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     s2n_mode mode) {
 
+    assert(options->ctx);
     struct s2n_handler *s2n_handler = (struct s2n_handler *)aws_mem_acquire(allocator, sizeof(struct s2n_handler));
 
     if (!s2n_handler) {
@@ -571,7 +576,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     }
 
     AWS_ZERO_STRUCT(*s2n_handler);
-    struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)ctx->impl;
+    struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)options->ctx->impl;
     s2n_handler->connection = s2n_connection_new(mode);
 
     if (!s2n_handler->connection) {
@@ -646,20 +651,18 @@ cleanup_s2n_handler:
 
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_new_tls_handler(allocator, ctx, options, slot, S2N_CLIENT);
+    return s_new_tls_handler(allocator, options, slot, S2N_CLIENT);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_new_tls_handler(allocator, ctx, options, slot, S2N_SERVER);
+    return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {

@@ -587,11 +587,11 @@ struct secure_transport_ctx {
 
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     SSLProtocolSide protocol_side) {
-    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
+    assert(options->ctx);
+    struct secure_transport_ctx *secure_transport_ctx = options->ctx->impl;
 
     struct secure_transport_handler *secure_transport_handler =
         (struct secure_transport_handler *)aws_mem_acquire(allocator, sizeof(struct secure_transport_handler));
@@ -713,18 +713,16 @@ cleanup_st_handler:
 
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    return s_tls_handler_new(allocator, ctx, options, slot, kSSLClientSide);
+    return s_tls_handler_new(allocator, options, slot, kSSLClientSide);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    return s_tls_handler_new(allocator, ctx, options, slot, kSSLServerSide);
+    return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {

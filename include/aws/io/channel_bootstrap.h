@@ -75,7 +75,6 @@ struct aws_client_bootstrap {
     struct aws_event_loop_group *event_loop_group;
     struct aws_host_resolver *host_resolver;
     struct aws_host_resolution_config host_resolver_config;
-    struct aws_tls_ctx *tls_ctx;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     bool owns_resolver;
 };
@@ -126,7 +125,6 @@ typedef void(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
 struct aws_server_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
-    struct aws_tls_ctx *tls_ctx;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
 };
 
@@ -152,12 +150,6 @@ AWS_IO_API int aws_client_bootstrap_init(
  * calling this if you don't want a memory leak.
  */
 AWS_IO_API void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap);
-
-/**
- * Sets the TLS context for use with `aws_client_bootstrap_new_tls_socket_channel`. This function must be called before
- * calling `aws_client_bootstrap_new_tls_socket_channel`
- */
-AWS_IO_API int aws_client_bootstrap_set_tls_ctx(struct aws_client_bootstrap *bootstrap, struct aws_tls_ctx *ctx);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added
@@ -223,12 +215,6 @@ AWS_IO_API int aws_server_bootstrap_init(
  * calling this if you don't want a memory leak.
  */
 AWS_IO_API void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap);
-
-/**
- * Sets the TLS context for use with `aws_server_bootstrap_new_tls_socket_listener`. This function must be called before
- * calling, `aws_server_bootstrap_new_tls_socket_listener`
- */
-AWS_IO_API int aws_server_bootstrap_set_tls_ctx(struct aws_server_bootstrap *bootstrap, struct aws_tls_ctx *ctx);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added

@@ -83,16 +83,7 @@ struct aws_tls_connection_options {
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
     void *user_data;
-    /**
-     * default is true for clients and false for servers.
-     * You should not change this default for clients unless
-     * you're testing and don't want to fool around with CA trust stores.
-     * Before you release to production, you'll want to turn this back on
-     * and add your custom CA to the aws_tls_ctx_options.
-     *
-     * If you set this in server mode, it enforces client authentication.
-     */
-    bool verify_peer;
+    struct aws_tls_ctx *ctx;
     bool advertise_alpn_message;
 };
 
@@ -197,9 +188,9 @@ AWS_IO_API void aws_tls_ctx_options_override_default_trust_store(
     const char *ca_path,
     const char *ca_file);
 
-AWS_IO_API void aws_tls_connection_options_init_from_ctx_options(
+AWS_IO_API void aws_tls_connection_options_init_from_ctx(
     struct aws_tls_connection_options *conn_options,
-    const struct aws_tls_ctx_options *ctx_options);
+    struct aws_tls_ctx *ctx);
 
 AWS_IO_API void aws_tls_connection_options_set_callbacks(
     struct aws_tls_connection_options *conn_options,
@@ -215,9 +206,6 @@ AWS_IO_API void aws_tls_connection_options_set_server_name(
 AWS_IO_API void aws_tls_connection_options_set_alpn_list(
     struct aws_tls_connection_options *conn_options,
     const char *alpn_list);
-AWS_IO_API void aws_tls_connection_options_set_verify_peer(
-    struct aws_tls_connection_options *conn_options,
-    bool verify_peer);
 
 /********************************* TLS context and state management *********************************/
 /**
@@ -250,7 +238,6 @@ AWS_IO_API bool aws_tls_is_alpn_available(void);
  */
 AWS_IO_API struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 
@@ -261,7 +248,6 @@ AWS_IO_API struct aws_channel_handler *aws_tls_client_handler_new(
  */
 AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 

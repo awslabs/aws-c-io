@@ -81,13 +81,13 @@ void aws_tls_ctx_options_override_default_trust_store(
     options->ca_file = ca_file;
 }
 
-void aws_tls_connection_options_init_from_ctx_options(
+void aws_tls_connection_options_init_from_ctx(
     struct aws_tls_connection_options *conn_options,
-    const struct aws_tls_ctx_options *ctx_options) {
+    struct aws_tls_ctx *ctx) {
     AWS_ZERO_STRUCT(*conn_options);
     /* the assumption here, is that if it was set in the context, we WANT it to be NULL here unless it's different.
      * so only set verify peer at this point. */
-    conn_options->verify_peer = ctx_options->verify_peer;
+    conn_options->ctx = ctx;
 }
 
 void aws_tls_connection_options_set_callbacks(
@@ -110,8 +110,4 @@ void aws_tls_connection_options_set_server_name(
 
 void aws_tls_connection_options_set_alpn_list(struct aws_tls_connection_options *conn_options, const char *alpn_list) {
     conn_options->alpn_list = alpn_list;
-}
-
-void aws_tls_connection_options_set_verify_peer(struct aws_tls_connection_options *conn_options, bool verify_peer) {
-    conn_options->verify_peer = verify_peer;
 }

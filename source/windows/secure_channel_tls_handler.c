@@ -88,6 +88,7 @@ struct secure_channel_handler {
     struct aws_byte_buf buffered_read_out_data_buf;
     struct aws_channel_task sequential_task_storage;
     bool negotiation_finished;
+    bool verify_peer;
 };
 
 bool aws_tls_is_alpn_available(void) {
@@ -341,7 +342,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     sc_handler->ctx_req = ASC_REQ_SEQUENCE_DETECT | ASC_REQ_REPLAY_DETECT | ASC_REQ_CONFIDENTIALITY |
                           ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM;
 
-    if (sc_handler->options.verify_peer) {
+    if (sc_handler->verify_peer) {
         sc_handler->ctx_req |= ASC_REQ_MUTUAL_AUTH;
     }
 
@@ -1274,10 +1275,10 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *alloc,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     bool is_client_mode) {
+    assert(options->ctx);
 
     struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
 
@@ -1290,7 +1291,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
 
-    struct secure_channel_ctx *sc_ctx = ctx->impl;
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
     unsigned long credential_use = SECPKG_CRED_INBOUND;
     if (is_client_mode) {
@@ -1333,25 +1334,24 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->buffered_read_out_data_buf =
         aws_byte_buf_from_array(sc_handler->buffered_read_out_data, sizeof(sc_handler->buffered_read_out_data));
     sc_handler->buffered_read_out_data_buf.len = 0;
+    sc_handler->verify_peer = sc_ctx->options.verify_peer;
 
     return &sc_handler->handler;
 }
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_tls_handler_new(allocator, ctx, options, slot, true);
+    return s_tls_handler_new(allocator, options, slot, true);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
-    struct aws_tls_ctx *ctx,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_tls_handler_new(allocator, ctx, options, slot, false);
+    return s_tls_handler_new(allocator, options, slot, false);
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
