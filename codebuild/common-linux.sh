@@ -27,7 +27,7 @@ sudo apt-get install libssl-dev
 
 cd ../
 
-mkdir install
+mkdir -p install
 
 install_library s2n 55699d9ce02285b5ad1674fc08929452f994e20e
 install_library aws-c-common
