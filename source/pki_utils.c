@@ -231,7 +231,7 @@ int aws_decode_pem_to_buffer_list(
         struct aws_byte_buf *byte_buf_ptr = NULL;
         aws_array_list_get_at_ptr(&base_64_buffer_list, (void **)&byte_buf_ptr, i);
 
-        if (aws_base64_compute_decoded_len((const char *)byte_buf_ptr->buffer, byte_buf_ptr->len, &decoded_len)) {
+        if (aws_base64_compute_decoded_len(byte_buf_ptr, &decoded_len)) {
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_output_due_to_error;
         }
