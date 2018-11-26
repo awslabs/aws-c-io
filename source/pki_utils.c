@@ -54,7 +54,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 
         size_t allocation_size = (size_t)ftell(fp) + 1;
         /* Tell the user that we allocate here and if success they're responsible for the free. */
-        if (aws_byte_buf_init(alloc, out_buf, allocation_size)) {
+        if (aws_byte_buf_init(out_buf, alloc, allocation_size)) {
             fclose(fp);
             return AWS_OP_ERR;
         }
@@ -106,12 +106,11 @@ void aws_cert_chain_clean_up(struct aws_array_list *cert_chain) {
 
 static int s_convert_pem_to_raw_base64(
     struct aws_allocator *allocator,
-    const struct aws_byte_buf *pem,
+    const struct aws_byte_cursor *pem,
     struct aws_array_list *cert_chain_or_key) {
     enum PEM_PARSE_STATE state = BEGIN;
 
     struct aws_byte_buf current_cert;
-    struct aws_byte_cursor current_cert_cursor;
     const char *begin_header = "-----BEGIN";
     const char *end_header = "-----END";
     size_t begin_header_len = strlen(begin_header);
@@ -123,7 +122,7 @@ static int s_convert_pem_to_raw_base64(
         return AWS_OP_ERR;
     }
 
-    if (aws_byte_buf_split_on_char((struct aws_byte_buf *)pem, '\n', &split_buffers)) {
+    if (aws_byte_cursor_split_on_char(pem, '\n', &split_buffers)) {
         aws_array_list_clean_up(&split_buffers);
         return AWS_OP_ERR;
     }
@@ -134,24 +133,24 @@ static int s_convert_pem_to_raw_base64(
     size_t current_cert_len = 0;
 
     while (i < split_count) {
-        struct aws_byte_cursor *current_buf_ptr = NULL;
-        aws_array_list_get_at_ptr(&split_buffers, (void **)&current_buf_ptr, i);
+        struct aws_byte_cursor *current_cur_ptr = NULL;
+        aws_array_list_get_at_ptr(&split_buffers, (void **)&current_cur_ptr, i);
 
         /* burn off the padding in the buffer first.
          * Worst case we'll only have to do this once per line in the buffer. */
-        while (current_buf_ptr->len && isspace(*current_buf_ptr->ptr)) {
-            aws_byte_cursor_advance(current_buf_ptr, 1);
+        while (current_cur_ptr->len && isspace(*current_cur_ptr->ptr)) {
+            aws_byte_cursor_advance(current_cur_ptr, 1);
         }
 
         /* handle CRLF on Windows by burning '\r' off the end of the buffer */
-        if (current_buf_ptr->len && (current_buf_ptr->ptr[current_buf_ptr->len - 1] == '\r')) {
-            current_buf_ptr->len--;
+        if (current_cur_ptr->len && (current_cur_ptr->ptr[current_cur_ptr->len - 1] == '\r')) {
+            current_cur_ptr->len--;
         }
 
         switch (state) {
             case BEGIN:
-                if (current_buf_ptr->len > begin_header_len &&
-                    !strncmp((const char *)current_buf_ptr->ptr, begin_header, begin_header_len)) {
+                if (current_cur_ptr->len > begin_header_len &&
+                    !strncmp((const char *)current_cur_ptr->ptr, begin_header, begin_header_len)) {
                     state = ON_DATA;
                     index_of_current_cert_start = i + 1;
                 }
@@ -161,19 +160,17 @@ static int s_convert_pem_to_raw_base64(
              * time to actually copy the data. */
             case ON_DATA:
                 /* Found end tag. */
-                if (current_buf_ptr->len > end_header_len &&
-                    !strncmp((const char *)current_buf_ptr->ptr, end_header, end_header_len)) {
+                if (current_cur_ptr->len > end_header_len &&
+                    !strncmp((const char *)current_cur_ptr->ptr, end_header, end_header_len)) {
                     if (on_length_calc) {
                         on_length_calc = false;
                         state = ON_DATA;
                         i = index_of_current_cert_start;
 
-                        if (aws_byte_buf_init(allocator, &current_cert, current_cert_len)) {
+                        if (aws_byte_buf_init(&current_cert, allocator, current_cert_len)) {
                             goto end_of_loop;
                         }
 
-                        current_cert.len = current_cert.capacity;
-                        current_cert_cursor = aws_byte_cursor_from_buf(&current_cert);
                     } else {
                         if (aws_array_list_push_back(cert_chain_or_key, &current_cert)) {
                             aws_secure_zero(&current_cert.buffer, current_cert.len);
@@ -188,9 +185,9 @@ static int s_convert_pem_to_raw_base64(
                     /* actually on a line with data in it. */
                 } else {
                     if (!on_length_calc) {
-                        aws_byte_cursor_write(&current_cert_cursor, current_buf_ptr->ptr, current_buf_ptr->len);
+                        aws_byte_buf_write(&current_cert, current_cur_ptr->ptr, current_cur_ptr->len);
                     } else {
-                        current_cert_len += current_buf_ptr->len;
+                        current_cert_len += current_cur_ptr->len;
                     }
                     ++i;
                 }
@@ -211,7 +208,7 @@ end_of_loop:
 
 int aws_decode_pem_to_buffer_list(
     struct aws_allocator *alloc,
-    const struct aws_byte_buf *pem_buffer,
+    const struct aws_byte_cursor *pem_cursor,
     struct aws_array_list *cert_chain_or_key) {
     assert(aws_array_list_length(cert_chain_or_key) == 0);
     struct aws_array_list base_64_buffer_list;
@@ -222,7 +219,7 @@ int aws_decode_pem_to_buffer_list(
 
     int err_code = AWS_OP_ERR;
 
-    if (s_convert_pem_to_raw_base64(alloc, pem_buffer, &base_64_buffer_list)) {
+    if (s_convert_pem_to_raw_base64(alloc, pem_cursor, &base_64_buffer_list)) {
         goto cleanup_base64_buffer_list;
     }
 
@@ -230,19 +227,20 @@ int aws_decode_pem_to_buffer_list(
         size_t decoded_len = 0;
         struct aws_byte_buf *byte_buf_ptr = NULL;
         aws_array_list_get_at_ptr(&base_64_buffer_list, (void **)&byte_buf_ptr, i);
+        struct aws_byte_cursor byte_cur = aws_byte_cursor_from_buf(byte_buf_ptr);
 
-        if (aws_base64_compute_decoded_len(byte_buf_ptr, &decoded_len)) {
+        if (aws_base64_compute_decoded_len(&byte_cur, &decoded_len)) {
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_output_due_to_error;
         }
 
         struct aws_byte_buf decoded_buffer;
 
-        if (aws_byte_buf_init(alloc, &decoded_buffer, decoded_len)) {
+        if (aws_byte_buf_init(&decoded_buffer, alloc, decoded_len)) {
             goto cleanup_output_due_to_error;
         }
 
-        if (aws_base64_decode(byte_buf_ptr, &decoded_buffer)) {
+        if (aws_base64_decode(&byte_cur, &decoded_buffer)) {
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             aws_byte_buf_clean_up(&decoded_buffer);
             goto cleanup_output_due_to_error;
@@ -275,14 +273,15 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     struct aws_allocator *alloc,
     const char *filename,
     struct aws_array_list *cert_chain_or_key) {
-    struct aws_byte_buf raw_file_buffer;
 
+    struct aws_byte_buf raw_file_buffer;
     if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
         return AWS_OP_ERR;
     }
     assert(raw_file_buffer.buffer);
 
-    if (aws_decode_pem_to_buffer_list(alloc, &raw_file_buffer, cert_chain_or_key)) {
+    struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
+    if (aws_decode_pem_to_buffer_list(alloc, &file_cursor, cert_chain_or_key)) {
         aws_secure_zero(raw_file_buffer.buffer, raw_file_buffer.len);
         aws_byte_buf_clean_up(&raw_file_buffer);
         return AWS_OP_ERR;

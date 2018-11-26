@@ -118,7 +118,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
 int aws_import_trusted_certificates(
     struct aws_allocator *alloc,
-    struct aws_byte_buf *certificates_blob,
+    const struct aws_byte_cursor *certificates_blob,
     HCERTSTORE *cert_store) {
     struct aws_array_list certificates;
     *cert_store = NULL;
@@ -193,8 +193,8 @@ void aws_close_cert_store(HCERTSTORE cert_store) {
 
 int aws_import_key_pair_to_cert_context(
     struct aws_allocator *alloc,
-    struct aws_byte_buf *public_cert_chain,
-    struct aws_byte_buf *private_key,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
     HCERTSTORE *store,
     PCCERT_CONTEXT *certs) {
 

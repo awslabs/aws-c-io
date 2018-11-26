@@ -102,7 +102,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
 
     if (state->buffer_size > 0) {
         /* Create full src buffer, containing random content */
-        err = aws_byte_buf_init(allocator, &state->buffers.src, state->buffer_size);
+        err = aws_byte_buf_init(&state->buffers.src, allocator, state->buffer_size);
         assert(!err);
 
         state->buffers.src.len = state->buffer_size;
@@ -111,7 +111,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
         }
 
         /* Create empty dst buffer, with zeroed out content */
-        err = aws_byte_buf_init(allocator, &state->buffers.dst, state->buffer_size);
+        err = aws_byte_buf_init(&state->buffers.dst, allocator, state->buffer_size);
         assert(!err);
 
         memset(state->buffers.dst.buffer, 0, state->buffers.dst.capacity);

@@ -45,7 +45,7 @@ AWS_IO_API void aws_cert_chain_clean_up(struct aws_array_list *cert_chain);
  */
 AWS_IO_API int aws_decode_pem_to_buffer_list(
     struct aws_allocator *alloc,
-    const struct aws_byte_buf *pem_buffer,
+    const struct aws_byte_cursor *pem_cursor,
     struct aws_array_list *cert_chain_or_key);
 
 /**
@@ -69,8 +69,8 @@ typedef const struct __CFArray *CFArrayRef;
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *public_cert_chain,
-    struct aws_byte_buf *private_key,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
     CFArrayRef *identity);
 
 /**
@@ -79,8 +79,8 @@ int aws_import_public_and_private_keys_to_identity(
  */
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *pkcs12_buffer,
-    struct aws_byte_buf *password,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
     CFArrayRef *identity);
 
 /**
@@ -90,7 +90,7 @@ int aws_import_pkcs12_to_identity(
 int aws_import_trusted_certificates(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *certificates_blob,
+    const struct aws_byte_cursor *certificates_blob,
     CFArrayRef *certs);
 
 /**
@@ -125,7 +125,7 @@ AWS_IO_API int aws_load_cert_from_system_cert_store(
  */
 AWS_IO_API int aws_import_trusted_certificates(
     struct aws_allocator *alloc,
-    struct aws_byte_buf *certificates_blob,
+    const struct aws_byte_cursor *certificates_blob,
     HCERTSTORE *cert_store);
 
 /**
@@ -139,8 +139,8 @@ AWS_IO_API void aws_close_cert_store(HCERTSTORE cert_store);
  */
 AWS_IO_API int aws_import_key_pair_to_cert_context(
     struct aws_allocator *alloc,
-    struct aws_byte_buf *public_cert_chain,
-    struct aws_byte_buf *private_key,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
     HCERTSTORE *cert_store,
     PCCERT_CONTEXT *certs);
 #endif /* _WIN32 */
