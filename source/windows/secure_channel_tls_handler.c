@@ -252,8 +252,8 @@ static int s_fillin_alpn_data(
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
     aws_array_list_init_static(&alpn_buffers, alpn_buffer_array, 4, sizeof(struct aws_byte_cursor));
-    struct aws_byte_buf alpn_str_buf = aws_byte_buf_from_c_str(sc_handler->options.alpn_list);
-    if (aws_byte_buf_split_on_char(&alpn_str_buf, ';', &alpn_buffers)) {
+    struct aws_byte_cursor alpn_str_cur = aws_byte_cursor_from_c_str(sc_handler->options.alpn_list);
+    if (aws_byte_cursor_split_on_char(&alpn_str_cur, ';', &alpn_buffers)) {
         return AWS_OP_ERR;
     }
 
@@ -518,7 +518,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
             if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-                aws_byte_buf_init(handler->alloc, &sc_handler->protocol, alpn_result.ProtocolIdSize + 1);
+                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
                 memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
                 memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
                 sc_handler->protocol.len = alpn_result.ProtocolIdSize;
@@ -750,7 +750,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
         if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-            aws_byte_buf_init(handler->alloc, &sc_handler->protocol, alpn_result.ProtocolIdSize + 1);
+            aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
             memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
             memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
             sc_handler->protocol.len = alpn_result.ProtocolIdSize;
@@ -1436,12 +1436,12 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
         struct aws_byte_buf ca_blob;
-
         if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
             goto clean_up;
         }
 
-        int error = aws_import_trusted_certificates(alloc, &ca_blob, &secure_channel_ctx->custom_trust_store);
+        struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_buf(&ca_blob);
+        int error = aws_import_trusted_certificates(alloc, &ca_blob_cur, &secure_channel_ctx->custom_trust_store);
 
         aws_secure_zero(ca_blob.buffer, ca_blob.len);
         aws_byte_buf_clean_up(&ca_blob);
@@ -1472,20 +1472,23 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         secure_channel_ctx->credentials.cCreds = 1;
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
     } else if (options->certificate_path && options->private_key_path) {
-        struct aws_byte_buf certificate_chain, private_key;
 
+        struct aws_byte_buf certificate_chain;
         if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
             goto clean_up;
         }
 
+        struct aws_byte_buf private_key;
         if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
             aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
             aws_byte_buf_clean_up(&certificate_chain);
             goto clean_up;
         }
 
+        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&certificate_chain);
+        struct aws_byte_cursor pk_cur = aws_byte_cursor_from_buf(&private_key);
         int err = aws_import_key_pair_to_cert_context(
-            alloc, &certificate_chain, &private_key, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
+            alloc, &cert_chain_cur, &pk_cur, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
 
         aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
         aws_byte_buf_clean_up(&certificate_chain);

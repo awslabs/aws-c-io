@@ -21,14 +21,14 @@
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *public_cert_chain,
-    struct aws_byte_buf *private_key,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
     CFArrayRef *identity) {
 
     size_t total_len = public_cert_chain->len + private_key->len;
     struct aws_byte_buf aggregate_buffer;
 
-    if (aws_byte_buf_init(alloc, &aggregate_buffer, total_len)) {
+    if (aws_byte_buf_init(&aggregate_buffer, alloc, total_len)) {
         return AWS_OP_ERR;
     }
 
@@ -121,10 +121,10 @@ int aws_import_public_and_private_keys_to_identity(
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *pkcs12_buffer,
-    struct aws_byte_buf *password,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
     CFArrayRef *identity) {
-    CFDataRef pkcs12_data = CFDataCreate(cf_alloc, pkcs12_buffer->buffer, pkcs12_buffer->len);
+    CFDataRef pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
     CFArrayRef items = NULL;
 
     CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
@@ -132,7 +132,7 @@ int aws_import_pkcs12_to_identity(
     CFStringRef password_ref = CFSTR("");
 
     if (password->len) {
-        password_ref = CFStringCreateWithBytes(cf_alloc, password->buffer, password->len, kCFStringEncodingUTF8, false);
+        password_ref = CFStringCreateWithBytes(cf_alloc, password->ptr, password->len, kCFStringEncodingUTF8, false);
     }
 
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
@@ -164,7 +164,7 @@ int aws_import_pkcs12_to_identity(
 int aws_import_trusted_certificates(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
-    struct aws_byte_buf *certificates_blob,
+    const struct aws_byte_cursor *certificates_blob,
     CFArrayRef *certs) {
     struct aws_array_list certificates;
 

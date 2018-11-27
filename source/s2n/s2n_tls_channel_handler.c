@@ -527,11 +527,11 @@ static int s_parse_protocol_preferences(
     struct aws_byte_cursor alpn_list_buffer[4];
     AWS_ZERO_ARRAY(alpn_list_buffer);
     struct aws_array_list alpn_list;
-    struct aws_byte_buf user_alpn_str = aws_byte_buf_from_c_str(alpn_list_str);
+    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_c_str(alpn_list_str);
 
     aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
 
-    if (aws_byte_buf_split_on_char(&user_alpn_str, ';', &alpn_list)) {
+    if (aws_byte_cursor_split_on_char(&user_alpn_str, ';', &alpn_list)) {
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         return AWS_OP_ERR;
     }

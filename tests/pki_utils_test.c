@@ -75,7 +75,7 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
         0x18, 0xb9, 0x3d, 0xb3, 0x12, 0x14, 0x5f, 0x25, 0x16, 0xd1, 0x35, 0xe7, 0x63, 0x1c, 0x2d, 0x3f, 0x3d, 0xba,
         0xfb, 0x1b, 0xcf, 0x45, 0x60, 0x92};
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_rsa_1024_sha224_client_crt_pem);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_rsa_1024_sha224_client_crt_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -288,7 +288,7 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
         0x4c, 0x93, 0x7b, 0xec, 0x16, 0xf4, 0x45, 0x9a, 0xfc, 0x2c, 0xbf, 0x53, 0xaf, 0xd2, 0x32, 0xbd, 0xf5,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_rsa_2048_pkcs1_crt_pem);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_rsa_2048_pkcs1_crt_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -413,7 +413,7 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
         0x20, 0xc8, 0x55, 0xb3,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_private_key_pem);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_private_key_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -812,7 +812,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
         0x4c, 0x93, 0x7b, 0xec, 0x16, 0xf4, 0x45, 0x9a, 0xfc, 0x2c, 0xbf, 0x53, 0xaf, 0xd2, 0x32, 0xbd, 0xf5,
     };
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_pem_data_str);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_pem_data_str);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -857,7 +857,7 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
                                        "YxwtPz26+xvPRWCS\n"
                                        "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_pem);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_pem);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -891,7 +891,7 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
                                         "YxwtPz26+xvPRWCSq\n"
                                         "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_data);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
@@ -964,7 +964,7 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
                                         "r9IyvfUf=\n"
                                         "-----END CERTIFICATE-----";
 
-    struct aws_byte_buf pem_data = aws_byte_buf_from_c_str(s_invalid_data);
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));

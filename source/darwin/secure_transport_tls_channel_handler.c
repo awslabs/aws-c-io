@@ -750,24 +750,24 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     if (options->certificate_path && options->private_key_path) {
 
         struct aws_byte_buf cert_chain;
-        struct aws_byte_buf private_key;
-
         if (aws_byte_buf_init_from_file(&cert_chain, alloc, options->certificate_path)) {
             goto cleanup_wrapped_allocator;
         }
 
+        struct aws_byte_buf private_key;
         if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
             aws_secure_zero(cert_chain.buffer, cert_chain.len);
             aws_byte_buf_clean_up(&cert_chain);
             goto cleanup_wrapped_allocator;
         }
 
-        void *identity = NULL;
+        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&cert_chain);
+        struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&private_key);
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
-                &cert_chain,
-                &private_key,
+                &cert_chain_cur,
+                &private_key_cur,
                 &secure_transport_ctx->certs)) {
             aws_secure_zero(cert_chain.buffer, cert_chain.len);
             aws_byte_buf_clean_up(&cert_chain);
@@ -781,8 +781,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
         aws_secure_zero(private_key.buffer, private_key.len);
         aws_byte_buf_clean_up(&private_key);
     } else if (options->pkcs12_path) {
-        struct aws_byte_buf pkcs12_blob;
 
+        struct aws_byte_buf pkcs12_blob;
         if (aws_byte_buf_init_from_file(&pkcs12_blob, alloc, options->pkcs12_path)) {
             goto cleanup_wrapped_allocator;
         }
@@ -793,9 +793,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
             password = aws_byte_buf_from_c_str(options->pkcs12_password);
         }
 
-        void *identity = NULL;
+        struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&pkcs12_blob);
+        struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&password);
         if (aws_import_pkcs12_to_identity(
-                secure_transport_ctx->wrapped_allocator, &pkcs12_blob, &password, &secure_transport_ctx->certs)) {
+                secure_transport_ctx->wrapped_allocator,
+                &pkcs12_blob_cur,
+                &password_cur,
+                &secure_transport_ctx->certs)) {
             aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
             aws_byte_buf_clean_up(&pkcs12_blob);
             goto cleanup_wrapped_allocator;
@@ -805,14 +809,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     }
 
     if (options->ca_file) {
-        struct aws_byte_buf ca_blob;
 
+        struct aws_byte_buf ca_blob;
         if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
             goto cleanup_wrapped_allocator;
         }
 
+        struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&ca_blob);
         if (aws_import_trusted_certificates(
-                alloc, secure_transport_ctx->wrapped_allocator, &ca_blob, &secure_transport_ctx->ca_cert)) {
+                alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             aws_byte_buf_clean_up(&ca_blob);
             goto cleanup_wrapped_allocator;
         }
