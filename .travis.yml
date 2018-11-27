@@ -1,16 +1,21 @@
 sudo: true
 language: c
 
-osx_image: xcode8
+os: osx
+osx_image:
+  - xcode9.2
+  #- xcode10.1
+compiler: clang
 
-os:
-  - osx 
+addons:
+  homebrew:
+    update: true
+    packages:
+      - llvm
 
-compiler:
-  - gcc
-  - clang
-  
-#execute build
+install:
+  - export PATH=$(brew --prefix llvm)/bin:$PATH
+
 script:
-  - .travis/travis_build.sh
-
+  - ./codebuild/common-posix.sh -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  - clang-tidy -p=build **/*.c

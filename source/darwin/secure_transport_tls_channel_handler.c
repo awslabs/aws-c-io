@@ -209,18 +209,18 @@ static void s_set_protocols(
 /* I have no idea if this code is correct, I can't test it until I have a machine with high-sierra on it
  * but my employer hasn't pushed it out yet so.... sorry about that. */
 #if ALPN_AVAILABLE
-    struct aws_byte_buf alpn_data = aws_byte_buf_from_c_str(alpn_list);
+    struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
     struct aws_array_list alpn_list_array;
     if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
         return;
     }
 
-    if (aws_byte_buf_split_on_char(&alpn_data, ';', &alpn_list_array)) {
+    if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array)) {
         return;
     }
 
-    CFArrayRef alpn_array = CFArrayCreateMutable(
-        handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallbacks);
+    CFMutableArrayRef alpn_array = CFArrayCreateMutable(
+        handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallBacks);
 
     if (!alpn_array) {
         return;
@@ -228,9 +228,9 @@ static void s_set_protocols(
 
     for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
         struct aws_byte_cursor protocol_cursor;
-        aws_array_list_get_at(&alpn_list_array, &protocol, i);
+        aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
         CFStringRef protocol = CFStringCreateWithBytes(
-            handler->wrapped_allocator, protocol_cursor->ptr, protocol_cursor->len, kCFStringEncodingUTF8, false);
+            handler->wrapped_allocator, protocol_cursor.ptr, protocol_cursor.len, kCFStringEncodingUTF8, false);
 
         if (!protocol) {
             CFRelease(alpn_array);
