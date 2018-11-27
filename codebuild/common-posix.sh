@@ -2,6 +2,8 @@
 
 set -e
 
+echo "Using CC=$CC CXX=$CXX"
+
 CMAKE_ARGS="$@"
 
 # install_library <git_repo> [<commit>]
@@ -22,14 +24,15 @@ function install_library {
     cd ../..
 }
 
-
-sudo apt-get install libssl-dev
-
 cd ../
 
 mkdir -p install
 
-install_library s2n 7c9069618e68214802ac7fbf45705d5f8b53135f
+# If TRAVIS_OS_NAME is OSX, skip this step (will resolve to empty string on CodeBuild)
+if [ "$TRAVIS_OS_NAME" != "osx" ]; then
+    sudo apt-get install libssl-dev
+    install_library s2n 7c9069618e68214802ac7fbf45705d5f8b53135f
+fi
 install_library aws-c-common
 
 cd aws-c-io
@@ -42,5 +45,3 @@ make
 LSAN_OPTIONS=verbosity=1:log_threads=1 ctest --output-on-failure
 
 cd ..
-
-# ./cppcheck.sh ../install/include
