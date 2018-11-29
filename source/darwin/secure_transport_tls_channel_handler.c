@@ -33,7 +33,7 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 
 static OSStatus (*s_SSLSetALPNProtocols)(SSLContextRef context, CFArrayRef protocols) = NULL;
-static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef* protocols) = NULL;
+static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef *protocols) = NULL;
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 #define KB_1 1024
@@ -64,9 +64,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     /* keep from breaking users that built on later versions of the mac os sdk but deployed
      * to an older version. */
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
-    s_SSLCopyALPNProtocols =
-            (OSStatus(*)(SSLContextRef, CFArrayRef*))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
-
+    s_SSLCopyALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef *))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
 }
 
 void aws_tls_clean_up_thread_local_state(void) { /* no op */
@@ -193,8 +191,7 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
         CFArrayRef protocols = NULL;
 
         OSStatus status = s_SSLCopyALPNProtocols(handler->ctx, &protocols);
-        (void) status;
-
+        (void)status;
 
         if (!protocols) {
             return NULL;
@@ -231,7 +228,7 @@ static void s_set_protocols(
 /* I have no idea if this code is correct, I can't test it until I have a machine with high-sierra on it
  * but my employer hasn't pushed it out yet so.... sorry about that. */
 #if ALPN_AVAILABLE
-    if (s_SSLSetALPNProtocols)  {
+    if (s_SSLSetALPNProtocols) {
         struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
         struct aws_array_list alpn_list_array;
         if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
@@ -267,7 +264,7 @@ static void s_set_protocols(
 
         if (alpn_array) {
             OSStatus status = s_SSLSetALPNProtocols(handler->ctx, alpn_array);
-            (void) status;
+            (void)status;
 
             CFRelease(alpn_array);
         }
