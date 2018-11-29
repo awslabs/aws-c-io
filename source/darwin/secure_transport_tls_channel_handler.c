@@ -66,6 +66,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
     s_SSLCopyALPNProtocols =
             (OSStatus(*)(SSLContextRef, CFArrayRef*))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
+
 }
 
 void aws_tls_clean_up_thread_local_state(void) { /* no op */
@@ -194,13 +195,14 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
         OSStatus status = s_SSLCopyALPNProtocols(handler->ctx, &protocols);
         (void) status;
 
-        if (!protocols)  {
+
+        if (!protocols) {
             return NULL;
         }
 
         CFIndex count = CFArrayGetCount(protocols);
 
-        if (count <= 0)  {
+        if (count <= 0) {
             return NULL;
         }
 
@@ -236,12 +238,12 @@ static void s_set_protocols(
             return;
         }
 
-        if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array))  {
+        if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array)) {
             return;
         }
 
         CFMutableArrayRef alpn_array = CFArrayCreateMutable(
-                handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallBacks);
+            handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallBacks);
 
         if (!alpn_array) {
             return;
@@ -251,7 +253,7 @@ static void s_set_protocols(
             struct aws_byte_cursor protocol_cursor;
             aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
             CFStringRef protocol = CFStringCreateWithBytes(
-                    handler->wrapped_allocator, protocol_cursor.ptr, protocol_cursor.len, kCFStringEncodingASCII, false);
+                handler->wrapped_allocator, protocol_cursor.ptr, protocol_cursor.len, kCFStringEncodingASCII, false);
 
             if (!protocol) {
                 CFRelease(alpn_array);
@@ -266,6 +268,7 @@ static void s_set_protocols(
         if (alpn_array) {
             OSStatus status = s_SSLSetALPNProtocols(handler->ctx, alpn_array);
             (void) status;
+
             CFRelease(alpn_array);
         }
 
@@ -295,15 +298,23 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
-            if (aws_byte_buf_init(&secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol))) {
+            if (aws_byte_buf_init(
+                    &secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol))) {
                 CFRelease(protocol);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
             }
 
             CFRange byte_range = CFRangeMake(0, CFStringGetLength(protocol));
-            CFStringGetBytes(protocol, byte_range, kCFStringEncodingASCII, 0, false,
-                    secure_transport_handler->protocol.buffer, secure_transport_handler->protocol.capacity, NULL);
+            CFStringGetBytes(
+                protocol,
+                byte_range,
+                kCFStringEncodingASCII,
+                0,
+                false,
+                secure_transport_handler->protocol.buffer,
+                secure_transport_handler->protocol.capacity,
+                NULL);
             secure_transport_handler->protocol.len = secure_transport_handler->protocol.capacity;
             CFRelease(protocol);
         }
