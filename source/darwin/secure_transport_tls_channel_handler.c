@@ -12,22 +12,28 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/io/tls_channel_handler.h>
+
+#include <aws/io/channel.h>
+#include <aws/io/pki_utils.h>
+
 #include <aws/common/encoding.h>
 #include <aws/common/task_scheduler.h>
 
-#include <aws/io/channel.h>
-#include <aws/io/tls_channel_handler.h>
-
+#include <AvailabilityMacros.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecureTransport.h>
 #include <Security/Security.h>
-#include <aws/io/pki_utils.h>
+#include <dlfcn.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wunused-function"
+
+static OSStatus (*s_SSLSetALPNProtocols_fn_ptr)(SSLContextRef context, CFArrayRef protocols) = NULL;
+static OSStatus (*s_SSLCopyALPNProtocols_fn_ptr)(SSLContextRef context, CFArrayRef* protocols) = NULL;
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 #define KB_1 1024
@@ -50,8 +56,13 @@ bool aws_tls_is_alpn_available(void) {
     return ALPN_AVAILABLE;
 }
 
-void aws_tls_init_static_state(struct aws_allocator *alloc) { /* no op */
+void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
+    /* keep from breaking users that built on later versions of the mac os sdk but deployed
+     * to an older version. */
+    s_SSLSetALPNProtocols_fn_ptr = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
+    s_SSLCopyALPNProtocols_fn_ptr =
+            (OSStatus(*)(SSLContextRef, CFArrayRef*))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
 }
 
 void aws_tls_clean_up_thread_local_state(void) { /* no op */
@@ -66,7 +77,7 @@ struct secure_transport_handler {
     CFAllocatorRef wrapped_allocator;
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
-    CFStringRef protocol;
+    struct aws_byte_buf protocol;
     /*per spec the max length for a server name is 255 bytes (plus the null character). */
     char server_name_array[256];
     struct aws_byte_buf server_name;
@@ -164,8 +175,8 @@ static void s_destroy(struct aws_channel_handler *handler) {
         struct secure_transport_handler *secure_transport_handler = handler->impl;
         CFRelease(secure_transport_handler->ctx);
 
-        if (secure_transport_handler->protocol) {
-            CFRelease(secure_transport_handler->protocol);
+        if (secure_transport_handler->protocol.buffer) {
+            aws_byte_buf_clean_up(&secure_transport_handler->protocol);
         }
 
         aws_mem_release(handler->alloc, secure_transport_handler);
@@ -174,24 +185,30 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
 static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
 #if ALPN_AVAILABLE
-    CFArrayRef protocols = NULL;
+    if (s_SSLCopyALPNProtocols_fn_ptr) {
+        CFArrayRef protocols = NULL;
 
-    SSLCopyALPNProtocols(handler->ctx, &protocols);
+        OSStatus status = s_SSLCopyALPNProtocols_fn_ptr(handler->ctx, &protocols);
+        (void) status;
 
-    if (!protocols) {
-        return NULL;
+        if (!protocols)  {
+            return NULL;
+        }
+
+        CFIndex count = CFArrayGetCount(protocols);
+
+        if (count <= 0)  {
+            return NULL;
+        }
+
+        CFStringRef alpn_value = CFArrayGetValueAtIndex(protocols, 0);
+        CFRetain(alpn_value);
+        CFRelease(protocols);
+
+        return alpn_value;
     }
 
-    CFIndex count = CFArrayGetCount(protocols);
-
-    if (count <= 0) {
-        return NULL;
-    }
-
-    CFStringRef alpn_value = CFArrayGetValueAtIndex(protocols, 0);
-    CFRelease(protocols);
-
-    return alpn_value;
+    return NULL;
 #else
     (void)handler;
     return NULL;
@@ -209,44 +226,48 @@ static void s_set_protocols(
 /* I have no idea if this code is correct, I can't test it until I have a machine with high-sierra on it
  * but my employer hasn't pushed it out yet so.... sorry about that. */
 #if ALPN_AVAILABLE
-    struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
-    struct aws_array_list alpn_list_array;
-    if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
-        return;
-    }
-
-    if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array)) {
-        return;
-    }
-
-    CFMutableArrayRef alpn_array = CFArrayCreateMutable(
-        handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallBacks);
-
-    if (!alpn_array) {
-        return;
-    }
-
-    for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
-        struct aws_byte_cursor protocol_cursor;
-        aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
-        CFStringRef protocol = CFStringCreateWithBytes(
-            handler->wrapped_allocator, protocol_cursor.ptr, protocol_cursor.len, kCFStringEncodingUTF8, false);
-
-        if (!protocol) {
-            CFRelease(alpn_array);
-            alpn_array = NULL;
-            break;
+    if (s_SSLSetALPNProtocols_fn_ptr)  {
+        struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
+        struct aws_array_list alpn_list_array;
+        if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
+            return;
         }
 
-        CFArrayAppendValue(alpn_array, protocol);
-        CFRelease(protocol);
-    }
+        if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array))  {
+            return;
+        }
 
-    if (alpn_array) {
-        SSLSetALPNProtocols(handler->ctx, alpn_array);
-    }
+        CFMutableArrayRef alpn_array = CFArrayCreateMutable(
+                handler->wrapped_allocator, aws_array_list_length(&alpn_list_array), &kCFTypeArrayCallBacks);
 
-    aws_array_list_clean_up(&alpn_list_array);
+        if (!alpn_array) {
+            return;
+        }
+
+        for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
+            struct aws_byte_cursor protocol_cursor;
+            aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
+            CFStringRef protocol = CFStringCreateWithBytes(
+                    handler->wrapped_allocator, protocol_cursor.ptr, protocol_cursor.len, kCFStringEncodingASCII, false);
+
+            if (!protocol) {
+                CFRelease(alpn_array);
+                alpn_array = NULL;
+                break;
+            }
+
+            CFArrayAppendValue(alpn_array, protocol);
+            CFRelease(protocol);
+        }
+
+        if (alpn_array) {
+            OSStatus status = s_SSLSetALPNProtocols_fn_ptr(handler->ctx, alpn_array);
+            (void) status;
+            CFRelease(alpn_array);
+        }
+
+        aws_array_list_clean_up(&alpn_list_array);
+    }
 #endif
 }
 
@@ -271,7 +292,17 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
-            secure_transport_handler->protocol = protocol;
+            if (aws_byte_buf_init(&secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol))) {
+                CFRelease(protocol);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            CFRange byte_range = CFRangeMake(0, CFStringGetLength(protocol));
+            CFStringGetBytes(protocol, byte_range, kCFStringEncodingASCII, 0, false,
+                    secure_transport_handler->protocol.buffer, secure_transport_handler->protocol.capacity, NULL);
+            secure_transport_handler->protocol.len = secure_transport_handler->protocol.capacity;
+            CFRelease(protocol);
         }
 
         name_len = 0;
@@ -299,9 +330,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             struct aws_tls_negotiated_protocol_message *protocol_message =
                 (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
 
-            protocol_message->protocol = aws_byte_buf_from_array(
-                (uint8_t *)CFStringGetCStringPtr(secure_transport_handler->protocol, kCFStringEncodingUTF8),
-                (size_t)CFStringGetLength(secure_transport_handler->protocol));
+            protocol_message->protocol = secure_transport_handler->protocol;
 
             message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
             if (aws_channel_slot_send_message(secure_transport_handler->parent_slot, message, AWS_CHANNEL_DIR_READ)) {
@@ -462,8 +491,11 @@ static int s_process_read_message(
         }
     }
 
+    size_t downstream_window = SIZE_MAX;
     /* process as much as we have queued that will fit in the downstream window. */
-    size_t downstream_window = aws_channel_slot_downstream_read_window(slot);
+    if (slot->adj_right) {
+        downstream_window = aws_channel_slot_downstream_read_window(slot);
+    }
     size_t processed = 0;
 
     OSStatus status = noErr;
@@ -556,9 +588,7 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
-    return aws_byte_buf_from_array(
-        (uint8_t *)CFStringGetCStringPtr(secure_transport_handler->protocol, kCFStringEncodingUTF8),
-        (size_t)CFStringGetLength(secure_transport_handler->protocol));
+    return secure_transport_handler->protocol;
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
@@ -605,7 +635,6 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
-    secure_transport_handler->protocol = NULL;
     secure_transport_handler->ctx =
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
