@@ -39,10 +39,8 @@ int aws_default_dns_resolve(
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = 0;
-    /* this one is confusing to me, but Amazon s3 sends UDP records back and I'd rather just ignore them for now. */
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_flags = 0;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_ALL | AI_V4MAPPED;
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
 

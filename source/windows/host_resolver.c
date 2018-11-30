@@ -36,7 +36,8 @@ int aws_default_dns_resolve(
     ADDRINFOA hints;
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
-    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_ALL | AI_V4MAPPED;
 
     int res_error = GetAddrInfoA(hostname_cstr, NULL, &hints, &result);
 
