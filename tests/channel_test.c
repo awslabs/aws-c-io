@@ -763,7 +763,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
-    /* resolve amazon.com and hard-code the ipv6 address because EC2 doesn't support public IPs for IPv6 */
+    /* resolve amazon.com and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
     const struct aws_string* addr1_ipv4 = NULL;
     struct aws_string* addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
     struct aws_string* amazon_com = aws_string_new_from_c_str(allocator, "www.amazon.com");
