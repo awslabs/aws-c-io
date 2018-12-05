@@ -731,11 +731,12 @@ static void s_test_channel_connect_some_hosts_timeout_setup(
     void *user_data) {
 
     struct channel_connect_test_args *test_args = user_data;
+    aws_mutex_lock(test_args->mutex);
     test_args->setup = true;
     test_args->channel = channel;
     test_args->error_code = error_code;
-
     aws_condition_variable_notify_one(&test_args->cv);
+    aws_mutex_unlock(test_args->mutex);
 }
 
 static void s_test_channel_connect_some_hosts_timeout_shutdown(
@@ -745,11 +746,12 @@ static void s_test_channel_connect_some_hosts_timeout_shutdown(
     void *user_data) {
 
     struct channel_connect_test_args *test_args = user_data;
+    aws_mutex_lock(test_args->mutex);
     test_args->channel = NULL;
     test_args->shutdown = true;
     test_args->error_code = error_code;
-
     aws_condition_variable_notify_one(&test_args->cv);
+    aws_mutex_unlock(test_args->mutex);
 }
 
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
@@ -834,25 +836,31 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .shutdown = false,
     };
 
-    aws_client_bootstrap_new_socket_channel(
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
         &bootstrap,
         "www.amazon.com",
         80,
         &options,
         s_test_channel_connect_some_hosts_timeout_setup,
         s_test_channel_connect_some_hosts_timeout_shutdown,
-        &callback_data);
+        &callback_data));
 
-    aws_condition_variable_wait(&callback_data.cv, &mutex);
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&callback_data.cv, &mutex));
+
     ASSERT_TRUE(callback_data.setup);
     ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_NOT_NULL(callback_data.channel);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     /* this should cause a disconnect and tear down */
-    aws_channel_shutdown(callback_data.channel, AWS_OP_SUCCESS);
-    aws_condition_variable_wait(&callback_data.cv, &mutex);
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_channel_shutdown(callback_data.channel, AWS_OP_SUCCESS));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&callback_data.cv, &mutex));
+
     ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_TRUE(callback_data.shutdown);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     /* clean up */
     aws_host_address_clean_up(resolved_address);
