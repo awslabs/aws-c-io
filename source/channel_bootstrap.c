@@ -176,12 +176,12 @@ struct client_connection_args {
     uint32_t ref_count;
 };
 
-void s_connection_args_acquire(struct client_connection_args* args) {
+void s_connection_args_acquire(struct client_connection_args *args) {
     assert(args);
     args->ref_count++;
 }
 
-void s_connection_args_release(struct client_connection_args* args) {
+void s_connection_args_release(struct client_connection_args *args) {
     assert(args);
     if (--args->ref_count == 0) {
         if (args->host_name) {
