@@ -754,6 +754,16 @@ static void s_test_channel_connect_some_hosts_timeout_shutdown(
     aws_mutex_unlock(test_args->mutex);
 }
 
+static bool s_setup_complete_pred(void* user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    return test_args->setup;
+}
+
+static bool s_shutdown_complete_pred(void* user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    return test_args->shutdown;
+}
+
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -846,9 +856,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         &callback_data));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&callback_data.cv, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_setup_complete_pred, &callback_data));
 
-    ASSERT_TRUE(callback_data.setup);
     ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_NOT_NULL(callback_data.channel);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
@@ -856,10 +865,9 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     /* this should cause a disconnect and tear down */
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_channel_shutdown(callback_data.channel, AWS_OP_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&callback_data.cv, &mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_shutdown_complete_pred, &callback_data));
 
     ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
-    ASSERT_TRUE(callback_data.shutdown);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     /* clean up */
