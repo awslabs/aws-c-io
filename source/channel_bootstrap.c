@@ -328,7 +328,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         } else {
             connection_args->setup_callback(
                 connection_args->bootstrap, AWS_OP_SUCCESS, channel, connection_args->user_data);
-            s_connection_args_release(connection_args);
         }
 
         return;
@@ -386,6 +385,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         if (connection_args->failed_count == connection_args->addresses_count) {
             connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         }
+        /* release the ref from s_on_host_resolved */
         s_connection_args_release(connection_args);
         return;
     }
@@ -411,8 +411,9 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         if (connection_args->failed_count == connection_args->addresses_count) {
             connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         }
+        /* release the ref from s_on_host_resolved */
+        s_connection_args_release(connection_args);
     }
-    s_connection_args_release(connection_args);
 }
 
 static void s_on_host_resolved(
@@ -433,8 +434,10 @@ static void s_on_host_resolved(
             aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
         client_connection_args->addresses_count = (uint8_t)host_addresses_len;
 
+        /* retain the connection args in case an early connection fails */
+        s_connection_args_acquire(client_connection_args);
         for (size_t i = 0; i < host_addresses_len; ++i) {
-            /* retain args, need 1 ref per socket, released in s_on_client_connection_established */
+            /* retain args, need 1 ref per socket */
             s_connection_args_acquire(client_connection_args);
 
             struct aws_host_address *host_address_ptr = NULL;
@@ -474,9 +477,12 @@ static void s_on_host_resolved(
                     client_connection_args->bootstrap->host_resolver, host_address_ptr);
                 aws_socket_clean_up(outgoing_socket);
                 aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
+                s_connection_args_release(client_connection_args);
                 continue;
             }
         }
+        /* release connection args. If all connections failed, this will kill the args */
+        s_connection_args_release(client_connection_args);
 
         if (client_connection_args->failed_count < client_connection_args->addresses_count) {
             return;
@@ -508,7 +514,6 @@ static inline int s_new_client_channel(
     }
 
     AWS_ZERO_STRUCT(*client_connection_args);
-    s_connection_args_acquire(client_connection_args);
     client_connection_args->user_data = user_data;
     client_connection_args->bootstrap = bootstrap;
     client_connection_args->setup_callback = setup_callback;
