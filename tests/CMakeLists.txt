@@ -64,6 +64,7 @@ add_test_case(channel_refcount_delays_clean_up)
 add_test_case(channel_tasks_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
+add_test_case(channel_connect_some_hosts_timeout)
 
 if (NOT WIN32)
     add_test_case(channel_message_passing)

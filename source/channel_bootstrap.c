@@ -173,7 +173,23 @@ struct client_connection_args {
     uint8_t addresses_count;
     uint8_t failed_count;
     bool connection_chosen;
+    uint32_t ref_count;
 };
+
+void s_connection_args_acquire(struct client_connection_args* args) {
+    assert(args);
+    args->ref_count++;
+}
+
+void s_connection_args_release(struct client_connection_args* args) {
+    assert(args);
+    if (--args->ref_count == 0) {
+        if (args->host_name) {
+            aws_string_destroy(args->host_name);
+        }
+        aws_mem_release(args->bootstrap->allocator, args);
+    }
+}
 
 static void s_tls_client_on_negotiation_result(
     struct aws_channel_handler *handler,
@@ -323,11 +339,7 @@ error:
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
-    if (connection_args->host_name) {
-        aws_string_destroy((void *)connection_args->host_name);
-    }
-
-    aws_mem_release(connection_args->bootstrap->allocator, connection_args);
+    s_connection_args_release(connection_args);
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -343,11 +355,7 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(allocator, connection_args->channel_data.socket);
-    if (connection_args->host_name) {
-        aws_string_destroy((void *)connection_args->host_name);
-    }
-
-    aws_mem_release(allocator, connection_args);
+    s_connection_args_release(connection_args);
 }
 
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
@@ -370,16 +378,14 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         }
 
         aws_socket_close(socket);
+
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
 
         if (connection_args->failed_count == connection_args->addresses_count) {
             connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
-            if (connection_args->host_name) {
-                aws_string_destroy((void *)connection_args->host_name);
-            }
-            aws_mem_release(connection_args->bootstrap->allocator, connection_args);
         }
+        s_connection_args_release(connection_args);
         return;
     }
 
@@ -403,10 +409,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 
         if (connection_args->failed_count == connection_args->addresses_count) {
             connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
-            if (connection_args->host_name) {
-                aws_string_destroy((void *)connection_args->host_name);
-            }
-            aws_mem_release(connection_args->bootstrap->allocator, connection_args);
+            s_connection_args_release(connection_args);
         }
     }
 }
@@ -429,6 +432,8 @@ static void s_on_host_resolved(
             aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
         client_connection_args->addresses_count = (uint8_t)host_addresses_len;
 
+        /* retain args, only need 1 ref, as only 1 connect will succeed and release */
+        s_connection_args_acquire(client_connection_args);
         for (size_t i = 0; i < host_addresses_len; ++i) {
             struct aws_host_address *host_address_ptr = NULL;
             aws_array_list_get_at(host_addresses, (void *)&host_address_ptr, i);
@@ -478,10 +483,7 @@ static void s_on_host_resolved(
 
     client_connection_args->setup_callback(
         client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
-    if (client_connection_args->host_name) {
-        aws_string_destroy((void *)client_connection_args->host_name);
-    }
-    aws_mem_release(client_connection_args->bootstrap->allocator, client_connection_args);
+    s_connection_args_release(client_connection_args);
 }
 
 static inline int s_new_client_channel(
@@ -589,11 +591,7 @@ static inline int s_new_client_channel(
 
 error:
     if (client_connection_args) {
-        if (client_connection_args->host_name) {
-            aws_string_destroy((void *)client_connection_args->host_name);
-        }
-
-        aws_mem_release(bootstrap->allocator, client_connection_args);
+        s_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;
 }
