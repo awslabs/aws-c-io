@@ -183,6 +183,7 @@ void s_connection_args_acquire(struct client_connection_args *args) {
 
 void s_connection_args_release(struct client_connection_args *args) {
     assert(args);
+    assert(args->ref_count > 0);
     if (--args->ref_count == 0) {
         if (args->host_name) {
             aws_string_destroy(args->host_name);
@@ -587,6 +588,7 @@ static inline int s_new_client_channel(
 
         struct aws_event_loop *connect_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
+        s_connection_args_acquire(client_connection_args);
         if (aws_socket_connect(
                 outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
             aws_socket_clean_up(outgoing_socket);
