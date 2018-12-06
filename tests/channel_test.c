@@ -16,11 +16,15 @@
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/string.h>
 
 #include <aws/io/channel.h>
+#include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/socket.h>
 #include <aws/testing/aws_test_harness.h>
 
+#include "mock_dns_resolver.h"
 #include "read_write_test_handler.h"
 
 struct channel_setup_test_args {
@@ -710,3 +714,174 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
 }
 
 AWS_TEST_CASE(channel_cancels_pending_tasks, s_test_channel_cancels_pending_tasks)
+
+struct channel_connect_test_args {
+    struct aws_mutex *mutex;
+    struct aws_condition_variable cv;
+    int error_code;
+    struct aws_channel *channel;
+    bool setup;
+    bool shutdown;
+};
+
+static void s_test_channel_connect_some_hosts_timeout_setup(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+    (void)bootstrap;
+
+    struct channel_connect_test_args *test_args = user_data;
+    aws_mutex_lock(test_args->mutex);
+    test_args->setup = true;
+    test_args->channel = channel;
+    test_args->error_code = error_code;
+    aws_condition_variable_notify_one(&test_args->cv);
+    aws_mutex_unlock(test_args->mutex);
+}
+
+static void s_test_channel_connect_some_hosts_timeout_shutdown(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+    (void)bootstrap;
+    (void)channel;
+
+    struct channel_connect_test_args *test_args = user_data;
+    aws_mutex_lock(test_args->mutex);
+    test_args->channel = NULL;
+    test_args->shutdown = true;
+    test_args->error_code = error_code;
+    aws_condition_variable_notify_one(&test_args->cv);
+    aws_mutex_unlock(test_args->mutex);
+}
+
+static bool s_setup_complete_pred(void *user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    return test_args->setup;
+}
+
+static bool s_shutdown_complete_pred(void *user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    return test_args->shutdown;
+}
+
+static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_load_error_strings();
+    aws_io_load_error_strings();
+
+    struct aws_event_loop_group event_loop_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 1));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+
+    /* resolve amazon.com and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
+    const struct aws_string *addr1_ipv4 = NULL;
+    struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
+    struct aws_string *amazon_com = aws_string_new_from_c_str(allocator, "www.amazon.com");
+    struct aws_array_list addresses;
+    struct aws_host_address address_storage[1];
+    struct aws_host_address *resolved_address = NULL;
+    aws_array_list_init_static(
+        &addresses, address_storage, AWS_ARRAY_SIZE(address_storage), sizeof(struct aws_host_address));
+    aws_default_dns_resolve(allocator, amazon_com, &addresses, NULL);
+    ASSERT_INT_EQUALS(1, aws_array_list_length(&addresses));
+    aws_array_list_get_at_ptr(&addresses, (void *)&resolved_address, 0);
+    addr1_ipv4 = aws_string_new_from_string(allocator, resolved_address->address);
+    aws_string_destroy(amazon_com);
+
+    /* create a resolver with 2 addresses: 1 IPv4 which will always succeed, and 1 IPv6 which will always timeout */
+    struct mock_dns_resolver mock_dns_resolver;
+    ASSERT_SUCCESS(mock_dns_resolver_init(&mock_dns_resolver, 2, allocator));
+
+    struct aws_host_resolution_config mock_resolver_config = {
+        .max_ttl = 1,
+        .impl = mock_dns_resolve,
+        .impl_data = &mock_dns_resolver,
+    };
+
+    struct aws_host_address host_address_1_ipv4 = {
+        .address = addr1_ipv4,
+        .allocator = allocator,
+        .expiry = 0,
+        /* connections should always succeed, if not, things are worse than this unit test failing */
+        .host = aws_string_new_from_c_str(allocator, "www.amazon.com"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_host_address host_address_1_ipv6 = {
+        .address = addr2_ipv6,
+        .allocator = allocator,
+        .expiry = 0,
+        /* same black-holed host from the timeout test, connections are a guaranteed timeout */
+        .host = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_array_list address_list;
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&address_list, allocator, 2, sizeof(struct aws_host_address)));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1_ipv4));
+    ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
+
+    struct aws_client_bootstrap bootstrap;
+    aws_client_bootstrap_init(&bootstrap, allocator, &event_loop_group, NULL, &mock_resolver_config);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+
+    struct channel_connect_test_args callback_data = {
+        .mutex = &mutex,
+        .cv = AWS_CONDITION_VARIABLE_INIT,
+        .error_code = 0,
+        .channel = NULL,
+        .setup = false,
+        .shutdown = false,
+    };
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
+        &bootstrap,
+        "www.amazon.com",
+        80,
+        &options,
+        s_test_channel_connect_some_hosts_timeout_setup,
+        s_test_channel_connect_some_hosts_timeout_shutdown,
+        &callback_data));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_setup_complete_pred, &callback_data));
+
+    ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
+    ASSERT_NOT_NULL(callback_data.channel);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+
+    /* this should cause a disconnect and tear down */
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_channel_shutdown(callback_data.channel, AWS_OP_SUCCESS));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_shutdown_complete_pred, &callback_data));
+
+    ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+
+    /* clean up */
+    aws_host_address_clean_up(resolved_address);
+    aws_client_bootstrap_clean_up(&bootstrap);
+    mock_dns_resolver_clean_up(&mock_dns_resolver);
+    aws_event_loop_group_clean_up(&event_loop_group);
+
+    return 0;
+}
+
+AWS_TEST_CASE(channel_connect_some_hosts_timeout, s_test_channel_connect_some_hosts_timeout);
