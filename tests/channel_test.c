@@ -729,6 +729,7 @@ static void s_test_channel_connect_some_hosts_timeout_setup(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+    (void)bootstrap;
 
     struct channel_connect_test_args *test_args = user_data;
     aws_mutex_lock(test_args->mutex);
@@ -744,6 +745,8 @@ static void s_test_channel_connect_some_hosts_timeout_shutdown(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+    (void)bootstrap;
+    (void)channel;
 
     struct channel_connect_test_args *test_args = user_data;
     aws_mutex_lock(test_args->mutex);
