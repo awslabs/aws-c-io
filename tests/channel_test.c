@@ -757,12 +757,12 @@ static void s_test_channel_connect_some_hosts_timeout_shutdown(
     aws_mutex_unlock(test_args->mutex);
 }
 
-static bool s_setup_complete_pred(void* user_data) {
+static bool s_setup_complete_pred(void *user_data) {
     struct channel_connect_test_args *test_args = user_data;
     return test_args->setup;
 }
 
-static bool s_shutdown_complete_pred(void* user_data) {
+static bool s_shutdown_complete_pred(void *user_data) {
     struct channel_connect_test_args *test_args = user_data;
     return test_args->shutdown;
 }
@@ -779,16 +779,17 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
     /* resolve amazon.com and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
-    const struct aws_string* addr1_ipv4 = NULL;
-    struct aws_string* addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
-    struct aws_string* amazon_com = aws_string_new_from_c_str(allocator, "www.amazon.com");
+    const struct aws_string *addr1_ipv4 = NULL;
+    struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
+    struct aws_string *amazon_com = aws_string_new_from_c_str(allocator, "www.amazon.com");
     struct aws_array_list addresses;
     struct aws_host_address address_storage[1];
-    struct aws_host_address* resolved_address = NULL;
-    aws_array_list_init_static(&addresses, address_storage, AWS_ARRAY_SIZE(address_storage), sizeof(struct aws_host_address));
+    struct aws_host_address *resolved_address = NULL;
+    aws_array_list_init_static(
+        &addresses, address_storage, AWS_ARRAY_SIZE(address_storage), sizeof(struct aws_host_address));
     aws_default_dns_resolve(allocator, amazon_com, &addresses, NULL);
     ASSERT_INT_EQUALS(1, aws_array_list_length(&addresses));
-    aws_array_list_get_at_ptr(&addresses, (void*)&resolved_address, 0);
+    aws_array_list_get_at_ptr(&addresses, (void *)&resolved_address, 0);
     addr1_ipv4 = aws_string_new_from_string(allocator, resolved_address->address);
     aws_string_destroy(amazon_com);
 
@@ -868,7 +869,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     /* this should cause a disconnect and tear down */
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_channel_shutdown(callback_data.channel, AWS_OP_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_shutdown_complete_pred, &callback_data));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_shutdown_complete_pred, &callback_data));
 
     ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
