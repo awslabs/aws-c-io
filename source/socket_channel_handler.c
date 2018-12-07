@@ -165,9 +165,9 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
     (void)socket;
 
     struct socket_handler *socket_handler = user_data;
-    if (!error_code) {
-        s_do_read(socket_handler);
-    } else if (!socket_handler->shutdown_in_progress) {
+    s_do_read(socket_handler);
+
+    if (error_code && !socket_handler->shutdown_in_progress) {
         aws_channel_shutdown(socket_handler->slot->channel, error_code);
     }
 }
