@@ -137,6 +137,7 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
     struct secure_transport_handler *handler = (struct secure_transport_handler *)conn;
 
     struct aws_byte_buf buf = aws_byte_buf_from_array((const uint8_t *)data, *len);
+    struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(&buf);
 
     size_t processed = 0;
     while (processed < buf.len) {
@@ -147,8 +148,13 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
             return errSecMemoryError;
         }
 
-        struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(&buf);
-        aws_byte_buf_append(&message->message_data, &buffer_cursor);
+        const size_t to_write =
+            message->message_data.capacity > buffer_cursor.len ? buffer_cursor.len : message->message_data.capacity;
+        struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
+        if (aws_byte_buf_append(&message->message_data, &chunk)) {
+            aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+            return errSecBufferTooSmall;
+        }
         processed += message->message_data.len;
 
         if (processed == buf.len) {
