@@ -182,6 +182,9 @@ static int s_s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
 }
 
 static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
+
+    struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
+
     size_t processed = 0;
     while (processed < buf->len) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
@@ -192,8 +195,13 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
             return -1;
         }
 
-        struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
-        aws_byte_buf_append(&message->message_data, &buffer_cursor);
+        const size_t to_write =
+            message->message_data.capacity > buffer_cursor.len ? buffer_cursor.len : message->message_data.capacity;
+        struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
+        if (aws_byte_buf_append(&message->message_data, &chunk)) {
+            aws_channel_release_message_to_pool(handler->slot->channel, message);
+            return -1;
+        }
         processed += message->message_data.len;
 
         if (processed == buf->len) {
