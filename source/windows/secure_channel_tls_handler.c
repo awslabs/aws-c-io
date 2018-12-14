@@ -864,7 +864,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                     handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->options.user_data);
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
-                aws_mem_release(message->allocator, message);
+                aws_mem_release(read_out_msg->allocator, read_out_msg);
                 return AWS_OP_ERR;
             }
 
@@ -1002,7 +1002,7 @@ static int s_process_write_message(
 
         while (message_cursor.len) {
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
-            size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
+            size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
             size_t requested_length =
                 message_cursor.len + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
             size_t to_write = sc_handler->stream_sizes.cbMaximumMessage - upstream_overhead < requested_length

@@ -466,7 +466,8 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
 
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
-    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, outgoing_args.error_code);
+    ASSERT_TRUE(
+        AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
 
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
     aws_client_bootstrap_clean_up(&client_bootstrap);

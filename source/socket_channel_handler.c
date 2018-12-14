@@ -188,7 +188,10 @@ static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_statu
     }
 }
 
-int s_socket_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+static int s_socket_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     (void)size;
 
     struct socket_handler *socket_handler = handler->impl;
@@ -249,17 +252,17 @@ static int s_socket_shutdown(
     return AWS_OP_SUCCESS;
 }
 
-size_t s_message_overhead(struct aws_channel_handler *handler) {
+static size_t s_message_overhead(struct aws_channel_handler *handler) {
     (void)handler;
     return 0;
 }
 
-size_t s_socket_initial_window_size(struct aws_channel_handler *handler) {
+static size_t s_socket_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
     return SIZE_MAX;
 }
 
-void s_socket_destroy(struct aws_channel_handler *handler) {
+static void s_socket_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, handler);
 }
 
