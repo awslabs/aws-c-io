@@ -449,7 +449,7 @@ static int s_process_write_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
     (void)slot;
-    
+
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (AWS_UNLIKELY(!secure_transport_handler->negotiation_finished)) {
