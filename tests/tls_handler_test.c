@@ -263,6 +263,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
+    g_aws_channel_max_fragment_size = 4096;
+
     struct aws_tls_ctx_options server_ctx_options;
 #ifdef __APPLE__
     aws_tls_ctx_options_init_server_pkcs12(&server_ctx_options, "./unittests.p12", "1234");

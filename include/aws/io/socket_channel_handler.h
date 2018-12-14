@@ -22,8 +22,6 @@ struct aws_channel_handler;
 struct aws_channel_slot;
 struct aws_event_loop;
 
-static const size_t AWS_SOCKET_HANDLER_DEFAULT_MAX_READ = 16 * 1024;
-
 #ifdef __cplusplus
 extern "C" {
 #endif

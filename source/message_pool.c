@@ -90,6 +90,27 @@ void aws_memory_pool_release(struct aws_memory_pool *mempool, void *to_release) 
     aws_array_list_push_back(&mempool->stack, &to_release);
 }
 
+struct message_pool_allocator {
+    struct aws_allocator base_allocator;
+    struct aws_message_pool *msg_pool;
+};
+
+void *s_message_pool_mem_acquire(struct aws_allocator *allocator, size_t size) {
+    (void)allocator;
+    (void)size;
+
+    /* no one should ever call this ever. */
+    assert(0);
+}
+
+void s_message_pool_mem_release(struct aws_allocator *allocator, void *ptr) {
+    struct message_pool_allocator *msg_pool_alloc = allocator->impl;
+
+    aws_message_pool_release(msg_pool_alloc->msg_pool, (struct aws_io_message *)ptr);
+}
+
+static size_t MSG_OVERHEAD = sizeof(struct aws_io_message) + sizeof(struct message_pool_allocator);
+
 int aws_message_pool_init(
     struct aws_message_pool *msg_pool,
     struct aws_allocator *alloc,
@@ -97,10 +118,17 @@ int aws_message_pool_init(
 
     msg_pool->alloc = alloc;
 
-    size_t msg_data_size = args->application_data_msg_data_size + sizeof(struct aws_io_message);
+    size_t msg_data_size = args->application_data_msg_data_size + MSG_OVERHEAD;
 
     if (aws_memory_pool_init(
             &msg_pool->application_data_pool, alloc, args->application_data_msg_count, msg_data_size)) {
+        return AWS_OP_ERR;
+    }
+
+    size_t small_blk_data_size = args->small_block_msg_data_size + MSG_OVERHEAD;
+
+    if (aws_memory_pool_init(&msg_pool->small_block_pool, alloc, args->small_block_msg_count, small_blk_data_size)) {
+        aws_memory_pool_clean_up(&msg_pool->application_data_pool);
         return AWS_OP_ERR;
     }
 
@@ -109,7 +137,7 @@ int aws_message_pool_init(
 
 void aws_message_pool_clean_up(struct aws_message_pool *msg_pool) {
     aws_memory_pool_clean_up(&msg_pool->application_data_pool);
-
+    aws_memory_pool_clean_up(&msg_pool->small_block_pool);
     AWS_ZERO_STRUCT(*msg_pool);
 }
 
@@ -122,8 +150,13 @@ struct aws_io_message *aws_message_pool_acquire(
     size_t max_size = 0;
     switch (message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
-            message = aws_memory_pool_acquire(&msg_pool->application_data_pool);
-            max_size = msg_pool->application_data_pool.segment_size - sizeof(struct aws_io_message);
+            if (size_hint > msg_pool->small_block_pool.segment_size - MSG_OVERHEAD) {
+                message = aws_memory_pool_acquire(&msg_pool->application_data_pool);
+                max_size = msg_pool->application_data_pool.segment_size - MSG_OVERHEAD;
+            } else {
+                message = aws_memory_pool_acquire(&msg_pool->small_block_pool);
+                max_size = msg_pool->small_block_pool.segment_size - MSG_OVERHEAD;
+            }
             break;
         default:
             assert(0);
@@ -135,27 +168,47 @@ struct aws_io_message *aws_message_pool_acquire(
         return NULL;
     }
 
+    /* memory layout:
+     *
+     * aws_io_message
+     * message_pool_allocator
+     * buffer data
+     */
     message->message_type = message_type;
     message->message_tag = 0;
     message->user_data = 0;
-    message->allocator = NULL;
     message->copy_mark = 0;
     message->on_completion = 0;
     /* the buffer shares the allocation with the message. It's the bit at the end. */
-    message->message_data.buffer = (uint8_t *)message + sizeof(struct aws_io_message);
+    message->message_data.buffer = (uint8_t *)message + MSG_OVERHEAD;
     message->message_data.len = 0;
     message->message_data.capacity = size_hint <= max_size ? size_hint : max_size;
 
+    /* set the allocator ptr */
+    struct message_pool_allocator *msg_pool_allocator =
+        (struct message_pool_allocator *)((uint8_t *)message + sizeof(struct aws_io_message));
+    msg_pool_allocator->base_allocator.impl = msg_pool_allocator;
+    msg_pool_allocator->base_allocator.mem_acquire = s_message_pool_mem_acquire;
+    msg_pool_allocator->base_allocator.mem_realloc = NULL;
+    msg_pool_allocator->base_allocator.mem_release = s_message_pool_mem_release;
+    msg_pool_allocator->msg_pool = msg_pool;
+
+    message->allocator = &msg_pool_allocator->base_allocator;
     return message;
 }
 
 void aws_message_pool_release(struct aws_message_pool *msg_pool, struct aws_io_message *message) {
 
     memset(message->message_data.buffer, 0, message->message_data.len);
+    message->allocator = NULL;
 
     switch (message->message_type) {
         case AWS_IO_MESSAGE_APPLICATION_DATA:
-            aws_memory_pool_release(&msg_pool->application_data_pool, message);
+            if (message->message_data.capacity > msg_pool->small_block_pool.segment_size - MSG_OVERHEAD) {
+                aws_memory_pool_release(&msg_pool->application_data_pool, message);
+            } else {
+                aws_memory_pool_release(&msg_pool->small_block_pool, message);
+            }
             break;
         default:
             assert(0);
