@@ -148,7 +148,7 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
             return errSecMemoryError;
         }
 
-        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
         const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
 
         const size_t to_write = message->message_data.capacity > available_msg_write_capacity
@@ -448,6 +448,8 @@ static int s_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
+    (void)slot;
+    
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (AWS_UNLIKELY(!secure_transport_handler->negotiation_finished)) {
