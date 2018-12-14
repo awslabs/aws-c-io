@@ -721,7 +721,7 @@ void s_socket_connection_completion(
         if (!status_code) {
             socket_impl->vtable->connection_success(socket);
         } else {
-            socket_args->socket->state = ERRORED;
+            socket->state = ERRORED;
             int error = s_determine_socket_error(status_code);
             socket_impl->vtable->connection_error(socket, error);
         }
