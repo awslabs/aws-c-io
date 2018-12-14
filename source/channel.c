@@ -33,6 +33,8 @@ enum {
     KB_16 = 16 * 1024,
 };
 
+size_t g_aws_channel_max_fragment_size = KB_16;
+
 enum aws_channel_state {
     AWS_CHANNEL_SETTING_UP,
     AWS_CHANNEL_ACTIVE,
@@ -110,8 +112,10 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
                 goto cleanup_local_obj;
             }
             struct aws_message_pool_creation_args creation_args = {
-                .application_data_msg_data_size = KB_16,
+                .application_data_msg_data_size = g_aws_channel_max_fragment_size,
                 .application_data_msg_count = 4,
+                .small_block_msg_count = 4,
+                .small_block_msg_data_size = 128,
             };
 
             if (aws_message_pool_init(message_pool, setup_args->alloc, &creation_args)) {
@@ -333,10 +337,6 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     return message;
 }
 
-void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message) {
-    aws_message_pool_release(channel->msg_pool, message);
-}
-
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     struct aws_channel_slot *new_slot = aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot));
 
@@ -350,6 +350,7 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     new_slot->handler = NULL;
     new_slot->channel = channel;
     new_slot->window_size = 0;
+    new_slot->upstream_message_overhead = 0;
 
     if (!channel->first) {
         channel->first = new_slot;
@@ -506,8 +507,24 @@ bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
     return aws_event_loop_thread_is_callers_thread(channel->loop);
 }
 
+static void s_update_channel_slot_message_overheads(struct aws_channel *channel) {
+    size_t overhead = 0;
+    struct aws_channel_slot *slot_iter = channel->first;
+    while (slot_iter) {
+        slot_iter->upstream_message_overhead = overhead;
+
+        if (slot_iter->handler) {
+            overhead += slot_iter->handler->vtable->message_overhead(slot_iter->handler);
+        }
+        slot_iter = slot_iter->adj_right;
+    }
+}
+
 int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_channel_handler *handler) {
     slot->handler = handler;
+
+    s_update_channel_slot_message_overheads(slot->channel);
+
     return aws_channel_slot_increment_read_window(slot, slot->handler->vtable->initial_window_size(handler));
 }
 
@@ -528,6 +545,7 @@ int aws_channel_slot_remove(struct aws_channel_slot *slot) {
         slot->channel->first = NULL;
     }
 
+    s_update_channel_slot_message_overheads(slot->channel);
     s_cleanup_slot(slot);
     return AWS_OP_SUCCESS;
 }
@@ -549,6 +567,7 @@ int aws_channel_slot_replace(struct aws_channel_slot *remove, struct aws_channel
         remove->channel->first = new_slot;
     }
 
+    s_update_channel_slot_message_overheads(remove->channel);
     s_cleanup_slot(remove);
     return AWS_OP_SUCCESS;
 }
@@ -744,6 +763,10 @@ int aws_channel_slot_on_handler_shutdown_complete(
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
     assert(slot->adj_right);
     return slot->adj_right->window_size;
+}
+
+size_t aws_channel_slot_upstream_message_overhead(struct aws_channel_slot *slot) {
+    return slot->upstream_message_overhead;
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {

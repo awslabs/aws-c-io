@@ -49,6 +49,7 @@ struct aws_channel_slot {
     struct aws_channel_slot *adj_right;
     struct aws_channel_handler *handler;
     size_t window_size;
+    size_t upstream_message_overhead;
 };
 
 struct aws_channel_task;
@@ -64,7 +65,7 @@ struct aws_channel_task {
 struct aws_channel_handler_vtable {
     /**
      * Called by the channel when a message is available for processing in the read direction. It is your
-     * responsibility to call aws_channel_release_message_to_pool() on message when you are finished with it.
+     * responsibility to call aws_mem_release(message->allocator, message); on message when you are finished with it.
      *
      * Also keep in mind that your slot's internal window has been decremented. You'll want to call
      * aws_channel_slot_increment_read_window() at some point in the future if you want to keep receiving data.
@@ -75,7 +76,7 @@ struct aws_channel_handler_vtable {
         struct aws_io_message *message);
     /**
      * Called by the channel when a message is available for processing in the write direction. It is your
-     * responsibility to call aws_channel_release_message_to_pool() on message when you are finished with it.
+     * responsibility to call aws_mem_release(message->allocator, message); on message when you are finished with it.
      */
     int (*process_write_message)(
         struct aws_channel_handler *handler,
@@ -112,6 +113,10 @@ struct aws_channel_handler_vtable {
      */
     size_t (*initial_window_size)(struct aws_channel_handler *handler);
 
+    /** Called by the channel anytime a handler is added or removed, provides a hint for downstream
+     * handlers to avoid message fragmentation due to message overhead. */
+    size_t (*message_overhead)(struct aws_channel_handler *handler);
+
     /**
      * Clean up any resources and deallocate yourself. The shutdown process will already be completed before this
      * function is called.
@@ -124,6 +129,8 @@ struct aws_channel_handler {
     struct aws_allocator *alloc;
     void *impl;
 };
+
+extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
 
 #ifdef __cplusplus
 extern "C" {
@@ -236,12 +243,6 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     struct aws_channel *channel,
     enum aws_io_message_type message_type,
     size_t size_hint);
-
-/**
- * Returns a message back to the event loop's message pool for reuse.
- */
-AWS_IO_API
-void aws_channel_release_message_to_pool(struct aws_channel *channel, struct aws_io_message *message);
 
 /**
  * Schedules a task to run on the event loop as soon as possible.
@@ -362,6 +363,10 @@ int aws_channel_slot_shutdown(
  */
 AWS_IO_API
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot);
+
+/** Fetches the current overhead of upstream handlers. This provides a hint to avoid fragmentation if you care. */
+AWS_IO_API
+size_t aws_channel_slot_upstream_message_overhead(struct aws_channel_slot *slot);
 
 /**
  * Calls destroy on handler's vtable

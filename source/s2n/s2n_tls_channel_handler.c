@@ -160,7 +160,7 @@ static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf)
         message->copy_mark += to_write;
 
         if (message->copy_mark == message->message_data.len) {
-            aws_channel_release_message_to_pool(handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
         } else {
             aws_linked_list_push_front(&handler->input_queue, &message->queueing_handle);
         }
@@ -195,11 +195,16 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
             return -1;
         }
 
-        const size_t to_write =
-            message->message_data.capacity > buffer_cursor.len ? buffer_cursor.len : message->message_data.capacity;
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
+        const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
+
+        const size_t to_write = message->message_data.capacity > available_msg_write_capacity
+                                    ? available_msg_write_capacity
+                                    : message->message_data.capacity;
+
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
         if (aws_byte_buf_append(&message->message_data, &chunk)) {
-            aws_channel_release_message_to_pool(handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return -1;
         }
         processed += message->message_data.len;
@@ -212,7 +217,7 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
         }
 
         if (aws_channel_slot_send_message(handler->slot, message, AWS_CHANNEL_DIR_WRITE)) {
-            aws_channel_release_message_to_pool(handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             errno = EPIPE;
             return -1;
         }
@@ -275,7 +280,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 protocol_message->protocol = s2n_handler->protocol;
                 message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
                 if (aws_channel_slot_send_message(s2n_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
-                    aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
+                    aws_mem_release(message->allocator, message);
                     aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
                     return AWS_OP_SUCCESS;
                 }
@@ -380,13 +385,13 @@ static int s_s2n_handler_process_read_message(
          * SUCCESS.
          */
         if (read == 0) {
-            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
             return AWS_OP_SUCCESS;
         }
 
         if (read < 0) {
-            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
             continue;
         };
 
@@ -401,7 +406,7 @@ static int s_s2n_handler_process_read_message(
         if (slot->adj_right) {
             aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ);
         } else {
-            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
         }
     }
 
@@ -412,6 +417,7 @@ static int s_s2n_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
+    (void)slot;
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
@@ -426,7 +432,7 @@ static int s_s2n_handler_process_write_message(
         s2n_send(s2n_handler->connection, message->message_data.buffer, (ssize_t)message->message_data.len, &blocked);
 
     ssize_t message_len = (ssize_t)message->message_data.len;
-    aws_channel_release_message_to_pool(slot->channel, message);
+    aws_mem_release(message->allocator, message);
 
     if (write_code < message_len) {
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
@@ -451,7 +457,7 @@ static int s_s2n_handler_shutdown(
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_channel_release_message_to_pool(s2n_handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
         }
     }
 
@@ -500,6 +506,11 @@ static int s_s2n_handler_increment_read_window(
     return AWS_OP_SUCCESS;
 }
 
+size_t s_s2n_handler_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+    return EST_TLS_RECORD_OVERHEAD;
+}
+
 static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
@@ -523,6 +534,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .shutdown = s_s2n_handler_shutdown,
     .increment_read_window = s_s2n_handler_increment_read_window,
     .initial_window_size = s_s2n_handler_initial_window_size,
+    .message_overhead = s_s2n_handler_message_overhead,
 };
 
 static int s_parse_protocol_preferences(
@@ -793,6 +805,16 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
+    }
+
+    if (options->max_fragment_size == 512) {
+        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_512);
+    } else if (options->max_fragment_size == 1024) {
+        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_1024);
+    } else if (options->max_fragment_size == 2048) {
+        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_2048);
+    } else if (options->max_fragment_size == 4096) {
+        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_4096);
     }
 
     return &s2n_ctx->ctx;

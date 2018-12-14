@@ -67,7 +67,7 @@ static void s_on_socket_write_complete(
             message->on_completion(channel, message, error_code, message->user_data);
         }
 
-        aws_channel_release_message_to_pool(channel, message);
+        aws_mem_release(message->allocator, message);
 
         if (error_code) {
             aws_channel_shutdown(channel, error_code);
@@ -128,14 +128,14 @@ static void s_do_read(struct socket_handler *socket_handler) {
         }
 
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
-            aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             break;
         }
 
         total_read += read;
 
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
-            aws_channel_release_message_to_pool(socket_handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             break;
         }
     }
@@ -159,15 +159,20 @@ static void s_do_read(struct socket_handler *socket_handler) {
     }
 }
 
-/* the socket is either readable or errored out. If it's readable, kick of s_do_read() to do its thing.
+/* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing.
  * If an error, start the channel shutdown process. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
     (void)socket;
 
     struct socket_handler *socket_handler = user_data;
-    if (!error_code) {
-        s_do_read(socket_handler);
-    } else if (!socket_handler->shutdown_in_progress) {
+
+    /* read regardless so we can pick up data that was sent prior to the close. For example, peer sends a TLS ALERT
+     * then immediately closes the socket. On some platforms, we'll never see the readable flag. So we want to make
+     * sure we read the ALERT, otherwise, we'll end up telling the user that the channel shutdown because of a socket
+     * closure, when in reality it was a TLS error */
+    s_do_read(socket_handler);
+
+    if (error_code && !socket_handler->shutdown_in_progress) {
         aws_channel_shutdown(socket_handler->slot->channel, error_code);
     }
 }
@@ -183,7 +188,10 @@ static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_statu
     }
 }
 
-int socket_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+static int s_socket_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     (void)size;
 
     struct socket_handler *socket_handler = handler->impl;
@@ -244,22 +252,28 @@ static int s_socket_shutdown(
     return AWS_OP_SUCCESS;
 }
 
-size_t socket_initial_window_size(struct aws_channel_handler *handler) {
+static size_t s_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+    return 0;
+}
+
+static size_t s_socket_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
     return SIZE_MAX;
 }
 
-void socket_destroy(struct aws_channel_handler *handler) {
+static void s_socket_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, handler);
 }
 
 static struct aws_channel_handler_vtable s_vtable = {
     .process_read_message = s_socket_process_read_message,
-    .destroy = socket_destroy,
+    .destroy = s_socket_destroy,
     .process_write_message = s_socket_process_write_message,
-    .initial_window_size = socket_initial_window_size,
-    .increment_read_window = socket_increment_read_window,
+    .initial_window_size = s_socket_initial_window_size,
+    .increment_read_window = s_socket_increment_read_window,
     .shutdown = s_socket_shutdown,
+    .message_overhead = s_message_overhead,
 };
 
 struct aws_channel_handler *aws_socket_handler_new(

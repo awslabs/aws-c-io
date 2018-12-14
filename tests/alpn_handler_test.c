@@ -54,6 +54,12 @@ static int s_alpn_test_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
+static size_t s_alpn_test_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 0;
+}
+
 static size_t s_alpn_test_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
 
@@ -68,6 +74,7 @@ struct aws_channel_handler_vtable s_alpn_test_vtable = {
     .destroy = s_alpn_test_destroy,
     .shutdown = s_alpn_test_shutdown,
     .initial_window_size = s_alpn_test_initial_window_size,
+    .message_overhead = s_alpn_test_message_overhead,
 };
 
 static struct aws_channel_handler *s_alpn_tls_successful_negotiation(

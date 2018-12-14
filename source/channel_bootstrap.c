@@ -307,7 +307,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             connection_args->bootstrap->allocator,
             connection_args->channel_data.socket,
             socket_slot,
-            AWS_SOCKET_HANDLER_DEFAULT_MAX_READ);
+            g_aws_channel_max_fragment_size);
 
         if (!socket_channel_handler) {
             err_code = aws_last_error();
@@ -792,7 +792,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
             channel_data->server_connection_args->bootstrap->allocator,
             channel_data->socket,
             socket_slot,
-            AWS_SOCKET_HANDLER_DEFAULT_MAX_READ);
+            g_aws_channel_max_fragment_size);
 
         if (!socket_channel_handler) {
             err_code = aws_last_error();
