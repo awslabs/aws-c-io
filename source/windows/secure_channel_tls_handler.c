@@ -1120,7 +1120,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     return AWS_OP_SUCCESS;
 }
 
-size_t s_message_overhead(struct aws_channel_handler *handler) {
+static size_t s_message_overhead(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {

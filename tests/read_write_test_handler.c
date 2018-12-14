@@ -111,7 +111,7 @@ static int s_rw_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-size_t s_rw_handler_message_overhead(struct aws_channel_handler *handler) {
+static size_t s_rw_handler_message_overhead(struct aws_channel_handler *handler) {
     (void)handler;
     return 0;
 }
