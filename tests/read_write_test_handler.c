@@ -48,7 +48,7 @@ static int s_rw_handler_process_read(
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
     struct aws_byte_buf next_data = handler_impl->on_read(handler, slot, &message->message_data, handler_impl->ctx);
-    aws_channel_release_message_to_pool(slot->channel, message);
+    aws_mem_release(message->allocator, message);
 
     if (slot->adj_right) {
 
@@ -72,7 +72,7 @@ static int s_rw_handler_process_write_message(
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
     struct aws_byte_buf next_data = handler_impl->on_write(handler, slot, &message->message_data, handler_impl->ctx);
-    aws_channel_release_message_to_pool(slot->channel, message);
+    aws_mem_release(message->allocator, message);
 
     if (slot->adj_left) {
         struct aws_io_message *msg =
@@ -111,6 +111,11 @@ static int s_rw_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
+size_t s_rw_handler_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+    return 0;
+}
+
 static size_t s_rw_handler_get_current_window_size(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
     return handler_impl->window;
@@ -135,6 +140,7 @@ struct aws_channel_handler_vtable s_rw_test_vtable = {
     .process_read_message = s_rw_handler_process_read,
     .process_write_message = s_rw_handler_process_write_message,
     .destroy = s_rw_handler_destroy,
+    .message_overhead = s_rw_handler_message_overhead,
 };
 
 struct aws_channel_handler *rw_handler_new(

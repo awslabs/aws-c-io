@@ -119,7 +119,7 @@ static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
 
         if (message->copy_mark == message->message_data.len) {
             /* note: value is the first member of the allocated struct */
-            aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+            aws_mem_release(message->allocator, message);
         } else {
             aws_linked_list_push_front(&handler->input_queue, &message->queueing_handle);
         }
@@ -148,11 +148,16 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
             return errSecMemoryError;
         }
 
-        const size_t to_write =
-            message->message_data.capacity > buffer_cursor.len ? buffer_cursor.len : message->message_data.capacity;
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
+        const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
+
+        const size_t to_write = message->message_data.capacity > available_msg_write_capacity
+                                    ? available_msg_write_capacity
+                                    : message->message_data.capacity;
+
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
         if (aws_byte_buf_append(&message->message_data, &chunk)) {
-            aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return errSecBufferTooSmall;
         }
         processed += message->message_data.len;
@@ -165,7 +170,7 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
         }
 
         if (aws_channel_slot_send_message(handler->parent_slot, message, AWS_CHANNEL_DIR_WRITE)) {
-            aws_channel_release_message_to_pool(handler->parent_slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return errSSLClosedNoNotify;
         }
     }
@@ -351,7 +356,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
             if (aws_channel_slot_send_message(secure_transport_handler->parent_slot, message, AWS_CHANNEL_DIR_READ)) {
-                aws_channel_release_message_to_pool(secure_transport_handler->parent_slot->channel, message);
+                aws_mem_release(message->allocator, message);
                 aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
                 return AWS_OP_SUCCESS;
             }
@@ -443,6 +448,8 @@ static int s_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
+    (void)slot;
+
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (AWS_UNLIKELY(!secure_transport_handler->negotiation_finished)) {
@@ -460,7 +467,7 @@ static int s_process_write_message(
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
-    aws_channel_release_message_to_pool(slot->channel, message);
+    aws_mem_release(message->allocator, message);
 
     return AWS_OP_SUCCESS;
 }
@@ -479,7 +486,7 @@ static int s_handle_shutdown(
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_channel_release_message_to_pool(secure_transport_handler->parent_slot->channel, message);
+            aws_mem_release(message->allocator, message);
         }
     }
 
@@ -532,7 +539,7 @@ static int s_process_read_message(
             &read);
 
         if (read <= 0) {
-            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
             continue;
         };
 
@@ -546,11 +553,11 @@ static int s_process_read_message(
 
         if (slot->adj_right) {
             if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
-                aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+                aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
                 return AWS_OP_ERR;
             }
         } else {
-            aws_channel_release_message_to_pool(slot->channel, outgoing_read_message);
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
         }
     }
 
@@ -598,6 +605,11 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     return AWS_OP_SUCCESS;
 }
 
+size_t s_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+    return EST_TLS_RECORD_OVERHEAD;
+}
+
 static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
     return EST_HANDSHAKE_SIZE;
@@ -620,6 +632,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .shutdown = s_handle_shutdown,
     .increment_read_window = s_increment_read_window,
     .initial_window_size = s_initial_window_size,
+    .message_overhead = s_message_overhead,
 };
 
 struct secure_transport_ctx {
@@ -629,6 +642,7 @@ struct secure_transport_ctx {
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     const char *alpn_list;
+    size_t max_fragment_size;
     bool veriify_peer;
 };
 

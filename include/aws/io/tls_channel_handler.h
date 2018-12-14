@@ -139,6 +139,10 @@ struct aws_tls_ctx_options {
      * Password for the pkcs12 file in pkcs12_path.
      */
     const char *pkcs12_password;
+
+    /** max tls fragment size. Default is the value of g_aws_channel_max_fragment_size. */
+    size_t max_fragment_size;
+
     /**
      * default is true for clients and false for servers.
      * You should not change this default for clients unless

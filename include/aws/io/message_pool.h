@@ -28,11 +28,14 @@ struct aws_memory_pool {
 struct aws_message_pool {
     struct aws_allocator *alloc;
     struct aws_memory_pool application_data_pool;
+    struct aws_memory_pool small_block_pool;
 };
 
 struct aws_message_pool_creation_args {
     size_t application_data_msg_data_size;
     uint8_t application_data_msg_count;
+    size_t small_block_msg_data_size;
+    uint8_t small_block_msg_count;
 };
 
 #ifdef __cplusplus

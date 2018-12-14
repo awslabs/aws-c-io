@@ -43,6 +43,8 @@
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
+#define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
 }
@@ -198,7 +200,7 @@ static void s_on_negotiation_success(struct aws_channel_handler *handler) {
         protocol_message->protocol = sc_handler->protocol;
         message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
         if (aws_channel_slot_send_message(sc_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
-            aws_channel_release_message_to_pool(sc_handler->slot->channel, message);
+            aws_mem_release(message->allocator, message);
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
     }
@@ -394,7 +396,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     FreeContextBuffer(output_buffer.pvBuffer);
 
     if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-        aws_channel_release_message_to_pool(sc_handler->slot->channel, outgoing_message);
+        aws_mem_release(outgoing_message->allocator, outgoing_message);
         s_invoke_negotiation_error(handler, aws_last_error());
         return AWS_OP_ERR;
     }
@@ -486,7 +488,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 FreeContextBuffer(buf_ptr->pvBuffer);
 
                 if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                    aws_channel_release_message_to_pool(sc_handler->slot->channel, outgoing_message);
+                    aws_mem_release(outgoing_message->allocator, outgoing_message);
                     s_invoke_negotiation_error(handler, aws_last_error());
                     return AWS_OP_ERR;
                 }
@@ -626,7 +628,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     FreeContextBuffer(output_buffer.pvBuffer);
 
     if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-        aws_channel_release_message_to_pool(sc_handler->slot->channel, outgoing_message);
+        aws_mem_release(outgoing_message->allocator, outgoing_message);
 
         s_invoke_negotiation_error(handler, aws_last_error());
         return AWS_OP_ERR;
@@ -722,7 +724,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 FreeContextBuffer(buf_ptr->pvBuffer);
 
                 if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                    aws_channel_release_message_to_pool(sc_handler->slot->channel, outgoing_message);
+                    aws_mem_release(outgoing_message->allocator, outgoing_message);
                     s_invoke_negotiation_error(handler, aws_last_error());
                     return AWS_OP_ERR;
                 }
@@ -862,7 +864,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                     handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->options.user_data);
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
-                aws_channel_release_message_to_pool(sc_handler->slot->channel, read_out_msg);
+                aws_mem_release(read_out_msg->allocator, read_out_msg);
                 return AWS_OP_ERR;
             }
 
@@ -968,7 +970,7 @@ static int s_process_read_message(
         }
 
         if (!err) {
-            aws_channel_release_message_to_pool(slot->channel, message);
+            aws_mem_release(message->allocator, message);
             return AWS_OP_SUCCESS;
         }
 
@@ -980,7 +982,7 @@ static int s_process_read_message(
         if (s_process_pending_output_messages(handler)) {
             return AWS_OP_ERR;
         }
-        aws_channel_release_message_to_pool(slot->channel, message);
+        aws_mem_release(message->allocator, message);
     }
 
     return AWS_OP_SUCCESS;
@@ -1000,10 +1002,11 @@ static int s_process_write_message(
 
         while (message_cursor.len) {
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
+            size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
             size_t requested_length =
                 message_cursor.len + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
-            size_t to_write = sc_handler->stream_sizes.cbMaximumMessage < requested_length
-                                  ? sc_handler->stream_sizes.cbMaximumMessage
+            size_t to_write = sc_handler->stream_sizes.cbMaximumMessage - upstream_overhead < requested_length
+                                  ? sc_handler->stream_sizes.cbMaximumMessage - upstream_overhead
                                   : requested_length;
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
@@ -1067,7 +1070,7 @@ static int s_process_write_message(
                                                      sc_handler->stream_sizes.cbHeader +
                                                      sc_handler->stream_sizes.cbTrailer;
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                    aws_channel_release_message_to_pool(slot->channel, outgoing_message);
+                    aws_mem_release(outgoing_message->allocator, outgoing_message);
                     return AWS_OP_ERR;
                 }
 
@@ -1077,7 +1080,7 @@ static int s_process_write_message(
             }
         }
 
-        aws_channel_release_message_to_pool(slot->channel, message);
+        aws_mem_release(message->allocator, message);
     }
 
     return AWS_OP_SUCCESS;
@@ -1085,7 +1088,7 @@ static int s_process_write_message(
 
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
-    struct secure_channel_handler *sc_handler = (struct secure_channel_handler *)handler->impl;
+    struct secure_channel_handler *sc_handler = handler->impl;
 
     if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
         SECURITY_STATUS status =
@@ -1115,6 +1118,21 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
     }
     return AWS_OP_SUCCESS;
+}
+
+size_t s_message_overhead(struct aws_channel_handler *handler) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
+        SECURITY_STATUS status =
+            QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
+
+        if (status != SEC_E_OK) {
+            return EST_TLS_RECORD_OVERHEAD;
+        }
+    }
+
+    return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
 static size_t s_initial_window_size(struct aws_channel_handler *handler) {
@@ -1197,7 +1215,7 @@ static int s_handler_shutdown(
 
             /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
             if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                aws_channel_release_message_to_pool(slot->channel, outgoing_message);
+                aws_mem_release(outgoing_message->allocator, outgoing_message);
             }
         }
     }
@@ -1271,6 +1289,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .shutdown = s_handler_shutdown,
     .increment_read_window = s_increment_read_window,
     .initial_window_size = s_initial_window_size,
+    .message_overhead = s_message_overhead,
 };
 
 static struct aws_channel_handler *s_tls_handler_new(
