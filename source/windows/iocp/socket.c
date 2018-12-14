@@ -716,15 +716,17 @@ void s_socket_connection_completion(
         struct aws_socket *socket = socket_args->socket;
         socket->readable_fn = NULL;
         socket->readable_user_data = NULL;
-        socket_args->socket = NULL;
         socket_impl->connect_args = NULL;
 
         if (!status_code) {
             socket_impl->vtable->connection_success(socket);
         } else {
+            socket_args->socket->state = ERRORED;
             int error = s_determine_socket_error(status_code);
             socket_impl->vtable->connection_error(socket, error);
         }
+
+        socket_args->socket = NULL;
     }
 
     if (operation_data->socket) {
@@ -793,6 +795,10 @@ static inline int s_tcp_connect(
     socket_impl->connect_args = connect_args;
     BOOL connect_res = false;
     bind((SOCKET)socket->io_handle.data.handle, bind_addr, (int)sock_size);
+    /* socket may be killed by the connection_completion callback inside of connect_fn, so copy out info
+     * we need (allocator, event loop, timeout, etc), socket isn't safe to touch below connect_fn() */
+    struct aws_allocator *allocator = socket->allocator;
+    uint32_t connect_timeout_ms = socket->options.connect_timeout_ms;
     connect_res = connect_fn(
         (SOCKET)socket->io_handle.data.handle,
         socket_addr,
@@ -805,29 +811,28 @@ static inline int s_tcp_connect(
     uint64_t time_to_run = 0;
     /* if the connect succedded immediately, let the timeout task still run, but it can run immediately. This is cleaner
        because it can just deallocate the memory we just allocated. */
-    aws_event_loop_current_clock_time(socket->event_loop, &time_to_run);
+    aws_event_loop_current_clock_time(connect_loop, &time_to_run);
 
     /* with IO completion ports, the overlapped callback triggers even if the operation succedded immediately,
        so we can just act like it's pending and the code path is the same.*/
     if (!connect_res) {
         int error_code = WSAGetLastError();
         if (error_code != ERROR_IO_PENDING) {
-            socket_impl->read_io_data->in_use = false;
-            aws_mem_release(socket->allocator, connect_args);
             socket_impl->connect_args = NULL;
-            socket->state = ERRORED;
+            socket_impl->read_io_data->in_use = false;
+            aws_mem_release(allocator, connect_args);
             int aws_err = s_determine_socket_error(error_code);
             return aws_raise_error(aws_err);
         }
 
         time_to_run +=
-            aws_timestamp_convert(socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_timestamp_convert(connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     } else {
         /*add 500 ms just in case we're under heavy load*/
         time_to_run += aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     }
 
-    aws_event_loop_schedule_task_future(socket->event_loop, &connect_args->timeout_task, time_to_run);
+    aws_event_loop_schedule_task_future(connect_loop, &connect_args->timeout_task, time_to_run);
 
     return AWS_OP_SUCCESS;
 }
