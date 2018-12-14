@@ -589,7 +589,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (secure_transport_handler->negotiation_finished) {
+    if (secure_transport_handler->negotiation_finished && !secure_transport_handler->read_task.node.next) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          *
