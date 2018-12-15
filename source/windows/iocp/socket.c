@@ -823,8 +823,7 @@ static inline int s_tcp_connect(
             return aws_raise_error(aws_err);
         }
 
-        time_to_run +=
-            aws_timestamp_convert(connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        time_to_run += aws_timestamp_convert(connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     } else {
         /*add 500 ms just in case we're under heavy load*/
         time_to_run += aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
