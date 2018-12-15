@@ -717,16 +717,14 @@ void s_socket_connection_completion(
         socket->readable_fn = NULL;
         socket->readable_user_data = NULL;
         socket_impl->connect_args = NULL;
+        socket_args->socket = NULL;
 
         if (!status_code) {
             socket_impl->vtable->connection_success(socket);
         } else {
-            socket->state = ERRORED;
             int error = s_determine_socket_error(status_code);
             socket_impl->vtable->connection_error(socket, error);
         }
-
-        socket_args->socket = NULL;
     }
 
     if (operation_data->socket) {
