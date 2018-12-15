@@ -506,7 +506,7 @@ static int s_s2n_handler_increment_read_window(
     return AWS_OP_SUCCESS;
 }
 
-size_t s_s2n_handler_message_overhead(struct aws_channel_handler *handler) {
+static size_t s_s2n_handler_message_overhead(struct aws_channel_handler *handler) {
     (void)handler;
     return EST_TLS_RECORD_OVERHEAD;
 }
