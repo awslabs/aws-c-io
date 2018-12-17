@@ -135,6 +135,10 @@ add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${CMAKE_PROJECT_NAME})
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 
+# We are not ABI stable yet
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
+
 if (USE_IO_COMPLETION_PORTS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
 endif ()
