@@ -665,24 +665,8 @@ int aws_client_bootstrap_new_socket_channel(
         bootstrap, host_name, port, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
-struct aws_server_bootstrap *aws_server_bootstrap_new(
-    struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group) {
-    assert(allocator);
-    assert(el_group);
-
-    struct aws_server_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_server_bootstrap));
-
-    bootstrap->allocator = allocator;
-    bootstrap->event_loop_group = el_group;
-    bootstrap->on_protocol_negotiated = NULL;
-
-    return bootstrap;
-}
-
 void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
     assert(bootstrap);
-    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
 
@@ -696,7 +680,27 @@ void s_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
     }
 }
 
+struct aws_server_bootstrap *aws_server_bootstrap_new(
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *el_group) {
+    assert(allocator);
+    assert(el_group);
+
+    struct aws_server_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_server_bootstrap));
+
+    bootstrap->allocator = allocator;
+    bootstrap->event_loop_group = el_group;
+    bootstrap->on_protocol_negotiated = NULL;
+    aws_atomic_init_int(&bootstrap->ref_count, 1);
+
+    return bootstrap;
+}
+
 void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap) {
+    /* if destroy is being called, the user intends to not use the bootstrap anymore
+     * so we clean up the thread local state while the event loop thread is
+     * still alive */
+    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     s_server_bootstrap_release(bootstrap);
 }
 

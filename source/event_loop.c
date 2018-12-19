@@ -281,6 +281,11 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
     return event_loop->vtable->unsubscribe_from_io_events(event_loop, handle);
 }
 
+void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    assert(event_loop && event_loop->vtable->free_io_event_resources);
+    event_loop->vtable->free_io_event_resources(handle->additional_data);
+}
+
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
     assert(event_loop->vtable && event_loop->vtable->is_on_callers_thread);
     return event_loop->vtable->is_on_callers_thread(event_loop);

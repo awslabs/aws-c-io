@@ -51,6 +51,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static void s_free_io_event_resources(struct aws_event_loop *event_loop, void *user_data);
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static void s_main_loop(void *args);
@@ -65,6 +66,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .cancel_task = s_cancel_task,
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+    .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
@@ -353,11 +355,16 @@ static int s_subscribe_to_io_events(
     return AWS_OP_SUCCESS;
 }
 
+static void s_free_io_event_resources(struct aws_event_loop *event_loop, void *user_data) {
+    struct epoll_event_data *event_data = user_data;
+    aws_mem_release(event_data->alloc, (void *)event_data);
+}
+
 static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
-    aws_mem_release(event_data->alloc, (void *)event_data);
+    s_free_io_event_resources(event_data);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {

@@ -39,6 +39,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static void s_free_io_event_resources(void *user_data);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
 
 static void s_event_thread_main(void *user_data);
@@ -116,6 +117,7 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .cancel_task = s_cancel_task,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+    .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_event_thread,
 };
 
@@ -582,16 +584,21 @@ static int s_subscribe_to_io_events(
     return AWS_OP_SUCCESS;
 }
 
-static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
-    (void)status;
-
+static void s_free_io_event_resources(void *user_data) {
     struct handle_data *handle_data = user_data;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
 
     impl->thread_data.connected_handle_count--;
 
     aws_mem_release(handle_data->event_loop->alloc, handle_data);
+}
+
+static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct handle_data *handle_data = user_data;
+    s_free_io_event_resources(handle_data);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
