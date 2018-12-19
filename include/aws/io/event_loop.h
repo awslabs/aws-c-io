@@ -84,7 +84,7 @@ struct aws_event_loop_vtable {
         void *user_data);
 #endif
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-    void (*free_io_event_resources)(void* user_data);
+    void (*free_io_event_resources)(void *user_data);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 

@@ -833,7 +833,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1_ipv4));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
-    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &event_loop_group, NULL, &mock_resolver_config);
+    struct aws_client_bootstrap *bootstrap =
+        aws_client_bootstrap_new(allocator, &event_loop_group, NULL, &mock_resolver_config);
     ASSERT_NOT_NULL(bootstrap);
 
     struct aws_socket_options options;

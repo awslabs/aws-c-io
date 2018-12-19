@@ -15,9 +15,9 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
+#include <aws/common/atomics.h>
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
-#include <aws/common/atomics.h>
 
 struct aws_client_bootstrap;
 struct aws_socket;

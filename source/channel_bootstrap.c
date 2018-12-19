@@ -86,7 +86,7 @@ static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_grou
     aws_mutex_unlock(&mutex);
 }
 
-void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap* bootstrap) {
+void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     assert(bootstrap);
     if (bootstrap->host_resolver && bootstrap->owns_resolver) {
         aws_host_resolver_clean_up(bootstrap->host_resolver);
@@ -209,7 +209,7 @@ void s_connection_args_release(struct client_connection_args *args) {
     assert(args);
     assert(args->ref_count > 0);
     if (--args->ref_count == 0) {
-        struct aws_allocator* allocator = args->bootstrap->allocator;
+        struct aws_allocator *allocator = args->bootstrap->allocator;
         s_client_bootstrap_release(args->bootstrap);
         if (args->host_name) {
             aws_string_destroy(args->host_name);
