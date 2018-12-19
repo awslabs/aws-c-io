@@ -282,10 +282,10 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
-    struct aws_server_bootstrap server_bootstrap;
-    ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
+    struct aws_server_bootstrap *server_bootstrap = aws_server_bootstrap_new(allocator, &el_group);
+    ASSERT_NOT_NULL(server_bootstrap);
     struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(
-        &server_bootstrap,
+        server_bootstrap,
         &endpoint,
         &options,
         s_socket_handler_test_server_setup_callback,
@@ -293,12 +293,12 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
-    struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL));
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
-        &client_bootstrap,
+        client_bootstrap,
         endpoint.address,
         0,
         &options,
@@ -355,9 +355,9 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_channel_shutdown_predicate, &outgoing_args));
 
     aws_mutex_unlock(&mutex);
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
-    aws_client_bootstrap_clean_up(&client_bootstrap);
-    aws_server_bootstrap_clean_up(&server_bootstrap);
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
+    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_server_bootstrap_destroy(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;
@@ -428,10 +428,10 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
 
-    struct aws_server_bootstrap server_bootstrap;
-    ASSERT_SUCCESS(aws_server_bootstrap_init(&server_bootstrap, allocator, &el_group));
+    struct aws_server_bootstrap *server_bootstrap = aws_server_bootstrap_new(allocator, &el_group);
+    ASSERT_NOT_NULL(server_bootstrap);
     struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(
-        &server_bootstrap,
+        server_bootstrap,
         &endpoint,
         &options,
         s_socket_handler_test_server_setup_callback,
@@ -439,12 +439,12 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
-    struct aws_client_bootstrap client_bootstrap;
-    ASSERT_SUCCESS(aws_client_bootstrap_init(&client_bootstrap, allocator, &el_group, NULL, NULL));
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
-        &client_bootstrap,
+        client_bootstrap,
         endpoint.address,
         0,
         &options,
@@ -469,9 +469,9 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_TRUE(
         AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
 
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(&server_bootstrap, listener));
-    aws_client_bootstrap_clean_up(&client_bootstrap);
-    aws_server_bootstrap_clean_up(&server_bootstrap);
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
+    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_server_bootstrap_destroy(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;

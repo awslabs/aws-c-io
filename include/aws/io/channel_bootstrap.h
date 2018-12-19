@@ -17,6 +17,7 @@
  */
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
+#include <aws/common/atomics.h>
 
 struct aws_client_bootstrap;
 struct aws_socket;
@@ -77,6 +78,7 @@ struct aws_client_bootstrap {
     struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     bool owns_resolver;
+    struct aws_atomic_var ref_count;
 };
 
 struct aws_server_bootstrap;
@@ -126,6 +128,7 @@ struct aws_server_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
+    struct aws_atomic_var ref_count;
 };
 
 #ifdef __cplusplus
@@ -138,8 +141,7 @@ extern "C" {
  * will be used for resolving host names. If host_resolution_config is NULL, the default will be used.
  * host_resolution_config will be copied.
  */
-AWS_IO_API int aws_client_bootstrap_init(
-    struct aws_client_bootstrap *bootstrap,
+AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
     struct aws_event_loop_group *el_group,
     struct aws_host_resolver *host_resolver,
@@ -147,9 +149,10 @@ AWS_IO_API int aws_client_bootstrap_init(
 
 /**
  * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak.
+ * calling this if you don't want a memory leak. Note that this will not necessarily free the memory immediately if
+ * there are channels or channel events outstanding.
  */
-AWS_IO_API void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap);
+AWS_IO_API void aws_client_bootstrap_destroy(struct aws_client_bootstrap *bootstrap);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added
@@ -205,16 +208,16 @@ AWS_IO_API int aws_client_bootstrap_new_tls_socket_channel(
  * Initializes the server bootstrap with `allocator` and `el_group`. This object manages listeners, server connections,
  * and channels.
  */
-AWS_IO_API int aws_server_bootstrap_init(
-    struct aws_server_bootstrap *bootstrap,
+AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_allocator *allocator,
     struct aws_event_loop_group *el_group);
 
 /**
  * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak.
+ * calling this if you don't want a memory leak. Note that the memory will not be freed right away if there are
+ * outstanding channels or channel events
  */
-AWS_IO_API void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap);
+AWS_IO_API void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added
