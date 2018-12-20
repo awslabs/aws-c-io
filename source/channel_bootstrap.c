@@ -86,8 +86,27 @@ static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_grou
     aws_mutex_unlock(&mutex);
 }
 
-int aws_client_bootstrap_init(
-    struct aws_client_bootstrap *bootstrap,
+void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
+    assert(bootstrap);
+    if (bootstrap->host_resolver && bootstrap->owns_resolver) {
+        aws_host_resolver_clean_up(bootstrap->host_resolver);
+        aws_mem_release(bootstrap->allocator, bootstrap->host_resolver);
+    }
+
+    aws_mem_release(bootstrap->allocator, bootstrap);
+}
+
+void s_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
+    aws_atomic_fetch_add(&bootstrap->ref_count, 1);
+}
+
+void s_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
+    if (aws_atomic_fetch_sub(&bootstrap->ref_count, 1) == 1) {
+        s_client_bootstrap_destroy_impl(bootstrap);
+    }
+}
+
+struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
     struct aws_event_loop_group *el_group,
     struct aws_host_resolver *host_resolver,
@@ -95,9 +114,11 @@ int aws_client_bootstrap_init(
     assert(allocator);
     assert(el_group);
 
+    struct aws_client_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_client_bootstrap));
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
+    aws_atomic_init_int(&bootstrap->ref_count, 1);
 
     if (host_resolver) {
         bootstrap->host_resolver = host_resolver;
@@ -105,12 +126,12 @@ int aws_client_bootstrap_init(
     } else {
         bootstrap->host_resolver = aws_mem_acquire(allocator, sizeof(struct aws_host_resolver));
         if (!bootstrap->host_resolver) {
-            return AWS_OP_ERR;
+            goto handle_error;
         }
 
         if (aws_host_resolver_init_default(bootstrap->host_resolver, allocator, MAX_HOST_RESOLVER_ENTRIES)) {
             aws_mem_release(allocator, bootstrap->host_resolver);
-            return AWS_OP_ERR;
+            goto handle_error;
         }
 
         bootstrap->owns_resolver = true;
@@ -126,7 +147,13 @@ int aws_client_bootstrap_init(
         };
     }
 
-    return AWS_OP_SUCCESS;
+    return bootstrap;
+handle_error:
+    if (bootstrap) {
+        s_client_bootstrap_destroy_impl(bootstrap);
+    }
+
+    return NULL;
 }
 
 int aws_client_bootstrap_set_alpn_callback(
@@ -138,15 +165,12 @@ int aws_client_bootstrap_set_alpn_callback(
     return AWS_OP_SUCCESS;
 }
 
-void aws_client_bootstrap_clean_up(struct aws_client_bootstrap *bootstrap) {
+void aws_client_bootstrap_destroy(struct aws_client_bootstrap *bootstrap) {
+    /* if destroy is being called, the user intends to not use the bootstrap anymore
+     * so we clean up the thread local state while the event loop thread is
+     * still alive */
     s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
-
-    if (bootstrap->host_resolver && bootstrap->owns_resolver) {
-        aws_host_resolver_clean_up(bootstrap->host_resolver);
-        aws_mem_release(bootstrap->allocator, bootstrap->host_resolver);
-    }
-
-    AWS_ZERO_STRUCT(*bootstrap);
+    s_client_bootstrap_release(bootstrap);
 }
 
 struct client_channel_data {
@@ -185,10 +209,12 @@ void s_connection_args_release(struct client_connection_args *args) {
     assert(args);
     assert(args->ref_count > 0);
     if (--args->ref_count == 0) {
+        struct aws_allocator *allocator = args->bootstrap->allocator;
+        s_client_bootstrap_release(args->bootstrap);
         if (args->host_name) {
             aws_string_destroy(args->host_name);
         }
-        aws_mem_release(args->bootstrap->allocator, args);
+        aws_mem_release(allocator, args);
     }
 }
 
@@ -517,6 +543,7 @@ static inline int s_new_client_channel(
     AWS_ZERO_STRUCT(*client_connection_args);
     client_connection_args->user_data = user_data;
     client_connection_args->bootstrap = bootstrap;
+    s_client_bootstrap_acquire(client_connection_args->bootstrap);
     client_connection_args->setup_callback = setup_callback;
     client_connection_args->shutdown_callback = shutdown_callback;
     client_connection_args->outgoing_options = *options;
@@ -638,23 +665,43 @@ int aws_client_bootstrap_new_socket_channel(
         bootstrap, host_name, port, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
-int aws_server_bootstrap_init(
-    struct aws_server_bootstrap *bootstrap,
+void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
+    assert(bootstrap);
+    aws_mem_release(bootstrap->allocator, bootstrap);
+}
+
+void s_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap) {
+    aws_atomic_fetch_add(&bootstrap->ref_count, 1);
+}
+
+void s_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
+    if (aws_atomic_fetch_sub(&bootstrap->ref_count, 1) == 1) {
+        s_server_bootstrap_destroy_impl(bootstrap);
+    }
+}
+
+struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_allocator *allocator,
     struct aws_event_loop_group *el_group) {
     assert(allocator);
     assert(el_group);
 
+    struct aws_server_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_server_bootstrap));
+
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
+    aws_atomic_init_int(&bootstrap->ref_count, 1);
 
-    return AWS_OP_SUCCESS;
+    return bootstrap;
 }
 
-void aws_server_bootstrap_clean_up(struct aws_server_bootstrap *bootstrap) {
+void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap) {
+    /* if destroy is being called, the user intends to not use the bootstrap anymore
+     * so we clean up the thread local state while the event loop thread is
+     * still alive */
     s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
-    AWS_ZERO_STRUCT(*bootstrap);
+    s_server_bootstrap_release(bootstrap);
 }
 
 struct server_connection_args {
@@ -925,6 +972,7 @@ static inline struct aws_socket *s_server_new_socket_listener(
     AWS_ZERO_STRUCT(*server_connection_args);
     server_connection_args->user_data = user_data;
     server_connection_args->bootstrap = bootstrap;
+    s_server_bootstrap_acquire(server_connection_args->bootstrap);
     server_connection_args->shutdown_callback = shutdown_callback;
     server_connection_args->incoming_callback = incoming_callback;
     server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
@@ -1030,6 +1078,7 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
     aws_socket_stop_accept(listener);
     aws_socket_clean_up(listener);
     aws_mem_release(bootstrap->allocator, server_connection_args);
+    s_server_bootstrap_release(bootstrap);
     return AWS_OP_SUCCESS;
 }
 

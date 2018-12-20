@@ -106,6 +106,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static void s_free_io_event_resources(void *user_data);
 static void s_event_thread_main(void *user_data);
 
 void aws_overlapped_init(
@@ -136,6 +137,7 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .connect_to_io_completion_port = s_connect_to_io_completion_port,
     .is_on_callers_thread = s_is_event_thread,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
+    .free_io_event_resources = s_free_io_event_resources,
 };
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
@@ -539,6 +541,11 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     }
 
     return AWS_OP_ERR;
+}
+
+static void s_free_io_event_resources(void *user_data) {
+    /* iocp has no additional data stored to handle I/O events */
+    (void)user_data;
 }
 
 /* Called from event-thread */

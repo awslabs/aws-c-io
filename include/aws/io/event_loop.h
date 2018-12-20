@@ -84,6 +84,7 @@ struct aws_event_loop_vtable {
         void *user_data);
 #endif
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+    void (*free_io_event_resources)(void *user_data);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -298,6 +299,14 @@ int aws_event_loop_subscribe_to_io_events(
  */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+/**
+ * Cleans up resources (user_data) associated with the I/O eventing subsystem for a given handle. This should only
+ * ever be necessary in the case where you are cleaning up an event loop during shutdown and its thread has already
+ * been joined.
+ */
+AWS_IO_API
+void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
 /**
  * Returns true if the event loop's thread is the same thread that called this function, otherwise false.

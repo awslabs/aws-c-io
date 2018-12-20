@@ -340,7 +340,11 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
 
     if (socket_args->socket) {
         socket_args->socket->state = TIMEDOUT;
-        aws_event_loop_unsubscribe_from_io_events(socket_args->socket->event_loop, &socket_args->socket->io_handle);
+        if (status == AWS_TASK_STATUS_RUN_READY) {
+            aws_event_loop_unsubscribe_from_io_events(socket_args->socket->event_loop, &socket_args->socket->io_handle);
+        } else {
+            aws_event_loop_free_io_event_resources(socket_args->socket->event_loop, &socket_args->socket->io_handle);
+        }
         socket_args->socket->event_loop = NULL;
         struct posix_socket *socket_impl = socket_args->socket->impl;
         socket_impl->currently_subscribed = false;
