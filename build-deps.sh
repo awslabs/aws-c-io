@@ -92,3 +92,4 @@ install_dep aws-c-common
 if [ "$OSTYPE" != "darwin" ]; then
     install_dep s2n
 fi
+
