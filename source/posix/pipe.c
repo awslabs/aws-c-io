@@ -95,7 +95,7 @@ static int s_raise_posix_error(int err) {
     return aws_raise_error(s_translate_posix_error(err));
 }
 
-int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
+AWS_IO_API int aws_open_nonblocking_posix_pipe(int pipe_fds[2]) {
     int err;
 
 #if HAVE_PIPE2

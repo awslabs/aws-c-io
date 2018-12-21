@@ -36,6 +36,7 @@ else ()
     add_test_case(event_loop_readable_event_on_2nd_time_readable)
     add_test_case(event_loop_no_events_after_unsubscribe)
 endif ()
+
 add_test_case(event_loop_stop_then_restart)
 add_test_case(event_loop_group_setup_and_shutdown)
 add_test_case(event_loop_group_counter_overflow)
