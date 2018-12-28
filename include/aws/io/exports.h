@@ -17,7 +17,7 @@
  */
 
 #if defined(USE_WINDOWS_DLL_SEMANTICS) || defined(WIN32)
-#    ifdef USE_IMPORT_EXPORT
+#    ifdef AWS_IO_USE_IMPORT_EXPORT
 #        ifdef AWS_IO_EXPORTS
 #            define AWS_IO_API __declspec(dllexport)
 #        else
