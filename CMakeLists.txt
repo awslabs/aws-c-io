@@ -139,10 +139,6 @@ aws_prepare_symbol_visibility_args(${CMAKE_PROJECT_NAME} "AWS_IO")
 
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 
-# We are not ABI stable yet
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
-
 if (USE_IO_COMPLETION_PORTS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
 endif ()
@@ -186,3 +182,4 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
 
 include(CTest)
 add_subdirectory(tests)
+
