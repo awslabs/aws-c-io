@@ -5,6 +5,7 @@ project(aws-c-io C)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_INSTALL_PREFIX}/lib/cmake")
 
 include(AwsCFlags)
+include(AwsSharedLibSetup)
 include(AwsSanitizers)
 
 option(BUILD_RELOCATABLE_BINARIES
@@ -134,16 +135,13 @@ file(GLOB IO_SRC
 
 add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${CMAKE_PROJECT_NAME})
+aws_prepare_symbol_visibility_args(${CMAKE_PROJECT_NAME} "AWS_IO")
+
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 
 # We are not ABI stable yet
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
-
-if (BUILD_SHARED_LIBS)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_IO_USE_IMPORT_EXPORT")
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE "-DAWS_IO_EXPORTS")
-endif()
 
 if (USE_IO_COMPLETION_PORTS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
@@ -168,26 +166,23 @@ target_include_directories(${CMAKE_PROJECT_NAME} PUBLIC
 find_package(aws-c-common REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC AWS::aws-c-common ${PLATFORM_LIBS})
 
-install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io")
-install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing")
+aws_prepare_shared_lib_exports(${CMAKE_PROJECT_NAME})
 
-install(
-        TARGETS ${CMAKE_PROJECT_NAME}
-        EXPORT ${CMAKE_PROJECT_NAME}-targets
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
-)
+install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io" COMPONENT Development)
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing" COMPONENT Development)
 
 install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/"
-        NAMESPACE AWS::)
+        NAMESPACE AWS::
+        COMPONENT Development)
 
 configure_file("cmake/${CMAKE_PROJECT_NAME}-config.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
         @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
-        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/")
+        DESTINATION "${CMAKE_INSTALL_PREFIX}/lib/${CMAKE_PROJECT_NAME}/cmake/"
+        COMPONENT Development)
 
 include(CTest)
 add_subdirectory(tests)
