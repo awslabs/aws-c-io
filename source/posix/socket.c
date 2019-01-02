@@ -482,18 +482,12 @@ int aws_socket_connect(
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
-            /* schedule a task to run at the connect timeout interval, if this task runs before the connect
-             * happens, we consider that a timeout. */
-            uint64_t timeout = 0;
-            aws_event_loop_current_clock_time(event_loop, &timeout);
-
-            timeout += aws_timestamp_convert(
-                socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-            aws_event_loop_schedule_task_future(event_loop, &socket_impl->connect_args->task, timeout);
+            /* cache the timeout task; it is possible for the IO subscription to come back virtually immediately
+             * and null out the connect args */
+            struct aws_task *timeout_task = &socket_impl->connect_args->task;
 
             socket_impl->currently_subscribed = true;
-            /* This event is for when the connection finishes. (the fd will flip writable). This must come
-             * after the timeout task is scheduled, because it can complete nearly imediately */
+            /* This event is for when the connection finishes. (the fd will flip writable). */
             if (aws_event_loop_subscribe_to_io_events(
                     event_loop,
                     &socket->io_handle,
@@ -504,6 +498,14 @@ int aws_socket_connect(
                 socket->event_loop = NULL;
                 goto err_clean_up;
             }
+
+            /* schedule a task to run at the connect timeout interval, if this task runs before the connect
+             * happens, we consider that a timeout. */
+            uint64_t timeout = 0;
+            aws_event_loop_current_clock_time(event_loop, &timeout);
+            timeout += aws_timestamp_convert(
+                socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
         } else {
             int aws_error = s_determine_socket_error(error_code);
             aws_raise_error(aws_error);
