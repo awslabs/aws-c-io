@@ -161,7 +161,7 @@ static int s_raise_last_windows_error() {
 
 AWS_THREAD_LOCAL uint32_t tl_unique_name_counter = 0;
 
-int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
+AWS_IO_API int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
     /* For local pipes, name should be unique per-machine.
      * Mix together several sources that should should lead to something unique. */
 
