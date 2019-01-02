@@ -89,6 +89,6 @@ fi
 mkdir -p $deps_dir
 
 install_dep aws-c-common
-if [ "$(uname)" != "Darwin" ]; then
+if [ "$OSTYPE" != "darwin" ]; then
     install_dep s2n
 fi
