@@ -338,6 +338,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
 
     struct posix_socket_connect_args *socket_args = args;
 
+    /* successful connection will have nulled out connect_args->socket */
     if (socket_args->socket) {
         socket_args->socket->state = TIMEDOUT;
         if (status == AWS_TASK_STATUS_RUN_READY) {
@@ -481,6 +482,10 @@ int aws_socket_connect(
     if (error_code) {
         error_code = errno;
         if (error_code == EINPROGRESS || error_code == EALREADY) {
+            /* cache the timeout task; it is possible for the IO subscription to come back virtually immediately
+             * and null out the connect args */
+            struct aws_task *timeout_task = &socket_impl->connect_args->task;
+
             socket_impl->currently_subscribed = true;
             /* This event is for when the connection finishes. (the fd will flip writable). */
             if (aws_event_loop_subscribe_to_io_events(
@@ -494,14 +499,13 @@ int aws_socket_connect(
                 goto err_clean_up;
             }
 
-            uint64_t timeout = 0;
-            aws_event_loop_current_clock_time(event_loop, &timeout);
-
-            timeout += aws_timestamp_convert(
-                socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
             /* schedule a task to run at the connect timeout interval, if this task runs before the connect
              * happens, we consider that a timeout. */
-            aws_event_loop_schedule_task_future(event_loop, &socket_impl->connect_args->task, timeout);
+            uint64_t timeout = 0;
+            aws_event_loop_current_clock_time(event_loop, &timeout);
+            timeout += aws_timestamp_convert(
+                socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+            aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
         } else {
             int aws_error = s_determine_socket_error(error_code);
             aws_raise_error(aws_error);
