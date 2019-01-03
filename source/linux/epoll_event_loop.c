@@ -286,7 +286,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (is_first_task) {
         /* If the write fails because the buffer is full, we don't actually care because that means there's a pending
          * read on the pipe/eventfd and thus the event loop will end up checking to see if something has been queued.*/
-        write(epoll_loop->write_task_handle.data.fd, (void *)&counter, sizeof(counter));
+        ssize_t do_not_care = write(epoll_loop->write_task_handle.data.fd, (void *)&counter, sizeof(counter));
+        (void)do_not_care;
     }
 
     aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
