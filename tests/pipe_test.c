@@ -79,6 +79,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
     state->read_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
     assert(state->read_loop);
     err = aws_event_loop_run(state->read_loop);
+    (void)err;
     assert(!err);
 
     if (state->loop_setup == DIFFERENT_EVENT_LOOPS) {
@@ -269,7 +270,7 @@ static void s_schedule_task(
         if (err) {
             goto error;
         }
-        run_at_ns += aws_timestamp_convert(delay_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        run_at_ns += aws_timestamp_convert((uint64_t)delay_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
         aws_event_loop_schedule_task_future(loop, &wrapper->task, run_at_ns);
     }
