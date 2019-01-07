@@ -485,7 +485,7 @@ static inline int create_and_init_host_entry(
             &new_host_entry->a_records,
             new_host_entry->allocator,
             aws_hash_string,
-            aws_string_eq,
+            aws_hash_callback_string_eq,
             NULL,
             on_address_value_removed,
             config->max_ttl))) {
@@ -497,7 +497,7 @@ static inline int create_and_init_host_entry(
             &new_host_entry->aaaa_records,
             new_host_entry->allocator,
             aws_hash_string,
-            aws_string_eq,
+            aws_hash_callback_string_eq,
             NULL,
             on_address_value_removed,
             config->max_ttl))) {
@@ -509,7 +509,7 @@ static inline int create_and_init_host_entry(
             &new_host_entry->failed_connection_a_records,
             new_host_entry->allocator,
             aws_hash_string,
-            aws_string_eq,
+            aws_hash_callback_string_eq,
             NULL,
             on_address_value_removed,
             config->max_ttl))) {
@@ -521,7 +521,7 @@ static inline int create_and_init_host_entry(
             &new_host_entry->failed_connection_aaaa_records,
             new_host_entry->allocator,
             aws_hash_string,
-            aws_string_eq,
+            aws_hash_callback_string_eq,
             NULL,
             on_address_value_removed,
             config->max_ttl))) {
@@ -709,7 +709,7 @@ int aws_host_resolver_init_default(
             &default_host_resolver->host_table,
             allocator,
             aws_hash_string,
-            aws_string_eq,
+            aws_hash_callback_string_eq,
             on_host_key_removed,
             on_host_value_removed,
             max_entries)) {
