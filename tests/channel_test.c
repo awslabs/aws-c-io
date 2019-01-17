@@ -79,6 +79,7 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
+    printf("nuking channels\n");
     aws_channel_destroy(channel_1);
     aws_channel_destroy(channel_2);
     aws_event_loop_destroy(event_loop);

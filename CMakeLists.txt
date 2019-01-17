@@ -108,6 +108,17 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 
 endif()
 
+if (NOT USE_IO_COMPLETION_PORTS)
+    # LIBUV event_loop not supported under IOCP
+    option(USE_LIBUV "Use libuv event loop instead of kqueue/epoll" OFF)
+else ()
+    set(USE_LIBUV OFF)
+endif ()
+
+if (USE_LIBUV)
+    list(APPEND AWS_IO_OS_SRC "source/libuv/uv_event_loop.c")
+endif ()
+
 if (NOT CUSTOM_TLS)
     if (USE_S2N)
         set(TLS_STACK_DETERMINED ON)
@@ -151,6 +162,11 @@ set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
 if (USE_IO_COMPLETION_PORTS)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
+endif ()
+
+if (USE_LIBUV)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)
+    target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv_a)
 endif ()
 
 if (BUILD_JNI_BINDINGS)

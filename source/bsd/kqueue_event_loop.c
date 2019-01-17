@@ -127,7 +127,7 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .is_on_callers_thread = s_is_event_thread,
 };
 
-struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
 

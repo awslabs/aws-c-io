@@ -721,16 +721,21 @@ static int s_state_on_writable(struct thread_tester *tester) {
 
 static int s_state_fail_if_more_readable_events(struct thread_tester *tester) {
     PRINT_STATE();
+#ifdef AWS_TEST_EDGE_TRIGGERS
     ASSERT_INT_EQUALS(0, tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE]);
+#endif /* AWS_TEST_EDGE_TRIGGERS */
 
     return AWS_OP_SUCCESS;
 }
 
 static int s_state_fail_if_more_writable_events(struct thread_tester *tester) {
     PRINT_STATE();
+#ifdef AWS_TEST_EDGE_TRIGGERS
     ASSERT_INT_EQUALS(0, tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE]);
+#endif /* AWS_TEST_EDGE_TRIGGERS */
 
     return AWS_OP_SUCCESS;
+
 }
 
 /* Write some data to the pipe */
@@ -960,28 +965,3 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
-
-static int test_event_loop_group_counter_overflow(struct aws_allocator *allocator, void *ctx) {
-
-    (void)ctx;
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
-
-    struct aws_event_loop *first_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
-    ASSERT_NOT_NULL(first_loop);
-
-    /*this hurts my feelings to modify the internals of a struct to write a test, but it takes too long to
-     * increment UINT32_MAX times. */
-    event_loop_group.current_index = UINT32_MAX;
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
-    ASSERT_NOT_NULL(event_loop);
-    event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
-    ASSERT_NOT_NULL(event_loop);
-    ASSERT_PTR_EQUALS(first_loop, event_loop);
-
-    aws_event_loop_group_clean_up(&event_loop_group);
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(event_loop_group_counter_overflow, test_event_loop_group_counter_overflow)

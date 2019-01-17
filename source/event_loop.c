@@ -31,7 +31,7 @@ int aws_event_loop_group_init(
     assert(new_loop_fn);
 
     el_group->allocator = alloc;
-    el_group->current_index = 0;
+    aws_atomic_init_int(&el_group->current_index, 0);
 
     if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
         return AWS_OP_ERR;
@@ -113,15 +113,18 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
         return NULL;
     }
 
-    /* thread safety: we don't really care. It's always incrementing and it doesn't have to be perfect, this
-     * is only for load balancing across loops. Also, we don't care about the overflow. */
-    size_t index = el_group->current_index % loop_count;
-    el_group->current_index += 1;
+    /* thread safety: atomic CAS to ensure we got the best loop, and that the index is within bounds */
+    size_t old_index = 0;
+    size_t new_index = 0;
+    do {
+        old_index = aws_atomic_load_int(&el_group->current_index);
+        new_index = (old_index + 1) % loop_count;
+    } while(!aws_atomic_compare_exchange_int(&el_group->current_index, &old_index, new_index));
 
     struct aws_event_loop *loop = NULL;
 
     /* if the fetch fails, we don't really care since loop will be NULL and error code will already be set. */
-    aws_array_list_get_at(&el_group->event_loops, &loop, index);
+    aws_array_list_get_at(&el_group->event_loops, &loop, old_index);
     return loop;
 }
 
@@ -130,6 +133,14 @@ static void s_object_removed(void *value) {
     if (object->on_object_removed) {
         object->on_object_removed(object);
     }
+}
+
+struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+#ifdef AWS_USE_LIBUV
+    return aws_event_loop_new_libuv(alloc, clock);
+#else
+    return aws_event_loop_new_system(alloc, clock);
+#endif
 }
 
 int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock) {
