@@ -166,7 +166,11 @@ endif ()
 
 if (USE_LIBUV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)
-    target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv_a)
+    if (APPLE)
+        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv)
+    else ()
+        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv_a)
+    endif ()
 endif ()
 
 if (BUILD_JNI_BINDINGS)

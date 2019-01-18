@@ -34,6 +34,8 @@ struct libuv_loop {
     } ownership_specific;
 
     uv_idle_t task_runner_idle;
+    /* Send this to stop the event loop */
+    uv_async_t stop_thread_async;
 
     struct {
         struct aws_mutex mutex;
@@ -45,6 +47,10 @@ struct libuv_loop {
         struct aws_task_scheduler scheduler;
     } on_thread_data;
 };
+/* Requires that the event_loop and impl be allocated next to eachother */
+struct aws_event_loop *s_loop_from_impl(struct libuv_loop *impl) {
+    return (struct aws_event_loop *)((uint8_t *)impl - sizeof(struct aws_event_loop));
+}
 
 enum event_thread_state {
     EVENT_THREAD_STATE_READY_TO_RUN,
@@ -56,8 +62,6 @@ enum event_thread_state {
 struct libuv_owned {
     struct aws_thread thread;
     enum event_thread_state state;
-    /* Send this to stop the event loop */
-    uv_async_t stop_thread_async;
 };
 static struct libuv_owned *s_owned(struct libuv_loop *loop) {
     assert(loop->owns_uv_loop);
@@ -98,10 +102,8 @@ static void s_uv_close_handle(uv_handle_t *handle) {
         printf("Closing task_runner_idle\n");
     } else if (handle == (uv_handle_t *)&impl->cross_thread_data.schedule_tasks_async) {
         printf("Closing schedule_tasks_async\n");
-    } else if (impl->owns_uv_loop) {
-        if (handle == (uv_handle_t *)&s_owned(impl)->stop_thread_async) {
-            printf("Closing stop_thread_async\n");
-        }
+    } else if (handle == (uv_handle_t *)&impl->stop_thread_async) {
+        printf("Closing stop_thread_async\n");
     } else if (!impl->owns_uv_loop) {
         if (handle == (uv_handle_t *)&s_unowned(impl)->get_thread_id_async) {
             printf("Closing get_thread_id_async\n");
@@ -142,10 +144,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
 static void s_run_tasks(uv_idle_t *idle) {
     struct libuv_loop *impl = idle->data;
-
-    // printf("running tasks\n");
-
-    struct aws_event_loop *event_loop = (struct aws_event_loop *)((uint8_t *)impl - sizeof(struct aws_event_loop));
+    struct aws_event_loop *event_loop = s_loop_from_impl(impl);
 
     /* Run scheduled tasks */
     uint64_t now_ns = 0;
@@ -205,10 +204,15 @@ static void s_uv_async_schedule_tasks(uv_async_t *request) {
 static void s_uv_async_stop_loop(uv_async_t *request) {
     struct libuv_loop *impl = request->data;
     assert(impl);
+    struct aws_event_loop *event_loop = s_loop_from_impl(impl);
 
     s_owned(impl)->state = EVENT_THREAD_STATE_STOPPING;
     uv_close((uv_handle_t *)request, s_uv_close_handle);
-    uv_stop(impl->uv_loop);
+
+    /* Run scheduled tasks */
+    uint64_t now_ns = 0;
+    event_loop->clock(&now_ns);
+    aws_task_scheduler_run_all(&impl->on_thread_data.scheduler, now_ns);
 }
 
 static int s_run(struct aws_event_loop *event_loop) {
@@ -225,12 +229,12 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->task_runner_idle.data = impl;
     uv_idle_start(&impl->task_runner_idle, s_run_tasks);
 
+    /* Prep the stop async */
+    uv_async_init(impl->uv_loop, &impl->stop_thread_async, s_uv_async_stop_loop);
+    impl->stop_thread_async.data = impl;
+
     if (impl->owns_uv_loop) {
         assert(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
-
-        /* Prep the stop async */
-        uv_async_init(impl->uv_loop, &s_owned(impl)->stop_thread_async, s_uv_async_stop_loop);
-        s_owned(impl)->stop_thread_async.data = impl;
 
         if (aws_thread_launch(&s_owned(impl)->thread, &s_thread_loop, impl, NULL)) {
             return AWS_OP_ERR;
@@ -248,10 +252,8 @@ static int s_stop(struct aws_event_loop *event_loop) {
     }
     uv_close((uv_handle_t *)&impl->task_runner_idle, s_uv_close_handle);
 
-    if (impl->owns_uv_loop) {
-        if (uv_async_send(&s_owned(impl)->stop_thread_async)) {
-            return AWS_OP_ERR;
-        }
+    if (uv_async_send(&impl->stop_thread_async)) {
+        return AWS_OP_ERR;
     }
 
     uv_close((uv_handle_t *)&impl->cross_thread_data.schedule_tasks_async, s_uv_close_handle);
