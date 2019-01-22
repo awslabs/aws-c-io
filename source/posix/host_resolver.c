@@ -19,6 +19,8 @@
 
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 int aws_default_dns_resolve(
     struct aws_allocator *allocator,
