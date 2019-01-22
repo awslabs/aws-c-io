@@ -19,6 +19,12 @@
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+
+#if defined(__FreeBSD__) || defined(__NetBSD__)
+#    define __BSD_VISIBLE 1
+#    include <sys/types.h>
+#endif
+
 #include <sys/event.h>
 
 #include <assert.h>

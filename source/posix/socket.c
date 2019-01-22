@@ -25,6 +25,8 @@
 #include <fcntl.h>
 #include <netinet/tcp.h>
 #include <sys/errno.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #if defined(__MACH__)
