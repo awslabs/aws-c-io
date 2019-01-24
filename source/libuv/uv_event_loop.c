@@ -131,6 +131,11 @@ static void s_uv_poll_cb(uv_poll_t *handle, int status, int events) {
     struct handle_data *handle_data = handle->data;
     int aws_events = 0;
 
+    uv_os_fd_t fd = 0;
+    if (uv_fileno((uv_handle_t *)handle, &fd)) {
+        return;
+    }
+
     if (status >= 0) {
         if (events & UV_DISCONNECT) {
             aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
@@ -191,14 +196,21 @@ static void s_uv_close_timer(uv_handle_t *handle) {
     aws_mem_release(task->event_loop->alloc, task);
 }
 
+static void s_uv_close_timer_no_free(uv_handle_t *handle) {
+    struct task_data *task = handle->data;
+
+    handle->data = task->event_loop->impl_data;
+    s_uv_close_handle(handle);
+}
+
 static int s_running_tasks_destroy(void *context, struct aws_hash_element *element) {
 
     (void)context;
 
     struct task_data *task = element->value;
     aws_task_run(task->task, AWS_TASK_STATUS_CANCELED);
-    uv_timer_stop(&task->timer);
-    uv_close((uv_handle_t *)&task->timer, s_uv_close_timer);
+
+    aws_mem_release(task->event_loop->alloc, task);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE | AWS_COMMON_HASH_TABLE_ITER_DELETE;
 }
@@ -215,8 +227,6 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     /* Tasks in scheduler get cancelled*/
     aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_destroy, NULL);
-    /* Wait for all handles to close */
-    while (aws_atomic_load_int(&impl->num_open_handles)) { }
 
     aws_hash_table_clean_up(&impl->on_thread_data.running_tasks);
 
@@ -327,7 +337,7 @@ static int s_running_tasks_stop(void *context, struct aws_hash_element *element)
 
     /* Stop task and close the handle */
     uv_timer_stop(&task->timer);
-    uv_close((uv_handle_t *)&task->timer, s_uv_close_timer);
+    uv_close((uv_handle_t *)&task->timer, s_uv_close_timer_no_free);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
@@ -345,6 +355,7 @@ static void s_uv_async_stop_loop(uv_async_t *request) {
     while (it != end) {
         struct handle_data *handle_data = AWS_CONTAINER_OF(it, struct handle_data, open_subs_node);
         uv_poll_stop(&handle_data->poll);
+        uv_close((uv_handle_t *)&handle_data->poll, s_uv_close_sub);
 
         it = it->next;
     }
@@ -433,6 +444,9 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     if (impl->owns_uv_loop) {
         status = aws_thread_join(&s_owned(impl)->thread);
     }
+
+    /* Wait for all handles to close */
+    while (aws_atomic_load_int(&impl->num_open_handles)) { }
 
     return status;
 }
