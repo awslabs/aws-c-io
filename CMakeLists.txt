@@ -117,6 +117,8 @@ endif ()
 
 if (USE_LIBUV)
     list(APPEND AWS_IO_OS_SRC "source/libuv/uv_event_loop.c")
+    # Prefer static version if available
+    find_library(LIBUV_LIBRARY NAMES uv_a uv)
 endif ()
 
 if (NOT CUSTOM_TLS)
@@ -166,11 +168,7 @@ endif ()
 
 if (USE_LIBUV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)
-    if (APPLE)
-        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv)
-    else ()
-        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC uv_a)
-    endif ()
+    target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC ${LIBUV_LIBRARY})
 endif ()
 
 if (BUILD_JNI_BINDINGS)
