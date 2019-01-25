@@ -734,7 +734,7 @@ int aws_socket_start_accept(
     socket_impl->currently_subscribed = true;
 
     if (aws_event_loop_subscribe_to_io_events(
-            socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE, s_socket_accept_event, socket)) {
+            socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, s_socket_accept_event, socket)) {
         socket_impl->continue_accept = false;
         socket_impl->currently_subscribed = false;
         socket->event_loop = NULL;

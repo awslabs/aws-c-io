@@ -90,6 +90,7 @@ struct handle_data {
     aws_event_loop_on_event_fn *on_event;
     void *on_event_user_data;
 
+    uv_async_t poll_start_async;
     struct aws_linked_list_node open_subs_node;
 };
 
@@ -499,6 +500,26 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     }
 }
 
+static void s_uv_close_sub_async(uv_handle_t *handle) {
+
+    struct handle_data *handle_data = handle->data;
+    struct libuv_loop *impl = handle_data->event_loop->impl_data;
+
+    handle->data = impl;
+    s_uv_close_handle(handle);
+}
+
+static void s_uv_async_poll_start(uv_async_t *handle) {
+
+    struct handle_data *handle_data = handle->data;
+    struct libuv_loop *impl = handle_data->event_loop->impl_data;
+
+    uv_poll_init(impl->uv_loop, &handle_data->poll, handle_data->owner->data.fd);
+    uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb);
+
+    uv_close((uv_handle_t *)handle, s_uv_close_sub_async);
+}
+
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -524,10 +545,15 @@ static int s_subscribe_to_io_events(
     }
 
     AWS_ZERO_STRUCT(*handle_data);
+
+    handle_data->poll.data = handle_data;
     handle_data->owner = handle;
     handle_data->event_loop = event_loop;
     handle_data->on_event = on_event;
     handle_data->on_event_user_data = user_data;
+
+
+    aws_linked_list_push_back(&impl->on_thread_data.open_subscriptions, &handle_data->open_subs_node);
 
     handle->additional_data = handle_data;
 
@@ -539,23 +565,21 @@ static int s_subscribe_to_io_events(
         handle_data->uv_events |= UV_WRITABLE;
     }
 
-    if (uv_poll_init(impl->uv_loop, &handle_data->poll, handle->data.fd)) {
-        goto clean_up;
-    }
-    handle_data->poll.data = handle_data;
-    if (uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb)) {
-        goto clean_up;
-    }
+    if (s_is_on_callers_thread(event_loop)) {
+        /* If on UV thread, directly start sub */
+        uv_poll_init(impl->uv_loop, &handle_data->poll, handle_data->owner->data.fd);
+        uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb);
+    } else {
+        /* Otherwise, schedule async to do sub */
+        size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
+        printf("Opening subscription poll handle, now open: %zu\n", handles);
 
-    aws_linked_list_push_back(&impl->on_thread_data.open_subscriptions, &handle_data->open_subs_node);
+        handle_data->poll_start_async.data = handle_data;
+        uv_async_init(impl->uv_loop, &handle_data->poll_start_async, s_uv_async_poll_start);
+        uv_async_send(&handle_data->poll_start_async);
+    }
 
     return AWS_OP_SUCCESS;
-
-clean_up:
-
-    /* #TODO */
-
-    return AWS_OP_ERR;
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
