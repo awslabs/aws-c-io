@@ -37,6 +37,16 @@
 #    include <aws/io/pipe.h>
 #endif
 
+/* This isn't defined on ancient linux distros (breaking the builds).
+ * However, if this is a prebuild, we purposely build on an ancient system, but
+ * we want the kernel calls to still be the same as a modern build since that's likely the target of the application
+ * calling this code. Just define this if it isn't there already. GlibC and the kernel don't really care how the flag
+ * gets passed as long as it does.
+ */
+#ifndef EPOLLRDHUP
+#    define EPOLLRDHUP 0x2000
+#endif
+
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
@@ -99,6 +109,8 @@ enum {
     NANO_TO_MILLIS = 1000000,
 };
 
+int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
+
 /* Setup edge triggered epoll with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
@@ -143,10 +155,14 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     epoll_loop->write_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
     epoll_loop->read_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
 #else
+    int pipe_fds[2] = {0};
     /* this pipe is for task scheduling. */
-    if (aws_pipe_open(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle)) {
+    if (aws_open_nonblocking_posix_pipe(pipe_fds)) {
         goto clean_up_thread;
     }
+
+    epoll_loop->write_task_handle.data.fd = pipe_fds[1];
+    epoll_loop->read_task_handle.data.fd = pipe_fds[0];
 #endif
 
     if (aws_task_scheduler_init(&epoll_loop->scheduler, alloc)) {
@@ -166,7 +182,8 @@ clean_up_pipe:
     epoll_loop->write_task_handle.data.fd = -1;
     epoll_loop->read_task_handle.data.fd = -1;
 #else
-    aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
+    close(epoll_loop->read_task_handle.data.fd);
+    close(epoll_loop->write_task_handle.data.fd);
 #endif
 
 clean_up_thread:
@@ -210,7 +227,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     epoll_loop->write_task_handle.data.fd = -1;
     epoll_loop->read_task_handle.data.fd = -1;
 #else
-    aws_pipe_close(&epoll_loop->read_task_handle, &epoll_loop->write_task_handle);
+    close(epoll_loop->read_task_handle.data.fd);
+    close(epoll_loop->write_task_handle.data.fd);
 #endif
 
     close(epoll_loop->epoll_fd);
