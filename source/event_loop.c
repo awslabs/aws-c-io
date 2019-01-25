@@ -119,7 +119,7 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
     do {
         old_index = aws_atomic_load_int(&el_group->current_index);
         new_index = (old_index + 1) % loop_count;
-    } while(!aws_atomic_compare_exchange_int(&el_group->current_index, &old_index, new_index));
+    } while (!aws_atomic_compare_exchange_int(&el_group->current_index, &old_index, new_index));
 
     struct aws_event_loop *loop = NULL;
 

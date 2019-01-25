@@ -161,7 +161,10 @@ struct uv_loop_s;
  * Creates an instance of the libuv event loop implementation (from the provided uv_loop).
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_existing_libuv(struct aws_allocator *alloc, struct uv_loop_s *loop, aws_io_clock_fn *clock);
+struct aws_event_loop *aws_event_loop_existing_libuv(
+    struct aws_allocator *alloc,
+    struct uv_loop_s *loop,
+    aws_io_clock_fn *clock);
 #endif /* AWS_USE_LIBUV */
 
 /**

@@ -360,7 +360,8 @@ static int s_running_tasks_start(void *context, struct aws_hash_element *element
     struct task_data *task = element->value;
     struct libuv_loop *impl = context;
 
-    uv_timer_start(&task->timer, s_uv_task_timer_cb, s_timestamp_to_uv_millis(task->event_loop, task->task->timestamp), 0);
+    uv_timer_start(
+        &task->timer, s_uv_task_timer_cb, s_timestamp_to_uv_millis(task->event_loop, task->task->timestamp), 0);
 
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
@@ -421,7 +422,8 @@ clean_up:
 
     if (cleanup_polls) {
         struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
-        const struct aws_linked_list_node *open_subs_end = aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
+        const struct aws_linked_list_node *open_subs_end =
+            aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
         while (open_subs_it != open_subs_end) {
             struct handle_data *handle_data = AWS_CONTAINER_OF(open_subs_it, struct handle_data, open_subs_node);
 
@@ -460,7 +462,8 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     }
 
     /* Wait for all handles to close */
-    while (aws_atomic_load_int(&impl->num_open_handles)) { }
+    while (aws_atomic_load_int(&impl->num_open_handles)) {
+    }
 
     return status;
 }
