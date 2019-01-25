@@ -26,8 +26,12 @@
 #pragma GCC poison uv_queue_work
 
 struct libuv_loop {
+    /* The underlyign libuv loop */
     uv_loop_t *uv_loop;
+    /* True if the loop is created and pumped by us, false if someone else owns and pumps it */
     bool owns_uv_loop;
+
+    /* Contains data specific to the ownership of the loop */
     union {
         struct libuv_owned *uv_owned;
         struct libuv_unowned *uv_unowned;
@@ -35,13 +39,16 @@ struct libuv_loop {
 
     /* Send this to stop the event loop */
     uv_async_t stop_async;
-    /* Number of outstanding libuv handles */
+    /* Number of outstanding libuv handles. Must be 0 before closing the loop. */
     struct aws_atomic_var num_open_handles;
+    /* Send this when there are pending tasks to schedule */
+    uv_async_t schedule_tasks_async;
 
+    /* Data that may be manipulated across threads (while mutex is held) */
     struct {
         struct aws_mutex mutex;
+        /* A list of pending tasks that must be scheduled on the libuv event loop thread */
         struct aws_linked_list tasks_to_schedule;
-        uv_async_t schedule_tasks_async;
     } cross_thread_data;
 
     struct {
@@ -161,7 +168,7 @@ static void s_uv_close_handle(uv_handle_t *handle) {
         printf("Closing subscription handle\n");
     } else if (handle->type == UV_TIMER) {
         printf("Closing task handle\n");
-    } else if (handle == (uv_handle_t *)&impl->cross_thread_data.schedule_tasks_async) {
+    } else if (handle == (uv_handle_t *)&impl->schedule_tasks_async) {
         printf("Closing schedule_tasks_async\n");
     } else if (handle == (uv_handle_t *)&impl->stop_async) {
         printf("Closing stop_async\n");
@@ -365,33 +372,44 @@ static void s_uv_async_stop_loop(uv_async_t *request) {
     aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_stop, NULL);
 
     uv_close((uv_handle_t *)&impl->stop_async, s_uv_close_handle);
-    uv_close((uv_handle_t *)&impl->cross_thread_data.schedule_tasks_async, s_uv_close_handle);
+    uv_close((uv_handle_t *)&impl->schedule_tasks_async, s_uv_close_handle);
 }
 
 static int s_running_tasks_start(void *context, struct aws_hash_element *element) {
 
-    (void)context;
-
     struct task_data *task = element->value;
+    struct libuv_loop *impl = context;
 
     uv_timer_start(&task->timer, s_uv_task_timer_cb, s_timestamp_to_uv_millis(task->event_loop, task->task->timestamp), 0);
+
+    size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
+    printf("Opening subscription poll handle, now open: %zu\n", handles);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
 
 static int s_run(struct aws_event_loop *event_loop) {
+
+    bool cleanup_async_schedule_tasks = false;
+    bool cleanup_async_stop = false;
+    bool cleanup_polls = false;
+
     struct libuv_loop *impl = event_loop->impl_data;
 
-    if (uv_async_init(impl->uv_loop, &impl->cross_thread_data.schedule_tasks_async, s_uv_async_schedule_tasks)) {
+    impl->schedule_tasks_async.data = impl;
+    if (uv_async_init(impl->uv_loop, &impl->schedule_tasks_async, s_uv_async_schedule_tasks)) {
         return AWS_OP_ERR;
     }
-    impl->cross_thread_data.schedule_tasks_async.data = impl;
+    cleanup_async_schedule_tasks = true;
     size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
     printf("Opening schedule_tasks_async handle, now open: %zu\n", handles);
 
     /* Prep the stop async */
-    uv_async_init(impl->uv_loop, &impl->stop_async, s_uv_async_stop_loop);
     impl->stop_async.data = impl;
+    if (uv_async_init(impl->uv_loop, &impl->stop_async, s_uv_async_stop_loop)) {
+        goto clean_up;
+    }
+    cleanup_async_stop = true;
     handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
     printf("Opening stop_async handle, now open: %zu\n", handles);
 
@@ -403,18 +421,21 @@ static int s_run(struct aws_event_loop *event_loop) {
         if (uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb)) {
             goto clean_up;
         }
+        size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
+        printf("Opening subscription poll handle, now open: %zu\n", handles);
 
         open_subs_it = open_subs_it->next;
     }
+    cleanup_polls = true;
 
     /* Start all existing timers */
-    aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_start, NULL);
+    aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_start, impl);
 
     if (impl->owns_uv_loop) {
         assert(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
 
         if (aws_thread_launch(&s_owned(impl)->thread, &s_thread_loop, impl, NULL)) {
-            return AWS_OP_ERR;
+            goto clean_up;
         }
     }
 
@@ -422,7 +443,23 @@ static int s_run(struct aws_event_loop *event_loop) {
 
 clean_up:
 
-    /* #TODO */
+    if (cleanup_polls) {
+        struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
+        const struct aws_linked_list_node *open_subs_end = aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
+        while (open_subs_it != open_subs_end) {
+            struct handle_data *handle_data = AWS_CONTAINER_OF(open_subs_it, struct handle_data, open_subs_node);
+
+            uv_close((uv_handle_t *)&handle_data->poll, s_uv_close_sub);
+
+            open_subs_it = open_subs_it->next;
+        }
+    }
+    if (cleanup_async_stop) {
+        uv_close((uv_handle_t *)&impl->stop_async, s_uv_close_handle);
+    }
+    if (cleanup_async_schedule_tasks) {
+        uv_close((uv_handle_t *)&impl->cross_thread_data, s_uv_close_handle);
+    }
 
     return AWS_OP_ERR;
 }
@@ -465,7 +502,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     /* Signal thread that cross_thread_data has changed (unless it's been signaled already) */
     if (should_signal_thread) {
-        uv_async_send(&impl->cross_thread_data.schedule_tasks_async);
+        uv_async_send(&impl->schedule_tasks_async);
     }
 
     aws_mutex_unlock(&impl->cross_thread_data.mutex);
@@ -552,7 +589,6 @@ static int s_subscribe_to_io_events(
     handle_data->on_event = on_event;
     handle_data->on_event_user_data = user_data;
 
-
     aws_linked_list_push_back(&impl->on_thread_data.open_subscriptions, &handle_data->open_subs_node);
 
     handle->additional_data = handle_data;
@@ -572,7 +608,7 @@ static int s_subscribe_to_io_events(
     } else {
         /* Otherwise, schedule async to do sub */
         size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-        printf("Opening subscription poll handle, now open: %zu\n", handles);
+        printf("Opening subscription poll start async handle, now open: %zu\n", handles);
 
         handle_data->poll_start_async.data = handle_data;
         uv_async_init(impl->uv_loop, &handle_data->poll_start_async, s_uv_async_poll_start);
