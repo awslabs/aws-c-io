@@ -26,7 +26,7 @@
 #pragma GCC poison uv_queue_work
 
 struct libuv_loop {
-    /* The underlyign libuv loop */
+    /* The underlying libuv loop */
     uv_loop_t *uv_loop;
     /* True if the loop is created and pumped by us, false if someone else owns and pumps it */
     bool owns_uv_loop;
@@ -345,7 +345,7 @@ static void s_uv_async_stop_loop(uv_async_t *request) {
         uv_poll_stop(&handle_data->poll);
         uv_close((uv_handle_t *)&handle_data->poll, s_uv_close_sub);
 
-        it = it->next;
+        it = aws_linked_list_next(it);
     }
 
     /* Stop all open timers */
@@ -371,6 +371,7 @@ static int s_running_tasks_start(void *context, struct aws_hash_element *element
 static int s_run(struct aws_event_loop *event_loop) {
 
     bool cleanup_polls = false;
+    bool cleanup_timers = false;
 
     struct libuv_loop *impl = event_loop->impl_data;
 
@@ -403,6 +404,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     /* Start all existing timers */
     aws_hash_table_foreach(&impl->el_thread_data.running_tasks, s_running_tasks_start, impl);
+    cleanup_timers = true;
 
     if (impl->owns_uv_loop) {
         assert(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -415,7 +417,9 @@ static int s_run(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 
 clean_up:
-
+    if (cleanup_timers) {
+        aws_hash_table_foreach(&impl->el_thread_data.running_tasks, s_running_tasks_stop, impl);
+    }
     if (cleanup_polls) {
         struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->el_thread_data.open_subscriptions);
         const struct aws_linked_list_node *open_subs_end =
@@ -431,7 +435,7 @@ clean_up:
     if (impl->stop_async.loop) {
         uv_close((uv_handle_t *)&impl->stop_async, s_uv_close_handle);
     }
-    uv_close((uv_handle_t *)&impl->cross_thread_data, s_uv_close_handle);
+    uv_close((uv_handle_t *)&impl->schedule_tasks_async, s_uv_close_handle);
 
     return AWS_OP_ERR;
 }
