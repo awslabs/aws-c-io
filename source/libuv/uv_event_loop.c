@@ -56,7 +56,7 @@ struct libuv_loop {
         struct aws_hash_table running_tasks;
         /* List of aws_io_handle * */
         struct aws_linked_list open_subscriptions;
-    } on_thread_data;
+    } el_thread_data;
 };
 /* Requires that the event_loop and impl be allocated next to eachother */
 struct aws_event_loop *s_loop_from_impl(struct libuv_loop *impl) {
@@ -219,9 +219,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_wait_for_stop_completion(event_loop);
 
     /* Tasks in scheduler get cancelled*/
-    aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_destroy, NULL);
+    aws_hash_table_foreach(&impl->el_thread_data.running_tasks, s_running_tasks_destroy, NULL);
 
-    aws_hash_table_clean_up(&impl->on_thread_data.running_tasks);
+    aws_hash_table_clean_up(&impl->el_thread_data.running_tasks);
 
     if (impl->owns_uv_loop) {
         assert(!uv_loop_alive(impl->uv_loop));
@@ -262,7 +262,7 @@ static void s_uv_task_timer_cb(uv_timer_t *handle) {
 
     /* Remove handle from hash table to prevent future collsions when rescheduling */
     int was_present = 0;
-    aws_hash_table_remove(&impl->on_thread_data.running_tasks, task->task, NULL, &was_present);
+    aws_hash_table_remove(&impl->el_thread_data.running_tasks, task->task, NULL, &was_present);
     assert(was_present);
 
     /* Run the task */
@@ -289,7 +289,7 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
     uv_timer_start(&task_data->timer, s_uv_task_timer_cb, s_timestamp_to_uv_millis(event_loop, task->timestamp), 0);
 
     int was_created = 0;
-    aws_hash_table_put(&impl->on_thread_data.running_tasks, task, task_data, &was_created);
+    aws_hash_table_put(&impl->el_thread_data.running_tasks, task, task_data, &was_created);
     assert(was_created == 1);
 }
 
@@ -338,8 +338,8 @@ static void s_uv_async_stop_loop(uv_async_t *request) {
     s_owned(impl)->state = EVENT_THREAD_STATE_STOPPING;
 
     /* Stop all open subscriptions */
-    struct aws_linked_list_node *it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
-    const struct aws_linked_list_node *end = aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
+    struct aws_linked_list_node *it = aws_linked_list_begin(&impl->el_thread_data.open_subscriptions);
+    const struct aws_linked_list_node *end = aws_linked_list_end(&impl->el_thread_data.open_subscriptions);
     while (it != end) {
         struct handle_data *handle_data = AWS_CONTAINER_OF(it, struct handle_data, open_subs_node);
         uv_poll_stop(&handle_data->poll);
@@ -349,7 +349,7 @@ static void s_uv_async_stop_loop(uv_async_t *request) {
     }
 
     /* Stop all open timers */
-    aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_stop, NULL);
+    aws_hash_table_foreach(&impl->el_thread_data.running_tasks, s_running_tasks_stop, NULL);
 
     uv_close((uv_handle_t *)&impl->stop_async, s_uv_close_handle);
     uv_close((uv_handle_t *)&impl->schedule_tasks_async, s_uv_close_handle);
@@ -370,8 +370,6 @@ static int s_running_tasks_start(void *context, struct aws_hash_element *element
 
 static int s_run(struct aws_event_loop *event_loop) {
 
-    bool cleanup_async_schedule_tasks = false;
-    bool cleanup_async_stop = false;
     bool cleanup_polls = false;
 
     struct libuv_loop *impl = event_loop->impl_data;
@@ -380,7 +378,6 @@ static int s_run(struct aws_event_loop *event_loop) {
     if (uv_async_init(impl->uv_loop, &impl->schedule_tasks_async, s_uv_async_schedule_tasks)) {
         return AWS_OP_ERR;
     }
-    cleanup_async_schedule_tasks = true;
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Prep the stop async */
@@ -388,12 +385,11 @@ static int s_run(struct aws_event_loop *event_loop) {
     if (uv_async_init(impl->uv_loop, &impl->stop_async, s_uv_async_stop_loop)) {
         goto clean_up;
     }
-    cleanup_async_stop = true;
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Start all existing subscriptions */
-    struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
-    const struct aws_linked_list_node *open_subs_end = aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
+    struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->el_thread_data.open_subscriptions);
+    const struct aws_linked_list_node *open_subs_end = aws_linked_list_end(&impl->el_thread_data.open_subscriptions);
     while (open_subs_it != open_subs_end) {
         struct handle_data *handle_data = AWS_CONTAINER_OF(open_subs_it, struct handle_data, open_subs_node);
         if (uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb)) {
@@ -406,7 +402,7 @@ static int s_run(struct aws_event_loop *event_loop) {
     cleanup_polls = true;
 
     /* Start all existing timers */
-    aws_hash_table_foreach(&impl->on_thread_data.running_tasks, s_running_tasks_start, impl);
+    aws_hash_table_foreach(&impl->el_thread_data.running_tasks, s_running_tasks_start, impl);
 
     if (impl->owns_uv_loop) {
         assert(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -421,9 +417,9 @@ static int s_run(struct aws_event_loop *event_loop) {
 clean_up:
 
     if (cleanup_polls) {
-        struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
+        struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->el_thread_data.open_subscriptions);
         const struct aws_linked_list_node *open_subs_end =
-            aws_linked_list_end(&impl->on_thread_data.open_subscriptions);
+            aws_linked_list_end(&impl->el_thread_data.open_subscriptions);
         while (open_subs_it != open_subs_end) {
             struct handle_data *handle_data = AWS_CONTAINER_OF(open_subs_it, struct handle_data, open_subs_node);
 
@@ -432,12 +428,10 @@ clean_up:
             open_subs_it = open_subs_it->next;
         }
     }
-    if (cleanup_async_stop) {
+    if (impl->stop_async.loop) {
         uv_close((uv_handle_t *)&impl->stop_async, s_uv_close_handle);
     }
-    if (cleanup_async_schedule_tasks) {
-        uv_close((uv_handle_t *)&impl->cross_thread_data, s_uv_close_handle);
-    }
+    uv_close((uv_handle_t *)&impl->cross_thread_data, s_uv_close_handle);
 
     return AWS_OP_ERR;
 }
@@ -500,13 +494,13 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     struct libuv_loop *impl = event_loop->impl_data;
 
     struct aws_hash_element *elem = NULL;
-    aws_hash_table_find(&impl->on_thread_data.running_tasks, task, &elem);
+    aws_hash_table_find(&impl->el_thread_data.running_tasks, task, &elem);
     if (elem) {
         struct task_data *task_data = elem->value;
 
         /* Remove handle from hash table to prevent future collsions when rescheduling */
         int was_present = 0;
-        aws_hash_table_remove(&impl->on_thread_data.running_tasks, task_data->task, NULL, &was_present);
+        aws_hash_table_remove(&impl->el_thread_data.running_tasks, task_data->task, NULL, &was_present);
         assert(was_present);
 
         aws_task_run(task_data->task, AWS_TASK_STATUS_CANCELED);
@@ -567,7 +561,7 @@ static int s_subscribe_to_io_events(
     handle_data->on_event = on_event;
     handle_data->on_event_user_data = user_data;
 
-    aws_linked_list_push_back(&impl->on_thread_data.open_subscriptions, &handle_data->open_subs_node);
+    aws_linked_list_push_back(&impl->el_thread_data.open_subscriptions, &handle_data->open_subs_node);
 
     handle->additional_data = handle_data;
 
@@ -651,14 +645,9 @@ static int s_libuv_loop_init(
     uv_loop_t *uv_loop,
     aws_io_clock_fn *clock) {
 
-    bool clean_up_event_loop_base = false;
-    bool clean_up_mutex = false;
-
-    int err = aws_event_loop_init_base(event_loop, alloc, clock);
-    if (err) {
-        goto clean_up;
+    if (aws_event_loop_init_base(event_loop, alloc, clock)) {
+        return AWS_OP_ERR;
     }
-    clean_up_event_loop_base = true;
 
     impl->uv_loop = uv_loop;
     aws_atomic_init_int(&impl->num_open_handles, 0);
@@ -667,15 +656,14 @@ static int s_libuv_loop_init(
     if (aws_mutex_init(&impl->cross_thread_data.mutex)) {
         goto clean_up;
     }
-    clean_up_mutex = true;
 
     aws_linked_list_init(&impl->cross_thread_data.tasks_to_schedule);
 
     /* Init on-thread data */
-    if (aws_hash_table_init(&impl->on_thread_data.running_tasks, alloc, 5, aws_hash_ptr, aws_ptr_eq, NULL, NULL)) {
+    if (aws_hash_table_init(&impl->el_thread_data.running_tasks, alloc, 5, aws_hash_ptr, aws_ptr_eq, NULL, NULL)) {
         goto clean_up;
     }
-    aws_linked_list_init(&impl->on_thread_data.open_subscriptions);
+    aws_linked_list_init(&impl->el_thread_data.open_subscriptions);
 
     event_loop->impl_data = impl;
     event_loop->vtable = &s_libuv_vtable;
@@ -683,22 +671,14 @@ static int s_libuv_loop_init(
     return AWS_OP_SUCCESS;
 
 clean_up:
-    if (clean_up_mutex) {
-        aws_mutex_clean_up(&impl->cross_thread_data.mutex);
-    }
-    if (clean_up_event_loop_base) {
-        aws_event_loop_clean_up_base(event_loop);
-    }
+    aws_mutex_clean_up(&impl->cross_thread_data.mutex);
+    aws_event_loop_clean_up_base(event_loop);
     return AWS_OP_ERR;
 }
 
 struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     assert(alloc);
     assert(clock);
-
-    bool clean_up_event_loop_mem = false;
-    bool clean_up_uv = false;
-    bool clean_up_thread = false;
 
     struct aws_event_loop *event_loop = NULL;
     struct libuv_loop *impl = NULL;
@@ -719,7 +699,6 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     if (!event_loop) {
         return NULL;
     }
-    clean_up_event_loop_mem = true;
 
     AWS_ZERO_STRUCT(*event_loop);
     AWS_ZERO_STRUCT(*impl);
@@ -733,12 +712,10 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     if (uv_loop_init(impl->uv_loop)) {
         goto clean_up;
     }
-    clean_up_uv = true;
 
     if (aws_thread_init(&owned->thread, alloc)) {
         goto clean_up;
     }
-    clean_up_thread = true;
 
     if (s_libuv_loop_init(event_loop, alloc, impl, uv_loop, clock)) {
         goto clean_up;
@@ -747,15 +724,13 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     return event_loop;
 
 clean_up:
-    if (clean_up_thread) {
+    if (owned->thread.thread_id) {
         aws_thread_clean_up(&owned->thread);
     }
-    if (clean_up_uv) {
+    if (impl->uv_loop) {
         uv_loop_close(impl->uv_loop);
     }
-    if (clean_up_event_loop_mem) {
-        aws_mem_release(alloc, event_loop);
-    }
+    aws_mem_release(alloc, event_loop);
 
     return NULL;
 }
@@ -775,8 +750,6 @@ struct aws_event_loop *aws_event_loop_existing_libuv(
     assert(alloc);
     assert(clock);
 
-    bool clean_up_event_loop_mem = false;
-
     struct aws_event_loop *event_loop = NULL;
     struct libuv_loop *impl = NULL;
     struct libuv_unowned *unowned = NULL;
@@ -793,7 +766,6 @@ struct aws_event_loop *aws_event_loop_existing_libuv(
     if (!event_loop) {
         return NULL;
     }
-    clean_up_event_loop_mem = true;
 
     AWS_ZERO_STRUCT(*event_loop);
     AWS_ZERO_STRUCT(*impl);
@@ -814,9 +786,7 @@ struct aws_event_loop *aws_event_loop_existing_libuv(
     return event_loop;
 
 clean_up:
-    if (clean_up_event_loop_mem) {
-        aws_mem_release(alloc, event_loop);
-    }
+    aws_mem_release(alloc, event_loop);
 
     return NULL;
 }
