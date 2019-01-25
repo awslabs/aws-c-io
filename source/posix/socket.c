@@ -36,6 +36,10 @@
 #    define NO_SIGNAL MSG_NOSIGNAL
 #endif
 
+#ifndef O_CLOEXEC
+#    define O_CLOEXEC 02000000
+#endif
+
 /* other than CONNECTED_READ | CONNECTED_WRITE
  * a socket is only in one of these states at a time. */
 enum socket_state {

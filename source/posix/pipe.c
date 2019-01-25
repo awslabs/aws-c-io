@@ -33,6 +33,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifndef O_CLOEXEC
+#    define O_CLOEXEC 02000000
+#endif
+
 struct read_end_impl {
     struct aws_allocator *alloc;
     struct aws_io_handle handle;
