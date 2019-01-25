@@ -164,22 +164,7 @@ static void s_uv_poll_cb(uv_poll_t *handle, int status, int events) {
 static void s_uv_close_handle(uv_handle_t *handle) {
     struct libuv_loop *impl = handle->data;
 
-    if (handle->type == UV_POLL) {
-        printf("Closing subscription handle\n");
-    } else if (handle->type == UV_TIMER) {
-        printf("Closing task handle\n");
-    } else if (handle == (uv_handle_t *)&impl->schedule_tasks_async) {
-        printf("Closing schedule_tasks_async\n");
-    } else if (handle == (uv_handle_t *)&impl->stop_async) {
-        printf("Closing stop_async\n");
-    } else if (!impl->owns_uv_loop) {
-        if (handle == (uv_handle_t *)&s_unowned(impl)->get_thread_id_async) {
-            printf("Closing get_thread_id_async\n");
-        }
-    }
-
-    size_t open_handles = aws_atomic_fetch_sub(&impl->num_open_handles, 1) - 1;
-    printf("There are now %zu open handles\n", open_handles);
+    aws_atomic_fetch_sub(&impl->num_open_handles, 1);
 }
 
 /* Handles opened in s_subscribe_to_io_events have a different data pointer, so we need a wrapper */
@@ -268,8 +253,6 @@ static void s_thread_loop(void *args) {
         uv_run(impl->uv_loop, UV_RUN_ONCE);
     }
 
-    printf("Stopping loop, no more uv runs\n");
-
     s_owned(impl)->state = EVENT_THREAD_STATE_READY_TO_RUN;
 }
 
@@ -293,10 +276,7 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
 
     struct aws_event_loop *event_loop = s_loop_from_impl(impl);
 
-    size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-    printf("Opening task timer handle, now open: %zu\n", handles);
-
-    assert(handles < 1000);
+    aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Allocate and initalize timer */
     struct task_data *task_data = aws_mem_acquire(event_loop->alloc, sizeof(struct task_data));
@@ -382,8 +362,7 @@ static int s_running_tasks_start(void *context, struct aws_hash_element *element
 
     uv_timer_start(&task->timer, s_uv_task_timer_cb, s_timestamp_to_uv_millis(task->event_loop, task->task->timestamp), 0);
 
-    size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-    printf("Opening subscription poll handle, now open: %zu\n", handles);
+    aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     return AWS_COMMON_HASH_TABLE_ITER_CONTINUE;
 }
@@ -401,8 +380,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         return AWS_OP_ERR;
     }
     cleanup_async_schedule_tasks = true;
-    size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-    printf("Opening schedule_tasks_async handle, now open: %zu\n", handles);
+    aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Prep the stop async */
     impl->stop_async.data = impl;
@@ -410,8 +388,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         goto clean_up;
     }
     cleanup_async_stop = true;
-    handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-    printf("Opening stop_async handle, now open: %zu\n", handles);
+    aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Start all existing subscriptions */
     struct aws_linked_list_node *open_subs_it = aws_linked_list_begin(&impl->on_thread_data.open_subscriptions);
@@ -421,8 +398,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         if (uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb)) {
             goto clean_up;
         }
-        size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-        printf("Opening subscription poll handle, now open: %zu\n", handles);
+        aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
         open_subs_it = open_subs_it->next;
     }
@@ -573,8 +549,7 @@ static int s_subscribe_to_io_events(
 
     struct libuv_loop *impl = event_loop->impl_data;
 
-    size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-    printf("Opening subscription poll handle, now open: %zu\n", handles);
+    aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
     if (!handle_data) {
@@ -607,8 +582,7 @@ static int s_subscribe_to_io_events(
         uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb);
     } else {
         /* Otherwise, schedule async to do sub */
-        size_t handles = aws_atomic_fetch_add(&impl->num_open_handles, 1) + 1;
-        printf("Opening subscription poll start async handle, now open: %zu\n", handles);
+        aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
         handle_data->poll_start_async.data = handle_data;
         uv_async_init(impl->uv_loop, &handle_data->poll_start_async, s_uv_async_poll_start);

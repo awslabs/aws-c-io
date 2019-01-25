@@ -735,7 +735,6 @@ static int s_state_fail_if_more_writable_events(struct thread_tester *tester) {
 #endif /* AWS_TEST_EDGE_TRIGGERS */
 
     return AWS_OP_SUCCESS;
-
 }
 
 /* Write some data to the pipe */
