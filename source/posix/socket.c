@@ -36,6 +36,12 @@
 #    define NO_SIGNAL MSG_NOSIGNAL
 #endif
 
+/* This isn't defined on ancient linux distros (breaking the builds).
+ * However, if this is a prebuild, we purposely build on an ancient system, but
+ * we want the kernel calls to still be the same as a modern build since that's likely the target of the application
+ * calling this code. Just define this if it isn't there already. GlibC and the kernel don't really care how the flag
+ * gets passed as long as it does.
+ */
 #ifndef O_CLOEXEC
 #    define O_CLOEXEC 02000000
 #endif
