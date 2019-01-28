@@ -396,6 +396,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     impl->pending_tasks.schedule_async.data = impl;
     if (uv_async_init(impl->uv_loop, &impl->pending_tasks.schedule_async, s_uv_async_schedule_tasks)) {
+        aws_mutex_unlock(&impl->active_thread_data.mutex);
         return AWS_OP_ERR;
     }
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
