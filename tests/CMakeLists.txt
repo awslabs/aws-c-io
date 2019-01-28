@@ -39,7 +39,6 @@ endif ()
 
 add_test_case(event_loop_stop_then_restart)
 add_test_case(event_loop_group_setup_and_shutdown)
-add_test_case(event_loop_group_counter_overflow)
 
 add_test_case(local_socket_communication)
 add_test_case(tcp_socket_communication)
@@ -111,6 +110,11 @@ add_test_case(alpn_error_creating_handler)
 
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
+
+# libuv is level triggered, so don't test edge trigger-ness
+if (NOT USE_LIBUV)
+    target_compile_definitions(${TEST_BINARY_NAME} PRIVATE AWS_TEST_EDGE_TRIGGERS=1)
+endif ()
 
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD

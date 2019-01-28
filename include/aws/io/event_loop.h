@@ -16,6 +16,7 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/common/atomics.h>
 #include <aws/common/hash_table.h>
 #include <aws/io/io.h>
 
@@ -111,7 +112,7 @@ typedef struct aws_event_loop *(
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
     struct aws_array_list event_loops;
-    volatile uint32_t current_index;
+    struct aws_atomic_var current_index;
 };
 
 #ifdef __cplusplus
@@ -141,6 +142,30 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped);
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
+
+/**
+ * Creates an instance of the system event loop implementation for the current architecture and operating system.
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock);
+
+#ifdef AWS_USE_LIBUV
+/**
+ * Creates an instance of the libuv event loop implementation (also creates a new uv_loop).
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws_io_clock_fn *clock);
+
+struct uv_loop_s;
+/**
+ * Creates an instance of the libuv event loop implementation (from the provided uv_loop).
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_existing_libuv(
+    struct aws_allocator *alloc,
+    struct uv_loop_s *loop,
+    aws_io_clock_fn *clock);
+#endif /* AWS_USE_LIBUV */
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
