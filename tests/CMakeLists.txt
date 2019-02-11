@@ -114,6 +114,12 @@ add_test_case(test_log_formatter_s_formatter_number_case)
 add_test_case(test_log_formatter_s_formatter_string_case)
 add_test_case(test_log_formatter_s_formatter_newline_case)
 
+add_test_case(test_log_writer_simple_file_test)
+add_test_case(test_log_writer_simple_stdout_test)
+add_test_case(test_log_writer_simple_stderr_test)
+add_test_case(test_log_writer_existing_file_test)
+add_test_case(test_log_writer_bad_file_test)
+
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
