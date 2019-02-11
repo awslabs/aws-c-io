@@ -148,6 +148,12 @@ extern "C" {
 AWS_IO_API
 void aws_io_load_error_strings(void);
 
+AWS_IO_API
+int aws_io_translate_and_raise_file_open_error(int error_no);
+
+AWS_IO_API
+int aws_io_translate_and_raise_file_write_error(int error_no);
+
 #ifdef __cplusplus
 }
 #endif
