@@ -23,7 +23,10 @@
 /*
  * Default formatter implementation
  */
-#define MAX_LOG_LINE_PREFIX_SIZE (20 + AWS_DATE_TIME_STR_MAX_LEN)
+
+// strlen of "[<LogLevel] " + " - " + "\n" + pad byte overestimate
+#define DEFAULT_FORMATTER_MISC_PREFIX_SIZE 20
+#define MAX_LOG_LINE_PREFIX_SIZE (DEFAULT_FORMATTER_MISC_PREFIX_SIZE + AWS_DATE_TIME_STR_MAX_LEN)
 
 struct aws_default_log_formatter_impl {
     enum aws_date_format date_format;
@@ -63,11 +66,10 @@ static int s_default_aws_log_formatter_format_fn(
 #endif
     va_end(tmp_args);
 
-    int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE;
-
     /*
-     * Allocate enough room to hold the line.  Then we'll (unsafely) do formatted IO directly into the memory.
+     * Allocate enough room to hold the line.  Then we'll (unsafely) do formatted IO directly into the aws_string memory.
      */
+    int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE;
     struct aws_string *raw_string = (struct aws_string *)aws_mem_acquire(formatter->allocator, sizeof(struct aws_string) + total_length);
     if (raw_string == NULL) {
         goto cleanup;
@@ -76,14 +78,14 @@ static int s_default_aws_log_formatter_format_fn(
     char *log_line_buffer = (char *)raw_string->bytes;
     int current_index = 0;
 
+    /*
+     * Begin the log line with "[<Log Level>] "
+     */
     const char *level_string = NULL;
     if (aws_logging_log_level_to_string(level, &level_string)) {
         goto cleanup;
     }
 
-    /*
-     * Begin the log line with "[<Log Level>] "
-     */
     int log_level_length = snprintf(log_line_buffer, total_length, "[%s] ", level_string);
     if (log_level_length < 0) {
         goto cleanup;
