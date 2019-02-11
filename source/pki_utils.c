@@ -20,23 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int s_translate_and_raise_file_open_error(int error_no) {
-    switch (error_no) {
-        case EPERM:
-        case EACCES:
-            return aws_raise_error(AWS_IO_NO_PERMISSION);
-        case EISDIR:
-        case ENAMETOOLONG:
-        case ENOENT:
-            return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
-        case ENFILE:
-            return aws_raise_error(AWS_IO_MAX_FDS_EXCEEDED);
-        case ENOMEM:
-            return aws_raise_error(AWS_ERROR_OOM);
-        default:
-            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    }
-}
+
 
 int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocator *alloc, const char *filename) {
 #ifdef _MSC_VER
@@ -49,7 +33,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
             fclose(fp);
-            return s_translate_and_raise_file_open_error(errno);
+            return aws_io_translate_and_raise_file_open_error(errno);
         }
 
         size_t allocation_size = (size_t)ftell(fp) + 1;
@@ -67,7 +51,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         if (fseek(fp, 0L, SEEK_SET)) {
             aws_byte_buf_clean_up(out_buf);
             fclose(fp);
-            return s_translate_and_raise_file_open_error(errno);
+            return aws_io_translate_and_raise_file_open_error(errno);
         }
 
         size_t read = fread(out_buf->buffer, 1, out_buf->len, fp);
@@ -81,7 +65,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         return AWS_OP_SUCCESS;
     }
 
-    return s_translate_and_raise_file_open_error(errno);
+    return aws_io_translate_and_raise_file_open_error(errno);
 }
 
 enum PEM_PARSE_STATE {

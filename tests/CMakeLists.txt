@@ -108,6 +108,12 @@ add_test_case(alpn_successfully_negotiates)
 add_test_case(alpn_no_protocol_message)
 add_test_case(alpn_error_creating_handler)
 
+add_test_case(test_log_formatter_s_formatter_empty_case)
+add_test_case(test_log_formatter_s_formatter_simple_case)
+add_test_case(test_log_formatter_s_formatter_number_case)
+add_test_case(test_log_formatter_s_formatter_string_case)
+add_test_case(test_log_formatter_s_formatter_newline_case)
+
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
