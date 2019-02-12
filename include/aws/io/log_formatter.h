@@ -58,7 +58,7 @@ struct aws_log_formatter {
 /*
  * Initializes the default log formatter which outputs lines in the format:
  *
- *   [<LogLevel>] <Timestamp> - <User content>\n
+ *   [<LogLevel>] [<Timestamp>] [<ThreadId>] - <User content>\n
  */
 AWS_IO_API
 int aws_default_log_formatter_init(struct aws_log_formatter *formatter, struct aws_allocator *allocator, enum aws_date_format date_format);

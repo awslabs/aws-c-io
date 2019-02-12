@@ -16,9 +16,12 @@
 #include <aws/io/log_formatter.h>
 
 #include <aws/common/string.h>
+#include <aws/common/thread.h>
 #include <aws/testing/aws_test_harness.h>
 
+#include <inttypes.h>
 #include <stdio.h>
+
 
 #define TEST_FORMATTER_MAX_BUFFER_SIZE 4096
 
@@ -73,16 +76,15 @@ int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *exp
     ASSERT_TRUE(strncmp(log_level_start + 1, level_string, strlen(level_string)) == 0, "Incorrect value for log level in output line \"%s\"", buffer);
 
     /**
-     * Find the separator to get the substring with the timestamp.
+     * Find the timestamp substring.
      */
-    const char *log_level_end = strstr(log_level_start, "] ");
-    ASSERT_TRUE(log_level_end != NULL, "Could not find end of log level in output line \"%s\"", buffer);
+    const char *time_start = strstr(log_level_start + 1, "[");
+    ASSERT_TRUE(time_start != NULL, "Could not find start of timestamp in output line \"%s\"", buffer);
+    time_start += 1;
 
-    const char *separator = strstr(log_level_end, " - ");
-    ASSERT_TRUE(separator != NULL, "Could not find separator between log prefix and user content in output line \"%s\"", buffer);
+    const char *time_end = strstr(time_start, "]");
+    ASSERT_TRUE(time_end != NULL, "Could not find end of timestamp in output line \"%s\"", buffer);
 
-    const char *time_start = log_level_end + 2;
-    const char *time_end = separator;
     size_t time_length = time_end - time_start;
 
     /*
@@ -104,8 +106,26 @@ int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *exp
     ASSERT_TRUE(time_diff <= 1, "Log timestamp deviated too far from test timestamp: %d seconds", (int)time_diff);
 
     /*
+     * Find the thread id substring
+     */
+    const char *thread_id_start = strstr(time_end + 1, "[");
+    ASSERT_TRUE(thread_id_start != NULL, "Could not find start of thread id in output line \"%s\"", buffer);
+    thread_id_start += 1;
+
+    char *thread_id_end = strstr(thread_id_start, "]");
+    ASSERT_TRUE(thread_id_end != NULL, "Could not find end of thread id in output line \"%s\"", buffer);
+    char *thread_id_end_copy = thread_id_end;
+
+    uint64_t current_thread_id = aws_thread_current_thread_id();
+    uint64_t logged_id = strtoumax(thread_id_start, &thread_id_end_copy, 10);
+    ASSERT_TRUE(logged_id == current_thread_id, "Expected logged thread id to be %"PRIu64" but it was actually %"PRIu64"", current_thread_id, logged_id);
+
+    /*
      * Check that the user content is what was expected
      */
+    const char *separator = strstr(thread_id_end, " - ");
+    ASSERT_TRUE(separator != NULL, "");
+
     const char *user_content = separator + 3;
     size_t expected_user_content_length = strlen(expected_user_output);
     ASSERT_SUCCESS(strncmp(user_content, expected_user_output, expected_user_content_length), "Expected user content \"%s\" but received \"%s\"", expected_user_output, user_content);
