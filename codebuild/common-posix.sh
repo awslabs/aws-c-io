@@ -12,7 +12,7 @@ mkdir -p $INSTALL_PATH
 
 # install_library <git_repo> [<commit>]
 function install_library {
-    CURRENT_DIR = `pwd`
+    CURRENT_DIR=`pwd`
     cd $BUILD_PATH
     git clone https://github.com/awslabs/$1.git
     
