@@ -16,11 +16,11 @@ function install_library {
     cd $BUILD_PATH
     git clone https://github.com/awslabs/$1.git
     
+    cd $1
     if [ -n "$2" ]; then
+        cd $1
         git checkout $2
     fi
-
-    cd $1
 
     cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_PATH -DCMAKE_PREFIX_PATH=$INSTALL_PATH -DENABLE_SANITIZERS=ON $CMAKE_ARGS ./
     make install
