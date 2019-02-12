@@ -20,7 +20,7 @@ goto :EOF
 mkdir %BUILDS_DIR%\%~1-build
 cd %BUILDS_DIR%\%~1-build
 git clone https://github.com/awslabs/%~1.git
-cmake %CMAKE_ARGS% -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% -DCMAKE_PREFIX_PATH=%INSTALL_DIR% ..\%~1 || goto error
+cmake %CMAKE_ARGS% -DCMAKE_BUILD_TYPE="RelWithDebInfo" -DCMAKE_INSTALL_PREFIX=%INSTALL_DIR% -DCMAKE_PREFIX_PATH=%INSTALL_DIR% %~1 || goto error
 cmake --build . --target install --config RelWithDebInfo || goto error
 exit /b %errorlevel%
 

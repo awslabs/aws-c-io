@@ -18,7 +18,6 @@ function install_library {
     
     cd $1
     if [ -n "$2" ]; then
-        cd $1
         git checkout $2
     fi
 
