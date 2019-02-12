@@ -18,7 +18,7 @@ phases:
         -DSSL_FORBID_ENULL -DOPENSSL_NO_DTLS1 -DOPENSSL_NO_HEARTBEATS   \
         --prefix=/tmp/builds/install
       - make -j 12
-      - make installi_sw
+      - make install_sw
       - cd $CODEBUILD_SRC_DIR
 
   pre_build:
