@@ -21,7 +21,7 @@
 #include <aws/io/io.h>
 
 #include <aws/common/date_time.h>
-#include <aws/common/logging.h>
+#include <aws/io/logging.h>
 
 struct aws_allocator;
 struct aws_string;
