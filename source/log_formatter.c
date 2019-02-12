@@ -17,16 +17,25 @@
 
 #include <aws/common/date_time.h>
 #include <aws/common/string.h>
+#include <aws/common/thread.h>
 
+#include <inttypes.h>
 #include <stdio.h>
 
 /*
  * Default formatter implementation
  */
 
-// strlen of "[<LogLevel] " + " - " + "\n" + pad byte overestimate
-#define DEFAULT_FORMATTER_MISC_PREFIX_SIZE 20
-#define MAX_LOG_LINE_PREFIX_SIZE (DEFAULT_FORMATTER_MISC_PREFIX_SIZE + AWS_DATE_TIME_STR_MAX_LEN)
+// (max) strlen of "[<LogLevel>]"
+#define LOG_LEVEL_PREFIX_PADDING 7
+
+// (max) strlen of "[<ThreadId>]"
+#define THREAD_ID_PREFIX_PADDING 22
+
+// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 padding
+#define MISC_PADDING 10
+
+#define MAX_LOG_LINE_PREFIX_SIZE (LOG_LEVEL_PREFIX_PADDING + THREAD_ID_PREFIX_PADDING + MISC_PADDING + AWS_DATE_TIME_STR_MAX_LEN)
 
 struct aws_default_log_formatter_impl {
     enum aws_date_format date_format;
@@ -79,14 +88,14 @@ static int s_default_aws_log_formatter_format_fn(
     int current_index = 0;
 
     /*
-     * Begin the log line with "[<Log Level>] "
+     * Begin the log line with "[<Log Level>] ["
      */
     const char *level_string = NULL;
     if (aws_logging_log_level_to_string(level, &level_string)) {
         goto cleanup;
     }
 
-    int log_level_length = snprintf(log_line_buffer, total_length, "[%s] ", level_string);
+    int log_level_length = snprintf(log_line_buffer, total_length, "[%s] [", level_string);
     if (log_level_length < 0) {
         goto cleanup;
     }
@@ -115,20 +124,18 @@ static int s_default_aws_log_formatter_format_fn(
         goto cleanup;
     }
 
-    /*
-     * Fixup the indexing
-     */
     current_index += timestamp_buffer.len;
 
     /*
-     * Add a separator (" - ") between the timestamp and the user content
+     * Add thread id and user content separator (" - ")
      */
-    int separator_length = snprintf(log_line_buffer + current_index, total_length - current_index, " - ");
-    if (separator_length < 0) {
+    uint64_t current_thread_id = aws_thread_current_thread_id();
+    int thread_id_written = snprintf(log_line_buffer + current_index, total_length - current_index, "] [%"PRIu64"] - ", current_thread_id);
+    if (thread_id_written < 0) {
         goto cleanup;
     }
 
-    current_index += separator_length;
+    current_index += thread_id_written;
 
     /*
      * Now write the actual data requested by the user
