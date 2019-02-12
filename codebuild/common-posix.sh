@@ -36,8 +36,6 @@ install_library aws-c-common
 
 if [ "$CODEBUILD_SRC_DIR" ]; then
     cd $CODEBUILD_SRC_DIR
-else
-    cd aws-c-io
 fi
 
 mkdir build
