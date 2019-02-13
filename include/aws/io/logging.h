@@ -115,9 +115,12 @@ AWS_EXTERN_C_END
  * Checks for a logger and filters based on log level.
  */
 #define LOGF_RAW(log_level, subject, format, ...)                                                               \
-(((aws_logging_get()->vtable->get_log_level_fn)(aws_logging_get(), subject) >= log_level && log_level > 0) ?    \
-(aws_logging_get()->vtable->log_fn)(aws_logging_get(), log_level, subject, format, __VA_ARGS__) :               \
-AWS_OP_SUCCESS)
+{                                                                                                               \
+    struct aws_logger *logger = aws_logging_get();                                                              \
+    if (logger != NULL && log_level > 0 && (logger->vtable->get_log_level_fn)(logger, subject) >= log_level) {  \
+        (logger->vtable->log_fn)(logger, log_level, subject, format, __VA_ARGS__);                              \
+    }                                                                                                           \
+}
 
 #define LOGF(log_level, format, ...) LOGF_RAW(log_level, AWS_LOG_SUBJECT_NONE, format, __VA_ARGS__)
 
@@ -128,48 +131,43 @@ AWS_OP_SUCCESS)
  *
  * LOGF_FATAL("Device \"%s\" not found", device->name);
  *
- * or
- *
- * if (LOGF_FATAL("Device \"%s\" not found", device->name)) {
- *     ... handle logging error
- * }
  *
  * Later we will likely expose Subject-aware variants
  */
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_FATAL)
 #   define LOGF_FATAL(format, ...) LOGF(AWS_LL_FATAL, format, __VA_ARGS__)
 #else
-#   define LOGF_FATAL(format, ...) AWS_OP_SUCCESS
+#   define LOGF_FATAL(format, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_ERROR)
 #   define LOGF_ERROR(format, ...) LOGF(AWS_LL_ERROR, format, __VA_ARGS__)
 #else
-#   define LOGF_ERROR(format, ...) AWS_OP_SUCCESS
+#   define LOGF_ERROR(format, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_WARN)
 #   define LOGF_WARN(format, ...) LOGF(AWS_LL_WARN, format, __VA_ARGS__)
 #else
-#   define LOGF_WARN(format, ...) AWS_OP_SUCCESS
+#   define LOGF_WARN(format, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_INFO)
 #   define LOGF_INFO(format, ...) LOGF(AWS_LL_INFO, format, __VA_ARGS__)
 #else
-#   define LOGF_INFO(format, ...) AWS_OP_SUCCESS
+#   define LOGF_INFO(format, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_DEBUG)
 #   define LOGF_DEBUG(format, ...) LOGF(AWS_LL_DEBUG, format, __VA_ARGS__)
 #else
-#   define LOGF_DEBUG(format, ...) AWS_OP_SUCCESS
+#   define LOGF_DEBUG(format, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_TRACE)
 #   define LOGF_TRACE(format, ...) LOGF(AWS_LL_TRACE, format, __VA_ARGS__)
 #else
-#   define LOGF_TRACE(format, ...) AWS_OP_SUCCESS
+#   define LOGF_TRACE(format, ...)
 #endif
 
 
