@@ -729,7 +729,9 @@ int aws_host_resolver_init_default(
 #    include <uv.h>
 
 struct uv_host_resolver {
-    /* This needs to be the first element in the struct so the pointers are safely castable */
+    /* This needs to be the first element in the struct so the pointers are safely castable.
+     * This means this object may be passed to any of the default resolver's vtable functions safely, including destroy.
+     */
     struct default_host_resolver impl;
     uv_loop_t *uv_loop;
 };
