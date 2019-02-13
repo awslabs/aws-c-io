@@ -145,6 +145,15 @@ add_test_case(test_log_writer_simple_stderr_test)
 add_test_case(test_log_writer_existing_file_test)
 add_test_case(test_log_writer_bad_file_test)
 
+add_test_case(test_foreground_log_channel_single_line)
+add_test_case(test_foreground_log_channel_numbers)
+add_test_case(test_foreground_log_channel_words)
+add_test_case(test_foreground_log_channel_all)
+add_test_case(test_background_log_channel_single_line)
+add_test_case(test_background_log_channel_numbers)
+add_test_case(test_background_log_channel_words)
+add_test_case(test_background_log_channel_all)
+
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

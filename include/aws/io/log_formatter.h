@@ -30,7 +30,7 @@ struct aws_string;
  * Log formatter interface and default implementation
  *
  * Log formatters are invoked by the LOGF_* macros to transform a set of arguments into
- * one or more lines of text to be output to a logging sink.
+ * one or more lines of text to be output to a logging sink (writer).
  */
 struct aws_log_formatter;
 
