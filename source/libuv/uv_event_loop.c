@@ -41,7 +41,10 @@ struct libuv_loop {
 
     /* Send this to stop the event loop */
     uv_async_t stop_async;
-    /* Number of outstanding libuv handles. Must be 0 before closing the loop. */
+    /**
+     * Number of outstanding libuv handles. Must be 0 before closing the loop.
+     * We maintain our own along side uv's because we unref our handles to allow the loop to exit.
+     */
     struct aws_atomic_var num_open_handles;
 
     /* Data that may be manipulated across threads (while mutex is held) */
@@ -308,6 +311,8 @@ static void s_uv_async_schedule_tasks(uv_async_t *request) {
     struct libuv_loop *impl = request->data;
     assert(impl);
 
+    uv_unref((uv_handle_t *)&impl->pending_tasks.schedule_async);
+
     /* If there are tasks to schedule, grab them all out of synced_data.tasks_to_schedule.
      * We'll process them later, so that we minimize time spent holding the mutex. */
     struct aws_linked_list tasks_to_schedule;
@@ -399,6 +404,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         aws_mutex_unlock(&impl->active_thread_data.mutex);
         return AWS_OP_ERR;
     }
+    uv_unref((uv_handle_t *)&impl->pending_tasks.schedule_async);
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Prep the stop async */
@@ -406,6 +412,7 @@ static int s_run(struct aws_event_loop *event_loop) {
     if (uv_async_init(impl->uv_loop, &impl->stop_async, s_uv_async_stop_loop)) {
         goto clean_up;
     }
+    uv_unref((uv_handle_t *)&impl->stop_async);
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Start all existing subscriptions */
@@ -437,6 +444,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     /* If there are pending tasks (someone called schedule while stopped), schedule them */
     if (!aws_linked_list_empty(&impl->pending_tasks.list)) {
+        uv_ref((uv_handle_t *)&impl->pending_tasks.schedule_async);
         uv_async_send(&impl->pending_tasks.schedule_async);
     }
 
@@ -475,6 +483,7 @@ static int s_stop(struct aws_event_loop *event_loop) {
 
     impl->is_running = false;
 
+    uv_ref((uv_handle_t *)&impl->stop_async);
     if (uv_async_send(&impl->stop_async)) {
         return AWS_OP_ERR;
     }
@@ -513,6 +522,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     /* Signal thread that cross_thread_data has changed (multiple signals in the same frame are ignored) */
     if (impl->is_running) {
+        uv_ref((uv_handle_t *)&impl->pending_tasks.schedule_async);
         uv_async_send(&impl->pending_tasks.schedule_async);
     }
 }
@@ -824,14 +834,15 @@ struct aws_event_loop *aws_event_loop_existing_libuv(
     impl->owns_uv_loop = false;
     impl->ownership_specific.uv_unowned = unowned;
 
-    if (s_libuv_loop_init(event_loop, alloc, impl, uv_loop, clock)) {
-        goto clean_up;
-    }
-
     /* Schedule work task to harvest thread id */
     uv_async_init(uv_loop, &unowned->get_thread_id_async, s_get_uv_thread_id);
     unowned->get_thread_id_async.data = impl;
     uv_async_send(&unowned->get_thread_id_async);
+    /* Don't unref this one, we need it to run ASAP */
+
+    if (s_libuv_loop_init(event_loop, alloc, impl, uv_loop, clock)) {
+        goto clean_up;
+    }
 
     return event_loop;
 

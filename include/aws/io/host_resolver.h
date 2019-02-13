@@ -163,6 +163,24 @@ AWS_IO_API int aws_host_resolver_init_default(
     struct aws_allocator *allocator,
     size_t max_entries);
 
+#ifdef AWS_USE_LIBUV
+
+struct uv_loop_s;
+/**
+ * Helper host resolver for using an externally driven libuv loop, like with nodejs.
+ *
+ * Each request will open a new handle which will be closed on resolution. This stops libuv from stopping processing
+ * while a DNS request is outstanding. This can happen if connecting as a client, as no subscriptions have been
+ * submitted yet.
+ */
+AWS_IO_API int aws_host_resolver_init_uv(
+    struct aws_host_resolver *resolver,
+    struct aws_allocator *allocator,
+    size_t max_entries,
+    struct uv_loop_s *uv_loop);
+
+#endif /* AWS_USE_LIBUV */
+
 /**
  * Simply calls destroy on the vtable.
  */
