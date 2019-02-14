@@ -26,6 +26,7 @@
  * So even though our test sets the dynamic level to TRACE, nothing will
  * be recorded.
  */
-DECLARE_LOG_ALL_LEVELS_FUNCTION(s_log_all_levels_none_cutoff)
+DECLARE_LOGF_ALL_LEVELS_FUNCTION(s_logf_all_levels_none_cutoff)
 
-TEST_LEVEL_FILTER(AWS_LL_TRACE, "", s_log_all_levels_none_cutoff)
+TEST_LEVEL_FILTER(AWS_LL_TRACE, "", s_logf_all_levels_none_cutoff)
+

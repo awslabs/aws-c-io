@@ -140,6 +140,17 @@ static int s_log_formatter_##test_function##_fn(struct aws_allocator *allocator,
 }                                                                                                           \
 AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function##_fn);
 
+static int invoke_formatter(struct aws_log_formatter *formatter, struct aws_string **output, enum aws_log_level log_level, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    int result = formatter->vtable->format_fn(formatter, output, log_level, AWS_LOG_SUBJECT_NONE, format, args);
+
+    va_end(args);
+
+    return result;
+}
+
 /*
  * Tests
  */
@@ -148,7 +159,7 @@ AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_functio
  * Empty string case
  */
 static int s_formatter_empty_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return formatter->vtable->format_fn(formatter, output, AWS_LL_WARN, AWS_LOG_SUBJECT_NONE, "");
+    return invoke_formatter(formatter, output, AWS_LL_WARN, "");
 }
 
 DEFINE_LOG_FORMATTER_TEST(s_formatter_empty_case, AWS_LL_WARN, AWS_DATE_FORMAT_RFC822, "")
@@ -157,7 +168,7 @@ DEFINE_LOG_FORMATTER_TEST(s_formatter_empty_case, AWS_LL_WARN, AWS_DATE_FORMAT_R
  * Simple string
  */
 static int s_formatter_simple_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return formatter->vtable->format_fn(formatter, output, AWS_LL_DEBUG, AWS_LOG_SUBJECT_NONE, "Sample log output");
+    return invoke_formatter(formatter, output, AWS_LL_DEBUG, "Sample log output");
 }
 
 DEFINE_LOG_FORMATTER_TEST(s_formatter_simple_case, AWS_LL_DEBUG, AWS_DATE_FORMAT_ISO_8601, "Sample log output")
@@ -166,7 +177,7 @@ DEFINE_LOG_FORMATTER_TEST(s_formatter_simple_case, AWS_LL_DEBUG, AWS_DATE_FORMAT
  * Format string with numbers
  */
 static int s_formatter_number_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return formatter->vtable->format_fn(formatter, output, AWS_LL_FATAL, AWS_LOG_SUBJECT_NONE, "%d bottles of milk on the wall. Take %.4f bottles down.", 99, .9999f);
+    return invoke_formatter(formatter, output, AWS_LL_FATAL, "%d bottles of milk on the wall. Take %.4f bottles down.", 99, .9999f);
 }
 
 DEFINE_LOG_FORMATTER_TEST(s_formatter_number_case, AWS_LL_FATAL, AWS_DATE_FORMAT_RFC822, "99 bottles of milk on the wall. Take 0.9999 bottles down.")
@@ -175,7 +186,7 @@ DEFINE_LOG_FORMATTER_TEST(s_formatter_number_case, AWS_LL_FATAL, AWS_DATE_FORMAT
  * Format string with strings
  */
 static int s_formatter_string_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return formatter->vtable->format_fn(formatter, output, AWS_LL_INFO, AWS_LOG_SUBJECT_NONE, "Once there was, if %s there was, and just perhaps there %s was", "ever", "never");
+    return invoke_formatter(formatter, output, AWS_LL_INFO, "Once there was, if %s there was, and just perhaps there %s was", "ever", "never");
 }
 
 DEFINE_LOG_FORMATTER_TEST(s_formatter_string_case, AWS_LL_INFO, AWS_DATE_FORMAT_ISO_8601, "Once there was, if ever there was, and just perhaps there never was")
@@ -184,7 +195,7 @@ DEFINE_LOG_FORMATTER_TEST(s_formatter_string_case, AWS_LL_INFO, AWS_DATE_FORMAT_
  * Format string with newlines
  */
 static int s_formatter_newline_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return formatter->vtable->format_fn(formatter, output, AWS_LL_TRACE, AWS_LOG_SUBJECT_NONE, "\nMaking sure \nnewlines don't mess things\nup");
+    return invoke_formatter(formatter, output, AWS_LL_TRACE, "\nMaking sure \nnewlines don't mess things\nup");
 }
 
 DEFINE_LOG_FORMATTER_TEST(s_formatter_newline_case, AWS_LL_TRACE, AWS_DATE_FORMAT_RFC822, "\nMaking sure \nnewlines don't mess things\nup")

@@ -26,6 +26,6 @@
  * So even though our test sets the dynamic level to TRACE, only the
  * {FATAL, ERROR, WARN, INFO} log calls will be recorded.
  */
-DECLARE_LOG_ALL_LEVELS_FUNCTION(s_log_all_levels_info_cutoff)
+DECLARE_LOGF_ALL_LEVELS_FUNCTION(s_logf_all_levels_info_cutoff)
 
-TEST_LEVEL_FILTER(AWS_LL_TRACE, "1234", s_log_all_levels_info_cutoff)
+TEST_LEVEL_FILTER(AWS_LL_TRACE, "1234", s_logf_all_levels_info_cutoff)

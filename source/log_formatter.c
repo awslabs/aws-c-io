@@ -47,7 +47,7 @@ static int s_default_aws_log_formatter_format_fn(
     enum aws_log_level level,
     aws_log_subject_t subject,
     const char *format,
-    ...) {
+    va_list args) {
 
     (void)subject;
 
@@ -58,9 +58,6 @@ static int s_default_aws_log_formatter_format_fn(
     }
 
     int result = AWS_OP_ERR;
-
-    va_list args;
-    va_start(args, format);
 
     /*
      * Calculate how much room we'll need to build the full log line.
@@ -166,8 +163,6 @@ static int s_default_aws_log_formatter_format_fn(
     *formatted_output = raw_string;
 
 cleanup:
-
-    va_end(args);
 
     if (result == AWS_OP_ERR && raw_string != NULL) {
         aws_mem_release(formatter->allocator, raw_string);
