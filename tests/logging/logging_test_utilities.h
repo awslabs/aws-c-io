@@ -47,15 +47,15 @@ AWS_TEST_CASE(test_logging_filter_at_##log_level##_##action_fn, s_logging_filter
  * that is compiled with AWS_STATIC_LOG_LEVEL at the level to be tested.  There's no way to shared a single definition
  * that does so.
  */
-#define DECLARE_LOG_ALL_LEVELS_FUNCTION(fn_name)    \
+#define DECLARE_LOGF_ALL_LEVELS_FUNCTION(fn_name)   \
 static void fn_name(enum aws_log_level level) {     \
 (void)level;                                        \
-LOGF_FATAL("%d", (int)AWS_LL_FATAL);                \
-LOGF_ERROR("%d", (int)AWS_LL_ERROR);                \
-LOGF_WARN("%d", (int)AWS_LL_WARN);                  \
-LOGF_INFO("%d", (int)AWS_LL_INFO);                  \
-LOGF_DEBUG("%d", (int)AWS_LL_DEBUG);                \
-LOGF_TRACE("%d", (int)AWS_LL_TRACE);                \
+AWS_LOGF_FATAL("%d", (int)AWS_LL_FATAL);            \
+AWS_LOGF_ERROR("%d", (int)AWS_LL_ERROR);            \
+AWS_LOGF_WARN("%d", (int)AWS_LL_WARN);              \
+AWS_LOGF_INFO("%d", (int)AWS_LL_INFO);              \
+AWS_LOGF_DEBUG("%d", (int)AWS_LL_DEBUG);            \
+AWS_LOGF_TRACE("%d", (int)AWS_LL_TRACE);            \
 }
 
 #endif /* AWS_COMMON_LOGGING_TEST_UTILITIES_H */

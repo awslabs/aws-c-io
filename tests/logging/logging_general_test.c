@@ -15,20 +15,11 @@
 
 #include "logging_test_utilities.h"
 
-static void s_log_all_levels_v1(enum aws_log_level level) {
-    for (int i = 0; i < AWS_LL_COUNT; ++i) {
-        LOGF(i, "%d", i);
-    }
-}
-
-DECLARE_LOG_ALL_LEVELS_FUNCTION(s_log_all_levels_v2)
+DECLARE_LOGF_ALL_LEVELS_FUNCTION(s_logf_all_levels)
 
 /**
  * These tests check the dynamic (run-time) filtering capabilities of the logging
  * system.
- *
- * We test both the per-level macros (LOGF_<level>) using the _v2 function as
- * well as the basic macro (LOGF) using the _v1 function.
  *
  * In each case, we use the test logger and invoke a log operation at each supported level.
  * Using the level (integer value) itself as the log text, we can easily check to see
@@ -39,18 +30,12 @@ DECLARE_LOG_ALL_LEVELS_FUNCTION(s_log_all_levels_v2)
  * but
  *   {AWS_LL_DEBUG, AWS_LL_TRACE} to be filtered out ("56")
  */
-TEST_LEVEL_FILTER(AWS_LL_TRACE, "123456", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_TRACE, "123456", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_DEBUG, "12345", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_DEBUG, "12345", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_INFO, "1234", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_INFO, "1234", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_WARN, "123", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_WARN, "123", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_ERROR, "12", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_ERROR, "12", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_FATAL, "1", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_FATAL, "1", s_log_all_levels_v2)
-TEST_LEVEL_FILTER(AWS_LL_NONE, "", s_log_all_levels_v1)
-TEST_LEVEL_FILTER(AWS_LL_NONE, "", s_log_all_levels_v2)
+TEST_LEVEL_FILTER(AWS_LL_TRACE, "123456", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_DEBUG, "12345", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_INFO, "1234", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_WARN, "123", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_ERROR, "12", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_FATAL, "1", s_logf_all_levels)
+TEST_LEVEL_FILTER(AWS_LL_NONE, "", s_logf_all_levels)
+
 

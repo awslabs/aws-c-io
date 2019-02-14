@@ -24,9 +24,9 @@
  * of the log calls to be removed at compile time.
  *
  */
-DECLARE_LOG_ALL_LEVELS_FUNCTION(s_log_all_levels_trace_cutoff)
+DECLARE_LOGF_ALL_LEVELS_FUNCTION(s_logf_all_levels_trace_cutoff)
 
-TEST_LEVEL_FILTER(AWS_LL_TRACE, "123456", s_log_all_levels_trace_cutoff)
+TEST_LEVEL_FILTER(AWS_LL_TRACE, "123456", s_logf_all_levels_trace_cutoff)
 
 
 

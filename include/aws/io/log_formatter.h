@@ -23,6 +23,8 @@
 #include <aws/common/date_time.h>
 #include <aws/io/logging.h>
 
+#include <stdio.h>
+
 struct aws_allocator;
 struct aws_string;
 
@@ -40,7 +42,7 @@ typedef int (*aws_log_formatter_format_fn)(
     enum aws_log_level level,
     aws_log_subject_t subject,
     const char *format,
-    ...);
+    va_list args);
 
 typedef int (*aws_log_formatter_cleanup_fn)(struct aws_log_formatter *logger);
 
