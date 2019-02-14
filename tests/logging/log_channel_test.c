@@ -97,7 +97,7 @@ static bool s_verify_mock_equal(struct aws_log_writer *writer, const struct aws_
 
     size_t line_count = aws_array_list_length(&impl->log_lines);
     if (line_count != array_length) {
-        sprintf(s_test_error_message, "Expected %"PRIu64" lines, but received %"PRIu64"", array_length, line_count);
+        sprintf(s_test_error_message, "Expected %"PRIu64" lines, but received %"PRIu64"", (uint64_t)array_length, (uint64_t)line_count);
         return false;
     }
 
