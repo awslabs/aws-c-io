@@ -2,6 +2,15 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-io C)
 
+if (DEFINED CMAKE_PREFIX_PATH)
+    string(REPLACE "\\" "/" CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH})
+endif()
+
+if (DEFINED CMAKE_INSTALL_PREFIX)
+    string(REPLACE "\\" "/" CMAKE_INSTALL_PREFIX ${CMAKE_INSTALL_PREFIX})
+endif()
+
+
 if (UNIX AND NOT APPLE)
     include(GNUInstallDirs)
 elseif(NOT DEFINED CMAKE_INSTALL_LIBDIR)
