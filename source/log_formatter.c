@@ -20,7 +20,7 @@
 #include <aws/common/thread.h>
 
 #include <inttypes.h>
-#include <stdio.h>
+#include <stdarg.h>
 
 /*
  * Default formatter implementation
@@ -82,7 +82,7 @@ static int s_default_aws_log_formatter_format_fn(
     }
 
     char *log_line_buffer = (char *)raw_string->bytes;
-    int current_index = 0;
+    size_t current_index = 0;
 
     /*
      * Begin the log line with "[<Log Level>] ["

@@ -20,7 +20,7 @@
 #include <aws/io/log_formatter.h>
 #include <aws/io/log_writer.h>
 
-#include <stdio.h>
+#include <stdarg.h>
 
 /*
  * Pipeline logger implementation

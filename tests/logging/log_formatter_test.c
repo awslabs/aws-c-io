@@ -20,7 +20,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 #include <inttypes.h>
-#include <stdio.h>
+#include <stdarg.h>
 
 
 #define TEST_FORMATTER_MAX_BUFFER_SIZE 4096
