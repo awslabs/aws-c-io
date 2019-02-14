@@ -156,6 +156,8 @@ static int s_do_channel_test(init_channel_fn init_fn, const struct aws_string **
         result = AWS_OP_ERR;
     }
 
+    aws_log_writer_cleanup(&mock_writer);
+
     return result;
 }
 
