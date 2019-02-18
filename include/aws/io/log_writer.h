@@ -35,8 +35,8 @@ typedef int (*aws_log_writer_write_fn)(struct aws_log_writer *writer, const stru
 typedef int (*aws_log_writer_cleanup_fn)(struct aws_log_writer *writer);
 
 struct aws_log_writer_vtable {
-    aws_log_writer_write_fn write;
-    aws_log_writer_cleanup_fn cleanup;
+    const aws_log_writer_write_fn write;
+    const aws_log_writer_cleanup_fn cleanup;
 };
 
 struct aws_log_writer {
@@ -49,22 +49,22 @@ struct aws_log_writer {
  * Initialize a log writer that sends log lines to stdout.  Uses C library IO.
  */
 AWS_IO_API
-int aws_stdout_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
+int aws_log_writer_stdout_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
 
 /*
  * Initialize a log writer that sends log lines to stderr.  Uses C library IO.
  */
 AWS_IO_API
-int aws_stderr_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
+int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
 
 /*
  * Initialize a log writer that sends log lines to a file.  Uses C library IO.
  */
 AWS_IO_API
-int aws_file_log_writer_init(
-        struct aws_log_writer *writer,
-        struct aws_allocator *allocator,
-        const char *file_name);
+int aws_log_writer_file_init(
+    struct aws_log_writer *writer,
+    struct aws_allocator *allocator,
+    const char *file_name);
 
 /*
  * Frees all resources used by a log writer with the exception of the base structure memory

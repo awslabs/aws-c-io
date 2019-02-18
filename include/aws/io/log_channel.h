@@ -37,8 +37,8 @@ typedef int (*aws_log_channel_send_fn)(struct aws_log_channel *channel, struct a
 typedef int (*aws_log_channel_cleanup_fn)(struct aws_log_channel *channel);
 
 struct aws_log_channel_vtable {
-    aws_log_channel_send_fn send;
-    aws_log_channel_cleanup_fn cleanup;
+    const aws_log_channel_send_fn send;
+    const aws_log_channel_cleanup_fn cleanup;
 };
 
 struct aws_log_channel {
@@ -54,7 +54,10 @@ struct aws_log_channel {
  * The passed in log writer is not an ownership transfer.  The log channel does not cleanup the writer.
  */
 AWS_IO_API
-int aws_foreground_log_channel_init(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer);
+int aws_log_channel_foreground_init(
+    struct aws_log_channel *channel,
+    struct aws_allocator *allocator,
+    struct aws_log_writer *writer);
 
 /*
  * Simple channel that sends log lines to a background thread.
@@ -62,7 +65,10 @@ int aws_foreground_log_channel_init(struct aws_log_channel *channel, struct aws_
  * The passed in log writer is not an ownership transfer.  The log channel does not cleanup the writer.
  */
 AWS_IO_API
-int aws_background_log_channel_init(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer);
+int aws_log_channel_background_init(
+    struct aws_log_channel *channel,
+    struct aws_allocator *allocator,
+    struct aws_log_writer *writer);
 
 /*
  * Channel cleanup function

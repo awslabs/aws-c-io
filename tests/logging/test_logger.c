@@ -76,7 +76,7 @@ int test_logger_init(struct aws_logger *logger, struct aws_allocator *allocator,
 
     struct test_logger_impl *impl = (struct test_logger_impl *)aws_mem_acquire(allocator, sizeof(struct test_logger_impl));
     if (impl == NULL) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     if (aws_byte_buf_init(&impl->log_buffer, allocator, TEST_LOGGER_MAX_BUFFER_SIZE)) {

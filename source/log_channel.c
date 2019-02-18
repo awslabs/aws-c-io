@@ -21,6 +21,8 @@
 #include <aws/common/thread.h>
 #include <aws/io/log_writer.h>
 
+#include <stdio.h>
+
 /*
  * Basic channel implementations - synchronized foreground, synchronized background
  */
@@ -34,6 +36,8 @@ static int s_foreground_channel_send_fn(
     struct aws_string *log_line) {
 
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *) channel->impl;
+
+    assert(channel->writer->vtable->write);
 
     aws_mutex_lock(&impl->sync);
     (channel->writer->vtable->write)(channel->writer, log_line);
@@ -65,10 +69,11 @@ static struct aws_log_channel_vtable s_foreground_channel_vtable = {
 };
 
 
-int aws_foreground_log_channel_init(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer) {
+int aws_log_channel_foreground_init(struct aws_log_channel *channel, struct aws_allocator *allocator,
+                                    struct aws_log_writer *writer) {
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_foreground_channel));
     if (impl == NULL) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     if (aws_mutex_init(&impl->sync)) {
@@ -143,9 +148,14 @@ static void s_background_thread_writer_fn(void *thread_data) {
     (void) thread_data;
 
     struct aws_log_channel *channel = (struct aws_log_channel *)thread_data;
+    assert(channel->writer->vtable->write);
+
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
     struct aws_array_list log_lines;
+
+    AWS_FATAL_ASSERT(aws_array_list_init_dynamic(&log_lines, channel->allocator, 10, sizeof(struct aws_string *)) == 0);
+
     if (aws_array_list_init_dynamic(&log_lines, channel->allocator, 10, sizeof(struct aws_string *))) {
         /*
          * This feels like it should be a fatal error, as it's invisible to the user and it will result
@@ -199,11 +209,12 @@ static void s_background_thread_writer_fn(void *thread_data) {
     aws_array_list_clean_up(&log_lines);
 }
 
-int aws_background_log_channel_init(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer) {
+int aws_log_channel_background_init(struct aws_log_channel *channel, struct aws_allocator *allocator,
+                                    struct aws_log_writer *writer) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *) aws_mem_acquire(allocator,
                                                                                                     sizeof(struct aws_log_background_channel));
     if (impl == NULL) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     impl->finished = false;
@@ -258,5 +269,6 @@ cleanup_sync_init_fail:
 }
 
 int aws_log_channel_cleanup(struct aws_log_channel *channel) {
+    assert(channel->vtable->cleanup);
     return (channel->vtable->cleanup)(channel);
 }

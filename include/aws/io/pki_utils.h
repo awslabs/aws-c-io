@@ -21,17 +21,6 @@ extern "C" {
 #endif
 
 /**
- * Reads 'filename' into 'out_buf'. If successful, 'out_buf' is allocated and filled with the data;
- * It is your responsibility to call 'aws_byte_buf_clean_up()' on it. Otherwise, 'out_buf' remains
- * unused. In the very unfortunate case where some API needs to treat out_buf as a c_string, a null terminator
- * is appended, but is not included as part of the length field.
- */
-AWS_IO_API int aws_byte_buf_init_from_file(
-    struct aws_byte_buf *out_buf,
-    struct aws_allocator *alloc,
-    const char *filename);
-
-/**
  * Cleans up and securely zeroes out the outputs of 'aws_decode_pem_to_buffer_list()'
  * and 'aws_read_and_decode_pem_file_to_buffer_list()'
  */

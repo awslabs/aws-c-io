@@ -30,7 +30,7 @@ typedef int(*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct 
 int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *expected_user_output, enum aws_log_level log_level, enum aws_date_format date_format) {
     /* Initialize a default formatter*/
     struct aws_log_formatter formatter;
-    aws_default_log_formatter_init(&formatter, aws_default_allocator(), date_format);
+    aws_log_formatter_default_init(&formatter, aws_default_allocator(), date_format);
 
     struct aws_date_time test_time;
     aws_date_time_init_now(&test_time);
@@ -72,7 +72,7 @@ int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *exp
     ASSERT_TRUE(log_level_start != NULL, "Could not find start of log level in output line \"%s\"", buffer);
 
     const char *level_string = NULL;
-    ASSERT_SUCCESS(aws_logging_log_level_to_string(log_level, &level_string), "Failed to convert log level %d to string", (int)log_level);
+    ASSERT_SUCCESS(aws_log_level_to_string(log_level, &level_string), "Failed to convert log level %d to string", (int)log_level);
     ASSERT_TRUE(strncmp(log_level_start + 1, level_string, strlen(level_string)) == 0, "Incorrect value for log level in output line \"%s\"", buffer);
 
     /**

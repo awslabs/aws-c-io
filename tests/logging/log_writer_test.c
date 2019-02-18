@@ -104,7 +104,7 @@ static int s_log_writer_simple_file_test_fn(struct aws_allocator *allocator, voi
     remove(s_test_file_name);
 
     struct aws_log_writer writer;
-    aws_file_log_writer_init(&writer, aws_default_allocator(), s_test_file_name);
+    aws_log_writer_file_init(&writer, aws_default_allocator(), s_test_file_name);
 
     return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, NULL);
 }
@@ -121,7 +121,7 @@ static int s_log_writer_simple_stdout_test_fn(struct aws_allocator *allocator, v
     freopen(s_test_file_name, "a+", stdout);
 
     struct aws_log_writer writer;
-    aws_stdout_log_writer_init(&writer, aws_default_allocator());
+    aws_log_writer_stdout_init(&writer, aws_default_allocator());
 
     return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stdout);
 }
@@ -138,7 +138,7 @@ static int s_log_writer_simple_stderr_test_fn(struct aws_allocator *allocator, v
     freopen(s_test_file_name, "a+", stderr);
 
     struct aws_log_writer writer;
-    aws_stderr_log_writer_init(&writer, aws_default_allocator());
+    aws_log_writer_stderr_init(&writer, aws_default_allocator());
 
     return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stderr);
 }
@@ -156,7 +156,7 @@ static int s_log_writer_existing_file_test_fn(struct aws_allocator *allocator, v
     fclose(fp);
 
     struct aws_log_writer writer;
-    aws_file_log_writer_init(&writer, aws_default_allocator(), s_test_file_name);
+    aws_log_writer_file_init(&writer, aws_default_allocator(), s_test_file_name);
 
     return do_default_log_writer_test(&writer, s_combined_text, s_simple_file_content, NULL);
 }
@@ -169,7 +169,7 @@ static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *
     (void) ctx;
 
     struct aws_log_writer writer;
-    int result = aws_file_log_writer_init(&writer, aws_default_allocator(), ".");
+    int result = aws_log_writer_file_init(&writer, aws_default_allocator(), ".");
     int aws_error = aws_last_error();
 
     ASSERT_TRUE(result == AWS_OP_ERR, "Log file open succeeded despite an invalid file name");

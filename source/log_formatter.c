@@ -86,7 +86,7 @@ static int s_default_aws_log_formatter_format_fn(
      * Begin the log line with "[<Log Level>] ["
      */
     const char *level_string = NULL;
-    if (aws_logging_log_level_to_string(level, &level_string)) {
+    if (aws_log_level_to_string(level, &level_string)) {
         goto error_cleanup;
     }
 
@@ -182,7 +182,8 @@ static struct aws_log_formatter_vtable s_default_log_formatter_vtable = {
 };
 
 
-int aws_default_log_formatter_init(struct aws_log_formatter *formatter, struct aws_allocator *allocator, enum aws_date_format date_format) {
+int aws_log_formatter_default_init(struct aws_log_formatter *formatter, struct aws_allocator *allocator,
+                                   enum aws_date_format date_format) {
     struct aws_default_log_formatter_impl *impl = (struct aws_default_log_formatter_impl *)aws_mem_acquire(allocator, sizeof(struct aws_default_log_formatter_impl));
     impl->date_format = date_format;
 
@@ -194,5 +195,6 @@ int aws_default_log_formatter_init(struct aws_log_formatter *formatter, struct a
 }
 
 int aws_log_formatter_cleanup(struct aws_log_formatter *formatter) {
+    assert(formatter->vtable->cleanup);
     return (formatter->vtable->cleanup)(formatter);
 }

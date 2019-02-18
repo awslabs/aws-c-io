@@ -14,8 +14,6 @@
  */
 #include <aws/io/io.h>
 
-#include <errno.h>
-
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 /* clang-format off */
@@ -152,30 +150,5 @@ void aws_io_load_error_strings(void) {
     if (!s_error_strings_loaded) {
         s_error_strings_loaded = true;
         aws_register_error_info(&s_list);
-    }
-}
-
-int aws_io_translate_and_raise_file_open_error(int error_no) {
-    switch (error_no) {
-        case EPERM:
-        case EACCES:
-            return aws_raise_error(AWS_IO_NO_PERMISSION);
-        case EISDIR:
-        case ENAMETOOLONG:
-        case ENOENT:
-            return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
-        case ENFILE:
-            return aws_raise_error(AWS_IO_MAX_FDS_EXCEEDED);
-        case ENOMEM:
-            return aws_raise_error(AWS_ERROR_OOM);
-        default:
-            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    }
-}
-
-int aws_io_translate_and_raise_file_write_error(int error_no) {
-    switch(error_no) {
-        default:
-            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 }

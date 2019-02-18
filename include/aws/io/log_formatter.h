@@ -47,8 +47,8 @@ typedef int (*aws_log_formatter_format_fn)(
 typedef int (*aws_log_formatter_cleanup_fn)(struct aws_log_formatter *logger);
 
 struct aws_log_formatter_vtable {
-    aws_log_formatter_format_fn format;
-    aws_log_formatter_cleanup_fn cleanup;
+    const aws_log_formatter_format_fn format;
+    const aws_log_formatter_cleanup_fn cleanup;
 };
 
 struct aws_log_formatter {
@@ -63,7 +63,10 @@ struct aws_log_formatter {
  *   [<LogLevel>] [<Timestamp>] [<ThreadId>] - <User content>\n
  */
 AWS_IO_API
-int aws_default_log_formatter_init(struct aws_log_formatter *formatter, struct aws_allocator *allocator, enum aws_date_format date_format);
+int aws_log_formatter_default_init(
+    struct aws_log_formatter *formatter,
+    struct aws_allocator *allocator,
+    enum aws_date_format date_format);
 
 /*
  * Cleans up a log formatter (minus the base structure memory) by calling the formatter's cleanup function

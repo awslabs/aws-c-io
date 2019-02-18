@@ -1,5 +1,5 @@
-#ifndef AWS_COMMON_LOGGING_H
-#define AWS_COMMON_LOGGING_H
+#ifndef AWS_IO_LOGGING_H
+#define AWS_IO_LOGGING_H
 
 /*
  * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -16,7 +16,13 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/common/common.h>
+#include <aws/io/io.h>
+
+#include <assert.h>
+
+struct aws_log_channel;
+struct aws_log_formatter;
+struct aws_log_writer;
 
 #define AWS_LOG_LEVEL_NONE 0
 #define AWS_LOG_LEVEL_FATAL 1
@@ -49,14 +55,14 @@ enum aws_log_level {
 };
 
 /**
- * Log subject is a to-be-defined key, indendent of level, that will allow for additional filtering options.
+ * Log subject is a to-be-defined key, independent of level, that will allow for additional filtering options.
  *
  * The general idea is to support the logging of related functionality and allow for level control with a
  * finer-grained approach.
  *
  * For example, enable TRACE logging for mqtt-related log statements, but only WARN logging everywhere else.
  */
-typedef uint64_t aws_log_subject_t;
+typedef uint32_t aws_log_subject_t;
 
 #define AWS_LOG_SUBJECT_NONE ((aws_log_subject_t)0)
 
@@ -68,9 +74,9 @@ struct aws_logger;
  * By doing so, we make it so that the variadic format arguments are not even evaluated if the filter check does not succeed.
  */
 struct aws_logger_vtable {
-    int(*log)(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...);
-    enum aws_log_level(*get_log_level)(struct aws_logger *logger, aws_log_subject_t subject);
-    int(*cleanup)(struct aws_logger *logger);
+    int(* const log)(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...);
+    enum aws_log_level(* const get_log_level)(struct aws_logger *logger, aws_log_subject_t subject);
+    int(* const cleanup)(struct aws_logger *logger);
 };
 
 struct aws_logger {
@@ -79,36 +85,20 @@ struct aws_logger {
     void *p_impl;
 };
 
-AWS_EXTERN_C_BEGIN
-
-/**
- * Sets the aws logger used globally across the process.  Not thread-safe.  Must only be called once.
- */
-AWS_COMMON_API
-void aws_logger_set(struct aws_logger *logger);
-
-/**
- * Gets the aws logger used globally across the process.
- */
-AWS_COMMON_API
-struct aws_logger *aws_logger_get(void);
-
-/**
- * Cleans up all resources used by the logger; simply invokes the cleanup v-function
- */
-AWS_COMMON_API
-int aws_logger_cleanup(struct aws_logger *logger);
-
-/**
- * Converts a log level to a c-string constant.  Intended primarily to support building log lines that
- * include the level in them, i.e.
+/*
+ * Standard logger implementation composing three sub-components:
  *
- * [ERROR] 10:34:54.642 01-31-19 - Json parse error....
+ * The formatter takes var args input from the user and produces a formatted log line
+ * The writer takes a formatted log line and outputs it somewhere
+ * The channel is the transport between the two
  */
-AWS_COMMON_API
-int aws_logging_log_level_to_string(enum aws_log_level log_level, const char **level_string);
-
-AWS_EXTERN_C_END
+struct aws_logger_pipeline {
+    struct aws_log_formatter *formatter;
+    struct aws_log_channel *channel;
+    struct aws_log_writer *writer;
+    struct aws_allocator *allocator;
+    enum aws_log_level level;
+};
 
 /**
  * The base formatted logging macro that all other formatted logging macros resolve to.
@@ -117,9 +107,10 @@ AWS_EXTERN_C_END
  */
 #define AWS_LOGF_RAW(log_level, subject, ...)                                                                   \
 {                                                                                                               \
-    struct aws_logger *logger = aws_logger_get();                                                              \
-    if (logger != NULL && log_level > 0 && logger->vtable->get_log_level(logger, subject) >= log_level) {  \
-        logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                      \
+    assert(log_level > 0);                                                                                      \
+    struct aws_logger *logger = aws_logger_get();                                                               \
+    if (logger != NULL && logger->vtable->get_log_level(logger, subject) >= log_level) {                        \
+        logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                           \
     }                                                                                                           \
 }
 
@@ -172,4 +163,65 @@ AWS_EXTERN_C_END
 #endif
 
 
-#endif /* AWS_COMMON_LOGGING_H */
+AWS_EXTERN_C_BEGIN
+
+/**
+ * Sets the aws logger used globally across the process.  Not thread-safe.  Must only be called once.
+ */
+AWS_IO_API
+void aws_logger_set(struct aws_logger *logger);
+
+/**
+ * Gets the aws logger used globally across the process.
+ */
+AWS_IO_API
+struct aws_logger *aws_logger_get(void);
+
+/**
+ * Cleans up all resources used by the logger; simply invokes the cleanup v-function
+ */
+AWS_IO_API
+int aws_logger_cleanup(struct aws_logger *logger);
+
+/**
+ * Converts a log level to a c-string constant.  Intended primarily to support building log lines that
+ * include the level in them, i.e.
+ *
+ * [ERROR] 10:34:54.642 01-31-19 - Json parse error....
+ */
+AWS_IO_API
+int aws_log_level_to_string(enum aws_log_level log_level, const char **level_string);
+
+/*
+ * Initializes a pipeline logger that is built from the default formatter, a background thread-based channel, and
+ * a file writer.  The default logger in almost all circumstances.
+ */
+AWS_IO_API
+int aws_logger_standard_init(
+    struct aws_logger *logger,
+    struct aws_allocator *allocator,
+    enum aws_log_level level,
+    const char *file_name);
+
+/*
+ * Initializes a pipeline logger from components that have already been initialized.  This is not an ownership transfer.
+ * After the pipeline logger is cleaned up, the components will have to manually be cleaned up by the user.
+ */
+AWS_IO_API
+int aws_logger_pipeline_init_external(
+    struct aws_logger *logger,
+    struct aws_allocator *allocator,
+    struct aws_log_formatter *formatter,
+    struct aws_log_channel *channel,
+    struct aws_log_writer *writer,
+    enum aws_log_level level);
+
+/*
+ * Pipeline logger vtable for custom configurations
+ */
+AWS_IO_API
+extern struct aws_logger_vtable g_pipeline_logger_owned_vtable;
+
+AWS_EXTERN_C_END
+
+#endif /* AWS_IO_LOGGING_H */

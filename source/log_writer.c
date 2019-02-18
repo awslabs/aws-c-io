@@ -16,6 +16,7 @@
 #include <aws/io/log_writer.h>
 
 #include <aws/common/string.h>
+#include <aws/io/file_utils.h>
 
 #include <errno.h>
 #include <stdio.h>
@@ -131,6 +132,7 @@ static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struc
 static int s_aws_file_writer_cleanup_fn(struct aws_log_writer *writer) {
     struct aws_file_writer *impl = (struct aws_file_writer *) writer->impl;
 
+    assert(impl->vtable->close_file != NULL);
     int result = (impl->vtable->close_file)(impl);
 
     if (impl->base_file_name != NULL) {
@@ -159,7 +161,7 @@ static int s_aws_file_writer_init_internal(
     /* Allocate and initialize the file writer */
     struct aws_file_writer *impl = (struct aws_file_writer *)aws_mem_acquire(allocator, sizeof(struct aws_file_writer));
     if (impl == NULL) {
-        return aws_raise_error(AWS_ERROR_OOM);
+        return AWS_OP_ERR;
     }
 
     impl->vtable = vtable;
@@ -194,15 +196,15 @@ static int s_aws_file_writer_init_internal(
 /*
  * Public initialization interface
  */
-int aws_stdout_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
+int aws_log_writer_stdout_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
     return s_aws_file_writer_init_internal(writer, allocator, NULL, &s_stdout_writer_vtable);
 }
 
-int aws_stderr_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
+int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
     return s_aws_file_writer_init_internal(writer, allocator, NULL, &s_stderr_writer_vtable);
 }
 
-int aws_file_log_writer_init(
+int aws_log_writer_file_init(
         struct aws_log_writer *writer,
         struct aws_allocator *allocator,
         const char *file_name) {
@@ -210,5 +212,6 @@ int aws_file_log_writer_init(
 }
 
 int aws_log_writer_cleanup(struct aws_log_writer *writer) {
+    assert(writer->vtable->cleanup);
     return (writer->vtable->cleanup)(writer);
 }
