@@ -57,6 +57,12 @@ struct aws_log_formatter {
     void *impl;
 };
 
+struct aws_log_formatter_standard_options {
+    enum aws_date_format date_format;
+};
+
+AWS_EXTERN_C_BEGIN
+
 /*
  * Initializes the default log formatter which outputs lines in the format:
  *
@@ -66,7 +72,7 @@ AWS_IO_API
 int aws_log_formatter_default_init(
     struct aws_log_formatter *formatter,
     struct aws_allocator *allocator,
-    enum aws_date_format date_format);
+    struct aws_log_formatter_standard_options *options);
 
 /*
  * Cleans up a log formatter (minus the base structure memory) by calling the formatter's cleanup function
@@ -74,5 +80,7 @@ int aws_log_formatter_default_init(
  */
 AWS_IO_API
 int aws_log_formatter_cleanup(struct aws_log_formatter *formatter);
+
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_LOG_FORMATTER_H */

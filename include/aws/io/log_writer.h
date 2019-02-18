@@ -45,6 +45,12 @@ struct aws_log_writer {
     void *impl;
 };
 
+struct aws_log_writer_file_options {
+    const char *filename;
+};
+
+AWS_EXTERN_C_BEGIN
+
 /*
  * Initialize a log writer that sends log lines to stdout.  Uses C library IO.
  */
@@ -64,12 +70,14 @@ AWS_IO_API
 int aws_log_writer_file_init(
     struct aws_log_writer *writer,
     struct aws_allocator *allocator,
-    const char *file_name);
+    struct aws_log_writer_file_options *options);
 
 /*
  * Frees all resources used by a log writer with the exception of the base structure memory
  */
 AWS_IO_API
 int aws_log_writer_cleanup(struct aws_log_writer *writer);
+
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_LOG_WRITER_H */

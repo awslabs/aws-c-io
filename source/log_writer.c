@@ -207,8 +207,8 @@ int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocat
 int aws_log_writer_file_init(
         struct aws_log_writer *writer,
         struct aws_allocator *allocator,
-        const char *file_name) {
-    return s_aws_file_writer_init_internal(writer, allocator, file_name, &s_file_writer_vtable);
+        struct aws_log_writer_file_options *options) {
+    return s_aws_file_writer_init_internal(writer, allocator, options->filename, &s_file_writer_vtable);
 }
 
 int aws_log_writer_cleanup(struct aws_log_writer *writer) {

@@ -48,6 +48,8 @@ struct aws_log_channel {
     void *impl;
 };
 
+AWS_EXTERN_C_BEGIN
+
 /*
  * Simple channel that results in log lines being written in the same thread they were generated in.
  *
@@ -75,5 +77,7 @@ int aws_log_channel_background_init(
  */
 AWS_IO_API
 int aws_log_channel_cleanup(struct aws_log_channel *channel);
+
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_LOG_CHANNEL_H */

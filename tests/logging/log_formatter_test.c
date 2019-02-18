@@ -29,8 +29,12 @@ typedef int(*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct 
 
 int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *expected_user_output, enum aws_log_level log_level, enum aws_date_format date_format) {
     /* Initialize a default formatter*/
+    struct aws_log_formatter_standard_options options = {
+        .date_format = date_format
+    };
+
     struct aws_log_formatter formatter;
-    aws_log_formatter_default_init(&formatter, aws_default_allocator(), date_format);
+    aws_log_formatter_default_init(&formatter, aws_default_allocator(), &options);
 
     struct aws_date_time test_time;
     aws_date_time_init_now(&test_time);

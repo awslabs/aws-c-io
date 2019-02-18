@@ -182,10 +182,12 @@ static struct aws_log_formatter_vtable s_default_log_formatter_vtable = {
 };
 
 
-int aws_log_formatter_default_init(struct aws_log_formatter *formatter, struct aws_allocator *allocator,
-                                   enum aws_date_format date_format) {
+int aws_log_formatter_default_init(
+    struct aws_log_formatter *formatter,
+    struct aws_allocator *allocator,
+    struct aws_log_formatter_standard_options *options) {
     struct aws_default_log_formatter_impl *impl = (struct aws_default_log_formatter_impl *)aws_mem_acquire(allocator, sizeof(struct aws_default_log_formatter_impl));
-    impl->date_format = date_format;
+    impl->date_format = options->date_format;
 
     formatter->vtable = &s_default_log_formatter_vtable;
     formatter->allocator = allocator;

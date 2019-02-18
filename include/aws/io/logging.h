@@ -100,6 +100,11 @@ struct aws_logger_pipeline {
     enum aws_log_level level;
 };
 
+struct aws_logger_standard_options {
+    enum aws_log_level level;
+    const char *filename;
+};
+
 /**
  * The base formatted logging macro that all other formatted logging macros resolve to.
  * Checks for a logger and filters based on log level.
@@ -200,8 +205,7 @@ AWS_IO_API
 int aws_logger_standard_init(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
-    enum aws_log_level level,
-    const char *file_name);
+    struct aws_logger_standard_options *options);
 
 /*
  * Initializes a pipeline logger from components that have already been initialized.  This is not an ownership transfer.

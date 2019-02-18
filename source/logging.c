@@ -168,8 +168,7 @@ struct aws_logger_vtable g_pipeline_logger_owned_vtable = {
 int aws_logger_standard_init(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
-    enum aws_log_level level,
-    const char *file_name) {
+    struct aws_logger_standard_options *options) {
 
     struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
     if (impl == NULL) {
@@ -181,7 +180,11 @@ int aws_logger_standard_init(
         goto on_allocate_writer_failure;
     }
 
-    if (aws_log_writer_file_init(writer, allocator, file_name)) {
+    struct aws_log_writer_file_options file_writer_options = {
+        .filename = options->filename
+    };
+
+    if (aws_log_writer_file_init(writer, allocator, &file_writer_options)) {
         goto on_init_writer_failure;
     }
 
@@ -190,7 +193,11 @@ int aws_logger_standard_init(
         goto on_allocate_formatter_failure;
     }
 
-    if (aws_log_formatter_default_init(formatter, allocator, AWS_DATE_FORMAT_ISO_8601)) {
+    struct aws_log_formatter_standard_options formatter_options = {
+        .date_format = AWS_DATE_FORMAT_ISO_8601
+    };
+
+    if (aws_log_formatter_default_init(formatter, allocator, &formatter_options)) {
         goto on_init_formatter_failure;
     }
 
@@ -204,7 +211,7 @@ int aws_logger_standard_init(
         impl->channel = channel;
         impl->writer = writer;
         impl->allocator = allocator;
-        impl->level = level;
+        impl->level = options->level;
 
         logger->vtable = &g_pipeline_logger_owned_vtable;
         logger->allocator = allocator;

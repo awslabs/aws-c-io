@@ -35,8 +35,13 @@ int do_pipeline_logger_test(log_test_fn log_fn, const char **expected_user_conte
 
     remove(s_test_file_name);
 
+    struct aws_logger_standard_options options = {
+        .level = AWS_LL_TRACE,
+        .filename = s_test_file_name
+    };
+
     struct aws_logger logger;
-    if (aws_logger_standard_init(&logger, aws_default_allocator(), AWS_LL_TRACE, s_test_file_name)) {
+    if (aws_logger_standard_init(&logger, aws_default_allocator(), &options)) {
         return AWS_OP_ERR;
     }
 
