@@ -144,7 +144,7 @@ static int invoke_formatter(struct aws_log_formatter *formatter, struct aws_stri
     va_list args;
     va_start(args, format);
 
-    int result = formatter->vtable->format_fn(formatter, output, log_level, AWS_LOG_SUBJECT_NONE, format, args);
+    int result = formatter->vtable->format(formatter, output, log_level, AWS_LOG_SUBJECT_NONE, format, args);
 
     va_end(args);
 

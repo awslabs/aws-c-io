@@ -39,8 +39,8 @@ typedef int (*aws_file_writer_open_file_fn)(struct aws_file_writer *writer);
 typedef int (*aws_file_writer_close_file_fn)(struct aws_file_writer *writer);
 
 struct aws_file_writer_vtable {
-    aws_file_writer_open_file_fn open_file_fn;
-    aws_file_writer_close_file_fn close_file_fn;
+    aws_file_writer_open_file_fn open_file;
+    aws_file_writer_close_file_fn close_file;
 };
 
 struct aws_file_writer {
@@ -65,8 +65,8 @@ static int s_stdout_writer_close_file_fn(struct aws_file_writer *writer) {
 }
 
 static struct aws_file_writer_vtable s_stdout_writer_vtable = {
-    .open_file_fn = s_stdout_writer_open_file_fn,
-    .close_file_fn = s_stdout_writer_close_file_fn
+    .open_file = s_stdout_writer_open_file_fn,
+    .close_file = s_stdout_writer_close_file_fn
 };
 
 /*
@@ -85,8 +85,8 @@ static int s_stderr_writer_close_file_fn(struct aws_file_writer *writer) {
 }
 
 static struct aws_file_writer_vtable s_stderr_writer_vtable = {
-    .open_file_fn = s_stderr_writer_open_file_fn,
-    .close_file_fn = s_stderr_writer_close_file_fn
+    .open_file = s_stderr_writer_open_file_fn,
+    .close_file = s_stderr_writer_close_file_fn
 };
 
 /*
@@ -110,8 +110,8 @@ static int s_file_writer_close_file_fn(struct aws_file_writer *writer) {
 }
 
 static struct aws_file_writer_vtable s_file_writer_vtable = {
-    .open_file_fn = s_file_writer_open_file_fn,
-    .close_file_fn = s_file_writer_close_file_fn
+    .open_file = s_file_writer_open_file_fn,
+    .close_file = s_file_writer_close_file_fn
 };
 
 /*
@@ -131,7 +131,7 @@ static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struc
 static int s_aws_file_writer_cleanup_fn(struct aws_log_writer *writer) {
     struct aws_file_writer *impl = (struct aws_file_writer *) writer->impl;
 
-    int result = (*impl->vtable->close_file_fn)(impl);
+    int result = (impl->vtable->close_file)(impl);
 
     if (impl->base_file_name != NULL) {
         aws_mem_release(writer->allocator, impl->base_file_name);
@@ -143,8 +143,8 @@ static int s_aws_file_writer_cleanup_fn(struct aws_log_writer *writer) {
 }
 
 static struct aws_log_writer_vtable s_aws_file_writer_vtable = {
-    .write_fn = s_aws_file_writer_write_fn,
-    .cleanup_fn = s_aws_file_writer_cleanup_fn
+    .write = s_aws_file_writer_write_fn,
+    .cleanup = s_aws_file_writer_cleanup_fn
 };
 
 /*
@@ -176,7 +176,7 @@ static int s_aws_file_writer_init_internal(
     }
 
     /* attempt to open the file */
-    if ((*vtable->open_file_fn)(impl)) {
+    if ((vtable->open_file)(impl)) {
         if (impl->base_file_name != NULL) {
             aws_mem_release(allocator, impl->base_file_name);
         }
@@ -210,5 +210,5 @@ int aws_file_log_writer_init(
 }
 
 int aws_log_writer_cleanup(struct aws_log_writer *writer) {
-    return (*writer->vtable->cleanup_fn)(writer);
+    return (writer->vtable->cleanup)(writer);
 }

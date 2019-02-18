@@ -35,8 +35,8 @@ typedef int (*aws_log_writer_write_fn)(struct aws_log_writer *writer, const stru
 typedef int (*aws_log_writer_cleanup_fn)(struct aws_log_writer *writer);
 
 struct aws_log_writer_vtable {
-    aws_log_writer_write_fn write_fn;
-    aws_log_writer_cleanup_fn cleanup_fn;
+    aws_log_writer_write_fn write;
+    aws_log_writer_cleanup_fn cleanup;
 };
 
 struct aws_log_writer {

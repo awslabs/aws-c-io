@@ -37,8 +37,8 @@ typedef int (*aws_log_channel_send_fn)(struct aws_log_channel *channel, struct a
 typedef int (*aws_log_channel_cleanup_fn)(struct aws_log_channel *channel);
 
 struct aws_log_channel_vtable {
-    aws_log_channel_send_fn send_fn;
-    aws_log_channel_cleanup_fn cleanup_fn;
+    aws_log_channel_send_fn send;
+    aws_log_channel_cleanup_fn cleanup;
 };
 
 struct aws_log_channel {

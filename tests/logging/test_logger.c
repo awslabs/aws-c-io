@@ -67,9 +67,9 @@ int s_test_logger_cleanup(struct aws_logger *logger) {
 }
 
 static struct aws_logger_vtable s_test_logger_vtable = {
-        .get_log_level_fn = s_test_logger_get_log_level_fn,
-        .log_fn = s_test_logger_log_fn,
-        .cleanup_fn = s_test_logger_cleanup
+        .get_log_level = s_test_logger_get_log_level_fn,
+        .log = s_test_logger_log_fn,
+        .cleanup = s_test_logger_cleanup
 };
 
 int test_logger_init(struct aws_logger *logger, struct aws_allocator *allocator, enum aws_log_level level) {

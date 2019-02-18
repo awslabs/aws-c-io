@@ -68,9 +68,9 @@ struct aws_logger;
  * By doing so, we make it so that the variadic format arguments are not even evaluated if the filter check does not succeed.
  */
 struct aws_logger_vtable {
-    int(*log_fn)(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...);
-    enum aws_log_level(*get_log_level_fn)(struct aws_logger *logger, aws_log_subject_t subject);
-    int(*cleanup_fn)(struct aws_logger *logger);
+    int(*log)(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...);
+    enum aws_log_level(*get_log_level)(struct aws_logger *logger, aws_log_subject_t subject);
+    int(*cleanup)(struct aws_logger *logger);
 };
 
 struct aws_logger {
@@ -85,13 +85,13 @@ AWS_EXTERN_C_BEGIN
  * Sets the aws logger used globally across the process.  Not thread-safe.  Must only be called once.
  */
 AWS_COMMON_API
-void aws_logging_set(struct aws_logger *logger);
+void aws_logger_set(struct aws_logger *logger);
 
 /**
  * Gets the aws logger used globally across the process.
  */
 AWS_COMMON_API
-struct aws_logger *aws_logging_get(void);
+struct aws_logger *aws_logger_get(void);
 
 /**
  * Cleans up all resources used by the logger; simply invokes the cleanup v-function
@@ -117,9 +117,9 @@ AWS_EXTERN_C_END
  */
 #define AWS_LOGF_RAW(log_level, subject, ...)                                                                   \
 {                                                                                                               \
-    struct aws_logger *logger = aws_logging_get();                                                              \
-    if (logger != NULL && log_level > 0 && (logger->vtable->get_log_level_fn)(logger, subject) >= log_level) {  \
-        (logger->vtable->log_fn)(logger, log_level, subject, __VA_ARGS__);                                      \
+    struct aws_logger *logger = aws_logger_get();                                                              \
+    if (logger != NULL && log_level > 0 && logger->vtable->get_log_level(logger, subject) >= log_level) {  \
+        logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                      \
     }                                                                                                           \
 }
 

@@ -36,7 +36,7 @@ static int s_foreground_channel_send_fn(
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *) channel->impl;
 
     aws_mutex_lock(&impl->sync);
-    (*channel->writer->vtable->write_fn)(channel->writer, log_line);
+    (channel->writer->vtable->write)(channel->writer, log_line);
     aws_mutex_unlock(&impl->sync);
 
     /*
@@ -60,8 +60,8 @@ static int s_foreground_channel_cleanup_fn(struct aws_log_channel *channel) {
 }
 
 static struct aws_log_channel_vtable s_foreground_channel_vtable = {
-    .send_fn = s_foreground_channel_send_fn,
-    .cleanup_fn = s_foreground_channel_cleanup_fn
+    .send = s_foreground_channel_send_fn,
+    .cleanup = s_foreground_channel_cleanup_fn
 };
 
 
@@ -126,8 +126,8 @@ static int s_background_channel_cleanup_fn(struct aws_log_channel *channel) {
 }
 
 static struct aws_log_channel_vtable s_background_channel_vtable = {
-    .send_fn = s_background_channel_send_fn,
-    .cleanup_fn = s_background_channel_cleanup_fn
+    .send = s_background_channel_send_fn,
+    .cleanup = s_background_channel_cleanup_fn
 };
 
 static bool s_background_wait_fn(void *context) {
@@ -183,7 +183,7 @@ static void s_background_thread_writer_fn(void *thread_data) {
                 continue;
             }
 
-            (*channel->writer->vtable->write_fn)(channel->writer, log_line);
+            (channel->writer->vtable->write)(channel->writer, log_line);
 
             /*
              * send is considered a transfer of ownership.  write is not a transfer of ownership.
@@ -200,7 +200,8 @@ static void s_background_thread_writer_fn(void *thread_data) {
 }
 
 int aws_background_log_channel_init(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer) {
-    struct aws_log_background_channel *impl = (struct aws_log_background_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_background_channel));
+    struct aws_log_background_channel *impl = (struct aws_log_background_channel *) aws_mem_acquire(allocator,
+                                                                                                    sizeof(struct aws_log_background_channel));
     if (impl == NULL) {
         return aws_raise_error(AWS_ERROR_OOM);
     }
@@ -231,8 +232,9 @@ int aws_background_log_channel_init(struct aws_log_channel *channel, struct aws_
     /*
      * Logging thread should need very little stack, but let's defer this to later
      */
-    struct aws_thread_options thread_options;
-    thread_options.stack_size = 0;
+    struct aws_thread_options thread_options = {
+        .stack_size = 0
+    };
 
     if (aws_thread_launch(&impl->background_thread, s_background_thread_writer_fn, channel, &thread_options) == AWS_OP_SUCCESS) {
         return AWS_OP_SUCCESS;
@@ -256,5 +258,5 @@ cleanup_sync_init_fail:
 }
 
 int aws_log_channel_cleanup(struct aws_log_channel *channel) {
-    return (*channel->vtable->cleanup_fn)(channel);
+    return (channel->vtable->cleanup)(channel);
 }

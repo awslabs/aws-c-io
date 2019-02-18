@@ -47,8 +47,8 @@ typedef int (*aws_log_formatter_format_fn)(
 typedef int (*aws_log_formatter_cleanup_fn)(struct aws_log_formatter *logger);
 
 struct aws_log_formatter_vtable {
-    aws_log_formatter_format_fn format_fn;
-    aws_log_formatter_cleanup_fn cleanup_fn;
+    aws_log_formatter_format_fn format;
+    aws_log_formatter_cleanup_fn cleanup;
 };
 
 struct aws_log_formatter {

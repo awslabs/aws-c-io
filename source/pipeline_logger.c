@@ -32,7 +32,7 @@ static int s_pipeline_logger_log_fn(struct aws_logger *logger, enum aws_log_leve
     struct aws_pipeline_logger *impl = (struct aws_pipeline_logger *)logger->p_impl;
     struct aws_string *output = NULL;
 
-    int result = (*impl->formatter->vtable->format_fn)(impl->formatter, &output, log_level, subject, format, format_args);
+    int result = (*impl->formatter->vtable->format)(impl->formatter, &output, log_level, subject, format, format_args);
 
     va_end(format_args);
 
@@ -40,7 +40,7 @@ static int s_pipeline_logger_log_fn(struct aws_logger *logger, enum aws_log_leve
         return AWS_OP_ERR;
     }
 
-    if ((*impl->channel->vtable->send_fn)(impl->channel, output)) {
+    if ((*impl->channel->vtable->send)(impl->channel, output)) {
         /*
          * failure to send implies failure to transfer ownership
          */
@@ -68,17 +68,17 @@ static int s_pipeline_logger_unowned_cleanup_fn(struct aws_logger *logger) {
 }
 
 static struct aws_logger_vtable s_pipeline_logger_unowned_vtable = {
-    .get_log_level_fn = s_pipeline_logger_get_log_level_fn,
-    .log_fn = s_pipeline_logger_log_fn,
-    .cleanup_fn = s_pipeline_logger_unowned_cleanup_fn
+    .get_log_level = s_pipeline_logger_get_log_level_fn,
+    .log = s_pipeline_logger_log_fn,
+    .cleanup = s_pipeline_logger_unowned_cleanup_fn
 };
 
 static int s_pipeline_logger_owned_cleanup_fn(struct aws_logger *logger) {
     struct aws_pipeline_logger *impl = (struct aws_pipeline_logger *)logger->p_impl;
 
-    (*impl->channel->vtable->cleanup_fn)(impl->channel);
-    (*impl->formatter->vtable->cleanup_fn)(impl->formatter);
-    (*impl->writer->vtable->cleanup_fn)(impl->writer);
+    (impl->channel->vtable->cleanup)(impl->channel);
+    (impl->formatter->vtable->cleanup)(impl->formatter);
+    (impl->writer->vtable->cleanup)(impl->writer);
 
     aws_mem_release(impl->allocator, impl->channel);
     aws_mem_release(impl->allocator, impl->formatter);
@@ -90,9 +90,9 @@ static int s_pipeline_logger_owned_cleanup_fn(struct aws_logger *logger) {
 }
 
 static struct aws_logger_vtable s_pipeline_logger_owned_vtable = {
-    .get_log_level_fn = s_pipeline_logger_get_log_level_fn,
-    .log_fn = s_pipeline_logger_log_fn,
-    .cleanup_fn = s_pipeline_logger_owned_cleanup_fn
+    .get_log_level = s_pipeline_logger_get_log_level_fn,
+    .log = s_pipeline_logger_log_fn,
+    .cleanup = s_pipeline_logger_owned_cleanup_fn
 };
 
 int aws_pipeline_logger_init_from_unowned_components(

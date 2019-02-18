@@ -65,8 +65,8 @@ static int s_mock_log_writer_cleanup_fn(struct aws_log_writer *writer) {
 }
 
 static struct aws_log_writer_vtable s_mock_writer_vtable = {
-    .write_fn = s_mock_log_writer_write_fn,
-    .cleanup_fn = s_mock_log_writer_cleanup_fn
+    .write = s_mock_log_writer_write_fn,
+    .cleanup = s_mock_log_writer_cleanup_fn
 };
 
 static int s_aws_mock_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
@@ -137,7 +137,7 @@ static int s_do_channel_test(init_channel_fn init_fn, const struct aws_string **
     for (size_t i = 0; i < test_lines_length; ++i) {
         struct aws_string *test_line_copy = aws_string_new_from_string(log_channel.allocator, *(test_lines[i]));
 
-        if ((log_channel.vtable->send_fn)(&log_channel, test_line_copy)) {
+        if ((log_channel.vtable->send)(&log_channel, test_line_copy)) {
             sprintf(s_test_error_message, "Failed call to log channel send");
             result = AWS_OP_ERR;
         }

@@ -39,7 +39,7 @@ static const char *s_test_file_name =
 
 int do_default_log_writer_test(struct aws_log_writer *writer, const char *expected_file_content, const struct aws_string *output, FILE *close_fp) {
 
-    int result = (*writer->vtable->write_fn)(writer, output);
+    int result = writer->vtable->write(writer, output);
 
     aws_log_writer_cleanup(writer);
 

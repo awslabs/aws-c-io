@@ -40,11 +40,11 @@ int do_pipeline_logger_test(log_test_fn log_fn, const char **expected_user_conte
         return AWS_OP_ERR;
     }
 
-    aws_logging_set(&logger);
+    aws_logger_set(&logger);
 
     (*log_fn)();
 
-    aws_logging_set(NULL);
+    aws_logger_set(NULL);
 
     aws_logger_cleanup(&logger);
 

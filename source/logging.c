@@ -40,9 +40,9 @@ static int s_null_logger_cleanup_fn(struct aws_logger *logger) {
 }
 
 static struct aws_logger_vtable s_null_vtable = {
-        .get_log_level_fn = s_null_logger_get_log_level_fn,
-        .log_fn = s_null_logger_log_fn,
-        .cleanup_fn = s_null_logger_cleanup_fn
+        .get_log_level = s_null_logger_get_log_level_fn,
+        .log = s_null_logger_log_fn,
+        .cleanup = s_null_logger_cleanup_fn
 };
 
 static struct aws_logger s_null_logger = {
@@ -53,7 +53,7 @@ static struct aws_logger s_null_logger = {
 
 static struct aws_logger *s_root_logger_ptr = &s_null_logger;
 
-void aws_logging_set(struct aws_logger *logger) {
+void aws_logger_set(struct aws_logger *logger) {
     if (logger != NULL) {
         s_root_logger_ptr = logger;
     } else {
@@ -61,12 +61,12 @@ void aws_logging_set(struct aws_logger *logger) {
     }
 }
 
-struct aws_logger *aws_logging_get(void) {
+struct aws_logger *aws_logger_get(void) {
     return s_root_logger_ptr;
 }
 
 int aws_logger_cleanup(struct aws_logger *logger) {
-    return (*logger->vtable->cleanup_fn)(logger);
+    return logger->vtable->cleanup(logger);
 }
 
 static const char* s_log_level_strings[AWS_LL_COUNT] = {

@@ -22,7 +22,7 @@ int do_log_test(enum aws_log_level level, const char *expected_result, void (*ca
     /* Create and attach a logger for testing*/
     struct aws_logger test_logger;
     test_logger_init(&test_logger, aws_default_allocator(), level);
-    aws_logging_set(&test_logger);
+    aws_logger_set(&test_logger);
 
     /* Perform logging operations */
     (*callback)(level);
@@ -32,7 +32,7 @@ int do_log_test(enum aws_log_level level, const char *expected_result, void (*ca
     test_logger_get_contents(&test_logger, buffer, TEST_LOGGER_MAX_BUFFER_SIZE);
 
     /* clean up */
-    aws_logging_set(NULL);
+    aws_logger_set(NULL);
     aws_logger_cleanup(&test_logger);
 
     /* Check the test results last */
