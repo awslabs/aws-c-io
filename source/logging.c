@@ -284,3 +284,81 @@ int aws_logger_pipeline_init_external(
     return AWS_OP_SUCCESS;
 }
 
+#ifndef AWS_MAX_LOG_SUBJECT_SLOTS
+#    define AWS_MAX_LOG_SUBJECT_SLOTS 16u
+#endif
+
+static const uint32_t S_MAX_LOG_SUBJECT = AWS_LOG_SUBJECT_SPACE_SIZE * AWS_MAX_LOG_SUBJECT_SLOTS - 1;
+
+static const struct aws_log_subject_info_list *volatile s_log_subject_slots[AWS_MAX_LOG_SUBJECT_SLOTS] = {0};
+
+static const struct aws_log_subject_info *s_get_log_subject_info_by_id(aws_log_subject_t subject) {
+    if (subject > S_MAX_LOG_SUBJECT) {
+        return NULL;
+    }
+
+    uint32_t slot_index = subject >> AWS_LOG_SUBJECT_BIT_SPACE;
+    uint32_t subject_index = subject & AWS_LOG_SUBJECT_SPACE_MASK;
+
+    const struct aws_log_subject_info_list *subject_slot = s_log_subject_slots[slot_index];
+
+    if (!subject_slot || slot_index >= subject_slot->count) {
+        return NULL;
+    }
+
+    return &subject_slot->subject_list[subject_index];
+}
+
+const char *aws_log_subject_name(aws_log_subject_t subject) {
+    const struct aws_log_subject_info *subject_info = s_get_log_subject_info_by_id(subject);
+
+    if (subject_info != NULL) {
+        return subject_info->subject_name;
+    }
+
+    return "Unknown";
+}
+
+void aws_register_log_subject_info_list(struct aws_log_subject_info_list *log_subject_list) {
+    (void)log_subject_list;
+
+    /*
+     * We're not so worried about these asserts being removed in an NDEBUG build
+     * - we'll either segfault immediately (for the first two) or for the count
+     * assert, the registration will be ineffective.
+     */
+    assert(log_subject_list);
+    assert(log_subject_list->subject_list);
+    assert(log_subject_list->count);
+
+    uint32_t min_range = log_subject_list->subject_list[0].subject_id;
+
+    uint32_t slot_index = min_range >> AWS_LOG_SUBJECT_BIT_SPACE;
+
+    assert(slot_index < AWS_MAX_LOG_SUBJECT_SLOTS);
+
+    if (slot_index >= AWS_MAX_LOG_SUBJECT_SLOTS) {
+        /* This is an NDEBUG build apparently. Kill the process rather than
+         * corrupting heap. */
+        fprintf(stderr, "Bad log subject slot index 0x%016x\n", slot_index);
+        abort();
+    }
+
+    s_log_subject_slots[slot_index] = log_subject_list;
+}
+
+static struct aws_log_subject_info s_io_log_subject_infos[] = {
+        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_GENERAL, "General", "Subject for IO logging that doesn't belong to any particular category"),
+        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_TLS, "Tls", "Subject for TLS-related logging"),
+        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_ALPN, "Alpn", "Subject for ALPN-related logging"),
+        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "Dns", "Subject for DNS-related logging")
+};
+
+static struct aws_log_subject_info_list s_io_log_subject_list = {
+        .subject_list = s_io_log_subject_infos,
+        .count = AWS_ARRAY_SIZE(s_io_log_subject_infos),
+};
+
+void aws_io_load_log_subject_strings(void) {
+    aws_register_log_subject_info_list(&s_io_log_subject_list);
+}

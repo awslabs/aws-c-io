@@ -55,16 +55,50 @@ enum aws_log_level {
 };
 
 /**
- * Log subject is a to-be-defined key, independent of level, that will allow for additional filtering options.
+ * Log subject is a way of designating the topic of logging.
  *
- * The general idea is to support the logging of related functionality and allow for level control with a
- * finer-grained approach.
+ * The general idea is to support a finer-grained approach to log level control.  The primary use case
+ * is for situations that require more detailed logging within a specific domain, where enabling that detail
+ * globally leads to an untenable flood of information.
  *
- * For example, enable TRACE logging for mqtt-related log statements, but only WARN logging everywhere else.
+ * For example, enable TRACE logging for tls-related log statements (handshake binary payloads), but
+ * only WARN logging everywhere else (because http payloads would blow up the log files).
+ *
+ * Log subject is an enum similar to aws error: each library has its own value-space and someone is
+ * responsible for registering the value <-> string connections.
  */
 typedef uint32_t aws_log_subject_t;
 
-#define AWS_LOG_SUBJECT_NONE ((aws_log_subject_t)0)
+#define AWS_LOG_SUBJECT_BIT_SPACE 10
+#define AWS_LOG_SUBJECT_SPACE_SIZE (1 << AWS_LOG_SUBJECT_BIT_SPACE)
+#define AWS_LOG_SUBJECT_SPACE_MASK (AWS_LOG_SUBJECT_SPACE_SIZE - 1)
+
+enum aws_io_log_subject {
+    AWS_LS_IO_GENERAL = 0,
+    AWS_LS_IO_TLS,
+    AWS_LS_IO_ALPN,
+    AWS_LS_IO_DNS,
+
+    AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
+};
+
+struct aws_log_subject_info {
+    aws_log_subject_t subject_id;
+    const char *subject_name;
+    const char *subject_description;
+};
+
+#define DEFINE_LOG_SUBJECT_INFO(id, name, desc) \
+{ \
+    .subject_id = id, \
+    .subject_name = name, \
+    .subject_description = desc \
+}
+
+struct aws_log_subject_info_list {
+    struct aws_log_subject_info *subject_list;
+    size_t count;
+};
 
 struct aws_logger;
 
@@ -119,7 +153,7 @@ struct aws_logger_standard_options {
     }                                                                                                           \
 }
 
-#define AWS_LOGF(log_level, ...) AWS_LOGF_RAW(log_level, AWS_LOG_SUBJECT_NONE, __VA_ARGS__)
+#define AWS_LOGF(log_level, ...) AWS_LOGF_RAW(log_level, AWS_LS_IO_GENERAL, __VA_ARGS__)
 
 /**
  * LOGF_<level> variants for each level.  These are what should be used directly to do all logging.
@@ -219,6 +253,12 @@ int aws_logger_pipeline_init_external(
     struct aws_log_channel *channel,
     struct aws_log_writer *writer,
     enum aws_log_level level);
+
+/**
+ * Connects log subject strings with log subject integer values
+ */
+AWS_IO_API
+void aws_io_load_log_subject_strings(void);
 
 /*
  * Pipeline logger vtable for custom configurations
