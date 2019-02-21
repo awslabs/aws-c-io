@@ -61,13 +61,8 @@ int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter
     size_t line_length = strlen(buffer);
     ASSERT_TRUE(line_length >= 2, "Log line \"%s\" is too short", buffer);
 
-#ifdef WIN32
-    ASSERT_TRUE(strncmp(&buffer[line_length - 2], "\r\n", 2) == 0, "Log line did not end with a newline character combination");
-    buffer[line_length - 2] = 0;
-#else
-    ASSERT_TRUE(buffer[line_length - 1] == '\n', "Log line did not end with a newline character combination");
+    ASSERT_TRUE(buffer[line_length - 1] == '\n', "Log line did not end with a newline");
     buffer[line_length - 1] = 0;
-#endif //
 
     /*
      * Check that the log level appears properly

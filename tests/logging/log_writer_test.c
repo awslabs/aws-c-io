@@ -119,68 +119,6 @@ static int s_log_writer_simple_file_test_fn(struct aws_allocator *allocator, voi
 AWS_TEST_CASE(test_log_writer_simple_file_test, s_log_writer_simple_file_test_fn);
 
 /*
- * Simple stdout test via freopen redirect
- */
-static int s_log_writer_simple_stdout_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
-
-    remove(s_test_file_name);
-
-    freopen(s_test_file_name, "a+", stdout);
-
-    struct aws_log_writer writer;
-    aws_log_writer_stdout_init(&writer, allocator);
-
-    return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stdout);
-}
-AWS_TEST_CASE(test_log_writer_simple_stdout_test, s_log_writer_simple_stdout_test_fn);
-
-/*
- * Simple stderr test via freopen redirect
- */
-static int s_log_writer_simple_stderr_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
-
-    remove(s_test_file_name);
-
-    freopen(s_test_file_name, "a+", stderr);
-
-    struct aws_log_writer writer;
-    aws_log_writer_stderr_init(&writer, allocator);
-
-    return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stderr);
-}
-AWS_TEST_CASE(test_log_writer_simple_stderr_test, s_log_writer_simple_stderr_test_fn);
-
-/*
- * Stderr sanitizer investigation testbed
- */
-static int s_log_writer_stderr_sanitizer_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
-    (void) allocator;
-
-    remove(s_test_file_name);
-
-    freopen(s_test_file_name, "a+", stderr);
-
-    fclose(stderr);
-
-    return AWS_OP_SUCCESS;
-
-    /*
-    struct aws_log_writer writer;
-    aws_log_writer_stderr_init(&writer, aws_default_allocator());
-
-    return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stderr);
-     */
-
-    /*
-     *     aws_log_writer_cleanup(writer);
-     */
-}
-AWS_TEST_CASE(test_log_writer_stderr_sanitizer_test, s_log_writer_stderr_sanitizer_test_fn);
-
-/*
  * Existing file test (verifies append is being used)
  */
 static int s_log_writer_existing_file_test_fn(struct aws_allocator *allocator, void *ctx) {
@@ -217,7 +155,12 @@ static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *
     int aws_error = aws_last_error();
 
     ASSERT_TRUE(result == AWS_OP_ERR, "Log file open succeeded despite an invalid file name");
+
+#ifdef WIN32
+	ASSERT_TRUE(aws_error == AWS_IO_NO_PERMISSION, "File open error was not no permission as expected");
+#else
     ASSERT_TRUE(aws_error == AWS_IO_FILE_INVALID_PATH, "File open error was not invalid path as expected");
+#endif /* WIN32 */
 
     return AWS_OP_SUCCESS;
 }
