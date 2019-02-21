@@ -156,14 +156,6 @@ static void s_background_thread_writer_fn(void *thread_data) {
 
     AWS_FATAL_ASSERT(aws_array_list_init_dynamic(&log_lines, channel->allocator, 10, sizeof(struct aws_string *)) == 0);
 
-    if (aws_array_list_init_dynamic(&log_lines, channel->allocator, 10, sizeof(struct aws_string *))) {
-        /*
-         * This feels like it should be a fatal error, as it's invisible to the user and it will result
-         * in an endless backup of log lines, assuming they are able to be created.
-         */
-        return;
-    }
-
     while(true) {
         aws_mutex_lock(&impl->sync);
         aws_condition_variable_wait_pred(&impl->pending_line_signal, &impl->sync, s_background_wait_fn, impl);

@@ -137,6 +137,7 @@ add_test_case(test_log_writer_simple_stdout_test)
 add_test_case(test_log_writer_simple_stderr_test)
 add_test_case(test_log_writer_existing_file_test)
 add_test_case(test_log_writer_bad_file_test)
+add_test_case(test_log_writer_stderr_sanitizer_test)
 
 add_test_case(test_foreground_log_channel_single_line)
 add_test_case(test_foreground_log_channel_numbers)

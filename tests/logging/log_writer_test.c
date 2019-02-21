@@ -149,6 +149,33 @@ static int s_log_writer_simple_stderr_test_fn(struct aws_allocator *allocator, v
 AWS_TEST_CASE(test_log_writer_simple_stderr_test, s_log_writer_simple_stderr_test_fn);
 
 /*
+ * Stderr sanitizer investigation testbed
+ */
+static int s_log_writer_stderr_sanitizer_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void) ctx;
+
+    remove(s_test_file_name);
+
+    freopen(s_test_file_name, "a+", stderr);
+
+    fclose(stderr);
+
+    return AWS_OP_SUCCESS;
+    
+    /*
+    struct aws_log_writer writer;
+    aws_log_writer_stderr_init(&writer, aws_default_allocator());
+
+    return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, stderr);
+     */
+
+    /*
+     *     aws_log_writer_cleanup(writer);
+     */
+}
+AWS_TEST_CASE(test_log_writer_stderr_sanitizer_test, s_log_writer_stderr_sanitizer_test_fn);
+
+/*
  * Existing file test (verifies append is being used)
  */
 static int s_log_writer_existing_file_test_fn(struct aws_allocator *allocator, void *ctx) {
