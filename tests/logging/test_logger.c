@@ -26,6 +26,9 @@
 #define TEST_LOGGER_MAX_LOG_LINE_SIZE 256
 
 int s_test_logger_log_fn(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...) {
+    (void)subject;
+    (void)log_level;
+
     va_list format_args;
     va_start(format_args, format);
 
@@ -50,6 +53,8 @@ int s_test_logger_log_fn(struct aws_logger *logger, enum aws_log_level log_level
 }
 
 enum aws_log_level s_test_logger_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
+    (void)subject;
+    
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
 
     return impl->level;
