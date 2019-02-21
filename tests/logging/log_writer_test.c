@@ -36,9 +36,9 @@
  */
 static const char *s_test_file_name =
 #ifdef WIN32
-    "C:\\temp\\aws_log_writer_test.log";
+    "aws_log_writer_test.log";
 #else
-    "/tmp/aws_log_writer_test.log";
+    "./aws_log_writer_test.log";
 #endif
 
 int do_default_log_writer_test(struct aws_log_writer *writer, const char *expected_file_content, const struct aws_string *output, FILE *close_fp) {

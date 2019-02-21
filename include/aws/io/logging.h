@@ -90,9 +90,9 @@ struct aws_log_subject_info {
 
 #define DEFINE_LOG_SUBJECT_INFO(id, name, desc) \
 { \
-    .subject_id = id, \
-    .subject_name = name, \
-    .subject_description = desc \
+    .subject_id = (id), \
+    .subject_name = (name), \
+    .subject_description = (desc) \
 }
 
 struct aws_log_subject_info_list {
@@ -148,7 +148,7 @@ struct aws_logger_standard_options {
 {                                                                                                               \
     assert(log_level > 0);                                                                                      \
     struct aws_logger *logger = aws_logger_get();                                                               \
-    if (logger != NULL && logger->vtable->get_log_level(logger, subject) >= log_level) {                        \
+    if (logger != NULL && logger->vtable->get_log_level(logger, (subject)) >= (log_level)) {                    \
         logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                           \
     }                                                                                                           \
 }

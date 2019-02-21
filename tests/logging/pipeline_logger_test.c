@@ -28,9 +28,9 @@
 
 static const char *s_test_file_name =
 #ifdef WIN32
-        "C:\\temp\\aws_log_writer_test.log";
+        "aws_log_writer_test.log";
 #else
-        "/tmp/aws_log_writer_test.log";
+        "./aws_log_writer_test.log";
 #endif
 
 typedef void(*log_test_fn)(void);
