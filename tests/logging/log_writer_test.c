@@ -25,6 +25,10 @@
 #   include <sys/file.h>
 #endif // WIN32
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
+#endif                              /* _MSC_VER */
+
 #define TEST_WRITER_MAX_BUFFER_SIZE 4096
 
 /*
@@ -161,7 +165,7 @@ static int s_log_writer_stderr_sanitizer_test_fn(struct aws_allocator *allocator
     fclose(stderr);
 
     return AWS_OP_SUCCESS;
-    
+
     /*
     struct aws_log_writer writer;
     aws_log_writer_stderr_init(&writer, aws_default_allocator());

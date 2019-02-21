@@ -21,6 +21,9 @@
 #include <errno.h>
 #include <stdio.h>
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
+#endif                              /* _MSC_VER */
 
 /*
  * Basic log writer implementations - stdout, stderr, arbitrary file

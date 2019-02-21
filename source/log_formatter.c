@@ -26,6 +26,10 @@
  * Default formatter implementation
  */
 
+#if _MSC_VER
+#    pragma warning(disable : 4204) /* non-constant aggregate initializer */
+#endif
+
 // (max) strlen of "[<LogLevel>]"
 #define LOG_LEVEL_PREFIX_PADDING 7
 

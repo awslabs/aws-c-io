@@ -20,6 +20,10 @@
 #include <errno.h>
 #include <stdio.h>
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
+#endif                              /* _MSC_VER */
+
 #define TEST_PIPELINE_MAX_BUFFER_SIZE 4096
 
 static const char *s_test_file_name =

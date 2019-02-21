@@ -23,6 +23,10 @@
 
 #include <stdarg.h>
 
+#if _MSC_VER
+#    pragma warning(disable : 4204) /* non-constant aggregate initializer */
+#endif
+
 static enum aws_log_level s_null_logger_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)logger;
     (void)subject;

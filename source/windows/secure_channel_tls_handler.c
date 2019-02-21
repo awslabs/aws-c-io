@@ -17,6 +17,7 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/io/channel.h>
+#include <aws/io/file_utils.h>
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/task_scheduler.h>
