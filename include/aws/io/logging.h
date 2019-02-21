@@ -238,7 +238,7 @@ int aws_log_level_to_string(enum aws_log_level log_level, const char **level_str
  * a file writer.  The default logger in almost all circumstances.
  */
 AWS_IO_API
-int aws_logger_standard_init(
+int aws_logger_init_standard(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
     struct aws_logger_standard_options *options);
@@ -248,7 +248,7 @@ int aws_logger_standard_init(
  * After the pipeline logger is cleaned up, the components will have to manually be cleaned up by the user.
  */
 AWS_IO_API
-int aws_logger_pipeline_init_external(
+int aws_logger_init_from_external(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
     struct aws_log_formatter *formatter,

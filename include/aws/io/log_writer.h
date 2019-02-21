@@ -54,19 +54,19 @@ AWS_EXTERN_C_BEGIN
  * Initialize a log writer that sends log lines to stdout.  Uses C library IO.
  */
 AWS_IO_API
-int aws_log_writer_stdout_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
+int aws_log_writer_init_stdout(struct aws_log_writer *writer, struct aws_allocator *allocator);
 
 /*
  * Initialize a log writer that sends log lines to stderr.  Uses C library IO.
  */
 AWS_IO_API
-int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocator *allocator);
+int aws_log_writer_init_stderr(struct aws_log_writer *writer, struct aws_allocator *allocator);
 
 /*
  * Initialize a log writer that sends log lines to a file.  Uses C library IO.
  */
 AWS_IO_API
-int aws_log_writer_file_init(
+int aws_log_writer_init_file(
     struct aws_log_writer *writer,
     struct aws_allocator *allocator,
     struct aws_log_writer_file_options *options);

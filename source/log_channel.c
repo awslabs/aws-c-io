@@ -64,7 +64,7 @@ static int s_foreground_channel_cleanup_fn(struct aws_log_channel *channel) {
 static struct aws_log_channel_vtable s_foreground_channel_vtable = {.send = s_foreground_channel_send_fn,
                                                                     .cleanup = s_foreground_channel_cleanup_fn};
 
-int aws_log_channel_foreground_init(
+int aws_log_channel_init_foreground(
     struct aws_log_channel *channel,
     struct aws_allocator *allocator,
     struct aws_log_writer *writer) {
@@ -195,7 +195,7 @@ static void s_background_thread_writer_fn(void *thread_data) {
     aws_array_list_clean_up(&log_lines);
 }
 
-int aws_log_channel_background_init(
+int aws_log_channel_init_background(
     struct aws_log_channel *channel,
     struct aws_allocator *allocator,
     struct aws_log_writer *writer) {

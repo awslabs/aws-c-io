@@ -36,7 +36,7 @@ int do_default_log_formatter_test(
     struct aws_log_formatter_standard_options options = {.date_format = date_format};
 
     struct aws_log_formatter formatter;
-    aws_log_formatter_default_init(&formatter, allocator, &options);
+    aws_log_formatter_init_default(&formatter, allocator, &options);
 
     struct aws_date_time test_time;
     aws_date_time_init_now(&test_time);

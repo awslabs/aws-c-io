@@ -68,7 +68,7 @@ AWS_EXTERN_C_BEGIN
  *   [<LogLevel>] [<Timestamp>] [<ThreadId>] - <User content>\n
  */
 AWS_IO_API
-int aws_log_formatter_default_init(
+int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,
     struct aws_allocator *allocator,
     struct aws_log_formatter_standard_options *options);

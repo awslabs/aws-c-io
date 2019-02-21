@@ -163,7 +163,7 @@ struct aws_logger_vtable g_pipeline_logger_owned_vtable = {.get_log_level = s_aw
                                                            .log = s_aws_logger_pipeline_log_fn,
                                                            .cleanup = s_aws_logger_pipeline_owned_cleanup_fn};
 
-int aws_logger_standard_init(
+int aws_logger_init_standard(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
     struct aws_logger_standard_options *options) {
@@ -181,7 +181,7 @@ int aws_logger_standard_init(
 
     struct aws_log_writer_file_options file_writer_options = {.filename = options->filename};
 
-    if (aws_log_writer_file_init(writer, allocator, &file_writer_options)) {
+    if (aws_log_writer_init_file(writer, allocator, &file_writer_options)) {
         goto on_init_writer_failure;
     }
 
@@ -193,7 +193,7 @@ int aws_logger_standard_init(
 
     struct aws_log_formatter_standard_options formatter_options = {.date_format = AWS_DATE_FORMAT_ISO_8601};
 
-    if (aws_log_formatter_default_init(formatter, allocator, &formatter_options)) {
+    if (aws_log_formatter_init_default(formatter, allocator, &formatter_options)) {
         goto on_init_formatter_failure;
     }
 
@@ -203,7 +203,7 @@ int aws_logger_standard_init(
         goto on_allocate_channel_failure;
     }
 
-    if (aws_log_channel_background_init(channel, allocator, writer) == AWS_OP_SUCCESS) {
+    if (aws_log_channel_init_background(channel, allocator, writer) == AWS_OP_SUCCESS) {
         impl->formatter = formatter;
         impl->channel = channel;
         impl->writer = writer;
@@ -254,7 +254,7 @@ static struct aws_logger_vtable s_pipeline_logger_unowned_vtable = {
     .log = s_aws_logger_pipeline_log_fn,
     .cleanup = s_aws_pipeline_logger_unowned_cleanup_fn};
 
-int aws_logger_pipeline_init_external(
+int aws_logger_init_from_external(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
     struct aws_log_formatter *formatter,

@@ -188,7 +188,7 @@ static struct aws_log_formatter_vtable s_default_log_formatter_vtable = {
     .format = s_default_aws_log_formatter_format_fn,
     .cleanup = s_default_aws_log_formatter_cleanup_fn};
 
-int aws_log_formatter_default_init(
+int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,
     struct aws_allocator *allocator,
     struct aws_log_formatter_standard_options *options) {

@@ -191,15 +191,15 @@ static int s_aws_file_writer_init_internal(
 /*
  * Public initialization interface
  */
-int aws_log_writer_stdout_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
+int aws_log_writer_init_stdout(struct aws_log_writer *writer, struct aws_allocator *allocator) {
     return s_aws_file_writer_init_internal(writer, allocator, NULL, &s_stdout_writer_vtable);
 }
 
-int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
+int aws_log_writer_init_stderr(struct aws_log_writer *writer, struct aws_allocator *allocator) {
     return s_aws_file_writer_init_internal(writer, allocator, NULL, &s_stderr_writer_vtable);
 }
 
-int aws_log_writer_file_init(
+int aws_log_writer_init_file(
     struct aws_log_writer *writer,
     struct aws_allocator *allocator,
     struct aws_log_writer_file_options *options) {

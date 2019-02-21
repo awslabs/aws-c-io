@@ -46,7 +46,7 @@ int do_pipeline_logger_test(
     struct aws_logger_standard_options options = {.level = AWS_LL_TRACE, .filename = s_test_file_name};
 
     struct aws_logger logger;
-    if (aws_logger_standard_init(&logger, allocator, &options)) {
+    if (aws_logger_init_standard(&logger, allocator, &options)) {
         return AWS_OP_ERR;
     }
 

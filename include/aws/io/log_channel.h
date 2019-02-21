@@ -55,7 +55,7 @@ AWS_EXTERN_C_BEGIN
  * The passed in log writer is not an ownership transfer.  The log channel does not cleanup the writer.
  */
 AWS_IO_API
-int aws_log_channel_foreground_init(
+int aws_log_channel_init_foreground(
     struct aws_log_channel *channel,
     struct aws_allocator *allocator,
     struct aws_log_writer *writer);
@@ -66,7 +66,7 @@ int aws_log_channel_foreground_init(
  * The passed in log writer is not an ownership transfer.  The log channel does not cleanup the writer.
  */
 AWS_IO_API
-int aws_log_channel_background_init(
+int aws_log_channel_init_background(
     struct aws_log_channel *channel,
     struct aws_allocator *allocator,
     struct aws_log_writer *writer);

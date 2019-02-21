@@ -186,7 +186,7 @@ static int s_do_channel_test(
         (void)ctx;                                                                                                     \
         return s_do_channel_test(                                                                                      \
             allocator,                                                                                                 \
-            aws_log_channel_foreground_init,                                                                           \
+            aws_log_channel_init_foreground,                                                                           \
             string_array_name,                                                                                         \
             sizeof(string_array_name) / sizeof(struct aws_string **),                                                  \
             NULL);                                                                                                     \
@@ -198,7 +198,7 @@ static int s_do_channel_test(
         (void)ctx;                                                                                                     \
         return s_do_channel_test(                                                                                      \
             allocator,                                                                                                 \
-            aws_log_channel_background_init,                                                                           \
+            aws_log_channel_init_background,                                                                           \
             string_array_name,                                                                                         \
             sizeof(string_array_name) / sizeof(struct aws_string **),                                                  \
             sleep_times);                                                                                              \

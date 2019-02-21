@@ -120,7 +120,7 @@ static int s_log_writer_simple_file_test_fn(struct aws_allocator *allocator, voi
     struct aws_log_writer_file_options options = {.filename = s_test_file_name};
 
     struct aws_log_writer writer;
-    aws_log_writer_file_init(&writer, allocator, &options);
+    aws_log_writer_init_file(&writer, allocator, &options);
 
     return do_default_log_writer_test(&writer, SIMPLE_FILE_CONTENT, s_simple_file_content, NULL);
 }
@@ -140,7 +140,7 @@ static int s_log_writer_existing_file_test_fn(struct aws_allocator *allocator, v
     struct aws_log_writer_file_options options = {.filename = s_test_file_name};
 
     struct aws_log_writer writer;
-    aws_log_writer_file_init(&writer, allocator, &options);
+    aws_log_writer_init_file(&writer, allocator, &options);
 
     return do_default_log_writer_test(&writer, s_combined_text, s_simple_file_content, NULL);
 }
@@ -155,7 +155,7 @@ static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *
     struct aws_log_writer_file_options options = {.filename = "."};
 
     struct aws_log_writer writer;
-    int result = aws_log_writer_file_init(&writer, allocator, &options);
+    int result = aws_log_writer_init_file(&writer, allocator, &options);
     int aws_error = aws_last_error();
 
     ASSERT_TRUE(result == AWS_OP_ERR, "Log file open succeeded despite an invalid file name");
