@@ -17,7 +17,6 @@
  * permissions and limitations under the License.
  */
 
-
 #include <aws/io/io.h>
 
 #include <aws/io/logging.h>

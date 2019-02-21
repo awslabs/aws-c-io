@@ -22,16 +22,18 @@
 #include <inttypes.h>
 #include <stdarg.h>
 
-
 #define TEST_FORMATTER_MAX_BUFFER_SIZE 4096
 
-typedef int(*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct aws_string **output);
+typedef int (*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct aws_string **output);
 
-int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter_test_fn test_fn, const char *expected_user_output, enum aws_log_level log_level, enum aws_date_format date_format) {
+int do_default_log_formatter_test(
+    struct aws_allocator *allocator,
+    log_formatter_test_fn test_fn,
+    const char *expected_user_output,
+    enum aws_log_level log_level,
+    enum aws_date_format date_format) {
     /* Initialize a default formatter*/
-    struct aws_log_formatter_standard_options options = {
-        .date_format = date_format
-    };
+    struct aws_log_formatter_standard_options options = {.date_format = date_format};
 
     struct aws_log_formatter formatter;
     aws_log_formatter_default_init(&formatter, allocator, &options);
@@ -71,8 +73,12 @@ int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter
     ASSERT_TRUE(log_level_start != NULL, "Could not find start of log level in output line \"%s\"", buffer);
 
     const char *level_string = NULL;
-    ASSERT_SUCCESS(aws_log_level_to_string(log_level, &level_string), "Failed to convert log level %d to string", (int)log_level);
-    ASSERT_TRUE(strncmp(log_level_start + 1, level_string, strlen(level_string)) == 0, "Incorrect value for log level in output line \"%s\"", buffer);
+    ASSERT_SUCCESS(
+        aws_log_level_to_string(log_level, &level_string), "Failed to convert log level %d to string", (int)log_level);
+    ASSERT_TRUE(
+        strncmp(log_level_start + 1, level_string, strlen(level_string)) == 0,
+        "Incorrect value for log level in output line \"%s\"",
+        buffer);
 
     /**
      * Find the timestamp substring.
@@ -96,7 +102,10 @@ int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter
     timestamp_buffer.len = time_length;
 
     struct aws_date_time log_time;
-    ASSERT_SUCCESS(aws_date_time_init_from_str(&log_time, &timestamp_buffer, date_format), "Could not parse timestamp value starting at \"%s\"", time_start);
+    ASSERT_SUCCESS(
+        aws_date_time_init_from_str(&log_time, &timestamp_buffer, date_format),
+        "Could not parse timestamp value starting at \"%s\"",
+        time_start);
 
     /*
      * Check that the timestamp, when converted back, is close to the current time.
@@ -117,7 +126,11 @@ int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter
 
     uint64_t current_thread_id = aws_thread_current_thread_id();
     uint64_t logged_id = strtoumax(thread_id_start, &thread_id_end_copy, 10);
-    ASSERT_TRUE(logged_id == current_thread_id, "Expected logged thread id to be %"PRIu64" but it was actually %"PRIu64"", current_thread_id, logged_id);
+    ASSERT_TRUE(
+        logged_id == current_thread_id,
+        "Expected logged thread id to be %" PRIu64 " but it was actually %" PRIu64 "",
+        current_thread_id,
+        logged_id);
 
     /*
      * Check that the user content is what was expected
@@ -127,19 +140,28 @@ int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter
 
     const char *user_content = separator + 3;
     size_t expected_user_content_length = strlen(expected_user_output);
-    ASSERT_SUCCESS(strncmp(user_content, expected_user_output, expected_user_content_length), "Expected user content \"%s\" but received \"%s\"", expected_user_output, user_content);
+    ASSERT_SUCCESS(
+        strncmp(user_content, expected_user_output, expected_user_content_length),
+        "Expected user content \"%s\" but received \"%s\"",
+        expected_user_output,
+        user_content);
 
     return AWS_OP_SUCCESS;
 }
 
-#define DEFINE_LOG_FORMATTER_TEST(test_function, log_level, date_format, expected_user_string)              \
-static int s_log_formatter_##test_function##_fn(struct aws_allocator *allocator, void *ctx) {               \
-    (void) ctx;                                                                                             \
-    return do_default_log_formatter_test(allocator, test_function, expected_user_string, log_level, date_format);      \
-}                                                                                                           \
-AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function##_fn);
+#define DEFINE_LOG_FORMATTER_TEST(test_function, log_level, date_format, expected_user_string)                         \
+    static int s_log_formatter_##test_function##_fn(struct aws_allocator *allocator, void *ctx) {                      \
+        (void)ctx;                                                                                                     \
+        return do_default_log_formatter_test(allocator, test_function, expected_user_string, log_level, date_format);  \
+    }                                                                                                                  \
+    AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function##_fn);
 
-static int invoke_formatter(struct aws_log_formatter *formatter, struct aws_string **output, enum aws_log_level log_level, const char *format, ...) {
+static int invoke_formatter(
+    struct aws_log_formatter *formatter,
+    struct aws_string **output,
+    enum aws_log_level log_level,
+    const char *format,
+    ...) {
     va_list args;
     va_start(args, format);
 
@@ -176,19 +198,34 @@ DEFINE_LOG_FORMATTER_TEST(s_formatter_simple_case, AWS_LL_DEBUG, AWS_DATE_FORMAT
  * Format string with numbers
  */
 static int s_formatter_number_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return invoke_formatter(formatter, output, AWS_LL_FATAL, "%d bottles of milk on the wall. Take %.4f bottles down.", 99, .9999f);
+    return invoke_formatter(
+        formatter, output, AWS_LL_FATAL, "%d bottles of milk on the wall. Take %.4f bottles down.", 99, .9999f);
 }
 
-DEFINE_LOG_FORMATTER_TEST(s_formatter_number_case, AWS_LL_FATAL, AWS_DATE_FORMAT_RFC822, "99 bottles of milk on the wall. Take 0.9999 bottles down.")
+DEFINE_LOG_FORMATTER_TEST(
+    s_formatter_number_case,
+    AWS_LL_FATAL,
+    AWS_DATE_FORMAT_RFC822,
+    "99 bottles of milk on the wall. Take 0.9999 bottles down.")
 
 /*
  * Format string with strings
  */
 static int s_formatter_string_case(struct aws_log_formatter *formatter, struct aws_string **output) {
-    return invoke_formatter(formatter, output, AWS_LL_INFO, "Once there was, if %s there was, and just perhaps there %s was", "ever", "never");
+    return invoke_formatter(
+        formatter,
+        output,
+        AWS_LL_INFO,
+        "Once there was, if %s there was, and just perhaps there %s was",
+        "ever",
+        "never");
 }
 
-DEFINE_LOG_FORMATTER_TEST(s_formatter_string_case, AWS_LL_INFO, AWS_DATE_FORMAT_ISO_8601, "Once there was, if ever there was, and just perhaps there never was")
+DEFINE_LOG_FORMATTER_TEST(
+    s_formatter_string_case,
+    AWS_LL_INFO,
+    AWS_DATE_FORMAT_ISO_8601,
+    "Once there was, if ever there was, and just perhaps there never was")
 
 /*
  * Format string with newlines
@@ -197,4 +234,8 @@ static int s_formatter_newline_case(struct aws_log_formatter *formatter, struct 
     return invoke_formatter(formatter, output, AWS_LL_TRACE, "\nMaking sure \nnewlines don't mess things\nup");
 }
 
-DEFINE_LOG_FORMATTER_TEST(s_formatter_newline_case, AWS_LL_TRACE, AWS_DATE_FORMAT_RFC822, "\nMaking sure \nnewlines don't mess things\nup")
+DEFINE_LOG_FORMATTER_TEST(
+    s_formatter_newline_case,
+    AWS_LL_TRACE,
+    AWS_DATE_FORMAT_RFC822,
+    "\nMaking sure \nnewlines don't mess things\nup")

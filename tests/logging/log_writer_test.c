@@ -22,7 +22,7 @@
 #include <stdio.h>
 
 #ifndef WIN32
-#   include <sys/file.h>
+#    include <sys/file.h>
 #endif // WIN32
 
 #ifdef _MSC_VER
@@ -41,14 +41,19 @@ static const char *s_test_file_name =
     "./aws_log_writer_test.log";
 #endif
 
-int do_default_log_writer_test(struct aws_log_writer *writer, const char *expected_file_content, const struct aws_string *output, FILE *close_fp) {
+int do_default_log_writer_test(
+    struct aws_log_writer *writer,
+    const char *expected_file_content,
+    const struct aws_string *output,
+    FILE *close_fp) {
 
     int result = writer->vtable->write(writer, output);
 
     aws_log_writer_cleanup(writer);
 
     /*
-     * When we redirect stdout/stderr to a file, we need to close the file manually since the writer implementations do not do so.
+     * When we redirect stdout/stderr to a file, we need to close the file manually since the writer implementations do
+     * not do so.
      */
     if (close_fp != NULL) {
         fclose(close_fp);
@@ -73,7 +78,8 @@ int do_default_log_writer_test(struct aws_log_writer *writer, const char *expect
     /*
      * Check the file was read successfully
      */
-    ASSERT_TRUE(file != NULL, "Unable to open output file \"%s\" to verify contents. Error: %d", s_test_file_name, open_error);
+    ASSERT_TRUE(
+        file != NULL, "Unable to open output file \"%s\" to verify contents. Error: %d", s_test_file_name, open_error);
     ASSERT_TRUE(bytes_read >= 0, "Failed to read test output file \"%s\"", s_test_file_name);
 
     /*
@@ -84,7 +90,11 @@ int do_default_log_writer_test(struct aws_log_writer *writer, const char *expect
     /*
      * Check file contents
      */
-    ASSERT_TRUE(strcmp(buffer, expected_file_content) == 0, "Expected log file to contain:\n\n%s\n\nbut instead it contained:\n\n%s\n", expected_file_content, buffer);
+    ASSERT_TRUE(
+        strcmp(buffer, expected_file_content) == 0,
+        "Expected log file to contain:\n\n%s\n\nbut instead it contained:\n\n%s\n",
+        expected_file_content,
+        buffer);
 
     return AWS_OP_SUCCESS;
 }
@@ -103,13 +113,11 @@ AWS_STATIC_STRING_FROM_LITERAL(s_simple_file_content, SIMPLE_FILE_CONTENT);
  * Simple file test
  */
 static int s_log_writer_simple_file_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
+    (void)ctx;
 
     remove(s_test_file_name);
 
-    struct aws_log_writer_file_options options = {
-        .filename = s_test_file_name
-    };
+    struct aws_log_writer_file_options options = {.filename = s_test_file_name};
 
     struct aws_log_writer writer;
     aws_log_writer_file_init(&writer, allocator, &options);
@@ -122,16 +130,14 @@ AWS_TEST_CASE(test_log_writer_simple_file_test, s_log_writer_simple_file_test_fn
  * Existing file test (verifies append is being used)
  */
 static int s_log_writer_existing_file_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
+    (void)ctx;
 
     remove(s_test_file_name);
     FILE *fp = fopen(s_test_file_name, "w+");
     fprintf(fp, EXISTING_TEXT);
     fclose(fp);
 
-    struct aws_log_writer_file_options options = {
-        .filename = s_test_file_name
-    };
+    struct aws_log_writer_file_options options = {.filename = s_test_file_name};
 
     struct aws_log_writer writer;
     aws_log_writer_file_init(&writer, allocator, &options);
@@ -144,11 +150,9 @@ AWS_TEST_CASE(test_log_writer_existing_file_test, s_log_writer_existing_file_tes
  * (Error case) Bad filename test
  */
 static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
+    (void)ctx;
 
-    struct aws_log_writer_file_options options = {
-         .filename = "."
-    };
+    struct aws_log_writer_file_options options = {.filename = "."};
 
     struct aws_log_writer writer;
     int result = aws_log_writer_file_init(&writer, allocator, &options);
@@ -157,7 +161,7 @@ static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *
     ASSERT_TRUE(result == AWS_OP_ERR, "Log file open succeeded despite an invalid file name");
 
 #ifdef WIN32
-	ASSERT_TRUE(aws_error == AWS_IO_NO_PERMISSION, "File open error was not no permission as expected");
+    ASSERT_TRUE(aws_error == AWS_IO_NO_PERMISSION, "File open error was not no permission as expected");
 #else
     ASSERT_TRUE(aws_error == AWS_IO_FILE_INVALID_PATH, "File open error was not invalid path as expected");
 #endif /* WIN32 */
@@ -165,4 +169,3 @@ static int s_log_writer_bad_file_test_fn(struct aws_allocator *allocator, void *
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_log_writer_bad_file_test, s_log_writer_bad_file_test_fn);
-

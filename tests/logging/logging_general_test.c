@@ -37,5 +37,3 @@ TEST_LEVEL_FILTER(AWS_LL_WARN, "123", s_logf_all_levels)
 TEST_LEVEL_FILTER(AWS_LL_ERROR, "12", s_logf_all_levels)
 TEST_LEVEL_FILTER(AWS_LL_FATAL, "1", s_logf_all_levels)
 TEST_LEVEL_FILTER(AWS_LL_NONE, "", s_logf_all_levels)
-
-

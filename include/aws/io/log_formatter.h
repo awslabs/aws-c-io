@@ -17,7 +17,6 @@
  * permissions and limitations under the License.
  */
 
-
 #include <aws/io/io.h>
 
 #include <aws/common/date_time.h>
@@ -38,7 +37,7 @@ struct aws_log_formatter;
 
 typedef int (*aws_log_formatter_format_fn)(
     struct aws_log_formatter *formatter,
-    struct aws_string** formatted_output,
+    struct aws_string **formatted_output,
     enum aws_log_level level,
     aws_log_subject_t subject,
     const char *format,

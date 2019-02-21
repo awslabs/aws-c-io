@@ -56,7 +56,7 @@ struct aws_file_writer {
 /*
  * Stdout subclass implementation
  */
-static int s_stdout_writer_open_file_fn(struct aws_file_writer * writer) {
+static int s_stdout_writer_open_file_fn(struct aws_file_writer *writer) {
     writer->log_file = stdout;
 
     return AWS_OP_SUCCESS;
@@ -68,10 +68,8 @@ static int s_stdout_writer_close_file_fn(struct aws_file_writer *writer) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_file_writer_vtable s_stdout_writer_vtable = {
-    .open_file = s_stdout_writer_open_file_fn,
-    .close_file = s_stdout_writer_close_file_fn
-};
+static struct aws_file_writer_vtable s_stdout_writer_vtable = {.open_file = s_stdout_writer_open_file_fn,
+                                                               .close_file = s_stdout_writer_close_file_fn};
 
 /*
  * Stderr subclass implementation
@@ -88,10 +86,8 @@ static int s_stderr_writer_close_file_fn(struct aws_file_writer *writer) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_file_writer_vtable s_stderr_writer_vtable = {
-    .open_file = s_stderr_writer_open_file_fn,
-    .close_file = s_stderr_writer_close_file_fn
-};
+static struct aws_file_writer_vtable s_stderr_writer_vtable = {.open_file = s_stderr_writer_open_file_fn,
+                                                               .close_file = s_stderr_writer_close_file_fn};
 
 /*
  * File-sink subclass implementation - uses fopen and fclose for now
@@ -113,16 +109,14 @@ static int s_file_writer_close_file_fn(struct aws_file_writer *writer) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_file_writer_vtable s_file_writer_vtable = {
-    .open_file = s_file_writer_open_file_fn,
-    .close_file = s_file_writer_close_file_fn
-};
+static struct aws_file_writer_vtable s_file_writer_vtable = {.open_file = s_file_writer_open_file_fn,
+                                                             .close_file = s_file_writer_close_file_fn};
 
 /*
  * Shared implementation across all three writers
  */
 static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struct aws_string *output) {
-    struct aws_file_writer *impl = (struct aws_file_writer *) writer->impl;
+    struct aws_file_writer *impl = (struct aws_file_writer *)writer->impl;
 
     size_t length = output->len;
     if (fwrite(output->bytes, 1, length, impl->log_file) < length) {
@@ -133,7 +127,7 @@ static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struc
 }
 
 static int s_aws_file_writer_cleanup_fn(struct aws_log_writer *writer) {
-    struct aws_file_writer *impl = (struct aws_file_writer *) writer->impl;
+    struct aws_file_writer *impl = (struct aws_file_writer *)writer->impl;
 
     assert(impl->vtable->close_file != NULL);
     int result = (impl->vtable->close_file)(impl);
@@ -147,10 +141,8 @@ static int s_aws_file_writer_cleanup_fn(struct aws_log_writer *writer) {
     return result;
 }
 
-static struct aws_log_writer_vtable s_aws_file_writer_vtable = {
-    .write = s_aws_file_writer_write_fn,
-    .cleanup = s_aws_file_writer_cleanup_fn
-};
+static struct aws_log_writer_vtable s_aws_file_writer_vtable = {.write = s_aws_file_writer_write_fn,
+                                                                .cleanup = s_aws_file_writer_cleanup_fn};
 
 /*
  * Shared internal init implementation
@@ -208,9 +200,9 @@ int aws_log_writer_stderr_init(struct aws_log_writer *writer, struct aws_allocat
 }
 
 int aws_log_writer_file_init(
-        struct aws_log_writer *writer,
-        struct aws_allocator *allocator,
-        struct aws_log_writer_file_options *options) {
+    struct aws_log_writer *writer,
+    struct aws_allocator *allocator,
+    struct aws_log_writer_file_options *options) {
     return s_aws_file_writer_init_internal(writer, allocator, options->filename, &s_file_writer_vtable);
 }
 

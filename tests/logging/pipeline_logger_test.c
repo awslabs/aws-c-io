@@ -28,21 +28,22 @@
 
 static const char *s_test_file_name =
 #ifdef WIN32
-        "aws_log_writer_test.log";
+    "aws_log_writer_test.log";
 #else
-        "./aws_log_writer_test.log";
+    "./aws_log_writer_test.log";
 #endif
 
-typedef void(*log_test_fn)(void);
+typedef void (*log_test_fn)(void);
 
-int do_pipeline_logger_test(struct aws_allocator *allocator, log_test_fn log_fn, const char **expected_user_content, size_t user_content_count) {
+int do_pipeline_logger_test(
+    struct aws_allocator *allocator,
+    log_test_fn log_fn,
+    const char **expected_user_content,
+    size_t user_content_count) {
 
     remove(s_test_file_name);
 
-    struct aws_logger_standard_options options = {
-        .level = AWS_LL_TRACE,
-        .filename = s_test_file_name
-    };
+    struct aws_logger_standard_options options = {.level = AWS_LL_TRACE, .filename = s_test_file_name};
 
     struct aws_logger logger;
     if (aws_logger_standard_init(&logger, allocator, &options)) {
@@ -72,7 +73,8 @@ int do_pipeline_logger_test(struct aws_allocator *allocator, log_test_fn log_fn,
     /*
      * Check the file was read successfully
      */
-    ASSERT_TRUE(file != NULL, "Unable to open log file \"%s\" to verify contents. Error: %d", s_test_file_name, open_error);
+    ASSERT_TRUE(
+        file != NULL, "Unable to open log file \"%s\" to verify contents. Error: %d", s_test_file_name, open_error);
     ASSERT_TRUE(bytes_read >= 0, "Failed to read log file \"%s\"", s_test_file_name);
 
     /*
@@ -89,7 +91,10 @@ int do_pipeline_logger_test(struct aws_allocator *allocator, log_test_fn log_fn,
     const char *buffer_ptr = buffer;
     for (size_t i = 0; i < user_content_count; ++i) {
         buffer_ptr = strstr(buffer_ptr, expected_user_content[i]);
-        ASSERT_TRUE(buffer_ptr != NULL, "Expected to find \"%s\" in log file but could not.  Content is either missing or out-of-order.", expected_user_content[i]);
+        ASSERT_TRUE(
+            buffer_ptr != NULL,
+            "Expected to find \"%s\" in log file but could not.  Content is either missing or out-of-order.",
+            expected_user_content[i]);
     }
 
     return AWS_OP_SUCCESS;
@@ -113,21 +118,19 @@ static void s_formatted_pipeline_logger_test_callback(void) {
     AWS_LOGF_FATAL("%s log call", "fatal");
 }
 
-static const char *expected_test_user_content[] = {
-    "trace log call",
-    "debug log call",
-    "info log call",
-    "warn log call",
-    "error log call",
-    "fatal log call"
-};
+static const char *expected_test_user_content[] =
+    {"trace log call", "debug log call", "info log call", "warn log call", "error log call", "fatal log call"};
 
-#define DEFINE_PIPELINE_LOGGER_TEST(test_name, callback_function)                                                                                               \
-static int s_pipeline_logger_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                                                                     \
-    (void) ctx;                                                                                                                                                 \
-    return do_pipeline_logger_test(allocator, callback_function, expected_test_user_content, sizeof(expected_test_user_content) / sizeof(expected_test_user_content[0]));  \
-}                                                                                                                                                               \
-AWS_TEST_CASE(test_pipeline_logger_##test_name, s_pipeline_logger_##test_name##_fn);
+#define DEFINE_PIPELINE_LOGGER_TEST(test_name, callback_function)                                                      \
+    static int s_pipeline_logger_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                        \
+        (void)ctx;                                                                                                     \
+        return do_pipeline_logger_test(                                                                                \
+            allocator,                                                                                                 \
+            callback_function,                                                                                         \
+            expected_test_user_content,                                                                                \
+            sizeof(expected_test_user_content) / sizeof(expected_test_user_content[0]));                               \
+    }                                                                                                                  \
+    AWS_TEST_CASE(test_pipeline_logger_##test_name, s_pipeline_logger_##test_name##_fn);
 
 DEFINE_PIPELINE_LOGGER_TEST(unformatted_test, s_unformatted_pipeline_logger_test_callback)
 DEFINE_PIPELINE_LOGGER_TEST(formatted_test, s_formatted_pipeline_logger_test_callback)

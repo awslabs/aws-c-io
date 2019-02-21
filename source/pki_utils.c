@@ -20,10 +20,6 @@
 #include <errno.h>
 #include <string.h>
 
-
-
-
-
 enum PEM_PARSE_STATE {
     BEGIN,
     ON_DATA,

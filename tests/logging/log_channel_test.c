@@ -36,7 +36,7 @@ struct mock_log_writer_impl {
 };
 
 static int s_mock_log_writer_write_fn(struct aws_log_writer *writer, const struct aws_string *output) {
-    struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *) writer->impl;
+    struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *)writer->impl;
 
     struct aws_string *output_copy = aws_string_new_from_string(writer->allocator, output);
     if (output_copy == NULL) {
@@ -49,7 +49,7 @@ static int s_mock_log_writer_write_fn(struct aws_log_writer *writer, const struc
 }
 
 static int s_mock_log_writer_cleanup_fn(struct aws_log_writer *writer) {
-    struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *) writer->impl;
+    struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *)writer->impl;
 
     size_t line_count = aws_array_list_length(&impl->log_lines);
     for (size_t i = 0; i < line_count; ++i) {
@@ -68,13 +68,12 @@ static int s_mock_log_writer_cleanup_fn(struct aws_log_writer *writer) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_log_writer_vtable s_mock_writer_vtable = {
-    .write = s_mock_log_writer_write_fn,
-    .cleanup = s_mock_log_writer_cleanup_fn
-};
+static struct aws_log_writer_vtable s_mock_writer_vtable = {.write = s_mock_log_writer_write_fn,
+                                                            .cleanup = s_mock_log_writer_cleanup_fn};
 
 static int s_aws_mock_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
-    struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *)aws_mem_acquire(allocator, sizeof(struct mock_log_writer_impl));
+    struct mock_log_writer_impl *impl =
+        (struct mock_log_writer_impl *)aws_mem_acquire(allocator, sizeof(struct mock_log_writer_impl));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -96,12 +95,19 @@ static int s_aws_mock_log_writer_init(struct aws_log_writer *writer, struct aws_
  */
 static char s_test_error_message[4096];
 
-static bool s_verify_mock_equal(struct aws_log_writer *writer, const struct aws_string ***test_lines, size_t array_length) {
+static bool s_verify_mock_equal(
+    struct aws_log_writer *writer,
+    const struct aws_string ***test_lines,
+    size_t array_length) {
     struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *)writer->impl;
 
     size_t line_count = aws_array_list_length(&impl->log_lines);
     if (line_count != array_length) {
-        sprintf(s_test_error_message, "Expected %"PRIu64" lines, but received %"PRIu64"", (uint64_t)array_length, (uint64_t)line_count);
+        sprintf(
+            s_test_error_message,
+            "Expected %" PRIu64 " lines, but received %" PRIu64 "",
+            (uint64_t)array_length,
+            (uint64_t)line_count);
         return false;
     }
 
@@ -114,7 +120,11 @@ static bool s_verify_mock_equal(struct aws_log_writer *writer, const struct aws_
 
         const struct aws_string *original = *(test_lines[i]);
         if (!aws_string_eq(original, captured)) {
-            sprintf(s_test_error_message, "Expected log line:\n%s\nbut received log line:\n%s", (char *)original->bytes, (char *)captured->bytes);
+            sprintf(
+                s_test_error_message,
+                "Expected log line:\n%s\nbut received log line:\n%s",
+                (char *)original->bytes,
+                (char *)captured->bytes);
             return false;
         }
     }
@@ -122,9 +132,15 @@ static bool s_verify_mock_equal(struct aws_log_writer *writer, const struct aws_
     return true;
 }
 
-typedef int(*init_channel_fn)(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer);
+typedef int (
+    *init_channel_fn)(struct aws_log_channel *channel, struct aws_allocator *allocator, struct aws_log_writer *writer);
 
-static int s_do_channel_test(struct aws_allocator *allocator, init_channel_fn init_fn, const struct aws_string ***test_lines, size_t test_lines_length, int *sleep_times) {
+static int s_do_channel_test(
+    struct aws_allocator *allocator,
+    init_channel_fn init_fn,
+    const struct aws_string ***test_lines,
+    size_t test_lines_length,
+    int *sleep_times) {
 
     struct aws_log_writer mock_writer;
     if (s_aws_mock_log_writer_init(&mock_writer, allocator)) {
@@ -165,20 +181,29 @@ static int s_do_channel_test(struct aws_allocator *allocator, init_channel_fn in
     return result;
 }
 
-#define DEFINE_FOREGROUND_LOG_CHANNEL_TEST(test_name, string_array_name)                                                                                    \
-static int s_foreground_log_channel_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                                                          \
-    (void) ctx;                                                                                                                                             \
-    return s_do_channel_test(allocator, aws_log_channel_foreground_init, string_array_name, sizeof(string_array_name)/sizeof(struct aws_string **), NULL);  \
-}                                                                                                                                                           \
-AWS_TEST_CASE(test_foreground_log_channel_##test_name, s_foreground_log_channel_##test_name##_fn);
+#define DEFINE_FOREGROUND_LOG_CHANNEL_TEST(test_name, string_array_name)                                               \
+    static int s_foreground_log_channel_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                 \
+        (void)ctx;                                                                                                     \
+        return s_do_channel_test(                                                                                      \
+            allocator,                                                                                                 \
+            aws_log_channel_foreground_init,                                                                           \
+            string_array_name,                                                                                         \
+            sizeof(string_array_name) / sizeof(struct aws_string **),                                                  \
+            NULL);                                                                                                     \
+    }                                                                                                                  \
+    AWS_TEST_CASE(test_foreground_log_channel_##test_name, s_foreground_log_channel_##test_name##_fn);
 
-#define DEFINE_BACKGROUND_LOG_CHANNEL_TEST(test_name, string_array_name, sleep_times)                                                                               \
-static int s_background_log_channel_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                                                                  \
-    (void) ctx;                                                                                                                                                     \
-    return s_do_channel_test(allocator, aws_log_channel_background_init, string_array_name, sizeof(string_array_name)/sizeof(struct aws_string **), sleep_times);   \
-}                                                                                                                                                                   \
-AWS_TEST_CASE(test_background_log_channel_##test_name, s_background_log_channel_##test_name##_fn);
-
+#define DEFINE_BACKGROUND_LOG_CHANNEL_TEST(test_name, string_array_name, sleep_times)                                  \
+    static int s_background_log_channel_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                 \
+        (void)ctx;                                                                                                     \
+        return s_do_channel_test(                                                                                      \
+            allocator,                                                                                                 \
+            aws_log_channel_background_init,                                                                           \
+            string_array_name,                                                                                         \
+            sizeof(string_array_name) / sizeof(struct aws_string **),                                                  \
+            sleep_times);                                                                                              \
+    }                                                                                                                  \
+    AWS_TEST_CASE(test_background_log_channel_##test_name, s_background_log_channel_##test_name##_fn);
 
 /*
  * Test data
@@ -192,42 +217,21 @@ AWS_STATIC_STRING_FROM_LITERAL(s_log_line_simple, "A simple line.\n");
 AWS_STATIC_STRING_FROM_LITERAL(s_log_line_multiline, "There's\na lot\n\tof snow outside.\n");
 AWS_STATIC_STRING_FROM_LITERAL(s_log_line_fake, "[DEBUG] [??] [1234567] - Time to crash\n");
 
-const struct aws_string **s_channel_test_one_line[] = {
-        &s_log_line_1
-};
+const struct aws_string **s_channel_test_one_line[] = {&s_log_line_1};
 
-const struct aws_string **s_channel_test_numbers[] = {
-        &s_log_line_1,
-        &s_log_line_2,
-        &s_log_line_3,
-        &s_log_line_4
-};
+const struct aws_string **s_channel_test_numbers[] = {&s_log_line_1, &s_log_line_2, &s_log_line_3, &s_log_line_4};
 
-const struct aws_string **s_channel_test_words[] = {
-        &s_log_line_simple,
-        &s_log_line_multiline,
-        &s_log_line_fake
-};
+const struct aws_string **s_channel_test_words[] = {&s_log_line_simple, &s_log_line_multiline, &s_log_line_fake};
 
-const struct aws_string **s_channel_test_all[] = {
-        &s_log_line_1,
-        &s_log_line_2,
-        &s_log_line_3,
-        &s_log_line_4,
-        &s_log_line_simple,
-        &s_log_line_multiline,
-        &s_log_line_fake
-};
+const struct aws_string **s_channel_test_all[] = {&s_log_line_1,
+                                                  &s_log_line_2,
+                                                  &s_log_line_3,
+                                                  &s_log_line_4,
+                                                  &s_log_line_simple,
+                                                  &s_log_line_multiline,
+                                                  &s_log_line_fake};
 
-static int s_background_sleep_times_ns[] = {
-        0,
-        100000,
-        0,
-        0,
-        1000000,
-        0,
-        1000000
-};
+static int s_background_sleep_times_ns[] = {0, 100000, 0, 0, 1000000, 0, 1000000};
 
 /*
  * Foreground channel tests

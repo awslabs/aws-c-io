@@ -31,11 +31,9 @@ struct aws_log_foreground_channel {
     struct aws_mutex sync;
 };
 
-static int s_foreground_channel_send_fn(
-    struct aws_log_channel *channel,
-    struct aws_string *log_line) {
+static int s_foreground_channel_send_fn(struct aws_log_channel *channel, struct aws_string *log_line) {
 
-    struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *) channel->impl;
+    struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
     assert(channel->writer->vtable->write);
 
@@ -54,7 +52,7 @@ static int s_foreground_channel_send_fn(
 }
 
 static int s_foreground_channel_cleanup_fn(struct aws_log_channel *channel) {
-    struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *) channel->impl;
+    struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
     aws_mutex_clean_up(&impl->sync);
 
@@ -63,15 +61,15 @@ static int s_foreground_channel_cleanup_fn(struct aws_log_channel *channel) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_log_channel_vtable s_foreground_channel_vtable = {
-    .send = s_foreground_channel_send_fn,
-    .cleanup = s_foreground_channel_cleanup_fn
-};
+static struct aws_log_channel_vtable s_foreground_channel_vtable = {.send = s_foreground_channel_send_fn,
+                                                                    .cleanup = s_foreground_channel_cleanup_fn};
 
-
-int aws_log_channel_foreground_init(struct aws_log_channel *channel, struct aws_allocator *allocator,
-                                    struct aws_log_writer *writer) {
-    struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_foreground_channel));
+int aws_log_channel_foreground_init(
+    struct aws_log_channel *channel,
+    struct aws_allocator *allocator,
+    struct aws_log_writer *writer) {
+    struct aws_log_foreground_channel *impl =
+        (struct aws_log_foreground_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_foreground_channel));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -97,11 +95,9 @@ struct aws_log_background_channel {
     bool finished;
 };
 
-static int s_background_channel_send_fn(
-    struct aws_log_channel *channel,
-    struct aws_string *log_line) {
+static int s_background_channel_send_fn(struct aws_log_channel *channel, struct aws_string *log_line) {
 
-    struct aws_log_background_channel *impl = (struct aws_log_background_channel *) channel->impl;
+    struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
     aws_mutex_lock(&impl->sync);
     aws_array_list_push_back(&impl->pending_log_lines, &log_line);
@@ -112,7 +108,7 @@ static int s_background_channel_send_fn(
 }
 
 static int s_background_channel_cleanup_fn(struct aws_log_channel *channel) {
-    struct aws_log_background_channel *impl = (struct aws_log_background_channel *) channel->impl;
+    struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
     aws_mutex_lock(&impl->sync);
     impl->finished = true;
@@ -130,10 +126,8 @@ static int s_background_channel_cleanup_fn(struct aws_log_channel *channel) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_log_channel_vtable s_background_channel_vtable = {
-    .send = s_background_channel_send_fn,
-    .cleanup = s_background_channel_cleanup_fn
-};
+static struct aws_log_channel_vtable s_background_channel_vtable = {.send = s_background_channel_send_fn,
+                                                                    .cleanup = s_background_channel_cleanup_fn};
 
 static bool s_background_wait_fn(void *context) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)context;
@@ -145,7 +139,7 @@ static bool s_background_wait_fn(void *context) {
 }
 
 static void s_background_thread_writer_fn(void *thread_data) {
-    (void) thread_data;
+    (void)thread_data;
 
     struct aws_log_channel *channel = (struct aws_log_channel *)thread_data;
     assert(channel->writer->vtable->write);
@@ -156,7 +150,7 @@ static void s_background_thread_writer_fn(void *thread_data) {
 
     AWS_FATAL_ASSERT(aws_array_list_init_dynamic(&log_lines, channel->allocator, 10, sizeof(struct aws_string *)) == 0);
 
-    while(true) {
+    while (true) {
         aws_mutex_lock(&impl->sync);
         aws_condition_variable_wait_pred(&impl->pending_line_signal, &impl->sync, s_background_wait_fn, impl);
 
@@ -201,10 +195,12 @@ static void s_background_thread_writer_fn(void *thread_data) {
     aws_array_list_clean_up(&log_lines);
 }
 
-int aws_log_channel_background_init(struct aws_log_channel *channel, struct aws_allocator *allocator,
-                                    struct aws_log_writer *writer) {
-    struct aws_log_background_channel *impl = (struct aws_log_background_channel *) aws_mem_acquire(allocator,
-                                                                                                    sizeof(struct aws_log_background_channel));
+int aws_log_channel_background_init(
+    struct aws_log_channel *channel,
+    struct aws_allocator *allocator,
+    struct aws_log_writer *writer) {
+    struct aws_log_background_channel *impl =
+        (struct aws_log_background_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_background_channel));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -235,11 +231,10 @@ int aws_log_channel_background_init(struct aws_log_channel *channel, struct aws_
     /*
      * Logging thread should need very little stack, but let's defer this to later
      */
-    struct aws_thread_options thread_options = {
-        .stack_size = 0
-    };
+    struct aws_thread_options thread_options = {.stack_size = 0};
 
-    if (aws_thread_launch(&impl->background_thread, s_background_thread_writer_fn, channel, &thread_options) == AWS_OP_SUCCESS) {
+    if (aws_thread_launch(&impl->background_thread, s_background_thread_writer_fn, channel, &thread_options) ==
+        AWS_OP_SUCCESS) {
         return AWS_OP_SUCCESS;
     }
 

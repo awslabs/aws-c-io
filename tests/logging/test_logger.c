@@ -25,7 +25,12 @@
  */
 #define TEST_LOGGER_MAX_LOG_LINE_SIZE 256
 
-int s_test_logger_log_fn(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...) {
+int s_test_logger_log_fn(
+    struct aws_logger *logger,
+    enum aws_log_level log_level,
+    aws_log_subject_t subject,
+    const char *format,
+    ...) {
     (void)subject;
     (void)log_level;
 
@@ -54,7 +59,7 @@ int s_test_logger_log_fn(struct aws_logger *logger, enum aws_log_level log_level
 
 enum aws_log_level s_test_logger_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)subject;
-    
+
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
 
     return impl->level;
@@ -65,21 +70,20 @@ int s_test_logger_cleanup(struct aws_logger *logger) {
 
     aws_byte_buf_clean_up(&impl->log_buffer);
 
-    struct aws_allocator* allocator = logger->allocator;
+    struct aws_allocator *allocator = logger->allocator;
     aws_mem_release(allocator, impl);
 
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_logger_vtable s_test_logger_vtable = {
-        .get_log_level = s_test_logger_get_log_level_fn,
-        .log = s_test_logger_log_fn,
-        .cleanup = s_test_logger_cleanup
-};
+static struct aws_logger_vtable s_test_logger_vtable = {.get_log_level = s_test_logger_get_log_level_fn,
+                                                        .log = s_test_logger_log_fn,
+                                                        .cleanup = s_test_logger_cleanup};
 
 int test_logger_init(struct aws_logger *logger, struct aws_allocator *allocator, enum aws_log_level level) {
 
-    struct test_logger_impl *impl = (struct test_logger_impl *)aws_mem_acquire(allocator, sizeof(struct test_logger_impl));
+    struct test_logger_impl *impl =
+        (struct test_logger_impl *)aws_mem_acquire(allocator, sizeof(struct test_logger_impl));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -98,8 +102,7 @@ int test_logger_init(struct aws_logger *logger, struct aws_allocator *allocator,
     return AWS_OP_SUCCESS;
 }
 
-int test_logger_get_contents(struct aws_logger *logger, char* buffer, size_t max_length)
-{
+int test_logger_get_contents(struct aws_logger *logger, char *buffer, size_t max_length) {
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
     if (max_length == 0) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -118,5 +121,3 @@ int test_logger_get_contents(struct aws_logger *logger, char* buffer, size_t max
 
     return AWS_OP_SUCCESS;
 }
-
-

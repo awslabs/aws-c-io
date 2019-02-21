@@ -29,4 +29,3 @@
 DECLARE_LOGF_ALL_LEVELS_FUNCTION(s_logf_all_levels_none_cutoff)
 
 TEST_LEVEL_FILTER(AWS_LL_TRACE, "", s_logf_all_levels_none_cutoff)
-

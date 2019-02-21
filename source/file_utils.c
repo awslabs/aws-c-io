@@ -83,7 +83,7 @@ int aws_io_translate_and_raise_file_open_error(int error_no) {
 }
 
 int aws_io_translate_and_raise_file_write_error(int error_no) {
-    switch(error_no) {
+    switch (error_no) {
         default:
             return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }

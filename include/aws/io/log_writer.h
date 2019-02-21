@@ -17,7 +17,6 @@
  * permissions and limitations under the License.
  */
 
-
 #include <aws/io/io.h>
 
 struct aws_allocator;

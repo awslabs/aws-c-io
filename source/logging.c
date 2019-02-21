@@ -34,7 +34,12 @@ static enum aws_log_level s_null_logger_get_log_level_fn(struct aws_logger *logg
     return AWS_LL_NONE;
 }
 
-static int s_null_logger_log_fn(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...) {
+static int s_null_logger_log_fn(
+    struct aws_logger *logger,
+    enum aws_log_level log_level,
+    aws_log_subject_t subject,
+    const char *format,
+    ...) {
     (void)logger;
     (void)log_level;
     (void)subject;
@@ -49,17 +54,11 @@ static int s_null_logger_cleanup_fn(struct aws_logger *logger) {
     return AWS_OP_SUCCESS;
 }
 
-static struct aws_logger_vtable s_null_vtable = {
-    .get_log_level = s_null_logger_get_log_level_fn,
-    .log = s_null_logger_log_fn,
-    .cleanup = s_null_logger_cleanup_fn
-};
+static struct aws_logger_vtable s_null_vtable = {.get_log_level = s_null_logger_get_log_level_fn,
+                                                 .log = s_null_logger_log_fn,
+                                                 .cleanup = s_null_logger_cleanup_fn};
 
-static struct aws_logger s_null_logger = {
-    .vtable = &s_null_vtable,
-    .allocator = NULL,
-    .p_impl = NULL
-};
+static struct aws_logger s_null_logger = {.vtable = &s_null_vtable, .allocator = NULL, .p_impl = NULL};
 
 static struct aws_logger *s_root_logger_ptr = &s_null_logger;
 
@@ -81,15 +80,7 @@ int aws_logger_cleanup(struct aws_logger *logger) {
     return logger->vtable->cleanup(logger);
 }
 
-static const char* s_log_level_strings[AWS_LL_COUNT] = {
-    "NONE",
-    "FATAL",
-    "ERROR",
-    "WARN",
-    "INFO",
-    "DEBUG",
-    "TRACE"
-};
+static const char *s_log_level_strings[AWS_LL_COUNT] = {"NONE", "FATAL", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"};
 
 int aws_log_level_to_string(enum aws_log_level log_level, const char **level_string) {
     if (log_level >= AWS_LL_COUNT) {
@@ -127,7 +118,12 @@ static int s_aws_logger_pipeline_owned_cleanup_fn(struct aws_logger *logger) {
 /*
  * Pipeline logger implementation
  */
-static int s_aws_logger_pipeline_log_fn(struct aws_logger *logger, enum aws_log_level log_level, aws_log_subject_t subject, const char *format, ...) {
+static int s_aws_logger_pipeline_log_fn(
+    struct aws_logger *logger,
+    enum aws_log_level log_level,
+    aws_log_subject_t subject,
+    const char *format,
+    ...) {
     va_list format_args;
     va_start(format_args, format);
 
@@ -163,18 +159,17 @@ static enum aws_log_level s_aws_logger_pipeline_get_log_level_fn(struct aws_logg
     return impl->level;
 }
 
-struct aws_logger_vtable g_pipeline_logger_owned_vtable = {
-    .get_log_level = s_aws_logger_pipeline_get_log_level_fn,
-    .log = s_aws_logger_pipeline_log_fn,
-    .cleanup = s_aws_logger_pipeline_owned_cleanup_fn
-};
+struct aws_logger_vtable g_pipeline_logger_owned_vtable = {.get_log_level = s_aws_logger_pipeline_get_log_level_fn,
+                                                           .log = s_aws_logger_pipeline_log_fn,
+                                                           .cleanup = s_aws_logger_pipeline_owned_cleanup_fn};
 
 int aws_logger_standard_init(
     struct aws_logger *logger,
     struct aws_allocator *allocator,
     struct aws_logger_standard_options *options) {
 
-    struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+    struct aws_logger_pipeline *impl =
+        (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -184,28 +179,26 @@ int aws_logger_standard_init(
         goto on_allocate_writer_failure;
     }
 
-    struct aws_log_writer_file_options file_writer_options = {
-        .filename = options->filename
-    };
+    struct aws_log_writer_file_options file_writer_options = {.filename = options->filename};
 
     if (aws_log_writer_file_init(writer, allocator, &file_writer_options)) {
         goto on_init_writer_failure;
     }
 
-    struct aws_log_formatter *formatter = (struct aws_log_formatter *)aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
+    struct aws_log_formatter *formatter =
+        (struct aws_log_formatter *)aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
     if (formatter == NULL) {
         goto on_allocate_formatter_failure;
     }
 
-    struct aws_log_formatter_standard_options formatter_options = {
-        .date_format = AWS_DATE_FORMAT_ISO_8601
-    };
+    struct aws_log_formatter_standard_options formatter_options = {.date_format = AWS_DATE_FORMAT_ISO_8601};
 
     if (aws_log_formatter_default_init(formatter, allocator, &formatter_options)) {
         goto on_init_formatter_failure;
     }
 
-    struct aws_log_channel *channel = (struct aws_log_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_channel));
+    struct aws_log_channel *channel =
+        (struct aws_log_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_channel));
     if (channel == NULL) {
         goto on_allocate_channel_failure;
     }
@@ -259,8 +252,7 @@ static int s_aws_pipeline_logger_unowned_cleanup_fn(struct aws_logger *logger) {
 static struct aws_logger_vtable s_pipeline_logger_unowned_vtable = {
     .get_log_level = s_aws_logger_pipeline_get_log_level_fn,
     .log = s_aws_logger_pipeline_log_fn,
-    .cleanup = s_aws_pipeline_logger_unowned_cleanup_fn
-};
+    .cleanup = s_aws_pipeline_logger_unowned_cleanup_fn};
 
 int aws_logger_pipeline_init_external(
     struct aws_logger *logger,
@@ -270,7 +262,8 @@ int aws_logger_pipeline_init_external(
     struct aws_log_writer *writer,
     enum aws_log_level level) {
 
-    struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+    struct aws_logger_pipeline *impl =
+        (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -352,15 +345,17 @@ void aws_register_log_subject_info_list(struct aws_log_subject_info_list *log_su
 }
 
 static struct aws_log_subject_info s_io_log_subject_infos[] = {
-        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_GENERAL, "General", "Subject for IO logging that doesn't belong to any particular category"),
-        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_TLS, "Tls", "Subject for TLS-related logging"),
-        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_ALPN, "Alpn", "Subject for ALPN-related logging"),
-        DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "Dns", "Subject for DNS-related logging")
-};
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_GENERAL,
+        "General",
+        "Subject for IO logging that doesn't belong to any particular category"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_TLS, "Tls", "Subject for TLS-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_ALPN, "Alpn", "Subject for ALPN-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "Dns", "Subject for DNS-related logging")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
-        .subject_list = s_io_log_subject_infos,
-        .count = AWS_ARRAY_SIZE(s_io_log_subject_infos),
+    .subject_list = s_io_log_subject_infos,
+    .count = AWS_ARRAY_SIZE(s_io_log_subject_infos),
 };
 
 void aws_io_load_log_subject_strings(void) {
