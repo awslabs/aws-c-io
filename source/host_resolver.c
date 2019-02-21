@@ -279,7 +279,9 @@ static void resolver_thread_fn(void *arg) {
     size_t unsolicited_resolve_count = 0;
     size_t unsolicited_resolve_max = host_entry->resolution_config->max_ttl;
     struct aws_array_list address_list;
-    aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address));
+	if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+		return;
+	}
 
     while (host_entry->keep_active && unsolicited_resolve_count < unsolicited_resolve_max) {
         if (last_updated != host_entry->last_use) {
