@@ -27,14 +27,14 @@
 
 typedef int(*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct aws_string **output);
 
-int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *expected_user_output, enum aws_log_level log_level, enum aws_date_format date_format) {
+int do_default_log_formatter_test(struct aws_allocator *allocator, log_formatter_test_fn test_fn, const char *expected_user_output, enum aws_log_level log_level, enum aws_date_format date_format) {
     /* Initialize a default formatter*/
     struct aws_log_formatter_standard_options options = {
         .date_format = date_format
     };
 
     struct aws_log_formatter formatter;
-    aws_log_formatter_default_init(&formatter, aws_default_allocator(), &options);
+    aws_log_formatter_default_init(&formatter, allocator, &options);
 
     struct aws_date_time test_time;
     aws_date_time_init_now(&test_time);
@@ -140,7 +140,7 @@ int do_default_log_formatter_test(log_formatter_test_fn test_fn, const char *exp
 #define DEFINE_LOG_FORMATTER_TEST(test_function, log_level, date_format, expected_user_string)              \
 static int s_log_formatter_##test_function##_fn(struct aws_allocator *allocator, void *ctx) {               \
     (void) ctx;                                                                                             \
-    return do_default_log_formatter_test(test_function, expected_user_string, log_level, date_format);      \
+    return do_default_log_formatter_test(allocator, test_function, expected_user_string, log_level, date_format);      \
 }                                                                                                           \
 AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function##_fn);
 

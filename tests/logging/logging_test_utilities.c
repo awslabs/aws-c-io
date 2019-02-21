@@ -17,11 +17,11 @@
 
 #include "test_logger.h"
 
-int do_log_test(enum aws_log_level level, const char *expected_result, void (*callback)(enum aws_log_level)) {
+int do_log_test(struct aws_allocator *allocator, enum aws_log_level level, const char *expected_result, void (*callback)(enum aws_log_level)) {
 
     /* Create and attach a logger for testing*/
     struct aws_logger test_logger;
-    test_logger_init(&test_logger, aws_default_allocator(), level);
+    test_logger_init(&test_logger, allocator, level);
     aws_logger_set(&test_logger);
 
     /* Perform logging operations */

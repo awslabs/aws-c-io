@@ -35,7 +35,7 @@ static const char *s_test_file_name =
 
 typedef void(*log_test_fn)(void);
 
-int do_pipeline_logger_test(log_test_fn log_fn, const char **expected_user_content, size_t user_content_count) {
+int do_pipeline_logger_test(struct aws_allocator *allocator, log_test_fn log_fn, const char **expected_user_content, size_t user_content_count) {
 
     remove(s_test_file_name);
 
@@ -45,7 +45,7 @@ int do_pipeline_logger_test(log_test_fn log_fn, const char **expected_user_conte
     };
 
     struct aws_logger logger;
-    if (aws_logger_standard_init(&logger, aws_default_allocator(), &options)) {
+    if (aws_logger_standard_init(&logger, allocator, &options)) {
         return AWS_OP_ERR;
     }
 
@@ -125,7 +125,7 @@ static const char *expected_test_user_content[] = {
 #define DEFINE_PIPELINE_LOGGER_TEST(test_name, callback_function)                                                                                               \
 static int s_pipeline_logger_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                                                                     \
     (void) ctx;                                                                                                                                                 \
-    return do_pipeline_logger_test(callback_function, expected_test_user_content, sizeof(expected_test_user_content) / sizeof(expected_test_user_content[0]));  \
+    return do_pipeline_logger_test(allocator, callback_function, expected_test_user_content, sizeof(expected_test_user_content) / sizeof(expected_test_user_content[0]));  \
 }                                                                                                                                                               \
 AWS_TEST_CASE(test_pipeline_logger_##test_name, s_pipeline_logger_##test_name##_fn);
 
