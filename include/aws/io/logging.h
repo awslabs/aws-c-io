@@ -147,7 +147,7 @@ struct aws_logger_standard_options {
  * Checks for a logger and filters based on log level.
  *
  */
-#define AWS_LOGF_RAW(log_level, subject, ...)                                                                          \
+#define AWS_LOGF(log_level, subject, ...)                                                                              \
     {                                                                                                                  \
         assert(log_level > 0);                                                                                         \
         struct aws_logger *logger = aws_logger_get();                                                                  \
@@ -155,8 +155,6 @@ struct aws_logger_standard_options {
             logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                              \
         }                                                                                                              \
     }
-
-#define AWS_LOGF(log_level, ...) AWS_LOGF_RAW(log_level, AWS_LS_IO_GENERAL, __VA_ARGS__)
 
 /**
  * LOGF_<level> variants for each level.  These are what should be used directly to do all logging.
@@ -169,39 +167,39 @@ struct aws_logger_standard_options {
  * Later we will likely expose Subject-aware variants
  */
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_FATAL)
-#    define AWS_LOGF_FATAL(...) AWS_LOGF(AWS_LL_FATAL, __VA_ARGS__)
+#    define AWS_LOGF_FATAL(subject, ...) AWS_LOGF(AWS_LL_FATAL, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_FATAL(...)
+#    define AWS_LOGF_FATAL(subject, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_ERROR)
-#    define AWS_LOGF_ERROR(...) AWS_LOGF(AWS_LL_ERROR, __VA_ARGS__)
+#    define AWS_LOGF_ERROR(subject, ...) AWS_LOGF(AWS_LL_ERROR, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_ERROR(...)
+#    define AWS_LOGF_ERROR(subject, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_WARN)
-#    define AWS_LOGF_WARN(...) AWS_LOGF(AWS_LL_WARN, __VA_ARGS__)
+#    define AWS_LOGF_WARN(subject, ...) AWS_LOGF(AWS_LL_WARN, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_WARN(...)
+#    define AWS_LOGF_WARN(subject, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_INFO)
-#    define AWS_LOGF_INFO(...) AWS_LOGF(AWS_LL_INFO, __VA_ARGS__)
+#    define AWS_LOGF_INFO(subject, ...) AWS_LOGF(AWS_LL_INFO, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_INFO(...)
+#    define AWS_LOGF_INFO(subject, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_DEBUG)
-#    define AWS_LOGF_DEBUG(...) AWS_LOGF(AWS_LL_DEBUG, __VA_ARGS__)
+#    define AWS_LOGF_DEBUG(subject, ...) AWS_LOGF(AWS_LL_DEBUG, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_DEBUG(...)
+#    define AWS_LOGF_DEBUG(subject, ...)
 #endif
 
 #if !defined(AWS_STATIC_LOG_LEVEL) || (AWS_STATIC_LOG_LEVEL >= AWS_LOG_LEVEL_TRACE)
-#    define AWS_LOGF_TRACE(...) AWS_LOGF(AWS_LL_TRACE, __VA_ARGS__)
+#    define AWS_LOGF_TRACE(subject, ...) AWS_LOGF(AWS_LL_TRACE, subject, __VA_ARGS__)
 #else
-#    define AWS_LOGF_TRACE(...)
+#    define AWS_LOGF_TRACE(subject, ...)
 #endif
 
 AWS_EXTERN_C_BEGIN

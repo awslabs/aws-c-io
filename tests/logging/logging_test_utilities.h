@@ -54,12 +54,12 @@ int do_log_test(
 #define DECLARE_LOGF_ALL_LEVELS_FUNCTION(fn_name)                                                                      \
     static void fn_name(enum aws_log_level level) {                                                                    \
         (void)level;                                                                                                   \
-        AWS_LOGF_FATAL("%d", (int)AWS_LL_FATAL);                                                                       \
-        AWS_LOGF_ERROR("%d", (int)AWS_LL_ERROR);                                                                       \
-        AWS_LOGF_WARN("%d", (int)AWS_LL_WARN);                                                                         \
-        AWS_LOGF_INFO("%d", (int)AWS_LL_INFO);                                                                         \
-        AWS_LOGF_DEBUG("%d", (int)AWS_LL_DEBUG);                                                                       \
-        AWS_LOGF_TRACE("%d", (int)AWS_LL_TRACE);                                                                       \
+        AWS_LOGF_FATAL(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_FATAL);                                                    \
+        AWS_LOGF_ERROR(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_ERROR);                                                    \
+        AWS_LOGF_WARN(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_WARN);                                                      \
+        AWS_LOGF_INFO(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_INFO);                                                      \
+        AWS_LOGF_DEBUG(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_DEBUG);                                                    \
+        AWS_LOGF_TRACE(AWS_LS_IO_GENERAL, "%d", (int)AWS_LL_TRACE);                                                    \
     }
 
 #endif /* AWS_COMMON_LOGGING_TEST_UTILITIES_H */

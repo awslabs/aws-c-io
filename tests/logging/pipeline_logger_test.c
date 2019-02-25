@@ -101,21 +101,21 @@ int do_pipeline_logger_test(
 }
 
 static void s_unformatted_pipeline_logger_test_callback(void) {
-    AWS_LOGF_TRACE("trace log call");
-    AWS_LOGF_DEBUG("debug log call");
-    AWS_LOGF_INFO("info log call");
-    AWS_LOGF_WARN("warn log call");
-    AWS_LOGF_ERROR("error log call");
-    AWS_LOGF_FATAL("fatal log call");
+    AWS_LOGF_TRACE(AWS_LS_IO_GENERAL, "trace log call");
+    AWS_LOGF_DEBUG(AWS_LS_IO_GENERAL, "debug log call");
+    AWS_LOGF_INFO(AWS_LS_IO_GENERAL, "info log call");
+    AWS_LOGF_WARN(AWS_LS_IO_GENERAL, "warn log call");
+    AWS_LOGF_ERROR(AWS_LS_IO_GENERAL, "error log call");
+    AWS_LOGF_FATAL(AWS_LS_IO_GENERAL, "fatal log call");
 }
 
 static void s_formatted_pipeline_logger_test_callback(void) {
-    AWS_LOGF_TRACE("%s log call", "trace");
-    AWS_LOGF_DEBUG("%s log call", "debug");
-    AWS_LOGF_INFO("%s log call", "info");
-    AWS_LOGF_WARN("%s log call", "warn");
-    AWS_LOGF_ERROR("%s log call", "error");
-    AWS_LOGF_FATAL("%s log call", "fatal");
+    AWS_LOGF_TRACE(AWS_LS_IO_GENERAL, "%s log call", "trace");
+    AWS_LOGF_DEBUG(AWS_LS_IO_GENERAL, "%s log call", "debug");
+    AWS_LOGF_INFO(AWS_LS_IO_GENERAL, "%s log call", "info");
+    AWS_LOGF_WARN(AWS_LS_IO_GENERAL, "%s log call", "warn");
+    AWS_LOGF_ERROR(AWS_LS_IO_GENERAL, "%s log call", "error");
+    AWS_LOGF_FATAL(AWS_LS_IO_GENERAL, "%s log call", "fatal");
 }
 
 static const char *expected_test_user_content[] =
