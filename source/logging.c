@@ -95,7 +95,7 @@ int aws_log_level_to_string(enum aws_log_level log_level, const char **level_str
 }
 
 static int s_aws_logger_pipeline_owned_cleanup_fn(struct aws_logger *logger) {
-    struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)logger->p_impl;
+    struct aws_logger_pipeline *impl = logger->p_impl;
 
     assert(impl->channel->vtable->cleanup != NULL);
     (impl->channel->vtable->cleanup)(impl->channel);
@@ -127,7 +127,7 @@ static int s_aws_logger_pipeline_log_fn(
     va_list format_args;
     va_start(format_args, format);
 
-    struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)logger->p_impl;
+    struct aws_logger_pipeline *impl = logger->p_impl;
     struct aws_string *output = NULL;
 
     assert(impl->formatter->vtable->format != NULL);
@@ -154,7 +154,7 @@ static int s_aws_logger_pipeline_log_fn(
 static enum aws_log_level s_aws_logger_pipeline_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)subject;
 
-    struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)logger->p_impl;
+    struct aws_logger_pipeline *impl = logger->p_impl;
 
     return impl->level;
 }
@@ -169,12 +169,14 @@ int aws_logger_init_standard(
     struct aws_logger_standard_options *options) {
 
     struct aws_logger_pipeline *impl =
-        (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+            aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
 
-    struct aws_log_writer *writer = (struct aws_log_writer *)aws_mem_acquire(allocator, sizeof(struct aws_log_writer));
+    struct aws_log_writer *writer = aws_mem_acquire(allocator, sizeof(struct aws_log_writer));
+
     if (writer == NULL) {
         goto on_allocate_writer_failure;
     }
@@ -186,7 +188,8 @@ int aws_logger_init_standard(
     }
 
     struct aws_log_formatter *formatter =
-        (struct aws_log_formatter *)aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
+        aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
+
     if (formatter == NULL) {
         goto on_allocate_formatter_failure;
     }
@@ -197,8 +200,8 @@ int aws_logger_init_standard(
         goto on_init_formatter_failure;
     }
 
-    struct aws_log_channel *channel =
-        (struct aws_log_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_channel));
+    struct aws_log_channel *channel = aws_mem_acquire(allocator, sizeof(struct aws_log_channel));
+
     if (channel == NULL) {
         goto on_allocate_channel_failure;
     }
@@ -262,8 +265,8 @@ int aws_logger_init_from_external(
     struct aws_log_writer *writer,
     enum aws_log_level level) {
 
-    struct aws_logger_pipeline *impl =
-        (struct aws_logger_pipeline *)aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+    struct aws_logger_pipeline *impl = aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
