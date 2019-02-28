@@ -78,6 +78,7 @@ enum aws_io_log_subject {
     AWS_LS_IO_TLS,
     AWS_LS_IO_ALPN,
     AWS_LS_IO_DNS,
+    AWS_LS_IO_PKI,
 
     AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
 };

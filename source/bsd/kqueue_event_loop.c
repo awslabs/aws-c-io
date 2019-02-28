@@ -15,6 +15,8 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/io/logging.h>
+
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>

@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/pki_utils.h>
+
+#include <aws/io/logging.h>
 
 #include <aws/common/encoding.h>
 #include <aws/common/task_scheduler.h>
@@ -66,6 +68,16 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
      * to an older version. */
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
     s_SSLCopyALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef *))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
+
+    AWS_LOGF_INFO(AWS_LS_IO_TLS, "Initializing TLS implementation as Apple SecureTransport.");
+
+    if (s_SSLSetALPNProtocols) {
+        AWS_LOGF_INFO(AWS_LS_IO_TLS, "ALPN support detected.");
+    } else {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "ALPN isn't supported on your apple device, you can improve support and performance by upgrading.");
+    }
 }
 
 void aws_tls_clean_up_thread_local_state(void) { /* no op */
@@ -237,8 +249,6 @@ static void s_set_protocols(
     (void)handler;
     (void)alloc;
     (void)alpn_list;
-/* I have no idea if this code is correct, I can't test it until I have a machine with high-sierra on it
- * but my employer hasn't pushed it out yet so.... sorry about that. */
 #if ALPN_AVAILABLE
     if (s_SSLSetALPNProtocols) {
         struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
@@ -302,17 +312,20 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
     /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Negotiation succeeded.")
         secure_transport_handler->negotiation_finished = true;
         size_t name_len = 0;
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
             if (aws_byte_buf_init(
-                    &secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol))) {
+                    &secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol) + 1)) {
                 CFRelease(protocol);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
             }
+
+            memset(secure_transport_handler->protocol.buffer, 0, secure_transport_handler->protocol.capacity);
 
             CFRange byte_range = CFRangeMake(0, CFStringGetLength(protocol));
             CFStringGetBytes(
@@ -324,8 +337,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 secure_transport_handler->protocol.buffer,
                 secure_transport_handler->protocol.capacity,
                 NULL);
-            secure_transport_handler->protocol.len = secure_transport_handler->protocol.capacity;
+            secure_transport_handler->protocol.len = secure_transport_handler->protocol.capacity - 1;
             CFRelease(protocol);
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Negotiated protocol: %s", secure_transport_handler->protocol.buffer);
         }
 
         name_len = 0;
@@ -341,6 +355,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             size_t actual_length = strlen(secure_transport_handler->server_name_array);
             secure_transport_handler->server_name =
                 aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name_array, actual_length);
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Remote Server Name: %s", secure_transport_handler->server_name_array);
         }
 
         if (secure_transport_handler->parent_slot->adj_right &&
@@ -401,6 +416,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return s_drive_negotiation(handler);
             }
 
+            AWS_LOGF_WARN(AWS_LS_IO_TLS, "Using custom CA, certificate validation failed.")
             return AWS_OP_ERR;
         }
         return AWS_OP_SUCCESS;
@@ -408,8 +424,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     } else if (status != errSSLWouldBlock) {
         secure_transport_handler->negotiation_finished = false;
 
+        AWS_LOGF_WARN(AWS_LS_IO_TLS, "Negotiation failed with OSStatus %d.", (int)status);
         aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-
         s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         return AWS_OP_ERR;
     }
@@ -430,6 +446,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Starting TLS negotiation");
     if (aws_channel_thread_is_callers_thread(secure_transport_handler->parent_slot->channel)) {
         return s_drive_negotiation(handler);
     }
@@ -464,7 +481,10 @@ static int s_process_write_message(
     OSStatus status =
         SSLWrite(secure_transport_handler->ctx, message->message_data.buffer, message->message_data.len, &processed);
 
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Bytes written: %llu", (unsigned long long)processed);
+
     if (status != noErr) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "SSLWrite failed with OSStatus error code %d.", (int)status);
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
@@ -482,8 +502,10 @@ static int s_handle_shutdown(
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Shutting down write direction.");
         SSLClose(secure_transport_handler->ctx);
     } else {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Shutting down read direction with error %d. Flushing queues.", error_code);
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
@@ -521,6 +543,7 @@ static int s_process_read_message(
     if (slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(slot);
     }
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Downstream window is %llu", (unsigned long long)downstream_window);
     size_t processed = 0;
 
     OSStatus status = noErr;
@@ -539,13 +562,27 @@ static int s_process_read_message(
             outgoing_read_message->message_data.capacity,
             &read);
 
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Bytes read %ll", (unsigned long long)read);
         if (read <= 0) {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+
+            if (status != errSSLWouldBlock) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error reported during SSLRead. OSStatus code %llu", (int)status);
+
+                if (status != errSSLClosedGraceful) {
+                    aws_raise_error(AWS_IO_TLS_ERROR_ALERT_RECEIVED);
+                    aws_channel_shutdown(
+                        secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_ALERT_RECEIVED);
+                } else {
+                    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Connection shutting down gracefully.");
+                    aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_ERROR_SUCCESS);
+                }
+            }
             continue;
         };
 
         processed += read;
-        outgoing_read_message->message_data.len = (size_t)read;
+        outgoing_read_message->message_data.len = read;
 
         if (secure_transport_handler->options.on_data_read) {
             secure_transport_handler->options.on_data_read(
@@ -561,6 +598,10 @@ static int s_process_read_message(
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
         }
     }
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "Remaining window for this event-loop tick: %llu",
+        (unsigned long long)downstream_window - processed);
 
     return AWS_OP_SUCCESS;
 }
@@ -580,6 +621,8 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Increment read window message received %llu", (unsigned long long)size);
+
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
 
@@ -587,6 +630,8 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
         size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
         size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS, "Propagating read window increment of size %llu", (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
@@ -643,7 +688,6 @@ struct secure_transport_ctx {
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     const char *alpn_list;
-    size_t max_fragment_size;
     bool veriify_peer;
 };
 
@@ -671,7 +715,8 @@ static struct aws_channel_handler *s_tls_handler_new(
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
     if (!secure_transport_handler->ctx) {
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        AWS_LOGF_FATAL(AWS_LS_IO_TLS, "Failed to initialize an SSL Context.");
+        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_st_handler;
     }
 
@@ -692,6 +737,11 @@ static struct aws_channel_handler *s_tls_handler_new(
 #if TLS13_AVAILABLE
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
 #else
+            AWS_LOGF_FATAL(
+                AWS_LS_IO_TLS,
+                "TLS 1.3 is not supported on this device. You may just want to specify "
+                "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically"
+                "use the latest version of the protocol when it is available.");
             /*
              * "TLS 1.3 is not supported for your target platform,
              * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be
@@ -710,7 +760,8 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (SSLSetIOFuncs(secure_transport_handler->ctx, s_read_cb, s_write_cb) != noErr ||
         SSLSetConnection(secure_transport_handler->ctx, secure_transport_handler) != noErr) {
-        /* TODO raise error here */
+        AWS_LOGF_FATAL(AWS_LS_IO_TLS, "Failed to initialize an SSL Context.");
+        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_ssl_ctx;
     }
 
@@ -718,6 +769,10 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->verify_peer = secure_transport_ctx->veriify_peer;
 
     if (!secure_transport_ctx->veriify_peer && protocol_side == kSSLClientSide) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "x.509 validation has been disabled. "
+            "If this is not running in a test environment, this is likely a security vulnerability.");
         SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
@@ -750,6 +805,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     const char *alpn_list = NULL;
     if (options->alpn_list) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Setting ALPN list %s", options->alpn_list);
         alpn_list = options->alpn_list;
     } else {
         alpn_list = secure_transport_ctx->alpn_list;
@@ -809,14 +865,17 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
 
     if (options->certificate_path && options->private_key_path) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Certificate and key have been set, setting them up now.");
 
         struct aws_byte_buf cert_chain;
         if (aws_byte_buf_init_from_file(&cert_chain, alloc, options->certificate_path)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to load %s", options->certificate_path);
             goto cleanup_wrapped_allocator;
         }
 
         struct aws_byte_buf private_key;
         if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to load %s", options->private_key_path);
             aws_secure_zero(cert_chain.buffer, cert_chain.len);
             aws_byte_buf_clean_up(&cert_chain);
             goto cleanup_wrapped_allocator;
@@ -830,6 +889,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
                 &cert_chain_cur,
                 &private_key_cur,
                 &secure_transport_ctx->certs)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "Failed to import certificate and private key with error %d.", aws_last_error());
             aws_secure_zero(cert_chain.buffer, cert_chain.len);
             aws_byte_buf_clean_up(&cert_chain);
             aws_secure_zero(private_key.buffer, private_key.len);
@@ -845,6 +906,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
 
         struct aws_byte_buf pkcs12_blob;
         if (aws_byte_buf_init_from_file(&pkcs12_blob, alloc, options->pkcs12_path)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to load %s", options->pkcs12_path);
             goto cleanup_wrapped_allocator;
         }
 
@@ -861,6 +923,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
                 &pkcs12_blob_cur,
                 &password_cur,
                 &secure_transport_ctx->certs)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to import pkcs#12 certificate with error %d.", aws_last_error());
             aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
             aws_byte_buf_clean_up(&pkcs12_blob);
             goto cleanup_wrapped_allocator;
@@ -870,15 +933,17 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
     }
 
     if (options->ca_file) {
-
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Loading custom CA file.");
         struct aws_byte_buf ca_blob;
         if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to load file %s.", options->ca_file);
             goto cleanup_wrapped_allocator;
         }
 
         struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&ca_blob);
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to import custom CA with error %d", aws_last_error());
             aws_byte_buf_clean_up(&ca_blob);
             goto cleanup_wrapped_allocator;
         }

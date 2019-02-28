@@ -427,8 +427,10 @@ static int s_s2n_handler_process_read_message(
         }
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Remaining window for this event-loop tick: %llu",
-            (unsigned long long)downstream_window - processed);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "Remaining window for this event-loop tick: %llu",
+        (unsigned long long)downstream_window - processed);
 
     return AWS_OP_SUCCESS;
 }
@@ -451,8 +453,7 @@ static int s_s2n_handler_process_write_message(
     ssize_t write_code =
         s2n_send(s2n_handler->connection, message->message_data.buffer, (ssize_t)message->message_data.len, &blocked);
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Bytes written: %llu",
-                   (unsigned long long)write_code);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Bytes written: %llu", (unsigned long long)write_code);
 
     ssize_t message_len = (ssize_t)message->message_data.len;
     aws_mem_release(message->allocator, message);
@@ -511,13 +512,14 @@ static int s_s2n_handler_increment_read_window(
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Window update message received %llu", (unsigned long long)size);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Increment read window message received %llu", (unsigned long long)size);
 
     if (downstream_size <= current_window_size) {
         size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
         size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
         size_t window_update_size = (downstream_size - current_window_size) + offset_size;
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Propagating window update of size %llu", (unsigned long long)window_update_size);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS, "Propagating read window increment of size %llu", (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
@@ -753,7 +755,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-2-2018");
             break;
         case AWS_IO_TLSv1_3:
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 is not supported yet.");
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 is not supported yet.");
             /* sorry guys, we'll add this as soon as s2n does. */
             aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
             goto cleanup_s2n_ctx;
@@ -820,8 +822,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
         }
     } else if (mode != S2N_SERVER) {
-        AWS_LOGF_WARN(AWS_LS_IO_TLS, "x.509 validation has been disabled. "
-                                     "If this is not running in a test environment, this is likely a security vulnerability.");
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "X.509 validation has been disabled. "
+            "If this is not running in a test environment, this is likely a security vulnerability.");
         if (s2n_config_disable_x509_verification(s2n_ctx->s2n_config)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;

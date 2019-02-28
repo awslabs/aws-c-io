@@ -14,6 +14,8 @@
  */
 #include <aws/io/pki_utils.h>
 
+#include <aws/io/logging.h>
+
 #include <Security/SecCertificate.h>
 #include <Security/SecKey.h>
 #include <Security/Security.h>
@@ -60,6 +62,7 @@ int aws_import_public_and_private_keys_to_identity(
     aws_byte_buf_clean_up(&aggregate_buffer);
 
     if (status != errSecSuccess && status != errSecDuplicateItem) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error importing certificate/key pair with OSStatus %d", (int)status);
         return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
     }
 
@@ -67,6 +70,7 @@ int aws_import_public_and_private_keys_to_identity(
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
     if (status == errSecDuplicateItem) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Certificate has already been imported, loading from keychain.");
         struct aws_array_list cert_chain_list;
 
         if (aws_array_list_init_dynamic(&cert_chain_list, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -74,6 +78,7 @@ int aws_import_public_and_private_keys_to_identity(
         }
 
         if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &cert_chain_list)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Decoding certificate PEM failed.");
             aws_array_list_clean_up(&cert_chain_list);
             return AWS_OP_ERR;
         }
@@ -158,6 +163,8 @@ int aws_import_pkcs12_to_identity(
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error importing pkcs#12 certificate OSStatus %d", (int)status);
+
     return AWS_OP_ERR;
 }
 
@@ -173,6 +180,7 @@ int aws_import_trusted_certificates(
     }
 
     if (aws_decode_pem_to_buffer_list(alloc, certificates_blob, &certificates)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Decoding CA PEM failed.");
         aws_array_list_clean_up(&certificates);
         return AWS_OP_ERR;
     }

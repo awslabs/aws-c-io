@@ -168,8 +168,7 @@ int aws_logger_init_standard(
     struct aws_allocator *allocator,
     struct aws_logger_standard_options *options) {
 
-    struct aws_logger_pipeline *impl =
-            aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
+    struct aws_logger_pipeline *impl = aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
 
     if (impl == NULL) {
         return AWS_OP_ERR;
@@ -187,8 +186,7 @@ int aws_logger_init_standard(
         goto on_init_writer_failure;
     }
 
-    struct aws_log_formatter *formatter =
-        aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
+    struct aws_log_formatter *formatter = aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
 
     if (formatter == NULL) {
         goto on_allocate_formatter_failure;
@@ -354,7 +352,8 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "Subject for IO logging that doesn't belong to any particular category"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_TLS, "Tls", "Subject for TLS-related logging"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_ALPN, "Alpn", "Subject for ALPN-related logging"),
-    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "Dns", "Subject for DNS-related logging")};
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "Dns", "Subject for DNS-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKI, "Pki Utils", "Subject for Pki utilities.")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,

@@ -36,8 +36,8 @@
 // (max) strlen of "[<ThreadId>]"
 #define THREAD_ID_PREFIX_PADDING 22
 
-// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 + subject_name
-// padding
+// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 +
+// subject_name padding
 #define MISC_PADDING 15
 
 #define MAX_LOG_LINE_PREFIX_SIZE                                                                                       \
@@ -139,8 +139,8 @@ static int s_default_aws_log_formatter_format_fn(
      * Add thread id and user content separator (" - ")
      */
     uint64_t current_thread_id = aws_thread_current_thread_id();
-    int thread_id_written = snprintf(
-        log_line_buffer + current_index, total_length - current_index, "] [%" PRIu64 "] ", current_thread_id);
+    int thread_id_written =
+        snprintf(log_line_buffer + current_index, total_length - current_index, "] [%" PRIu64 "] ", current_thread_id);
     if (thread_id_written < 0) {
         goto error_cleanup;
     }
@@ -149,7 +149,8 @@ static int s_default_aws_log_formatter_format_fn(
 
     /* output subject name */
     if (subject_name) {
-        int subject_written = snprintf(log_line_buffer + current_index, total_length - current_index, "[%s]", subject_name);
+        int subject_written =
+            snprintf(log_line_buffer + current_index, total_length - current_index, "[%s]", subject_name);
 
         if (subject_written < 0) {
             goto error_cleanup;
@@ -212,8 +213,8 @@ int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,
     struct aws_allocator *allocator,
     struct aws_log_formatter_standard_options *options) {
-    struct aws_default_log_formatter_impl *impl = aws_mem_acquire(
-        allocator, sizeof(struct aws_default_log_formatter_impl));
+    struct aws_default_log_formatter_impl *impl =
+        aws_mem_acquire(allocator, sizeof(struct aws_default_log_formatter_impl));
     impl->date_format = options->date_format;
 
     formatter->vtable = &s_default_log_formatter_vtable;
