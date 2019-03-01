@@ -58,7 +58,7 @@ static int s_testing_loop_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
-    aws_event_loop_on_event_fn on_event,
+    aws_event_loop_on_event_fn *on_event,
     void *user_data) {
     (void)event_loop;
     (void)handle;
@@ -158,14 +158,17 @@ static int s_testing_channel_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
+    (void)handler;
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
 static size_t s_testing_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
+    (void)handler;
     return 16 * 1024;
 }
 
 static size_t s_testing_channel_handler_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
     return 0;
 }
 
