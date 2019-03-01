@@ -42,7 +42,7 @@ static int s_testing_loop_wait_for_stop_completion(struct aws_event_loop *event_
 
 static void s_testing_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct testing_loop *testing_loop = event_loop->impl_data;
-    return aws_task_scheduler_schedule_now(&testing_loop->scheduler, task);
+    aws_task_scheduler_schedule_now(&testing_loop->scheduler, task);
 }
 
 static void s_testing_loop_schedule_task_future(
@@ -51,27 +51,7 @@ static void s_testing_loop_schedule_task_future(
     uint64_t run_at_nanos) {
 
     struct testing_loop *testing_loop = event_loop->impl_data;
-    return aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
-}
-
-static int s_testing_loop_subscribe_to_io_events(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    int events,
-    aws_event_loop_on_event_fn *on_event,
-    void *user_data) {
-    (void)event_loop;
-    (void)handle;
-    (void)events;
-    (void)on_event;
-    (void)user_data;
-    return AWS_OP_SUCCESS;
-}
-
-static int s_testing_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    (void)event_loop;
-    (void)handle;
-    return AWS_OP_SUCCESS;
+    aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
 }
 
 static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loop) {
@@ -94,8 +74,6 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
     .schedule_task_now = s_testing_loop_schedule_task_now,
     .schedule_task_future = s_testing_loop_schedule_task_future,
     .stop = s_testing_loop_stop,
-    .subscribe_to_io_events = s_testing_loop_subscribe_to_io_events,
-    .unsubscribe_from_io_events = s_testing_loop_unsubscribe_from_io_events,
     .wait_for_stop_completion = s_testing_loop_wait_for_stop_completion,
 };
 
