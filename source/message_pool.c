@@ -186,7 +186,6 @@ struct aws_io_message *aws_message_pool_acquire(
     message_wrapper->message.message_data.capacity = size_hint <= max_size ? size_hint : max_size;
 
     /* set the allocator ptr */
-    ;
     message_wrapper->msg_allocator.base_allocator.impl = &message_wrapper->msg_allocator;
     message_wrapper->msg_allocator.base_allocator.mem_acquire = s_message_pool_mem_acquire;
     message_wrapper->msg_allocator.base_allocator.mem_realloc = NULL;

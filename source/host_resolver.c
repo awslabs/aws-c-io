@@ -161,8 +161,11 @@ static inline void process_records(
         struct aws_host_address *lru_element = aws_lru_cache_use_lru_element(records);
 
         if (lru_element->expiry < timestamp) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: purging expired record %s for %s",
-                    lru_element->address->bytes, lru_element->host->bytes);
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_DNS,
+                "static: purging expired record %s for %s",
+                lru_element->address->bytes,
+                lru_element->host->bytes);
             expired_records++;
             aws_lru_cache_remove(records, lru_element->address);
         }
@@ -184,8 +187,11 @@ static inline void process_records(
                 struct aws_host_address *to_add = aws_mem_acquire(allocator, sizeof(struct aws_host_address));
 
                 if (to_add && !aws_host_address_copy(lru_element, to_add)) {
-                    AWS_LOGF_INFO(AWS_LS_IO_DNS, "static: promoting spotty record %s for %s back to good list",
-                                   lru_element->address->bytes, lru_element->host->bytes);
+                    AWS_LOGF_INFO(
+                        AWS_LS_IO_DNS,
+                        "static: promoting spotty record %s for %s back to good list",
+                        lru_element->address->bytes,
+                        lru_element->host->bytes);
                     if (aws_lru_cache_put(records, to_add->address, to_add)) {
                         aws_mem_release(allocator, to_add);
                         continue;
@@ -206,8 +212,12 @@ static inline void process_records(
 static int resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: recording failure for record %s for %s, moving to bad list",
-                  resolver, address->address->bytes, address->host->bytes);
+    AWS_LOGF_INFO(
+        AWS_LS_IO_DNS,
+        "id=%p: recording failure for record %s for %s, moving to bad list",
+        resolver,
+        address->address->bytes,
+        address->host->bytes);
 
     aws_rw_lock_rlock(&default_host_resolver->host_lock);
 
@@ -298,8 +308,11 @@ static void resolver_thread_fn(void *arg) {
             unsolicited_resolve_count = 0;
         }
 
-        AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static, resolving %s, unsolicited resolve count %d",
-                host_entry->host_name->bytes, (int)unsolicited_resolve_count);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_DNS,
+            "static, resolving %s, unsolicited resolve count %d",
+            host_entry->host_name->bytes,
+            (int)unsolicited_resolve_count);
 
         ++unsolicited_resolve_count;
         last_updated = host_entry->last_use;
@@ -328,8 +341,12 @@ static void resolver_thread_fn(void *arg) {
 
                 if (address_to_cache) {
                     address_to_cache->expiry = new_expiry;
-                    AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static: updating expiry for %s for host %s to %llu",
-                                   address_to_cache->address->bytes, host_entry->host_name->bytes, (unsigned long long)new_expiry);
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_DNS,
+                        "static: updating expiry for %s for host %s to %llu",
+                        address_to_cache->address->bytes,
+                        host_entry->host_name->bytes,
+                        (unsigned long long)new_expiry);
                 } else {
                     struct aws_lru_cache *failed_address_table =
                         fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA
@@ -341,8 +358,12 @@ static void resolver_thread_fn(void *arg) {
 
                     if (address_to_cache) {
                         address_to_cache->expiry = new_expiry;
-                        AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static: updating expiry for %s for host %s to %llu",
-                                       address_to_cache->address->bytes, host_entry->host_name->bytes, (unsigned long long)new_expiry);
+                        AWS_LOGF_TRACE(
+                            AWS_LS_IO_DNS,
+                            "static: updating expiry for %s for host %s to %llu",
+                            address_to_cache->address->bytes,
+                            host_entry->host_name->bytes,
+                            (unsigned long long)new_expiry);
                     }
                 }
 
@@ -354,8 +375,11 @@ static void resolver_thread_fn(void *arg) {
                         address_to_cache->expiry = new_expiry;
                         aws_lru_cache_put(address_table, address_to_cache->address, address_to_cache);
 
-                        AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: new address resolved %s for host %s caching",
-                                       address_to_cache->address->bytes, host_entry->host_name->bytes);
+                        AWS_LOGF_DEBUG(
+                            AWS_LS_IO_DNS,
+                            "static: new address resolved %s for host %s caching",
+                            address_to_cache->address->bytes,
+                            host_entry->host_name->bytes);
                     }
                 }
                 aws_rw_lock_wunlock(&host_entry->entry_lock);
@@ -398,14 +422,20 @@ static void resolver_thread_fn(void *arg) {
                 if (aaaa_address) {
                     aaaa_address->use_count += 1;
                     aws_array_list_push_back(&callback_address_list, &aaaa_address);
-                    AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static: vending address %s for host %s to caller",
-                                   aaaa_address->address->bytes, host_entry->host_name->bytes);
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_DNS,
+                        "static: vending address %s for host %s to caller",
+                        aaaa_address->address->bytes,
+                        host_entry->host_name->bytes);
                 }
                 if (a_address) {
                     a_address->use_count += 1;
                     aws_array_list_push_back(&callback_address_list, &a_address);
-                    AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static: vending address %s for host %s to caller",
-                                   a_address->address->bytes, host_entry->host_name->bytes);
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_DNS,
+                        "static: vending address %s for host %s to caller",
+                        a_address->address->bytes,
+                        host_entry->host_name->bytes);
                 }
 
                 pending_callback->callback(
@@ -430,9 +460,11 @@ static void resolver_thread_fn(void *arg) {
         aws_mutex_unlock(&host_entry->semaphore_mutex);
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: Either no requests have been made for an address for %s for the duration "
-                                  "of the ttl, or this thread is being forcibly shutdown. Killing thead.",
-                                  host_entry->host_name->bytes)
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_DNS,
+        "static: Either no requests have been made for an address for %s for the duration "
+        "of the ttl, or this thread is being forcibly shutdown. Killing thead.",
+        host_entry->host_name->bytes)
 
     aws_array_list_clean_up(&address_list);
     host_entry->keep_active = false;
@@ -444,9 +476,11 @@ static void on_host_key_removed(void *key) {
 
 static void on_host_value_removed(void *value) {
     struct host_entry *host_entry = value;
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "static: purging all addresses for host %s from "
-                                 "the cache due to cache size or shutdown",
-                                 host_entry->host_name->bytes);
+    AWS_LOGF_INFO(
+        AWS_LS_IO_DNS,
+        "static: purging all addresses for host %s from "
+        "the cache due to cache size or shutdown",
+        host_entry->host_name->bytes);
 
     if (host_entry->keep_active) {
         host_entry->keep_active = false;
@@ -480,9 +514,12 @@ static void on_host_value_removed(void *value) {
 static void on_address_value_removed(void *value) {
     struct aws_host_address *host_address = value;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: purging address %s for host %s from "
-                                 "the cache due to cache eviction or shutdown",
-                   host_address->address->bytes, host_address->host->bytes);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_DNS,
+        "static: purging address %s for host %s from "
+        "the cache due to cache eviction or shutdown",
+        host_address->address->bytes,
+        host_address->host->bytes);
 
     struct aws_allocator *allocator = host_address->allocator;
     aws_host_address_clean_up(host_address);
@@ -680,8 +717,11 @@ static int default_resolve_host(
     aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&host_entry);
 
     if (!host_entry) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: No cached entries found for %s starting new resolver thread.",
-                resolver, host_name->bytes);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_DNS,
+            "id=%p: No cached entries found for %s starting new resolver thread.",
+            resolver,
+            host_name->bytes);
 
         aws_rw_lock_runlock(&default_host_resolver->host_lock);
         return create_and_init_host_entry(resolver, host_name, res, config, timestamp, host_entry, user_data);
@@ -694,8 +734,8 @@ static int default_resolve_host(
     struct aws_host_address *a_record = aws_lru_cache_use_lru_element(&host_entry->a_records);
 
     if ((aaaa_record || a_record) && host_entry->keep_active) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: cached entries found for %s returning to caller.",
-                       resolver, host_name->bytes);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_DNS, "id=%p: cached entries found for %s returning to caller.", resolver, host_name->bytes);
         struct aws_host_address *address_array[2];
         AWS_ZERO_ARRAY(address_array);
         struct aws_array_list callback_address_list;
@@ -703,13 +743,21 @@ static int default_resolve_host(
 
         if (aaaa_record) {
             aws_array_list_push_back(&callback_address_list, &aaaa_record);
-            AWS_LOGF_TRACE(AWS_LS_IO_DNS, "id=%p: vending address %s for host %s to caller",
-                           resolver, aaaa_record->address->bytes, host_entry->host_name->bytes);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                resolver,
+                aaaa_record->address->bytes,
+                host_entry->host_name->bytes);
         }
         if (a_record) {
             aws_array_list_push_back(&callback_address_list, &a_record);
-            AWS_LOGF_TRACE(AWS_LS_IO_DNS, "id=%p: vending address %s for host %s to caller",
-                           resolver, a_record->address->bytes, host_entry->host_name->bytes);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                resolver,
+                a_record->address->bytes,
+                host_entry->host_name->bytes);
         }
 
         res(host_entry->resolver, host_entry->host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
@@ -752,8 +800,8 @@ int aws_host_resolver_init_default(
         return AWS_OP_ERR;
     }
 
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: Initializing default host resolver with %llu max host entries.",
-                   resolver, max_entries);
+    AWS_LOGF_INFO(
+        AWS_LS_IO_DNS, "id=%p: Initializing default host resolver with %llu max host entries.", resolver, max_entries);
 
     default_host_resolver->allocator = allocator;
     aws_rw_lock_init(&default_host_resolver->host_lock);

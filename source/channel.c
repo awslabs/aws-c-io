@@ -19,6 +19,7 @@
 #include <aws/common/mutex.h>
 
 #include <aws/io/event_loop.h>
+#include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
 
 #include <assert.h>
@@ -80,7 +81,12 @@ struct channel_setup_args {
 };
 
 static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
-    struct aws_message_pool *msg_pool = (struct aws_message_pool *)object->object;
+    struct aws_message_pool *msg_pool = object->object;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "static: message pool %p has been purged "
+        "from the event-loop: likely because of shutdown",
+        msg_pool);
     struct aws_allocator *alloc = msg_pool->alloc;
     aws_message_pool_clean_up(msg_pool);
     aws_mem_release(alloc, msg_pool);
@@ -90,16 +96,18 @@ static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
 static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum aws_task_status task_status) {
 
     (void)task;
-    struct channel_setup_args *setup_args = (struct channel_setup_args *)arg;
+    struct channel_setup_args *setup_args = arg;
     struct aws_message_pool *message_pool = NULL;
     struct aws_event_loop_local_object *local_object = NULL;
 
+    AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL, "id=%p: setup complete, notifying caller.", setup_args->channel);
     if (task_status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_event_loop_local_object stack_obj;
         AWS_ZERO_STRUCT(stack_obj);
         local_object = &stack_obj;
 
         if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &s_message_pool_key, local_object)) {
+
             local_object = aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
 
             if (!local_object) {
@@ -111,6 +119,16 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
             if (!message_pool) {
                 goto cleanup_local_obj;
             }
+
+            AWS_LOGF_INFO(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: no message pool is currently stored in the event-loop "
+                "local storage, adding %p with max message size %llu, "
+                "message count 4, with 4 small blocks of 128 bytes.",
+                setup_args->channel,
+                message_pool,
+                (unsigned long long)g_aws_channel_max_fragment_size);
+
             struct aws_message_pool_creation_args creation_args = {
                 .application_data_msg_data_size = g_aws_channel_max_fragment_size,
                 .application_data_msg_count = 4,
@@ -130,7 +148,12 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
                 goto cleanup_msg_pool;
             }
         } else {
-            message_pool = (struct aws_message_pool *)local_object->object;
+            message_pool = local_object->object;
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: message pool %p found in event-loop local storage: using it.",
+                setup_args->channel,
+                message_pool)
         }
 
         setup_args->channel->msg_pool = message_pool;
@@ -171,6 +194,7 @@ struct aws_channel *aws_channel_new(
     }
     AWS_ZERO_STRUCT(*channel);
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: Beginning creation and setup of new channel.", channel);
     channel->alloc = alloc;
     channel->loop = event_loop;
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
@@ -205,7 +229,6 @@ struct aws_channel *aws_channel_new(
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {
-
     if (slot) {
         if (slot->handler) {
             aws_channel_handler_destroy(slot->handler);
@@ -215,6 +238,8 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
 }
 
 void aws_channel_destroy(struct aws_channel *channel) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: destroying channel.", channel);
+
     aws_channel_release_hold(channel);
 }
 
@@ -286,14 +311,24 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
     if (aws_channel_thread_is_callers_thread(channel)) {
         if (channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: beginning shutdown process", channel);
+
             struct aws_channel_slot *slot = channel->first;
             channel->channel_state = AWS_CHANNEL_SHUTTING_DOWN;
 
             if (slot) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_CHANNEL,
+                    "id=%p: shutting down slot %p (the first one) in the read direction",
+                    channel,
+                    slot);
+
                 return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, error_code != AWS_OP_SUCCESS);
             }
 
             channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
+            AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL, "id=%p: shutdown completed", channel);
+
             aws_mutex_lock(&channel->cross_thread_tasks.lock);
             channel->cross_thread_tasks.is_channel_shut_down = true;
             aws_mutex_unlock(&channel->cross_thread_tasks.lock);
@@ -306,6 +341,12 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
             }
         }
     } else {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL,
+            "id=%p: channel shutdown called from outside the "
+            "event-loop thread, scheduling task.",
+            channel);
+
         struct channel_shutdown_task_args *task_args =
             aws_mem_acquire(channel->alloc, sizeof(struct channel_shutdown_task_args));
 
@@ -330,6 +371,14 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     size_t size_hint) {
 
     struct aws_io_message *message = aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: acquired message %p of length %llu from pool %p.",
+        channel,
+        message,
+        (unsigned long long)size_hint,
+        channel->msg_pool);
+
     if (AWS_LIKELY(message)) {
         message->owning_channel = channel;
     }
@@ -344,6 +393,7 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
         return NULL;
     }
 
+    AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL, "id=%p: creating new slot %p.", channel, new_slot);
     new_slot->alloc = channel->alloc;
     new_slot->adj_right = NULL;
     new_slot->adj_left = NULL;
@@ -452,6 +502,9 @@ static void s_register_pending_task(
     aws_linked_list_node_reset(&channel_task->node);
 
     if (aws_channel_thread_is_callers_thread(channel)) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL, "id=%p: scheduling task with wrapper task id %p.", channel, &channel_task->wrapper_task);
+
         /* If channel is shut down, run task immediately as canceled */
         if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
             channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
@@ -468,6 +521,12 @@ static void s_register_pending_task(
         return;
     }
 
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: scheduling task with wrapper task id %p from "
+        "outside the event-loop thread.",
+        channel,
+        &channel_task->wrapper_task);
     /* Outside event-loop thread... */
     bool should_cancel_task = false;
 
@@ -629,14 +688,42 @@ int aws_channel_slot_send_message(
         assert(slot->adj_right->handler);
 
         if (slot->adj_right->window_size >= message->message_data.len) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: sending read message of size %llu, "
+                "from slot %p to slot %p with handler %p.",
+                slot->channel,
+                (unsigned long long)message->message_data.len,
+                slot,
+                slot->adj_right,
+                slot->adj_right->handler);
             slot->adj_right->window_size -= message->message_data.len;
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL,
+            "id=%p: sending message of size %llu, "
+            "from slot %p to slot %p with handler %p, but this would exceed the channel's "
+            "read window, this is always a programming error.",
+            slot->channel,
+            (unsigned long long)message->message_data.len,
+            slot,
+            slot->adj_right,
+            slot->adj_right->handler);
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
     }
 
     assert(slot->adj_left);
     assert(slot->adj_left->handler);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: sending write message of size %llu, "
+        "from slot %p to slot %p with handler %p.",
+        slot->channel,
+        message->message_data.len,
+        slot,
+        slot->adj_left,
+        slot->adj_left->handler);
     return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
 }
 
@@ -651,6 +738,15 @@ int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t
         }
 
         if (slot->adj_left && slot->adj_left->handler) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: sending increment read window of size %llu, "
+                "on slot %p and notifying slot %p with handler %p.",
+                slot->channel,
+                (unsigned long long)window,
+                slot,
+                slot->adj_left,
+                slot->adj_left->handler);
             return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, window);
         }
     }
@@ -664,6 +760,15 @@ int aws_channel_slot_shutdown(
     int err_code,
     bool free_scarce_resources_immediately) {
     assert(slot->handler);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: shutting down slot %p, with handler %p "
+        "in %d direction with error code %d",
+        slot->channel,
+        slot,
+        slot->handler,
+        dir,
+        err_code);
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 
@@ -678,7 +783,8 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
     while (!aws_linked_list_empty(&channel->channel_thread_tasks.list)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&channel->channel_thread_tasks.list);
         struct aws_channel_task *channel_task = AWS_CONTAINER_OF(node, struct aws_channel_task, node);
-
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_CHANNEL, "id=%p: during shutdown, canceling task %p", channel, &channel_task->wrapper_task);
         /* The task will remove itself from the list when it's canceled */
         aws_event_loop_cancel_task(channel->loop, &channel_task->wrapper_task);
     }
@@ -715,6 +821,9 @@ int aws_channel_slot_on_handler_shutdown_complete(
     enum aws_channel_direction dir,
     int err_code,
     bool free_scarce_resources_immediately) {
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_CHANNEL, "id=%p: handler %p shutdown in dir %d completed.", slot->channel, slot->handler, dir);
 
     if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         return AWS_OP_SUCCESS;
