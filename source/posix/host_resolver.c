@@ -15,6 +15,8 @@
 
 #include <aws/io/host_resolver.h>
 
+#include <aws/io/logging.h>
+
 #include <aws/common/string.h>
 
 #include <arpa/inet.h>
@@ -37,6 +39,7 @@ int aws_default_dns_resolve(
 
     size_t hostname_len = host_name->len;
     const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
+    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
@@ -47,6 +50,7 @@ int aws_default_dns_resolve(
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
 
     if (err_code) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", err_code);
         goto clean_up;
     }
 
@@ -78,6 +82,8 @@ int aws_default_dns_resolve(
             aws_string_destroy((void *)address);
             goto clean_up;
         }
+
+        AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolved record: %s", address_buffer);
 
         host_address.address = address;
         host_address.weight = 0;

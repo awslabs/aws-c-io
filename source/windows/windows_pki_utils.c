@@ -83,7 +83,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     *cert_store = CertOpenStore(
         CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
-    if (!cert_store) {
+    if (!*cert_store) {
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -107,7 +107,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     *certs = CertFindCertificateInStore(
         *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
-    if (!certs) {
+    if (!*certs) {
         aws_close_cert_store(*cert_store);
         *cert_store = NULL;
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);

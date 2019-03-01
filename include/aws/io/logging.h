@@ -75,6 +75,8 @@ typedef uint32_t aws_log_subject_t;
 
 enum aws_io_log_subject {
     AWS_LS_IO_GENERAL = 0,
+    AWS_LS_IO_EVENT_LOOP,
+    AWS_LS_IO_SOCKET,
     AWS_LS_IO_TLS,
     AWS_LS_IO_ALPN,
     AWS_LS_IO_DNS,
