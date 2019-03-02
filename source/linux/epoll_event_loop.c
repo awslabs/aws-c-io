@@ -172,7 +172,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     int pipe_fds[2] = {0};
     /* this pipe is for task scheduling. */
     if (aws_open_nonblocking_posix_pipe(pipe_fds)) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "Failed to open pipe handle.");
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to open pipe handle.", loop);
         goto clean_up_thread;
     }
 
@@ -306,7 +306,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_on_callers_thread(event_loop)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: Scheduling task %p in-thread for timestamp %llu",
+            "id=%p: scheduling task %p in-thread for timestamp %llu",
             event_loop,
             task,
             (unsigned long long)run_at_nanos);
@@ -356,7 +356,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Cancelling task %p", event_loop, task);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", event_loop, task);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
 }
@@ -368,7 +368,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Subscribing to events on fd %d", event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", event_loop, handle->data.fd);
     struct epoll_event_data *epoll_event_data = aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
     handle->additional_data = NULL;
 
@@ -403,8 +403,8 @@ static int s_subscribe_to_io_events(
     };
 
     if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data.fd, &epoll_event)) {
-        AWS_LOGF_FATAL(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d", event_loop, handle->data.fd);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", event_loop, handle->data.fd);
         aws_mem_release(event_loop->alloc, epoll_event_data);
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -427,7 +427,7 @@ static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aw
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Un-subscribing from events on fd %d", event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", event_loop, handle->data.fd);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     assert(handle->additional_data);
@@ -436,8 +436,8 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct epoll_event dummy_event;
 
     if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &dummy_event /*ignored*/))) {
-        AWS_LOGF_FATAL(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to un-subscribe from events on fd %d", event_loop, handle->data.fd);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to un-subscribe from events on fd %d", event_loop, handle->data.fd);
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
