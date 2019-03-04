@@ -416,9 +416,9 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         return;
-    } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
     }
+
+    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
 
 error:
     connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
@@ -1025,9 +1025,9 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
                 channel_data->server_connection_args->user_data);
         }
         return;
-    } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
     }
+
+    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
 
 error:
     aws_channel_destroy(channel);
