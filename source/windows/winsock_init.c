@@ -23,6 +23,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <MSWSock.h>
 // clang-format on
 
+#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
 #include <stdlib.h>
@@ -34,9 +35,12 @@ static bool s_winsock_init = false;
 void aws_check_and_init_winsock(void) {
 
     if (!s_winsock_init) {
+        AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "static: initializing WinSock");
         WORD requested_version = MAKEWORD(2, 2);
         WSADATA wsa_data;
         if (WSAStartup(requested_version, &wsa_data)) {
+            AWS_LOGF_FATAL(
+                AWS_LS_IO_SOCKET, "static: WinSock initialization failed with error %d", (int)GetLastError());
             assert(0);
             exit(-1);
         }
@@ -44,6 +48,7 @@ void aws_check_and_init_winsock(void) {
         SOCKET dummy_socket = socket(AF_INET, SOCK_STREAM, 0);
         assert(dummy_socket != INVALID_SOCKET);
 
+        AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "static: loading WSAID_CONNECTEX function");
         GUID connect_ex_guid = WSAID_CONNECTEX;
         DWORD bytes_written = 0;
         int rc = WSAIoctl(
@@ -58,10 +63,13 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_CONNECTEX function with error %d", (int)GetLastError());
             assert(0);
             exit(-1);
         }
 
+        AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "static: loading WSAID_ACCEPTEX function");
         GUID accept_ex_guid = WSAID_ACCEPTEX;
         bytes_written = 0;
         rc = WSAIoctl(
@@ -76,6 +84,8 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_ACCEPTEX function with error %d", (int)GetLastError());
             assert(0);
             exit(-1);
         }

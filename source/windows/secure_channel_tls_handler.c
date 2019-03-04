@@ -16,11 +16,12 @@
 
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/task_scheduler.h>
+
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
+#include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
-
-#include <aws/common/task_scheduler.h>
 
 #include <Windows.h>
 
@@ -47,6 +48,7 @@
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
+    AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
     (void)alloc;
 }
 
@@ -98,6 +100,10 @@ bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "static: This library was built with Windows 8.1 or later, "
+        "probing OS to see what we're actually running on.");
     /* make sure we're on windows 8.1 or later. */
     OSVERSIONINFOEX os_version;
     DWORDLONG condition_mask = 0;
@@ -111,15 +117,32 @@ bool aws_tls_is_alpn_available(void) {
     os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
     os_version.wServicePackMajor = 0;
     os_version.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    return VerifyVersionInfo(
-        &os_version, VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR, condition_mask);
+
+    if (VerifyVersionInfo(
+            &os_version,
+            VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR,
+            condition_mask)) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: We're running on Windows 8.1 or later. ALPN is available.");
+        return true;
+    }
+
+    AWS_LOGF_WARN(
+        AWS_LS_IO_TLS,
+        "static: Running on older version of windows, ALPN is not supported. "
+        "Please update your OS to take advantage of modern features.");
 #else
-    return false;
+    AWS_LOGF_WARN(
+        AWS_LS_IO_TLS,
+        "static: This library was built using a Windows SDK prior to 8.1. "
+        "Please build with a version of windows >= 8.1 to take advantage modern features. ALPN is not supported.");
 #endif /*SECBUFFER_APPLICATION_PROTOCOLS */
+    return false;
 }
 
 /* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS, "id=%p: manually verifying certifcate chain because a custom CA is configured.", handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
     /* get the peer's certificate so we can validated it.*/
@@ -128,6 +151,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &peer_certificate);
 
     if (status != SEC_E_OK || !peer_certificate) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: failed to load peer's certificate with SECURITY_STATUS %d", handler, (int)status);
         return AWS_OP_ERR;
     }
 
@@ -140,6 +165,12 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 
     HCERTCHAINENGINE engine = NULL;
     if (!CertCreateCertificateChainEngine(&engine_config, &engine)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: failed to load a certificate chain engine with SECURITY_STATUS %d. "
+            "Most likely, the configured CA is corrupted.",
+            handler,
+            (int)status);
         CertFreeCertificateContext(peer_certificate);
         return AWS_OP_ERR;
     }
@@ -159,6 +190,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             CERT_CHAIN_REVOCATION_CHECK_CHAIN,
             NULL,
             &cert_chain_ctx)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.", handler, (int)status);
         CertFreeCertificateChainEngine(engine);
         CertFreeCertificateContext(peer_certificate);
         return AWS_OP_ERR;
@@ -174,7 +207,14 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     CertFreeCertificateChainEngine(engine);
     CertFreeCertificateContext(peer_certificate);
 
-    return trust_mask == 0 ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    if (trust_mask == 0) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: peer certificate is trusted.", handler);
+        return AWS_OP_SUCCESS;
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: peer certificate is un-trusted with SECURITY_STATUS %d.", handler, (int)trust_mask);
+        return AWS_OP_ERR;
+    }
 }
 
 static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int err) {
@@ -251,6 +291,7 @@ static int s_fillin_alpn_data(
     size_t *written) {
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "")
 
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
@@ -309,7 +350,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
     adds its alpn data if available, and if everything is good, sends out the server hello. */
 static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: server starting negotiation", handler);
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_bufs[] = {
         {
@@ -332,6 +373,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->options.alpn_list && aws_tls_is_alpn_available()) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, sc_handler->options.alpn_list);
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             return AWS_OP_ERR;
@@ -346,6 +388,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
                           ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM;
 
     if (sc_handler->verify_peer) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "id=%p: server configured to use mutual tls, expecting a certficate from client.", handler);
         sc_handler->ctx_req |= ASC_REQ_MUTUAL_AUTH;
     }
 
@@ -374,6 +418,11 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         NULL);
 
     if (!(status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: error during processing of the ClientHello. SECURITY_STATUS is %d",
+            handler,
+            (int)status);
         int error = s_determine_sspi_error(status);
         aws_raise_error(error);
         s_invoke_negotiation_error(handler, error);
@@ -382,6 +431,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
     size_t data_to_write_len = output_buffer.cbBuffer;
 
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: Sending ServerHello. Data size %llu", handler, (unsigned long long)data_to_write_len);
     /* send the server hello. */
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
@@ -411,6 +462,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: running step 2 of negotiation (cipher change, key exchange etc...)", handler);
     SecBuffer input_buffers[] = {
         [0] =
             {
@@ -458,6 +510,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -465,6 +518,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Last processed buffer was incomplete, waiting on more data.", handler);
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     };
@@ -497,13 +551,21 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS, "id=%p: Extra data recieved. Extra size is %lu", handler, input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
     }
 
     if (status == SEC_E_OK) {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: handshake completed", handler);
         /* if a custom CA store was configured, we have to do the verification ourselves. */
         if (sc_handler->custom_ca_store) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Custom CA was configured, evaluating trust before completing connection",
+                handler);
+
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -519,13 +581,21 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         if (sc_handler->options.alpn_list) {
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
 
             if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
                 aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
                 memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
                 memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
                 sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
             } else {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
+                    handler,
+                    (int)status);
                 int aws_error = s_determine_sspi_error(status);
                 aws_raise_error(aws_error);
                 s_invoke_negotiation_error(handler, aws_error);
@@ -534,6 +604,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 #endif
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", handler);
         s_on_negotiation_success(handler);
     }
 
@@ -545,6 +616,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 /* send the client hello */
 static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: client starting negotiation", handler);
 
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_buf = {
@@ -564,6 +636,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     /* add alpn data to the client hello if it's supported. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->options.alpn_list && aws_tls_is_alpn_available()) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN data as %s", handler, sc_handler->options.alpn_list);
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             s_invoke_negotiation_error(handler, aws_last_error());
@@ -607,6 +680,11 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_I_CONTINUE_NEEDED) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: Error sending client/receiving server handshake data. SECURITY_STATUS is %d",
+            handler,
+            (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -614,6 +692,11 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     }
 
     size_t data_to_write_len = output_buffer.cbBuffer;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "id=%p: Sending client handshake data of size %llu",
+        handler,
+        (unsigned long long)data_to_write_len);
 
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
@@ -630,7 +713,6 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
         aws_mem_release(outgoing_message->allocator, outgoing_message);
-
         s_invoke_negotiation_error(handler, aws_last_error());
         return AWS_OP_ERR;
     }
@@ -643,6 +725,11 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 /* cipher exchange, key exchange etc.... */
 static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "id=%p: running step 2 of client-side negotiation (cipher change, key exchange etc...)",
+        handler);
+
     SecBuffer input_buffers[] = {
         [0] =
             {
@@ -695,6 +782,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -703,6 +791,11 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: Incomplete buffer recieved. Incomplete size is %llu. Waiting for more data.",
+            handler,
+            (unsigned long long)sc_handler->estimated_incomplete_size);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
@@ -733,13 +826,23 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Extra data recieved. Extra data size is %lu.",
+                handler,
+                input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
     }
 
     if (status == SEC_E_OK) {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: handshake completed", handler);
         /* if a custom CA store was configured, we have to do the verification ourselves. */
         if (sc_handler->custom_ca_store) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Custom CA was configured, evaluating trust before completing connection",
+                handler);
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -749,21 +852,32 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         sc_handler->negotiation_finished = true;
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        SecPkgContext_ApplicationProtocol alpn_result;
-        status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
+        if (sc_handler->options.alpn_list) {
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
+            SecPkgContext_ApplicationProtocol alpn_result;
+            status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
-        if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-            aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
-            memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
-            memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
-            sc_handler->protocol.len = alpn_result.ProtocolIdSize;
-        } else {
-            int aws_error = s_determine_sspi_error(status);
-            aws_raise_error(aws_error);
-            s_invoke_negotiation_error(handler, aws_error);
-            return AWS_OP_ERR;
+            if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
+                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
+                memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
+                memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
+                sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+            } else {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
+                    handler,
+                    (int)status);
+                int aws_error = s_determine_sspi_error(status);
+                aws_raise_error(aws_error);
+                s_invoke_negotiation_error(handler, aws_error);
+                return AWS_OP_ERR;
+            }
         }
 #endif
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", handler);
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
         s_on_negotiation_success(handler);
     }
@@ -773,6 +887,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
 static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
+
     /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
     SecBuffer input_buffers[4];
     AWS_ZERO_ARRAY(input_buffers);
@@ -797,9 +912,19 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
            As far as I can tell, we don't care what's in the third buffer for TLS usage.*/
         if (input_buffers[1].BufferType == SECBUFFER_DATA) {
             size_t decrypted_length = input_buffers[1].cbBuffer;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Decrypted message with length %llu.",
+                handler,
+                (unsigned long long)decrypted_length);
 
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
                 sc_handler->read_extra = input_buffers[3].cbBuffer;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Extra (incomplete) message received with length %llu.",
+                    handler,
+                    (unsigned long long)sc_handler->read_extra);
             }
 
             assert(
@@ -817,8 +942,14 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
            append our next read to it and try again. */
     } else if (status == SEC_E_INCOMPLETE_MESSAGE) {
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: (incomplete) message received. Expecting remaining portion of size %llu.",
+            handler,
+            (unsigned long long)sc_handler->estimated_incomplete_size);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     } else {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         return AWS_OP_ERR;
@@ -834,10 +965,20 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
         downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
     }
 
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "id=%p: Processing incomming messages. Downstream window is %llu",
+        handler,
+        (unsigned long long)downstream_window);
     while (sc_handler->buffered_read_out_data_buf.len && downstream_window) {
         size_t requested_message_size = sc_handler->buffered_read_out_data_buf.len > downstream_window
                                             ? downstream_window
                                             : sc_handler->buffered_read_out_data_buf.len;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: Requested message size is %llu",
+            handler,
+            (unsigned long long)requested_message_size);
 
         if (sc_handler->slot->adj_right) {
             struct aws_io_message *read_out_msg = aws_channel_acquire_message_from_pool(
@@ -870,6 +1011,8 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
 
             downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS, "id=%p: Downstream window is %llu", handler, (unsigned long long)downstream_window);
         } else {
             if (sc_handler->options.on_data_read) {
                 sc_handler->options.on_data_read(
@@ -902,6 +1045,13 @@ static int s_process_read_message(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (message) {
+        /* note, most of these functions log internally, so the log messages in this function are sparse. */
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: processing incoming message of size %llu",
+            handler,
+            (unsigned long long)message->message_data.len);
+
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
         /* The SSPI interface forces us to manage incomplete records manually. So when we had extra after
@@ -999,9 +1149,20 @@ static int s_process_write_message(
     SECURITY_STATUS status = SEC_E_OK;
 
     if (message) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: processing ougoing message of size %llu",
+            handler,
+            (unsigned long long)message->message_data.len);
+
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
         while (message_cursor.len) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: processing message fragment of size %llu",
+                handler,
+                (unsigned long long)message_cursor.len);
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
             size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
             size_t requested_length =
@@ -1070,6 +1231,12 @@ static int s_process_write_message(
                 outgoing_message->message_data.len = original_message_fragment_to_process +
                                                      sc_handler->stream_sizes.cbHeader +
                                                      sc_handler->stream_sizes.cbTrailer;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS,
+                    "id=%p:message fragment encrypted successfully: size is %llu",
+                    handler,
+                    (unsigned long long)outgoing_message->message_data.len);
+
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
                     return AWS_OP_ERR;
@@ -1077,6 +1244,8 @@ static int s_process_write_message(
 
                 aws_byte_cursor_advance(&message_cursor, original_message_fragment_to_process);
             } else {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS, "id=%p: Error encrypting message. SECURITY_STATUS is %d", handler, (int)status);
                 return AWS_OP_ERR;
             }
         }
@@ -1090,6 +1259,8 @@ static int s_process_write_message(
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
     struct secure_channel_handler *sc_handler = handler->impl;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", handler, (unsigned long long)size);
 
     if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
         SECURITY_STATUS status =
@@ -1111,6 +1282,12 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         size_t offset_size =
             likely_records_count * (sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
         size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS,
+            "id=%p: Propagating read window increment of size %llu",
+            handler,
+            (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
@@ -1153,6 +1330,8 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down both the read and write direction", handler)
+
         /* send a TLS alert. */
         SECURITY_STATUS status;
 
@@ -1239,7 +1418,7 @@ static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum
 }
 
 static void s_handler_destroy(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (sc_handler->protocol.buffer) {
@@ -1258,6 +1437,8 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation", handler);
+
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (aws_channel_thread_is_callers_thread(sc_handler->slot->channel)) {
@@ -1336,6 +1517,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     if (options->server_name) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting SNI to %s", &sc_handler->handler, options->server_name);
         sc_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
     }
 
@@ -1453,10 +1635,12 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
     secure_channel_ctx->ctx.impl = secure_channel_ctx;
 
     if (options->verify_peer && options->ca_file) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
         secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
         struct aws_byte_buf ca_blob;
         if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load file %s.", options->ca_file);
             goto clean_up;
         }
 
@@ -1467,6 +1651,7 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         aws_byte_buf_clean_up(&ca_blob);
 
         if (error) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
             goto clean_up;
         }
     } else if (is_client_mode) {
@@ -1474,6 +1659,11 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
     }
 
     if (is_client_mode && !options->verify_peer) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "static: x.509 validation has been disabled. "
+            "If this is not running in a test environment, this is likely a security vulnerability.");
+
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                                                    SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
                                                    SCH_CRED_MANUAL_CRED_VALIDATION;
@@ -1483,8 +1673,11 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
 
     /* if using a system store. */
     if (options->certificate_path && !options->private_key_path) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: assuming certificate is in a system store, loading now.");
+
         if (aws_load_cert_from_system_cert_store(
                 options->certificate_path, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->certificate_path);
             goto clean_up;
         }
 
@@ -1493,13 +1686,17 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
     } else if (options->certificate_path && options->private_key_path) {
 
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
+
         struct aws_byte_buf certificate_chain;
         if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->certificate_path);
             goto clean_up;
         }
 
         struct aws_byte_buf private_key;
         if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->private_key_path);
             aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
             aws_byte_buf_clean_up(&certificate_chain);
             goto clean_up;
@@ -1515,8 +1712,11 @@ struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_op
         aws_secure_zero(private_key.buffer, private_key.len);
         aws_byte_buf_clean_up(&private_key);
 
-        if (err)
+        if (err) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto clean_up;
+        }
 
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;

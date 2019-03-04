@@ -15,7 +15,9 @@
 
 #include <aws/io/pki_utils.h>
 
-#include <aws/common/clock.h>
+#include <aws/common/uuid.h>
+
+#include <aws/io/logging.h>
 
 #include <Windows.h>
 #include <stdio.h>
@@ -31,9 +33,11 @@
 
 int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
 
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path %s.", cert_path);
     char *location_of_next_segment = strchr(cert_path, '\\');
 
     if (!location_of_next_segment) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -60,11 +64,13 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         return false;
     }
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: determined registry value for lookup as %d.", (int)store_val);
     location_of_next_segment += 1;
     char *store_path_start = location_of_next_segment;
     location_of_next_segment = strchr(location_of_next_segment, '\\');
 
     if (!location_of_next_segment) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -77,6 +83,12 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     location_of_next_segment += 1;
     if (strlen(location_of_next_segment) != CERT_HASH_STR_LEN) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path %s. %s should have been"
+            " 40 bytes of hex encoded data",
+            cert_path,
+            location_of_next_segment);
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -84,6 +96,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!*cert_store) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s. Failed to load cert store", cert_path);
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -101,6 +114,11 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             &cert_hash.cbData,
             NULL,
             NULL)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path %s. %s should have been a hex encoded string",
+            cert_path,
+            location_of_next_segment);
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
     }
 
@@ -108,6 +126,12 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
     if (!*certs) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path %s. "
+            "The referenced certificate was not found in the certificate store.",
+            cert_path,
+            location_of_next_segment);
         aws_close_cert_store(*cert_store);
         *cert_store = NULL;
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
@@ -143,6 +167,7 @@ int aws_import_trusted_certificates(
         goto clean_up;
     }
 
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading %d certificates in cert chain for use as a CA", (int)cert_count);
     for (size_t i = 0; i < cert_count; ++i) {
         struct aws_byte_buf *byte_buf_ptr = NULL;
         aws_array_list_get_at_ptr(&certificates, (void **)&byte_buf_ptr, i);
@@ -168,6 +193,7 @@ int aws_import_trusted_certificates(
             &cert_context);
 
         if (!query_res) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob.");
             error_code = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
@@ -221,10 +247,11 @@ int aws_import_key_pair_to_cert_context(
 
     int error_code = AWS_OP_SUCCESS;
     size_t cert_count = aws_array_list_length(&certificates);
-
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate chain with %d certificates.", (int)cert_count);
     *store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
 
     if (!*store) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to load in-memory/ephemeral certificate store.");
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
@@ -253,6 +280,7 @@ int aws_import_key_pair_to_cert_context(
             &cert_context);
 
         if (!query_res) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob.");
             error_code = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
@@ -266,18 +294,36 @@ int aws_import_key_pair_to_cert_context(
         }
     }
 
-    uint64_t sys_time = 0;
-    uint64_t hw_time = 0;
-    aws_high_res_clock_get_ticks(&hw_time);
-    aws_sys_clock_get_ticks(&sys_time);
+    struct aws_uuid uuid;
 
-    /* TODO: implement a real GUID .... This will do for now.*/
-    wchar_t temp_guid[128];
-    memset(temp_guid, 0, sizeof(temp_guid));
-    swprintf_s(temp_guid, 128, L"%llu_%llu", hw_time, sys_time);
+    if (aws_uuid_init(&uuid)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to load a uuid. This should never happen.");
+        error_code = AWS_OP_ERR;
+        goto clean_up;
+    }
+
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
+    size_t converted_chars = 0;
+    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
+    (void)converted_chars;
+
     HCRYPTPROV crypto_prov = 0;
-    BOOL success = CryptAcquireContextW(&crypto_prov, temp_guid, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET);
-    (void)success;
+    BOOL success = CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET);
+
+    if (!success) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: error creating a new crypto context for key %s with errno %d",
+            uuid_str,
+            (int)GetLastError());
+        error_code = AWS_OP_ERR;
+        goto clean_up;
+    }
+
     struct aws_byte_buf *private_key_ptr = NULL;
     aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, 0);
     BYTE *key = NULL;
@@ -299,13 +345,22 @@ int aws_import_key_pair_to_cert_context(
 
     CRYPT_KEY_PROV_INFO key_prov_info;
     AWS_ZERO_STRUCT(key_prov_info);
-    key_prov_info.pwszContainerName = temp_guid;
+    key_prov_info.pwszContainerName = uuid_wstr;
     key_prov_info.dwProvType = PROV_RSA_FULL;
     key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
 
     success = CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info);
     CryptReleaseContext(crypto_prov, 0);
-    (void)success;
+
+    if (!success) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: error creating a new certificate context for key %s with errno %d",
+            uuid_str,
+            (int)GetLastError());
+        error_code = AWS_OP_ERR;
+        goto clean_up;
+    }
 
 clean_up:
     aws_cert_chain_clean_up(&certificates);

@@ -748,7 +748,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 #else
             AWS_LOGF_FATAL(
                 AWS_LS_IO_TLS,
-                "TLS 1.3 is not supported on this device. You may just want to specify "
+                "static: TLS 1.3 is not supported on this device. You may just want to specify "
                 "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically"
                 "use the latest version of the protocol when it is available.");
             /*

@@ -557,7 +557,7 @@ int aws_socket_connect(
         return aws_raise_error(s_convert_pton_error(pton_err));
     }
 
-    AWS_LOGF_INFO(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p fd=%d: connecting to endpoint %s:%d.",
         socket,
@@ -1562,8 +1562,7 @@ int aws_socket_write(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: cannot write to because it is not connected",
             socket,
-            socket->io_handle.data.fd,
-            socket->event_loop);
+            socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
