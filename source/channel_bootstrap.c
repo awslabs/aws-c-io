@@ -367,7 +367,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
     if (!err_code) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: channel %p setup succeeded: bootstraping.",
+            "id=%p: channel %p setup succeeded: bootstrapping.",
             connection_args->bootstrap,
             channel);
 
@@ -974,7 +974,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     if (!err_code) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: channel %p setup succeeded: bootstraping.",
+            "id=%p: channel %p setup succeeded: bootstrapping.",
             channel_data->server_connection_args->bootstrap,
             channel);
 
