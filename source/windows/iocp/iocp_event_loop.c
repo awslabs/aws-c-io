@@ -19,6 +19,8 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include <aws/io/logging.h>
+
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
     due to winsock. Also some of the definitions here aren't in the public API
@@ -148,12 +150,14 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
 
         if (!ntdll) {
+            AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "static: failed to load ntdll.dll");
             assert(0);
             exit(-1);
         }
 
         s_set_info_fn = (NTSetInformationFile *)GetProcAddress(ntdll, "NtSetInformationFile");
         if (!s_set_info_fn) {
+            AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "static: failed to load NtSetInformationFile()");
             assert(0);
             exit(-1);
         }
@@ -174,6 +178,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         return NULL;
     }
 
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing IO Completion Port", event_loop);
     err = aws_event_loop_init_base(event_loop, alloc, clock);
     if (err) {
         goto clean_up;
@@ -192,6 +197,11 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         0,                    /* CompletionKey: should be 0 when file handle is invalid */
         1);                   /* NumberOfConcurrentThreads */
     if (impl->iocp_handle == NULL) {
+        AWS_LOGF_FATAL(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: CreateIOCompletionPort failed with error %d",
+            event_loop,
+            (int)GetLastError());
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -258,6 +268,8 @@ clean_up:
 
 /* Should not be called from event-thread */
 static void s_destroy(struct aws_event_loop *event_loop) {
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event-loop", event_loop);
+
     struct iocp_loop *impl = event_loop->impl_data;
     assert(impl);
 
@@ -265,6 +277,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     aws_event_loop_stop(event_loop);
     int err = aws_event_loop_wait_for_stop_completion(event_loop);
     if (err) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to destroy event-thread, resources have been leaked.", event_loop);
         assert(0 && "Failed to destroy event-thread, resources have been leaked.");
         return;
     }
@@ -300,6 +314,7 @@ static void s_signal_synced_data_changed(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
     assert(impl);
 
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", event_loop);
     /* Enqueue a special completion packet to inform the event-loop that synced_data has changed.
      * We identify the special packet by using the iocp handle as the completion key.
      * This wakes the event-loop thread if it was idle. */
@@ -323,8 +338,10 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", event_loop);
     int err = aws_thread_launch(&impl->thread, s_event_thread_main, event_loop, NULL);
     if (err) {
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", event_loop);
         goto clean_up;
     }
 
@@ -341,7 +358,7 @@ static int s_stop(struct aws_event_loop *event_loop) {
     assert(impl);
 
     bool signal_thread = false;
-
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", event_loop);
     { /* Begin critical section */
         aws_mutex_lock(&impl->synced_data.mutex);
         if (impl->synced_data.state == EVENT_THREAD_STATE_RUNNING) {
@@ -394,6 +411,12 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     /* If we're on the event-thread, just schedule it directly */
     if (s_is_event_thread(event_loop)) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            event_loop,
+            task,
+            (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
             aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
         } else {
@@ -402,6 +425,12 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         return;
     }
 
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: Scheduling task %p cross-thread for timestamp %llu",
+        event_loop,
+        task,
+        (unsigned long long)run_at_nanos);
     /* Otherwise, add it to synced_data.tasks_to_schedule and signal the event-thread to process it */
     task->timestamp = run_at_nanos;
     bool should_signal_thread = false;
@@ -412,6 +441,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
         /* Signal thread that synced_data has changed (unless it's been signaled already) */
         if (!impl->synced_data.thread_signaled) {
+            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Waking up event-loop thread", event_loop);
             should_signal_thread = true;
             impl->synced_data.thread_signaled = true;
         }
@@ -435,6 +465,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", event_loop, task);
     struct iocp_loop *iocp_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
 }
@@ -454,6 +485,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     assert(impl);
     assert(handle);
 
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on handle %p", event_loop, handle->data.handle);
     bool success = CreateIoCompletionPort(
         handle->data.handle, /* FileHandle */
         impl->iocp_handle,   /* ExistingCompletionPort */
@@ -461,6 +493,8 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         1);                  /* NumberOfConcurrentThreads */
 
     if (!success) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: CreateIoCompletionPort() failed with error", event_loop, GetLastError());
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
@@ -517,11 +551,15 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
         aws_mutex_unlock(&impl->synced_data.mutex);
     } /* End critical section */
 
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", event_loop);
     s_process_tasks_to_schedule(event_loop, &tasks_to_schedule);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     (void)event_loop;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on handle %p", event_loop, handle->data.handle);
+
     struct FILE_COMPLETION_INFORMATION file_completion_info;
     file_completion_info.Key = NULL;
     file_completion_info.Port = NULL;
@@ -540,6 +578,11 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: failed to un-subscribe from events on handle %p",
+        event_loop,
+        handle->data.handle);
     return AWS_OP_ERR;
 }
 
@@ -550,8 +593,9 @@ static void s_free_io_event_resources(void *user_data) {
 
 /* Called from event-thread */
 static void s_event_thread_main(void *user_data) {
-
     struct aws_event_loop *event_loop = user_data;
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", event_loop);
+
     struct iocp_loop *impl = event_loop->impl_data;
 
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -562,10 +606,12 @@ static void s_event_thread_main(void *user_data) {
     OVERLAPPED_ENTRY completion_packets[MAX_COMPLETION_PACKETS_PER_LOOP];
     AWS_ZERO_ARRAY(completion_packets);
 
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: default timeout %d", event_loop, (int)timeout_ms);
+
     while (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING) {
         ULONG num_entries = 0;
         bool should_process_synced_data = false;
-
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", event_loop, timeout_ms);
         bool has_completion_entries = GetQueuedCompletionStatusEx(
             impl->iocp_handle,               /* Completion port */
             completion_packets,              /* Out: completion port entries */
@@ -575,6 +621,11 @@ static void s_event_thread_main(void *user_data) {
             false);                          /* fAlertable */
 
         if (has_completion_entries) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: wake up with %lu events to process.",
+                event_loop,
+                (unsigned long)num_entries);
             for (ULONG i = 0; i < num_entries; ++i) {
                 OVERLAPPED_ENTRY *completion = &completion_packets[i];
 
@@ -590,6 +641,7 @@ static void s_event_thread_main(void *user_data) {
                         AWS_CONTAINER_OF(completion->lpOverlapped, struct aws_overlapped, overlapped);
 
                     if (overlapped->on_completion) {
+                        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: invoking handler.", event_loop);
                         overlapped->on_completion(
                             event_loop,
                             overlapped,
@@ -612,6 +664,7 @@ static void s_event_thread_main(void *user_data) {
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", event_loop);
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
         /* Set timeout for next GetQueuedCompletionStatus() call.
@@ -629,12 +682,21 @@ static void s_event_thread_main(void *user_data) {
         }
 
         if (use_default_timeout) {
+            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", event_loop);
             timeout_ms = DEFAULT_TIMEOUT_MS;
         } else {
             /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
             uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
             uint64_t timeout_ms64 = aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
             timeout_ms = timeout_ms64 > MAXDWORD ? MAXDWORD : (DWORD)timeout_ms64;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: detected more scheduled tasks with the next occurring at "
+                "%llu, using timeout of %d.",
+                event_loop,
+                (unsigned long long)next_run_time_ns,
+                timeout_ms);
         }
     }
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", event_loop);
 }

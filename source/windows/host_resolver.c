@@ -19,6 +19,7 @@
 
 #include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
+#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
 int aws_default_dns_resolve(
@@ -39,9 +40,12 @@ int aws_default_dns_resolve(
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_ALL | AI_V4MAPPED;
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
+
     int res_error = GetAddrInfoA(hostname_cstr, NULL, &hints, &result);
 
     if (res_error) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", res_error);
         goto clean_up;
     }
 
@@ -63,6 +67,8 @@ int aws_default_dns_resolve(
             InetNtopA(
                 iter->ai_family, &((struct sockaddr_in *)iter->ai_addr)->sin_addr, address_buffer, max_ip_addrlen);
         }
+
+        AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolved record: %s", address_buffer);
 
         const struct aws_string *address =
             aws_string_new_from_array(allocator, (const uint8_t *)address_buffer, strlen(address_buffer));

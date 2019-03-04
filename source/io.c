@@ -43,6 +43,9 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_TLS_ERROR_WRITE_FAILURE,
         "Failed to write to TLS handler"),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_ALERT_RECEIVED,
+        "Fatal TLS Alert was received"),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_CTX_ERROR,
         "Failed to create tls context"),
     AWS_DEFINE_ERROR_INFO_IO(

@@ -75,10 +75,15 @@ typedef uint32_t aws_log_subject_t;
 
 enum aws_io_log_subject {
     AWS_LS_IO_GENERAL = 0,
+    AWS_LS_IO_EVENT_LOOP,
+    AWS_LS_IO_SOCKET,
+    AWS_LS_IO_SOCKET_HANDLER,
     AWS_LS_IO_TLS,
     AWS_LS_IO_ALPN,
     AWS_LS_IO_DNS,
-
+    AWS_LS_IO_PKI,
+    AWS_LS_IO_CHANNEL,
+    AWS_LS_IO_CHANNEL_BOOTSTRAP,
     AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
 };
 
@@ -230,6 +235,12 @@ int aws_logger_cleanup(struct aws_logger *logger);
  */
 AWS_IO_API
 int aws_log_level_to_string(enum aws_log_level log_level, const char **level_string);
+
+/**
+ * Get subject name from log subject.
+ */
+AWS_IO_API
+const char *aws_log_subject_name(aws_log_subject_t subject);
 
 /*
  * Initializes a pipeline logger that is built from the default formatter, a background thread-based channel, and

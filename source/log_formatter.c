@@ -36,9 +36,9 @@
 // (max) strlen of "[<ThreadId>]"
 #define THREAD_ID_PREFIX_PADDING 22
 
-// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1
-// padding
-#define MISC_PADDING 10
+// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 +
+// subject_name padding
+#define MISC_PADDING 15
 
 #define MAX_LOG_LINE_PREFIX_SIZE                                                                                       \
     (LOG_LEVEL_PREFIX_PADDING + THREAD_ID_PREFIX_PADDING + MISC_PADDING + AWS_DATE_TIME_STR_MAX_LEN)
@@ -57,7 +57,7 @@ static int s_default_aws_log_formatter_format_fn(
 
     (void)subject;
 
-    struct aws_default_log_formatter_impl *impl = (struct aws_default_log_formatter_impl *)formatter->impl;
+    struct aws_default_log_formatter_impl *impl = formatter->impl;
 
     if (formatted_output == NULL) {
         return AWS_OP_ERR;
@@ -80,7 +80,14 @@ static int s_default_aws_log_formatter_format_fn(
      * Allocate enough room to hold the line.  Then we'll (unsafely) do formatted IO directly into the aws_string
      * memory.
      */
-    int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE;
+    const char *subject_name = aws_log_subject_name(subject);
+    int subject_name_len = 0;
+
+    if (subject_name) {
+        subject_name_len = (int)strlen(subject_name);
+    }
+
+    int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE + subject_name_len;
     struct aws_string *raw_string =
         (struct aws_string *)aws_mem_acquire(formatter->allocator, sizeof(struct aws_string) + total_length);
     if (raw_string == NULL) {
@@ -132,13 +139,27 @@ static int s_default_aws_log_formatter_format_fn(
      * Add thread id and user content separator (" - ")
      */
     uint64_t current_thread_id = aws_thread_current_thread_id();
-    int thread_id_written = snprintf(
-        log_line_buffer + current_index, total_length - current_index, "] [%" PRIu64 "] - ", current_thread_id);
+    int thread_id_written =
+        snprintf(log_line_buffer + current_index, total_length - current_index, "] [%" PRIu64 "] ", current_thread_id);
     if (thread_id_written < 0) {
         goto error_cleanup;
     }
 
     current_index += thread_id_written;
+
+    /* output subject name */
+    if (subject_name) {
+        int subject_written =
+            snprintf(log_line_buffer + current_index, total_length - current_index, "[%s]", subject_name);
+
+        if (subject_written < 0) {
+            goto error_cleanup;
+        }
+
+        current_index += subject_written;
+    }
+
+    current_index += snprintf(log_line_buffer + current_index, total_length - current_index, " - ");
 
     /*
      * Now write the actual data requested by the user
@@ -192,8 +213,8 @@ int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,
     struct aws_allocator *allocator,
     struct aws_log_formatter_standard_options *options) {
-    struct aws_default_log_formatter_impl *impl = (struct aws_default_log_formatter_impl *)aws_mem_acquire(
-        allocator, sizeof(struct aws_default_log_formatter_impl));
+    struct aws_default_log_formatter_impl *impl =
+        aws_mem_acquire(allocator, sizeof(struct aws_default_log_formatter_impl));
     impl->date_format = options->date_format;
 
     formatter->vtable = &s_default_log_formatter_vtable;

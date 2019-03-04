@@ -224,7 +224,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
 
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
     aws_tls_init_static_state(allocator);
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
@@ -445,7 +444,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     aws_event_loop_group_clean_up(&el_group);
     aws_tls_clean_up_static_state();
-
     return AWS_OP_SUCCESS;
 }
 
@@ -615,7 +613,6 @@ static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocato
 AWS_TEST_CASE(tls_client_channel_negotiation_error_pinning, s_tls_client_channel_negotiation_error_pinning_fn)
 
 static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name) {
-
     aws_tls_init_static_state(allocator);
 
     struct aws_event_loop_group el_group;

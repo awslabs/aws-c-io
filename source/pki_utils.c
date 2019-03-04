@@ -1,5 +1,5 @@
 /*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License").
  * You may not use this file except in compliance with the License.
@@ -15,7 +15,10 @@
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/encoding.h>
+
 #include <aws/io/file_utils.h>
+#include <aws/io/logging.h>
+
 #include <ctype.h>
 #include <errno.h>
 #include <string.h>
@@ -60,6 +63,7 @@ static int s_convert_pem_to_raw_base64(
 
     if (aws_byte_cursor_split_on_char(pem, '\n', &split_buffers)) {
         aws_array_list_clean_up(&split_buffers);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Invalid PEM buffer: failed to split on newline");
         return AWS_OP_ERR;
     }
 
@@ -138,6 +142,7 @@ end_of_loop:
         return AWS_OP_SUCCESS;
     }
 
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Invalid PEM buffer.");
     aws_cert_chain_clean_up(cert_chain_or_key);
     return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
 }
@@ -197,6 +202,7 @@ cleanup_base64_buffer_list:
     return err_code;
 
 cleanup_output_due_to_error:
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Invalid PEM buffer.");
     aws_cert_chain_clean_up(&base_64_buffer_list);
     aws_array_list_clean_up(&base_64_buffer_list);
 
@@ -212,6 +218,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
 
     struct aws_byte_buf raw_file_buffer;
     if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to read file %s.", filename);
         return AWS_OP_ERR;
     }
     assert(raw_file_buffer.buffer);
@@ -220,6 +227,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     if (aws_decode_pem_to_buffer_list(alloc, &file_cursor, cert_chain_or_key)) {
         aws_secure_zero(raw_file_buffer.buffer, raw_file_buffer.len);
         aws_byte_buf_clean_up(&raw_file_buffer);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM file %s.", filename);
         return AWS_OP_ERR;
     }
 
