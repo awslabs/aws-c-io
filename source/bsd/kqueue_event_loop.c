@@ -808,14 +808,18 @@ static void s_event_thread_main(void *user_data) {
         int num_io_handle_events = 0;
         bool should_process_cross_thread_data = false;
 
-        // AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %ds %lns", event_loop,
-        // (int)timeout.tv_sec, timeout.tv_nsec);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: waiting for a maximum of %ds %lluns",
+            event_loop,
+            (int)timeout.tv_sec,
+            (unsigned long long)timeout.tv_nsec);
 
         /* Process kqueue events */
         int num_kevents = kevent(
             impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
-        // AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", event_loop, num_kevents);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", event_loop, num_kevents);
         if (num_kevents == -1) {
             /* Raise an error, in case this is interesting to anyone monitoring,
              * and continue on with this loop. We can't process events,
@@ -862,11 +866,11 @@ static void s_event_thread_main(void *user_data) {
             struct handle_data *handle_data = io_handle_events[i];
 
             if (handle_data->state == HANDLE_STATE_SUBSCRIBED) {
-                // AWS_LOGF_TRACE(
-                //        AWS_LS_IO_EVENT_LOOP,
-                //        "id=%p: activity on fd %d, invoking handler.",
-                //        event_loop,
-                //        handle_data->owner->data.fd);
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_EVENT_LOOP,
+                    "id=%p: activity on fd %d, invoking handler.",
+                    event_loop,
+                    handle_data->owner->data.fd);
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
             }
@@ -883,7 +887,7 @@ static void s_event_thread_main(void *user_data) {
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
-        // AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", event_loop);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", event_loop);
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
         /* Set timeout for next kevent() call.
@@ -902,8 +906,7 @@ static void s_event_thread_main(void *user_data) {
         }
 
         if (use_default_timeout) {
-            // AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.",
-            // event_loop);
+            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", event_loop);
             timeout.tv_sec = DEFAULT_TIMEOUT_SEC;
             timeout.tv_nsec = 0;
         } else {
