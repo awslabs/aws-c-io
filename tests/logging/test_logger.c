@@ -44,6 +44,9 @@ int s_test_logger_log_fn(
 #else
     int written = vsnprintf(buffer, TEST_LOGGER_MAX_LOG_LINE_SIZE, format, format_args);
 #endif // WIN32
+
+    va_end(format_args);
+
     if (written < 0) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
