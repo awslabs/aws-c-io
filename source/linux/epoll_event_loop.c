@@ -131,7 +131,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     struct epoll_loop *epoll_loop = aws_mem_acquire(alloc, sizeof(struct epoll_loop));
 
     if (!epoll_loop) {
-        goto clean_up_loop;
+        goto cleanup_base_loop;
     }
 
     AWS_ZERO_STRUCT(*epoll_loop);
@@ -143,7 +143,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     if (epoll_loop->epoll_fd < 0) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open epoll handle.", loop);
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-        goto cleanup_base_loop;
+        goto clean_up_epoll;
     }
 
     if (aws_thread_init(&epoll_loop->thread, alloc)) {
