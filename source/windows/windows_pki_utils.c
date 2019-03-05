@@ -130,8 +130,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. "
             "The referenced certificate was not found in the certificate store.",
-            cert_path,
-            location_of_next_segment);
+            cert_path);
         aws_close_cert_store(*cert_store);
         *cert_store = NULL;
         return aws_raise_error(AWS_IO_FILE_INVALID_PATH);

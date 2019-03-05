@@ -263,14 +263,14 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
             if (protocol) {
-                AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Alpn protocol negotiated as %s", handler, protocol);
+                AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Alpn protocol negotiated as %s", (void *)handler, protocol);
                 s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
             if (server_name) {
-                AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Remote server name is %s", handler, server_name);
+                AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Remote server name is %s", (void *)handler, server_name);
                 s2n_handler->server_name = aws_byte_buf_from_c_str(server_name);
             }
 
@@ -301,11 +301,17 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         }
         if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
             AWS_LOGF_WARN(
-                AWS_LS_IO_TLS, "id=%p: negotiation failed with error %s", handler, s2n_strerror_debug(s2n_error, "EN"));
+                AWS_LS_IO_TLS,
+                "id=%p: negotiation failed with error %s",
+                (void *)handler,
+                s2n_strerror_debug(s2n_error, "EN"));
 
             if (s2n_error_get_type(s2n_error) == S2N_ERR_T_ALERT) {
                 AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS, "id=%p: Alert code %d", handler, s2n_connection_get_alert(s2n_handler->connection));
+                    AWS_LS_IO_TLS,
+                    "id=%p: Alert code %d",
+                    (void *)handler,
+                    s2n_connection_get_alert(s2n_handler->connection));
             }
 
             const char *err_str = s2n_strerror_debug(s2n_error, NULL);
@@ -339,7 +345,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", handler)
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
         return s_drive_negotiation(handler);
     }
@@ -378,7 +384,8 @@ static int s_s2n_handler_process_read_message(
     }
 
     size_t processed = 0;
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window %llu", handler, (unsigned long long)downstream_window);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: Downstream window %llu", (void *)handler, (unsigned long long)downstream_window);
 
     while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
 
@@ -394,7 +401,7 @@ static int s_s2n_handler_process_read_message(
             outgoing_read_message->message_data.capacity,
             &blocked);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Bytes read %ll", handler, (long long)read);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Bytes read %lld", (void *)handler, (long long)read);
 
         /* weird race where we received an alert from the peer, but s2n doesn't tell us about it.....
          * if this happens, it's a graceful shutdown, so kick it off here.
@@ -404,7 +411,10 @@ static int s_s2n_handler_process_read_message(
          */
         if (read == 0) {
             AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "id=%p: Alert code %d", handler, s2n_connection_get_alert(s2n_handler->connection));
+                AWS_LS_IO_TLS,
+                "id=%p: Alert code %d",
+                (void *)handler,
+                s2n_connection_get_alert(s2n_handler->connection));
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
             return AWS_OP_SUCCESS;
@@ -433,7 +443,7 @@ static int s_s2n_handler_process_read_message(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p: Remaining window for this event-loop tick: %llu",
-        handler,
+        (void *)handler,
         (unsigned long long)downstream_window - processed);
 
     return AWS_OP_SUCCESS;
@@ -457,7 +467,7 @@ static int s_s2n_handler_process_write_message(
     ssize_t write_code =
         s2n_send(s2n_handler->connection, message->message_data.buffer, (ssize_t)message->message_data.len, &blocked);
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Bytes written: %llu", handler, (unsigned long long)write_code);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Bytes written: %llu", (void *)handler, (unsigned long long)write_code);
 
     ssize_t message_len = (ssize_t)message->message_data.len;
     aws_mem_release(message->allocator, message);
@@ -478,12 +488,13 @@ static int s_s2n_handler_shutdown(
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down write direction", handler)
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down write direction", (void *)handler)
         s2n_blocked_status blocked;
         /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
         s2n_shutdown(s2n_handler->connection, &blocked);
     } else {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down read direction with error code %d", handler, error_code);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "id=%p: Shutting down read direction with error code %d", (void *)handler, error_code);
 
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
@@ -517,7 +528,7 @@ static int s_s2n_handler_increment_read_window(
     size_t current_window_size = slot->window_size;
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", handler, (unsigned long long)size);
+        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
 
     if (downstream_size <= current_window_size) {
         size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
@@ -526,7 +537,7 @@ static int s_s2n_handler_increment_read_window(
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Propagating read window increment of size %llu",
-            handler,
+            (void *)handler,
             (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
@@ -666,7 +677,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
     if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s", &s2n_handler->handler, options->alpn_list);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s", (void *)&s2n_handler->handler, options->alpn_list);
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
@@ -691,7 +702,10 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     if (s2n_connection_set_config(s2n_handler->connection, s2n_ctx->s2n_config)) {
         AWS_LOGF_WARN(
-            AWS_LS_IO_TLS, "id=%p: configuration error %s", &s2n_handler->handler, s2n_strerror_debug(s2n_errno, "EN"));
+            AWS_LS_IO_TLS,
+            "id=%p: configuration error %s",
+            (void *)&s2n_handler->handler,
+            s2n_strerror_debug(s2n_errno, "EN"));
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_conn;
     }

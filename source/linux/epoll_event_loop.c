@@ -123,7 +123,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         return NULL;
     }
 
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered epoll", loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered epoll", (void *)loop);
     if (aws_event_loop_init_base(loop, alloc, clock)) {
         goto clean_up_loop;
     }
@@ -141,7 +141,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
 
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open epoll handle.", loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open epoll handle.", (void *)loop);
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up_epoll;
     }
@@ -151,16 +151,16 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     }
 
 #if USE_EFD
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Using eventfd for cross-thread notifications.", loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Using eventfd for cross-thread notifications.", (void *)loop);
     int fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
 
     if (fd < 0) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open eventfd handle.", loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open eventfd handle.", (void *)loop);
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up_thread;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: eventfd descriptor %d.", loop, fd);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: eventfd descriptor %d.", (void *)loop, fd);
     epoll_loop->write_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
     epoll_loop->read_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
 #else
@@ -222,7 +222,7 @@ clean_up_loop:
 }
 
 static void s_destroy(struct aws_event_loop *event_loop) {
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
@@ -258,11 +258,11 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 static int s_run(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
     epoll_loop->should_continue = true;
     if (aws_thread_launch(&epoll_loop->thread, &s_main_loop, event_loop, NULL)) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", event_loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
     }
@@ -287,7 +287,7 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
 static int s_stop(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
     aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop);
     s_schedule_task_now(event_loop, &epoll_loop->stop_task);
 
@@ -307,8 +307,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: scheduling task %p in-thread for timestamp %llu",
-            event_loop,
-            task,
+            (void *)event_loop,
+            (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
             /* zero denotes "now" task */
@@ -322,8 +322,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Scheduling task %p cross-thread for timestamp %llu",
-        event_loop,
-        task,
+        (void *)event_loop,
+        (void *)task,
         (unsigned long long)run_at_nanos);
     task->timestamp = run_at_nanos;
     aws_mutex_lock(&epoll_loop->task_pre_queue_mutex);
@@ -336,7 +336,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     /* if the list was not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
     if (is_first_task) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Waking up event-loop thread", event_loop);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Waking up event-loop thread", (void *)event_loop);
 
         /* If the write fails because the buffer is full, we don't actually care because that means there's a pending
          * read on the pipe/eventfd and thus the event loop will end up checking to see if something has been queued.*/
@@ -356,7 +356,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", event_loop, task);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
 }
@@ -368,7 +368,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
     struct epoll_event_data *epoll_event_data = aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
     handle->additional_data = NULL;
 
@@ -404,7 +404,7 @@ static int s_subscribe_to_io_events(
 
     if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data.fd, &epoll_event)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", event_loop, handle->data.fd);
+            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", (void *)event_loop, handle->data.fd);
         aws_mem_release(event_loop->alloc, epoll_event_data);
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
@@ -427,7 +427,8 @@ static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aw
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     assert(handle->additional_data);
@@ -437,7 +438,10 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
     if (AWS_UNLIKELY(epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_DEL, handle->data.fd, &dummy_event /*ignored*/))) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to un-subscribe from events on fd %d", event_loop, handle->data.fd);
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: failed to un-subscribe from events on fd %d",
+            (void *)event_loop,
+            handle->data.fd);
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
 
@@ -469,7 +473,7 @@ static void s_on_tasks_to_schedule(
     (void)handle;
     (void)user_data;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         epoll_loop->should_process_task_pre_queue = true;
@@ -483,7 +487,7 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
         return;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: processing cross-thread tasks", event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: processing cross-thread tasks", (void *)event_loop);
     epoll_loop->should_process_task_pre_queue = false;
 
     struct aws_linked_list task_pre_queue;
@@ -505,7 +509,11 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     while (!aws_linked_list_empty(&task_pre_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&task_pre_queue);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: task %p pulled to event-loop, scheduling now.", event_loop, task);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: task %p pulled to event-loop, scheduling now.",
+            (void *)event_loop,
+            (void *)task);
         /* Timestamp 0 is used to denote "now" tasks */
         if (task->timestamp == 0) {
             aws_task_scheduler_schedule_now(&epoll_loop->scheduler, task);
@@ -517,7 +525,7 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
 
 static void s_main_loop(void *args) {
     struct aws_event_loop *event_loop = args;
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     int err = s_subscribe_to_io_events(
@@ -533,7 +541,7 @@ static void s_main_loop(void *args) {
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: default timeout %d, and max events to process per tick %d",
-        event_loop,
+        (void *)event_loop,
         timeout,
         MAX_EVENTS);
 
@@ -549,10 +557,11 @@ static void s_main_loop(void *args) {
      * process queued subscription cleanups.
      */
     while (epoll_loop->should_continue) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", event_loop, timeout);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout);
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", event_loop, event_count);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
@@ -581,7 +590,7 @@ static void s_main_loop(void *args) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_EVENT_LOOP,
                     "id=%p: activity on fd %d, invoking handler.",
-                    event_loop,
+                    (void *)event_loop,
                     event_data->handle->data.fd);
                 event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
             }
@@ -593,7 +602,7 @@ static void s_main_loop(void *args) {
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", event_loop);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
         aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
 
         /* set timeout for next epoll_wait() call.
@@ -610,7 +619,8 @@ static void s_main_loop(void *args) {
         }
 
         if (use_default_timeout) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", event_loop);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", (void *)event_loop);
             timeout = DEFAULT_TIMEOUT;
         } else {
             /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
@@ -621,12 +631,12 @@ static void s_main_loop(void *args) {
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p: detected more scheduled tasks with the next occurring at "
                 "%llu, using timeout of %d.",
-                event_loop,
+                (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 timeout);
         }
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", event_loop);
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
 }

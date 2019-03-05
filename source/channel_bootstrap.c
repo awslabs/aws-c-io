@@ -91,7 +91,7 @@ static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_grou
 
 void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     assert(bootstrap);
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
 
     if (bootstrap->host_resolver && bootstrap->owns_resolver) {
         aws_host_resolver_clean_up(bootstrap->host_resolver);
@@ -128,8 +128,8 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     AWS_LOGF_INFO(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Initializing client bootstrap with event-loop group %p",
-        bootstrap,
-        el_group);
+        (void *)bootstrap,
+        (void *)el_group);
 
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
@@ -177,13 +177,13 @@ int aws_client_bootstrap_set_alpn_callback(
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
     assert(on_protocol_negotiated);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", (void *)bootstrap);
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
     return AWS_OP_SUCCESS;
 }
 
 void aws_client_bootstrap_destroy(struct aws_client_bootstrap *bootstrap) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
 
     /* if destroy is being called, the user intends to not use the bootstrap anymore
      * so we clean up the thread local state while the event loop thread is
@@ -253,9 +253,9 @@ static void s_tls_client_on_negotiation_result(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: tls negotiation result %d on channel %p",
-        connection_args->bootstrap,
+        (void *)connection_args->bootstrap,
         err_code,
-        slot->channel);
+        (void *)slot->channel);
 
     connection_args->setup_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
@@ -312,10 +312,10 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Setting up client TLS on channel %p with handler %p on slot %p",
-        connection_args->bootstrap,
-        channel,
-        tls_handler,
-        tls_slot);
+        (void *)connection_args->bootstrap,
+        (void *)channel,
+        (void *)tls_handler,
+        (void *)tls_slot);
 
     if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
         return AWS_OP_ERR;
@@ -342,10 +342,10 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: Setting up ALPN handler on channel "
             "%p with handler %p on slot %p",
-            connection_args->bootstrap,
-            channel,
-            alpn_handler,
-            alpn_slot);
+            (void *)connection_args->bootstrap,
+            (void *)channel,
+            (void *)alpn_handler,
+            (void *)alpn_slot);
 
         aws_channel_slot_insert_right(tls_slot, alpn_slot);
         if (aws_channel_slot_set_handler(alpn_slot, alpn_handler) != AWS_OP_SUCCESS) {
@@ -368,8 +368,8 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: channel %p setup succeeded: bootstrapping.",
-            connection_args->bootstrap,
-            channel);
+            (void *)connection_args->bootstrap,
+            (void *)channel);
 
         struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
 
@@ -393,10 +393,10 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: Setting up socket handler on channel "
             "%p with handler %p on slot %p.",
-            connection_args->bootstrap,
-            channel,
-            socket_channel_handler,
-            socket_slot);
+            (void *)connection_args->bootstrap,
+            (void *)channel,
+            (void *)socket_channel_handler,
+            (void *)socket_slot);
 
         if (aws_channel_slot_set_handler(socket_slot, socket_channel_handler)) {
             err_code = aws_last_error();
@@ -418,7 +418,12 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         return;
     }
 
-    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: channel %p setup failed with error %d.",
+        (void *)connection_args->bootstrap,
+        (void *)channel,
+        err_code);
 
 error:
     connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
@@ -435,8 +440,8 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: channel %p shutdown with error %d.",
-        connection_args->bootstrap,
-        channel,
+        (void *)connection_args->bootstrap,
+        (void *)channel,
         error_code);
 
     struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
@@ -458,8 +463,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: client connection on socket %p completed with error %d.",
-        connection_args->bootstrap,
-        socket,
+        (void *)connection_args->bootstrap,
+        (void *)socket,
         error_code);
 
     if (error_code) {
@@ -476,7 +481,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_CHANNEL_BOOTSTRAP,
                     "id=%p: recording bad address %s.",
-                    connection_args->bootstrap,
+                    (void *)connection_args->bootstrap,
                     socket->remote_endpoint.address);
                 aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
                 aws_string_destroy((void *)host_address.address);
@@ -487,8 +492,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: releasing socket %p either because we already have a "
             "successful connection or because it errored out.",
-            connection_args->bootstrap,
-            socket);
+            (void *)connection_args->bootstrap,
+            (void *)socket);
         aws_socket_close(socket);
 
         aws_socket_clean_up(socket);
@@ -498,7 +503,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             AWS_LOGF_ERROR(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: Connection failed with error_code %d.",
-                connection_args->bootstrap,
+                (void *)connection_args->bootstrap,
                 error_code);
             connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         }
@@ -520,9 +525,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Successful connection, creating a new channel using socket %p.",
-        connection_args->bootstrap,
-        socket,
-        error_code);
+        (void *)connection_args->bootstrap,
+        (void *)socket);
 
     connection_args->channel_data.channel =
         aws_channel_new(connection_args->bootstrap->allocator, aws_socket_get_event_loop(socket), &channel_callbacks);
@@ -555,9 +559,9 @@ static void s_on_host_resolved(
         AWS_LOGF_TRACE(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: dns resolution completed. Kicking off connections"
-            " on %d addresses. First one back wins.",
-            client_connection_args->bootstrap,
-            host_addresses_len);
+            " on %llu addresses. First one back wins.",
+            (void *)client_connection_args->bootstrap,
+            (unsigned long long)host_addresses_len);
         /* use this event loop for all outgoing connection attempts (only one will ultimately win). */
         struct aws_event_loop *connect_loop =
             aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
@@ -618,7 +622,8 @@ static void s_on_host_resolved(
         }
     }
 
-    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: dns resolution failed.", client_connection_args->bootstrap);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: dns resolution failed.", (void *)client_connection_args->bootstrap);
     client_connection_args->setup_callback(
         client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);
@@ -646,9 +651,9 @@ static inline int s_new_client_channel(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new client channel to %s:%d",
-        bootstrap,
+        (void *)bootstrap,
         host_name,
-        port);
+        (int)port);
 
     AWS_ZERO_STRUCT(*client_connection_args);
     client_connection_args->user_data = user_data;
@@ -805,8 +810,8 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
     AWS_LOGF_INFO(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Initializing server bootstrap with event-loop group %p",
-        bootstrap,
-        el_group);
+        (void *)bootstrap,
+        (void *)el_group);
 
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
@@ -820,7 +825,7 @@ void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap) {
     /* if destroy is being called, the user intends to not use the bootstrap anymore
      * so we clean up the thread local state while the event loop thread is
      * still alive */
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     s_server_bootstrap_release(bootstrap);
 }
@@ -860,9 +865,9 @@ static void s_tls_server_on_negotiation_result(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: tls negotiation result %d on channel %p",
-        connection_args->bootstrap,
+        (void *)connection_args->bootstrap,
         err_code,
-        slot->channel);
+        (void *)slot->channel);
     struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? slot->channel : NULL;
     connection_args->incoming_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
@@ -920,10 +925,10 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Setting up server TLS on channel %p with handler %p on slot %p",
-        connection_args->bootstrap,
-        channel,
-        tls_handler,
-        tls_slot);
+        (void *)connection_args->bootstrap,
+        (void *)channel,
+        (void *)tls_handler,
+        (void *)tls_slot);
 
     aws_channel_slot_insert_end(channel, tls_slot);
 
@@ -952,10 +957,10 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: Setting up ALPN handler on channel "
             "%p with handler %p on slot %p",
-            connection_args->bootstrap,
-            channel,
-            alpn_handler,
-            alpn_slot);
+            (void *)connection_args->bootstrap,
+            (void *)channel,
+            (void *)alpn_handler,
+            (void *)alpn_slot);
 
         aws_channel_slot_insert_right(tls_slot, alpn_slot);
 
@@ -975,8 +980,8 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: channel %p setup succeeded: bootstrapping.",
-            channel_data->server_connection_args->bootstrap,
-            channel);
+            (void *)channel_data->server_connection_args->bootstrap,
+            (void *)channel);
 
         struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
 
@@ -1000,10 +1005,10 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: Setting up socket handler on channel "
             "%p with handler %p on slot %p.",
-            channel_data->server_connection_args->bootstrap,
-            channel,
-            socket_channel_handler,
-            socket_slot);
+            (void *)channel_data->server_connection_args->bootstrap,
+            (void *)channel,
+            (void *)socket_channel_handler,
+            (void *)socket_slot);
 
         if (aws_channel_slot_set_handler(socket_slot, socket_channel_handler)) {
             err_code = aws_last_error();
@@ -1027,7 +1032,12 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         return;
     }
 
-    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: channel setup failed with error %d.", err_code);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: channel %p setup failed with error %d.",
+        (void *)channel_data->server_connection_args->bootstrap,
+        (void *)channel,
+        err_code);
 
 error:
     aws_channel_destroy(channel);
@@ -1048,8 +1058,8 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: channel %p shutdown with error %d.",
-        channel_data->server_connection_args->bootstrap,
-        channel,
+        (void *)channel_data->server_connection_args->bootstrap,
+        (void *)channel,
         error_code);
 
     void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
@@ -1075,8 +1085,8 @@ void s_on_server_connection_result(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: server connection on socket %p completed with error %d.",
-        connection_args->bootstrap,
-        socket,
+        (void *)connection_args->bootstrap,
+        (void *)socket,
         error_code);
 
     if (!error_code) {
@@ -1084,9 +1094,8 @@ void s_on_server_connection_result(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
             "id=%p: creating a new channel for incoming "
             "connection using socket %p.",
-            connection_args->bootstrap,
-            socket,
-            error_code);
+            (void *)connection_args->bootstrap,
+            (void *)socket);
         struct server_channel_data *channel_data =
             aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
 
@@ -1154,9 +1163,9 @@ static inline struct aws_socket *s_server_new_socket_listener(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new "
         "server socket listener for %s:%d",
-        bootstrap,
+        (void *)bootstrap,
         local_endpoint->address,
-        local_endpoint->port);
+        (int)local_endpoint->port);
 
     AWS_ZERO_STRUCT(*server_connection_args);
     server_connection_args->user_data = user_data;
@@ -1167,7 +1176,7 @@ static inline struct aws_socket *s_server_new_socket_listener(
     server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
 
     if (connection_options) {
-        AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener");
+        AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap);
         server_connection_args->tls_options = *connection_options;
         server_connection_args->use_tls = true;
 
@@ -1265,7 +1274,7 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
     struct server_connection_args *server_connection_args =
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     aws_socket_stop_accept(listener);
     aws_socket_clean_up(listener);
     aws_mem_release(bootstrap->allocator, server_connection_args);
@@ -1277,7 +1286,7 @@ int aws_server_bootstrap_set_alpn_callback(
     struct aws_server_bootstrap *bootstrap,
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
     assert(on_protocol_negotiated);
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", (void *)bootstrap);
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
     return AWS_OP_SUCCESS;
 }

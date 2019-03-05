@@ -116,7 +116,11 @@ struct aws_logger_vtable {
         enum aws_log_level log_level,
         aws_log_subject_t subject,
         const char *format,
-        ...);
+        ...)
+#if defined(__clang__) || defined(__GNUC__) || defined(__GNUG__)
+        __attribute__((format(printf, 4, 5)))
+#endif /* non-ms compilers: TODO - find out what versions format support was added in */
+        ;
     enum aws_log_level (*const get_log_level)(struct aws_logger *logger, aws_log_subject_t subject);
     int (*const cleanup)(struct aws_logger *logger);
 };
