@@ -142,7 +142,9 @@ bool aws_tls_is_alpn_available(void) {
 /* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(
-        AWS_LS_IO_TLS, "id=%p: manually verifying certifcate chain because a custom CA is configured.", handler);
+        AWS_LS_IO_TLS,
+        "id=%p: manually verifying certifcate chain because a custom CA is configured.",
+        (void *)handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
     /* get the peer's certificate so we can validated it.*/
@@ -152,7 +154,10 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 
     if (status != SEC_E_OK || !peer_certificate) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: failed to load peer's certificate with SECURITY_STATUS %d", handler, (int)status);
+            AWS_LS_IO_TLS,
+            "id=%p: failed to load peer's certificate with SECURITY_STATUS %d",
+            (void *)handler,
+            (int)status);
         return AWS_OP_ERR;
     }
 
@@ -169,7 +174,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             AWS_LS_IO_TLS,
             "id=%p: failed to load a certificate chain engine with SECURITY_STATUS %d. "
             "Most likely, the configured CA is corrupted.",
-            handler,
+            (void *)handler,
             (int)status);
         CertFreeCertificateContext(peer_certificate);
         return AWS_OP_ERR;
@@ -191,7 +196,10 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             NULL,
             &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.", handler, (int)status);
+            AWS_LS_IO_TLS,
+            "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.",
+            (void *)handler,
+            (int)status);
         CertFreeCertificateChainEngine(engine);
         CertFreeCertificateContext(peer_certificate);
         return AWS_OP_ERR;
@@ -208,11 +216,14 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     CertFreeCertificateContext(peer_certificate);
 
     if (trust_mask == 0) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: peer certificate is trusted.", handler);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: peer certificate is trusted.", (void *)handler);
         return AWS_OP_SUCCESS;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: peer certificate is un-trusted with SECURITY_STATUS %d.", handler, (int)trust_mask);
+            AWS_LS_IO_TLS,
+            "id=%p: peer certificate is un-trusted with SECURITY_STATUS %d.",
+            (void *)handler,
+            (int)trust_mask);
         return AWS_OP_ERR;
     }
 }
@@ -350,7 +361,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
     adds its alpn data if available, and if everything is good, sends out the server hello. */
 static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: server starting negotiation", handler);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: server starting negotiation", (void *)handler);
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_bufs[] = {
         {
@@ -389,7 +400,9 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
     if (sc_handler->verify_peer) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "id=%p: server configured to use mutual tls, expecting a certficate from client.", handler);
+            AWS_LS_IO_TLS,
+            "id=%p: server configured to use mutual tls, expecting a certficate from client.",
+            (void *)handler);
         sc_handler->ctx_req |= ASC_REQ_MUTUAL_AUTH;
     }
 
@@ -421,7 +434,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: error during processing of the ClientHello. SECURITY_STATUS is %d",
-            handler,
+            (void *)handler,
             (int)status);
         int error = s_determine_sspi_error(status);
         aws_raise_error(error);
@@ -432,7 +445,10 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     size_t data_to_write_len = output_buffer.cbBuffer;
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: Sending ServerHello. Data size %llu", handler, (unsigned long long)data_to_write_len);
+        AWS_LS_IO_TLS,
+        "id=%p: Sending ServerHello. Data size %llu",
+        (void *)handler,
+        (unsigned long long)data_to_write_len);
     /* send the server hello. */
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
@@ -462,7 +478,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: running step 2 of negotiation (cipher change, key exchange etc...)", handler);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: running step 2 of negotiation (cipher change, key exchange etc...)", (void *)handler);
     SecBuffer input_buffers[] = {
         [0] =
             {
@@ -510,7 +527,8 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", handler, (int)status);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", (void *)handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -518,7 +536,8 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_E_INCOMPLETE_MESSAGE) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Last processed buffer was incomplete, waiting on more data.", handler);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_TLS, "id=%p: Last processed buffer was incomplete, waiting on more data.", (void *)handler);
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     };
@@ -552,19 +571,22 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS, "id=%p: Extra data recieved. Extra size is %lu", handler, input_buffers[1].cbBuffer);
+                AWS_LS_IO_TLS,
+                "id=%p: Extra data recieved. Extra size is %lu",
+                (void *)handler,
+                input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
     }
 
     if (status == SEC_E_OK) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: handshake completed", handler);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: handshake completed", (void *)handler);
         /* if a custom CA store was configured, we have to do the verification ourselves. */
         if (sc_handler->custom_ca_store) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: Custom CA was configured, evaluating trust before completing connection",
-                handler);
+                (void *)handler);
 
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -604,7 +626,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
 #endif
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", handler);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", (void *)handler);
         s_on_negotiation_success(handler);
     }
 
@@ -616,7 +638,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 /* send the client hello */
 static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: client starting negotiation", handler);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: client starting negotiation", (void *)handler);
 
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_buf = {
@@ -683,7 +705,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: Error sending client/receiving server handshake data. SECURITY_STATUS is %d",
-            handler,
+            (void *)handler,
             (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
@@ -695,7 +717,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p: Sending client handshake data of size %llu",
-        handler,
+        (void *)handler,
         (unsigned long long)data_to_write_len);
 
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
@@ -728,7 +750,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p: running step 2 of client-side negotiation (cipher change, key exchange etc...)",
-        handler);
+        (void *)handler);
 
     SecBuffer input_buffers[] = {
         [0] =
@@ -782,7 +804,8 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", handler, (int)status);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", (void *)handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -794,7 +817,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Incomplete buffer recieved. Incomplete size is %llu. Waiting for more data.",
-            handler,
+            (void *)handler,
             (unsigned long long)sc_handler->estimated_incomplete_size);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
@@ -829,7 +852,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: Extra data recieved. Extra data size is %lu.",
-                handler,
+                (void *)handler,
                 input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
         }
@@ -842,7 +865,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: Custom CA was configured, evaluating trust before completing connection",
-                handler);
+                (void *)handler);
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -877,7 +900,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             }
         }
 #endif
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", handler);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", (void *)handler);
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
         s_on_negotiation_success(handler);
     }
@@ -915,7 +938,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: Decrypted message with length %llu.",
-                handler,
+                (void *)handler,
                 (unsigned long long)decrypted_length);
 
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
@@ -923,7 +946,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
                     "id=%p: Extra (incomplete) message received with length %llu.",
-                    handler,
+                    (void *)handler,
                     (unsigned long long)sc_handler->read_extra);
             }
 
@@ -945,11 +968,12 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: (incomplete) message received. Expecting remaining portion of size %llu.",
-            handler,
+            (void *)handler,
             (unsigned long long)sc_handler->estimated_incomplete_size);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", handler, (int)status);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         return AWS_OP_ERR;
@@ -968,7 +992,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p: Processing incomming messages. Downstream window is %llu",
-        handler,
+        (void *)handler,
         (unsigned long long)downstream_window);
     while (sc_handler->buffered_read_out_data_buf.len && downstream_window) {
         size_t requested_message_size = sc_handler->buffered_read_out_data_buf.len > downstream_window
@@ -977,7 +1001,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Requested message size is %llu",
-            handler,
+            (void *)handler,
             (unsigned long long)requested_message_size);
 
         if (sc_handler->slot->adj_right) {
@@ -1012,7 +1036,10 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
 
             downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS, "id=%p: Downstream window is %llu", handler, (unsigned long long)downstream_window);
+                AWS_LS_IO_TLS,
+                "id=%p: Downstream window is %llu",
+                (void *)handler,
+                (unsigned long long)downstream_window);
         } else {
             if (sc_handler->options.on_data_read) {
                 sc_handler->options.on_data_read(
@@ -1049,7 +1076,7 @@ static int s_process_read_message(
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: processing incoming message of size %llu",
-            handler,
+            (void *)handler,
             (unsigned long long)message->message_data.len);
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
@@ -1152,7 +1179,7 @@ static int s_process_write_message(
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: processing ougoing message of size %llu",
-            handler,
+            (void *)handler,
             (unsigned long long)message->message_data.len);
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
@@ -1161,7 +1188,7 @@ static int s_process_write_message(
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: processing message fragment of size %llu",
-                handler,
+                (void *)handler,
                 (unsigned long long)message_cursor.len);
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
             size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
@@ -1234,7 +1261,7 @@ static int s_process_write_message(
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
                     "id=%p:message fragment encrypted successfully: size is %llu",
-                    handler,
+                    (void *)handler,
                     (unsigned long long)outgoing_message->message_data.len);
 
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
@@ -1245,7 +1272,10 @@ static int s_process_write_message(
                 aws_byte_cursor_advance(&message_cursor, original_message_fragment_to_process);
             } else {
                 AWS_LOGF_TRACE(
-                    AWS_LS_IO_TLS, "id=%p: Error encrypting message. SECURITY_STATUS is %d", handler, (int)status);
+                    AWS_LS_IO_TLS,
+                    "id=%p: Error encrypting message. SECURITY_STATUS is %d",
+                    (void *)handler,
+                    (int)status);
                 return AWS_OP_ERR;
             }
         }
@@ -1260,7 +1290,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     (void)size;
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", handler, (unsigned long long)size);
+        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
 
     if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
         SECURITY_STATUS status =
@@ -1286,7 +1316,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Propagating read window increment of size %llu",
-            handler,
+            (void *)handler,
             (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
@@ -1330,7 +1360,7 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down both the read and write direction", handler)
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down both the read and write direction", (void *)handler)
 
         /* send a TLS alert. */
         SECURITY_STATUS status;
@@ -1418,7 +1448,7 @@ static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum
 }
 
 static void s_handler_destroy(struct aws_channel_handler *handler) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", handler);
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (sc_handler->protocol.buffer) {
@@ -1437,7 +1467,7 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation", handler);
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation", (void *)handler);
 
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -1517,7 +1547,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     if (options->server_name) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting SNI to %s", &sc_handler->handler, options->server_name);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting SNI to %s", (void *)&sc_handler->handler, options->server_name);
         sc_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
     }
 

@@ -312,7 +312,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
     /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", handler);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
         secure_transport_handler->negotiation_finished = true;
         size_t name_len = 0;
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
@@ -340,7 +340,10 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             secure_transport_handler->protocol.len = secure_transport_handler->protocol.capacity - 1;
             CFRelease(protocol);
             AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "id=%p: negotiated protocol: %s", handler, secure_transport_handler->protocol.buffer);
+                AWS_LS_IO_TLS,
+                "id=%p: negotiated protocol: %s",
+                (void *)handler,
+                secure_transport_handler->protocol.buffer);
         }
 
         name_len = 0;
@@ -357,7 +360,10 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             secure_transport_handler->server_name =
                 aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name_array, actual_length);
             AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "id=%p: Remote Server Name: %s", handler, secure_transport_handler->server_name_array);
+                AWS_LS_IO_TLS,
+                "id=%p: Remote Server Name: %s",
+                (void *)handler,
+                secure_transport_handler->server_name_array);
         }
 
         if (secure_transport_handler->parent_slot->adj_right &&
@@ -418,7 +424,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return s_drive_negotiation(handler);
             }
 
-            AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: Using custom CA, certificate validation failed.", handler)
+            AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: Using custom CA, certificate validation failed.", (void *)handler)
             return AWS_OP_ERR;
         }
         return AWS_OP_SUCCESS;
@@ -426,7 +432,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     } else if (status != errSSLWouldBlock) {
         secure_transport_handler->negotiation_finished = false;
 
-        AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: negotiation failed with OSStatus %d.", handler, (int)status);
+        AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: negotiation failed with OSStatus %d.", (void *)handler, (int)status);
         aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         return AWS_OP_ERR;
@@ -448,7 +454,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p, starting TLS negotiation", handler);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p, starting TLS negotiation", (void *)handler);
     if (aws_channel_thread_is_callers_thread(secure_transport_handler->parent_slot->channel)) {
         return s_drive_negotiation(handler);
     }
@@ -483,10 +489,11 @@ static int s_process_write_message(
     OSStatus status =
         SSLWrite(secure_transport_handler->ctx, message->message_data.buffer, message->message_data.len, &processed);
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes written: %llu", handler, (unsigned long long)processed);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes written: %llu", (void *)handler, (unsigned long long)processed);
 
     if (status != noErr) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", handler, (int)status);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", (void *)handler, (int)status);
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
@@ -504,11 +511,14 @@ static int s_handle_shutdown(
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", handler);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
         SSLClose(secure_transport_handler->ctx);
     } else {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS, "id=%p: shutting down read direction with error %d. Flushing queues.", handler, error_code);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: shutting down read direction with error %d. Flushing queues.",
+            (void *)handler,
+            error_code);
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
@@ -546,7 +556,8 @@ static int s_process_read_message(
     if (slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(slot);
     }
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: downstream window is %llu", handler, (unsigned long long)downstream_window);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: downstream window is %llu", (void *)handler, (unsigned long long)downstream_window);
     size_t processed = 0;
 
     OSStatus status = noErr;
@@ -565,20 +576,23 @@ static int s_process_read_message(
             outgoing_read_message->message_data.capacity,
             &read);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read %ll", handler, (unsigned long long)read);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read %llu", (void *)handler, (unsigned long long)read);
         if (read <= 0) {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
 
             if (status != errSSLWouldBlock) {
                 AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "id=%p: error reported during SSLRead. OSStatus code %llu", handler, (int)status);
+                    AWS_LS_IO_TLS,
+                    "id=%p: error reported during SSLRead. OSStatus code %d",
+                    (void *)handler,
+                    (int)status);
 
                 if (status != errSSLClosedGraceful) {
                     aws_raise_error(AWS_IO_TLS_ERROR_ALERT_RECEIVED);
                     aws_channel_shutdown(
                         secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_ALERT_RECEIVED);
                 } else {
-                    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", handler);
+                    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
                     aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_ERROR_SUCCESS);
                 }
             }
@@ -605,7 +619,7 @@ static int s_process_read_message(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p, Remaining window for this event-loop tick: %llu",
-        handler,
+        (void *)handler,
         (unsigned long long)downstream_window - processed);
 
     return AWS_OP_SUCCESS;
@@ -627,7 +641,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: increment read window message received %llu", handler, (unsigned long long)size);
+        AWS_LS_IO_TLS, "id=%p: increment read window message received %llu", (void *)handler, (unsigned long long)size);
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
@@ -639,6 +653,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: propagating read window increment of size %llu",
+            (void *)handler,
             (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
@@ -724,7 +739,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (!secure_transport_handler->ctx) {
         AWS_LOGF_FATAL(
-            AWS_LS_IO_TLS, "id=%p: failed to initialize an SSL Context.", &secure_transport_handler->handler);
+            AWS_LS_IO_TLS, "id=%p: failed to initialize an SSL Context.", (void *)&secure_transport_handler->handler);
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_st_handler;
     }
@@ -770,7 +785,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     if (SSLSetIOFuncs(secure_transport_handler->ctx, s_read_cb, s_write_cb) != noErr ||
         SSLSetConnection(secure_transport_handler->ctx, secure_transport_handler) != noErr) {
         AWS_LOGF_FATAL(
-            AWS_LS_IO_TLS, "id=%p: failed to initialize an SSL Context.", &secure_transport_handler->handler);
+            AWS_LS_IO_TLS, "id=%p: failed to initialize an SSL Context.", (void *)&secure_transport_handler->handler);
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_ssl_ctx;
     }
@@ -783,7 +798,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             AWS_LS_IO_TLS,
             "id=%p: x.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.",
-            &secure_transport_handler->handler);
+            (void *)&secure_transport_handler->handler);
         SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
@@ -817,7 +832,10 @@ static struct aws_channel_handler *s_tls_handler_new(
     const char *alpn_list = NULL;
     if (options->alpn_list) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "id=%p: setting ALPN list %s", &secure_transport_handler->handler, options->alpn_list);
+            AWS_LS_IO_TLS,
+            "id=%p: setting ALPN list %s",
+            (void *)&secure_transport_handler->handler,
+            options->alpn_list);
         alpn_list = options->alpn_list;
     } else {
         alpn_list = secure_transport_ctx->alpn_list;

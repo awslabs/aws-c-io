@@ -215,7 +215,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
     AWS_LOGF_INFO(
         AWS_LS_IO_DNS,
         "id=%p: recording failure for record %s for %s, moving to bad list",
-        resolver,
+        (void *)resolver,
         address->address->bytes,
         address->host->bytes);
 
@@ -704,7 +704,7 @@ static int default_resolve_host(
     struct aws_host_resolution_config *config,
     void *user_data) {
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: Host resolution requested for %s", resolver, host_name->bytes);
+    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: Host resolution requested for %s", (void *)resolver, host_name->bytes);
 
     uint64_t timestamp = 0;
     aws_sys_clock_get_ticks(&timestamp);
@@ -720,7 +720,7 @@ static int default_resolve_host(
         AWS_LOGF_DEBUG(
             AWS_LS_IO_DNS,
             "id=%p: No cached entries found for %s starting new resolver thread.",
-            resolver,
+            (void *)resolver,
             host_name->bytes);
 
         aws_rw_lock_runlock(&default_host_resolver->host_lock);
@@ -735,7 +735,10 @@ static int default_resolve_host(
 
     if ((aaaa_record || a_record) && host_entry->keep_active) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_DNS, "id=%p: cached entries found for %s returning to caller.", resolver, host_name->bytes);
+            AWS_LS_IO_DNS,
+            "id=%p: cached entries found for %s returning to caller.",
+            (void *)resolver,
+            host_name->bytes);
         struct aws_host_address *address_array[2];
         AWS_ZERO_ARRAY(address_array);
         struct aws_array_list callback_address_list;
@@ -746,7 +749,7 @@ static int default_resolve_host(
             AWS_LOGF_TRACE(
                 AWS_LS_IO_DNS,
                 "id=%p: vending address %s for host %s to caller",
-                resolver,
+                (void *)resolver,
                 aaaa_record->address->bytes,
                 host_entry->host_name->bytes);
         }
@@ -755,7 +758,7 @@ static int default_resolve_host(
             AWS_LOGF_TRACE(
                 AWS_LS_IO_DNS,
                 "id=%p: vending address %s for host %s to caller",
-                resolver,
+                (void *)resolver,
                 a_record->address->bytes,
                 host_entry->host_name->bytes);
         }
@@ -801,7 +804,10 @@ int aws_host_resolver_init_default(
     }
 
     AWS_LOGF_INFO(
-        AWS_LS_IO_DNS, "id=%p: Initializing default host resolver with %llu max host entries.", resolver, max_entries);
+        AWS_LS_IO_DNS,
+        "id=%p: Initializing default host resolver with %llu max host entries.",
+        (void *)resolver,
+        (unsigned long long)max_entries);
 
     default_host_resolver->allocator = allocator;
     aws_rw_lock_init(&default_host_resolver->host_lock);

@@ -148,7 +148,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         return NULL;
     }
 
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered kqueue", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered kqueue", (void *)event_loop);
     clean_up_event_loop_mem = true;
 
     int err = aws_event_loop_init_base(event_loop, alloc, clock);
@@ -172,7 +172,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
 
     impl->kq_fd = kqueue();
     if (impl->kq_fd == -1) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open kqueue handle.", event_loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open kqueue handle.", (void *)event_loop);
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -180,13 +180,13 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
 
     err = aws_open_nonblocking_posix_pipe(impl->cross_thread_signal_pipe);
     if (err) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to open pipe handle.", event_loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to open pipe handle.", (void *)event_loop);
         goto clean_up;
     }
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: pipe descriptors read %d, write %d.",
-        event_loop,
+        (void *)event_loop,
         impl->cross_thread_signal_pipe[READ_FD],
         impl->cross_thread_signal_pipe[WRITE_FD]);
     clean_up_signal_pipe = true;
@@ -211,7 +211,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         NULL /*timeout*/);
 
     if (res == -1) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to create cross-thread signal kevent.", event_loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to create cross-thread signal kevent.", (void *)event_loop);
         aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -280,7 +280,7 @@ clean_up:
 }
 
 static void s_destroy(struct aws_event_loop *event_loop) {
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", (void *)event_loop);
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* Stop the event-thread. This might have already happened. It's safe to call multiple times. */
@@ -288,7 +288,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     int err = s_wait_for_stop_completion(event_loop);
     if (err) {
         AWS_LOGF_WARN(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: failed to destroy event-thread, resources have been leaked", event_loop);
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: failed to destroy event-thread, resources have been leaked",
+            (void *)event_loop);
         assert("Failed to destroy event-thread, resources have been leaked." == NULL);
         return;
     }
@@ -340,7 +342,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 static int s_run(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: starting event-loop thread.", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: starting event-loop thread.", (void *)event_loop);
     /* to re-run, call stop() and wait_for_stop_completion() */
     assert(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -351,7 +353,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     int err = aws_thread_launch(&impl->thread, s_event_thread_main, (void *)event_loop, NULL);
     if (err) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", event_loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
     }
 
@@ -367,7 +369,9 @@ void signal_cross_thread_data_changed(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: signaling event-loop that cross-thread tasks need to be scheduled.", event_loop);
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: signaling event-loop that cross-thread tasks need to be scheduled.",
+        (void *)event_loop);
     /* Doesn't actually matter what we write, any activity on pipe signals that cross_thread_data has changed,
      * If the pipe is full and the write fails, that's fine, the event-thread will get the signal from some previous
      * write */
@@ -431,8 +435,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: scheduling task %p in-thread for timestamp %llu",
-            event_loop,
-            task,
+            (void *)event_loop,
+            (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
             aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
@@ -446,8 +450,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: scheduling task %p cross-thread for timestamp %llu",
-        event_loop,
-        task,
+        (void *)event_loop,
+        (void *)task,
         (unsigned long long)run_at_nanos);
     task->timestamp = run_at_nanos;
     bool should_signal_thread = false;
@@ -480,7 +484,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct kqueue_loop *kqueue_loop = event_loop->impl_data;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", event_loop, task);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
     aws_task_scheduler_cancel_task(&kqueue_loop->thread_data.scheduler, task);
 }
 
@@ -498,7 +502,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         return;
     }
     AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", event_loop, handle_data->owner->data.fd);
+        AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle_data->owner->data.fd);
 
     /* If handle was unsubscribed before this task could execute, nothing to do */
     if (handle_data->state == HANDLE_STATE_UNSUBSCRIBED) {
@@ -565,7 +569,10 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 
 subscribe_failed:
     AWS_LOGF_ERROR(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", event_loop, handle_data->owner->data.fd);
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: failed to subscribe to events on fd %d",
+        (void *)event_loop,
+        handle_data->owner->data.fd);
     /* Remove any related kevents that succeeded */
     for (int i = 0; i < num_events; ++i) {
         if (changelist[i].data == 0) {
@@ -646,7 +653,8 @@ static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, 
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
     assert(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
     struct kqueue_loop *impl = event_loop->impl_data;
@@ -707,13 +715,17 @@ static bool s_is_event_thread(struct aws_event_loop *event_loop) {
  * Takes tasks from tasks_to_schedule and adds them to the scheduler. */
 static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_linked_list *tasks_to_schedule) {
     struct kqueue_loop *impl = event_loop->impl_data;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: processing cross-thread tasks", event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: processing cross-thread tasks", (void *)event_loop);
 
     while (!aws_linked_list_empty(tasks_to_schedule)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: task %p pulled to event-loop, scheduling now.", event_loop, task);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: task %p pulled to event-loop, scheduling now.",
+            (void *)event_loop,
+            (void *)task);
         /* Timestamp 0 is used to denote "now" tasks */
         if (task->timestamp == 0) {
             aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
@@ -726,7 +738,7 @@ static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struc
 static void s_process_cross_thread_data(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread data to process", event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread data to process", (void *)event_loop);
     /* If there are tasks to schedule, grab them all out of synced_data.tasks_to_schedule.
      * We'll process them later, so that we minimize time spent holding the mutex. */
     struct aws_linked_list tasks_to_schedule;
@@ -778,7 +790,7 @@ static int s_aws_event_flags_from_kevent(struct kevent *kevent) {
 
 static void s_event_thread_main(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct kqueue_loop *impl = event_loop->impl_data;
 
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -800,7 +812,7 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: default timeout %ds, and max events to process per tick %d",
-        event_loop,
+        (void *)event_loop,
         DEFAULT_TIMEOUT_SEC,
         MAX_EVENTS);
 
@@ -811,7 +823,7 @@ static void s_event_thread_main(void *user_data) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: waiting for a maximum of %ds %lluns",
-            event_loop,
+            (void *)event_loop,
             (int)timeout.tv_sec,
             (unsigned long long)timeout.tv_nsec);
 
@@ -819,7 +831,8 @@ static void s_event_thread_main(void *user_data) {
         int num_kevents = kevent(
             impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", event_loop, num_kevents);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, num_kevents);
         if (num_kevents == -1) {
             /* Raise an error, in case this is interesting to anyone monitoring,
              * and continue on with this loop. We can't process events,
@@ -869,7 +882,7 @@ static void s_event_thread_main(void *user_data) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_EVENT_LOOP,
                     "id=%p: activity on fd %d, invoking handler.",
-                    event_loop,
+                    (void *)event_loop,
                     handle_data->owner->data.fd);
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
@@ -887,7 +900,7 @@ static void s_event_thread_main(void *user_data) {
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", event_loop);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
 
         /* Set timeout for next kevent() call.
@@ -906,7 +919,8 @@ static void s_event_thread_main(void *user_data) {
         }
 
         if (use_default_timeout) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", event_loop);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", (void *)event_loop);
             timeout.tv_sec = DEFAULT_TIMEOUT_SEC;
             timeout.tv_nsec = 0;
         } else {
@@ -926,7 +940,7 @@ static void s_event_thread_main(void *user_data) {
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p: detected more scheduled tasks with the next occurring at "
                 "%llu using timeout of %ds %lluns.",
-                event_loop,
+                (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 (int)timeout_sec,
                 (unsigned long long)timeout_remainder_ns);
@@ -935,5 +949,5 @@ static void s_event_thread_main(void *user_data) {
         }
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
 }

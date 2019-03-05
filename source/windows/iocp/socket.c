@@ -319,8 +319,8 @@ static int s_create_socket(struct aws_socket *sock, const struct aws_socket_opti
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: initializing with domain %d and type %d",
-        sock,
-        handle,
+        (void *)sock,
+        (void *)handle,
         options->domain,
         options->type);
     u_long non_blocking = 1;
@@ -400,7 +400,11 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, handle=%p: cleaning up socket.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p, handle=%p: cleaning up socket.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
     socket_impl->vtable->close(socket);
 
@@ -490,8 +494,8 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Read can only be called from the owning event-loop's thread.",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
@@ -499,8 +503,8 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Attempt to read from an unconnected socket.",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
@@ -519,8 +523,8 @@ int aws_socket_subscribe_to_readable_events(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Attempt to subscribe to an unconnected socket.",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
@@ -588,9 +592,9 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
-            socket,
-            socket->io_handle.data.handle,
-            WSAGetLastError());
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -602,8 +606,8 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connection error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             connect_result);
         socket->state = ERRORED;
         int error = s_determine_socket_error(connect_result);
@@ -612,7 +616,8 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
         return AWS_OP_ERR;
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, (void *)socket->io_handle.data.handle);
 
     struct sockaddr_storage address;
     AWS_ZERO_STRUCT(address);
@@ -625,8 +630,8 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: determining local endpoint failed",
-                socket,
-                socket->io_handle.data.fd);
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
             socket->state = ERRORED;
             int error = s_determine_socket_error(WSAGetLastError());
             aws_raise_error(error);
@@ -636,18 +641,18 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: local endpoint %s:%d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             socket->local_endpoint.address,
-            port);
+            (int)port);
         socket->local_endpoint.port = port;
     } else {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: getsockname() failed with error %d",
-            socket,
-            socket->io_handle.data.handle,
-            WSAGetLastError());
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -679,9 +684,9 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
-            socket,
-            socket->io_handle.data.handle,
-            WSAGetLastError());
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -693,8 +698,8 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connection error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             connect_result);
         socket->state = ERRORED;
         int error = s_determine_socket_error(connect_result);
@@ -703,7 +708,8 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
         return AWS_OP_ERR;
     }
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, (void *)socket->io_handle.data.handle);
 
     struct sockaddr_storage address;
     AWS_ZERO_STRUCT(address);
@@ -717,8 +723,8 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: determining local endpoint failed",
-                socket,
-                socket->io_handle.data.fd);
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
             socket->state = ERRORED;
             int error = s_determine_socket_error(WSAGetLastError());
             aws_raise_error(error);
@@ -728,17 +734,17 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: local endpoint %s:%d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             socket->local_endpoint.address,
-            port);
+            (int)port);
     } else {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: getsockname() failed with error %d",
-            socket,
-            socket->io_handle.data.handle,
-            WSAGetLastError());
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -759,7 +765,8 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
 static int s_local_and_udp_connection_success(struct aws_socket *socket) {
     socket->state = CONNECTED_WRITE | CONNECTED_READ;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, (void *)socket->io_handle.data.handle);
     if (socket->connection_result_fn) {
         socket->connection_result_fn(socket, AWS_ERROR_SUCCESS, socket->connect_accept_user_data);
     }
@@ -773,8 +780,8 @@ static void s_connection_error(struct aws_socket *socket, int error) {
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connection error with code %d",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         error);
 
     if (socket->connection_result_fn) {
@@ -796,7 +803,7 @@ void s_socket_connection_completion(
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct socket_connect_args *socket_args = overlapped->user_data;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "static: connect completion triggered on event-loop %p", event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "static: connect completion triggered on event-loop %p", (void *)event_loop);
 
     if (!operation_data->socket) {
         aws_mem_release(operation_data->allocator, operation_data);
@@ -812,8 +819,8 @@ void s_socket_connection_completion(
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connect completion triggered. Socket has not timed out yet: proceeeding with connection",
-            socket_args->socket,
-            socket_args->socket->io_handle.data.handle);
+            (void *)socket_args->socket,
+            (void *)socket_args->socket->io_handle.data.handle);
         struct iocp_socket *socket_impl = socket_args->socket->impl;
 
         struct aws_socket *socket = socket_args->socket;
@@ -828,8 +835,8 @@ void s_socket_connection_completion(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: connect completion triggered with error %d",
-                socket_args->socket,
-                socket_args->socket->io_handle.data.handle,
+                (void *)socket_args->socket,
+                (void *)socket_args->socket->io_handle.data.handle,
                 status_code);
             int error = s_determine_socket_error(status_code);
             socket_impl->vtable->connection_error(socket, error);
@@ -849,14 +856,14 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
     (void)task;
     struct socket_connect_args *socket_args = args;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", task);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (socket_args->socket) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: timed out, shutting down.",
-                socket_args->socket,
-                socket_args->socket->io_handle.data.handle);
+                (void *)socket_args->socket,
+                (void *)socket_args->socket->io_handle.data.handle);
             socket_args->socket->state = TIMEDOUT;
             aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
             struct aws_socket *socket = socket_args->socket;
@@ -934,8 +941,8 @@ static inline int s_tcp_connect(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
                 "id=%p handle=%p: connection error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 error_code);
             socket_impl->connect_args = NULL;
             socket_impl->read_io_data->in_use = false;
@@ -953,8 +960,8 @@ static inline int s_tcp_connect(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p handle=%p: connection pending, scheduling timeout task",
-        socket,
-        socket->io_handle.data.handle);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     aws_event_loop_schedule_task_future(connect_loop, &connect_args->timeout_task, time_to_run);
 
     return AWS_OP_SUCCESS;
@@ -978,7 +985,8 @@ static int s_ipv4_stream_connect(
     assert(connect_loop);
     assert(on_connection_result);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
 
     socket->connection_result_fn = on_connection_result;
     socket->connect_accept_user_data = user_data;
@@ -989,8 +997,8 @@ static int s_ipv4_stream_connect(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%d.",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
         return aws_raise_error(s_convert_pton_error(err));
@@ -999,8 +1007,8 @@ static int s_ipv4_stream_connect(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to endpoint %s:%d.",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
         (int)remote_endpoint->port);
 
@@ -1033,7 +1041,8 @@ static int s_ipv6_stream_connect(
     assert(connect_loop);
     assert(on_connection_result);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
 
     if (socket->state != INIT) {
         socket->state = ERRORED;
@@ -1053,8 +1062,8 @@ static int s_ipv6_stream_connect(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%d.",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
         return aws_raise_error(s_convert_pton_error(pton_err));
@@ -1063,8 +1072,8 @@ static int s_ipv6_stream_connect(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to endpoint %s:%d.",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
         (int)remote_endpoint->port);
 
@@ -1111,7 +1120,8 @@ static int s_local_connect(
     assert(connect_loop);
     assert(on_connection_result);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
 
     socket->connection_result_fn = on_connection_result;
     socket->connect_accept_user_data = user_data;
@@ -1137,8 +1147,8 @@ static int s_local_connect(
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Successfully connected to named pipe %s.",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             remote_endpoint->address);
 
         if (aws_socket_assign_to_event_loop(socket, connect_loop)) {
@@ -1156,8 +1166,8 @@ error:
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         remote_endpoint->address);
     socket->state = ERRORED;
     int win_error = GetLastError();
@@ -1179,21 +1189,21 @@ static inline int s_dgram_connect(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to to %s:%d",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
-        remote_endpoint->port);
+        (int)remote_endpoint->port);
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Failed to connect to %s:%d with error %d.",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
-            remote_endpoint->port,
-            WSAGetLastError());
+            (int)remote_endpoint->port,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error_code = WSAGetLastError();
         int aws_error = s_determine_socket_error(error_code);
@@ -1228,19 +1238,19 @@ static inline int s_dgram_connect(
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: local endpoint %s:%d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             socket->local_endpoint.address,
-            socket->local_endpoint.port);
+            (int)socket->local_endpoint.port);
     }
 
     if (sock_name_err) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Failed to connect with error %d",
-            socket,
-            socket->io_handle.data.handle,
-            WSAGetLastError());
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -1327,10 +1337,10 @@ static inline int s_tcp_bind(
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: binding to tcp %s:%p",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         local_endpoint->address,
-        local_endpoint->port);
+        (int)local_endpoint->port);
     int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
 
     if (!error_code) {
@@ -1341,9 +1351,9 @@ static inline int s_tcp_bind(
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: error binding. error %d",
-        socket,
-        socket->io_handle.data.handle,
-        WSAGetLastError());
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        (int)WSAGetLastError());
     socket->state = ERRORED;
     int error = s_determine_socket_error(WSAGetLastError());
     return aws_raise_error(error);
@@ -1388,10 +1398,10 @@ static inline int s_udp_bind(
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: binding to udp %s:%p",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         local_endpoint->address,
-        local_endpoint->port);
+        (int)local_endpoint->port);
     int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
 
     if (!error_code) {
@@ -1402,9 +1412,9 @@ static inline int s_udp_bind(
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: error binding. error %d",
-        socket,
-        socket->io_handle.data.handle,
-        WSAGetLastError());
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        (int)WSAGetLastError());
     socket->state = ERRORED;
     int error = s_determine_socket_error(WSAGetLastError());
     return aws_raise_error(error);
@@ -1444,8 +1454,8 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: binding to named pipe %s",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         local_endpoint->address);
 
     socket->local_endpoint = *local_endpoint;
@@ -1466,10 +1476,10 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to open named pipe %s with error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             local_endpoint->address,
-            GetLastError());
+            (int)GetLastError());
 
         socket->state = ERRORED;
         int error_code = GetLastError();
@@ -1482,8 +1492,8 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: starting listen with backlog %d",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         backlog_size);
     int error_code = listen((SOCKET)socket->io_handle.data.handle, backlog_size);
 
@@ -1495,9 +1505,9 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: listen failed with error code %d",
-        socket,
-        socket->io_handle.data.handle,
-        GetLastError());
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        (int)GetLastError());
     error_code = GetLastError();
     int aws_error = s_determine_socket_error(error_code);
     return aws_raise_error(aws_error);
@@ -1545,22 +1555,25 @@ static void s_incoming_pipe_connection_event(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: named-pipe listening event received",
-        socket,
-        socket->io_handle.data.handle);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
 
     if (status_code) {
         if (status_code == IO_PIPE_BROKEN) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET, "id=%p handle=%p: named-pipe is closed", socket, socket->io_handle.data.handle);
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: named-pipe is closed",
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
             aws_raise_error(AWS_IO_SOCKET_CLOSED);
             socket->state = CLOSED;
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: named-pipe error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 (int)GetLastError());
             aws_raise_error(s_determine_socket_error(status_code));
             socket->state = ERRORED;
@@ -1574,7 +1587,11 @@ static void s_incoming_pipe_connection_event(
     bool continue_accept_loop = !socket_impl->stop_accept;
 
     do {
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: incoming connection", socket, socket->io_handle.data.handle);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: incoming connection",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         struct aws_socket *new_socket = aws_mem_acquire(socket->allocator, sizeof(struct aws_socket));
 
         if (!new_socket) {
@@ -1615,8 +1632,8 @@ static void s_incoming_pipe_connection_event(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: error rebinding named pipe with error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 (int)GetLastError());
             socket->state = ERRORED;
             operation_data->in_use = false;
@@ -1654,8 +1671,8 @@ static void s_incoming_pipe_connection_event(
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: named-pipe connect failed with error %d",
-                    socket,
-                    socket->io_handle.data.handle,
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle,
                     (int)GetLastError());
                 socket->state = ERRORED;
                 socket_impl->read_io_data->in_use = false;
@@ -1668,8 +1685,8 @@ static void s_incoming_pipe_connection_event(
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: no pending connections exiting accept loop.",
-                    socket,
-                    socket->io_handle.data.handle);
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle);
             }
         }
     } while (continue_accept_loop && !socket_impl->stop_accept);
@@ -1717,7 +1734,10 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
 
     while (true) {
         AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: performing non-blocking accept", socket, socket->io_handle.data.handle);
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: performing non-blocking accept",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         BOOL res = accept_fn(
             (SOCKET)socket->io_handle.data.handle,
             (SOCKET)socket_impl->incoming_socket->io_handle.data.handle,
@@ -1734,8 +1754,8 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: no pending incoming connections, exiting loop.",
-                    socket,
-                    socket->io_handle.data.handle);
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle);
                 return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
             } else if (AWS_UNLIKELY(win_err == WSAECONNRESET)) {
                 continue;
@@ -1744,9 +1764,9 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: accept failed with error %d",
-                socket,
-                socket->io_handle.data.handle,
-                WSAGetLastError());
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
+                (int)WSAGetLastError());
             socket->state = ERRORED;
             socket_impl->read_io_data->in_use = false;
             aws_mem_release(socket->allocator, socket_impl->incoming_socket);
@@ -1782,7 +1802,11 @@ static void s_tcp_accept_event(
         return;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p handle=%p: accept event triggered.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: accept event triggered.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
 
     if (!status_code && !socket_impl->stop_accept) {
@@ -1821,10 +1845,10 @@ static void s_tcp_accept_event(
             AWS_LOGF_INFO(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: incoming connection accepted from %s:%d.",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 socket_impl->incoming_socket->remote_endpoint.address,
-                port);
+                (int)port);
 
             u_long non_blocking = 1;
             ioctlsocket((SOCKET)socket_impl->incoming_socket->io_handle.data.handle, FIONBIO, &non_blocking);
@@ -1853,8 +1877,8 @@ static void s_tcp_accept_event(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: error occurred %d.",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             status_code);
         socket->state = ERRORED;
         int aws_error = s_determine_socket_error(status_code);
@@ -1876,8 +1900,8 @@ static int s_tcp_start_accept(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: invalid state for start_accept operation. You must call listen first.",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
@@ -1885,9 +1909,9 @@ static int s_tcp_start_accept(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: is already assigned to event-loop %p.",
-            socket,
-            socket->io_handle.data.handle,
-            socket->event_loop);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (void *)socket->event_loop);
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
@@ -1953,7 +1977,11 @@ static void s_stop_accept_task(struct aws_task *task, void *arg, enum aws_task_s
 }
 
 static int s_stream_stop_accept(struct aws_socket *socket) {
-    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p handle=%p: shutting down accept.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_INFO(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: shutting down accept.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     assert(socket->event_loop);
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         struct stop_accept_args args = {
@@ -1972,13 +2000,16 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: accept is shutting down, but it was called outside the "
             " event-loop thread. Blocking waiting on shutdown",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         aws_mutex_lock(&args.mutex);
         aws_event_loop_schedule_task_now(socket->event_loop, &stop_accept_task);
         aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_stop_accept_predicate, &args);
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: accept shutdown completed", socket, socket->io_handle.data.handle);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: accept shutdown completed",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
 
         if (args.ret_code) {
             socket->state = ERRORED;
@@ -2031,8 +2062,8 @@ static int s_local_start_accept(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: invalid state for start_accept operation. You must call listen first.",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
@@ -2040,17 +2071,17 @@ static int s_local_start_accept(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: is already assigned to event-loop %p.",
-            socket,
-            socket->io_handle.data.handle,
-            socket->event_loop);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (void *)socket->event_loop);
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: is starting to accept incoming connections",
-        socket,
-        socket->io_handle.data.handle);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
 
     if (!socket_impl->read_io_data) {
@@ -2085,8 +2116,8 @@ static int s_local_start_accept(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: ConnecteNamedPipe() failed with error %d.",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 error_code);
             socket->state = ERRORED;
             socket_impl->read_io_data->in_use = false;
@@ -2096,8 +2127,8 @@ static int s_local_start_accept(
             AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: Pipe connected immediately, scheduling task for setup.",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 error_code);
             /* There will be no IO-completion event in the case of ERROR_PIPE_CONNECTED,
             so schedule a task to finish the connection */
@@ -2135,7 +2166,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p fd=%d: setting socket options to: Keep Alive %d, Keep Idle %d, Keep Alive Interval %d,",
-        socket,
+        (void *)socket,
         socket->io_handle.data.fd,
         (int)options->keepalive,
         (int)options->keep_alive_timeout_sec,
@@ -2224,8 +2255,8 @@ static int s_wait_on_close(struct aws_socket *socket) {
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: closing from a different thread than "
         "the socket is running from. Blocking until it closes down.",
-        socket,
-        socket->io_handle.data.handle);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     struct close_args args = {
         .mutex = AWS_MUTEX_INIT,
@@ -2242,7 +2273,11 @@ static int s_wait_on_close(struct aws_socket *socket) {
     aws_mutex_lock(&args.mutex);
     aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
     aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_close_predicate, &args);
-    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p handle=%p: close task completed.", socket, socket->io_handle.data.handle);
+    AWS_LOGF_INFO(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: close task completed.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     if (args.ret_code) {
         return aws_raise_error(args.ret_code);
@@ -2253,7 +2288,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
 
 static int s_socket_close(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket, (void *)socket->io_handle.data.handle);
 
     if (socket->event_loop) {
         if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
@@ -2300,7 +2335,7 @@ static int s_socket_close(struct aws_socket *socket) {
 
 static int s_local_close(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket, (void *)socket->io_handle.data.handle);
 
     if (socket->event_loop) {
         if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
@@ -2343,7 +2378,11 @@ int aws_socket_half_close(struct aws_socket *socket, enum aws_channel_direction 
 
     struct iocp_socket *socket_impl = socket->impl;
     AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: shutting down in direction %d", socket, socket->io_handle.data.handle, dir);
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: shutting down in direction %d",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        dir);
     if (shutdown((SOCKET)socket->io_handle.data.handle, how)) {
         int error = WSAGetLastError();
         int aws_error = s_determine_socket_error(error);
@@ -2400,7 +2439,10 @@ static void s_stream_readable_event(
     }
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: socket readable event triggered", socket, socket->io_handle.data.handle);
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: socket readable event triggered",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
     socket->state = socket->state & ~CONNECTED_WAITING_ON_READABLE;
 
@@ -2409,8 +2451,8 @@ static void s_stream_readable_event(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: socket status error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             status_code);
         err_code = s_determine_socket_error(status_code);
         if (err_code == AWS_IO_SOCKET_CLOSED) {
@@ -2459,7 +2501,10 @@ static void s_dgram_readable_event(
     }
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: socket readable event triggered", socket, socket->io_handle.data.handle);
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: socket readable event triggered",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
     socket->state = socket->state & ~CONNECTED_WAITING_ON_READABLE;
 
@@ -2470,8 +2515,8 @@ static void s_dgram_readable_event(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: socket status error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             status_code);
         err_code = s_determine_socket_error(status_code);
         if (err_code == AWS_IO_SOCKET_CLOSED) {
@@ -2506,7 +2551,10 @@ static int s_stream_subscribe_to_read(
     socket->readable_user_data = user_data;
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: subscribing to readable event", socket, socket->io_handle.data.handle);
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: subscribing to readable event",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     struct iocp_socket *iocp_socket = socket->impl;
     iocp_socket->read_io_data->in_use = true;
@@ -2522,8 +2570,8 @@ static int s_stream_subscribe_to_read(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket ReadFile() failed with error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 wsa_err);
             iocp_socket->read_io_data->in_use = false;
             socket->state &= ~CONNECTED_WAITING_ON_READABLE;
@@ -2545,7 +2593,10 @@ static int s_dgram_subscribe_to_read(
     aws_socket_on_readable_fn *on_readable,
     void *user_data) {
     AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: subscribing to readable event", socket, socket->io_handle.data.handle);
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: subscribing to readable event",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     socket->readable_fn = on_readable;
     socket->readable_user_data = user_data;
 
@@ -2577,8 +2628,8 @@ static int s_dgram_subscribe_to_read(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket WSARecv() failed with error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 wsa_err);
             iocp_socket->read_io_data->in_use = false;
             int aws_error = s_determine_socket_error(wsa_err);
@@ -2594,7 +2645,11 @@ static int s_dgram_subscribe_to_read(
 }
 
 static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p handle=%p: reading from named pipe", socket, socket->io_handle.data.handle);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: reading from named pipe",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     DWORD bytes_available = 0;
     BOOL peek_success = PeekNamedPipe(socket->io_handle.data.handle, NULL, 0, NULL, &bytes_available, NULL);
@@ -2604,8 +2659,8 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: PeekNamedPipe() failed with error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             error_code);
         return aws_raise_error(s_determine_socket_error(error_code));
     }
@@ -2625,8 +2680,8 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: ReadFile() failed with error %d",
-                        socket,
-                        socket->io_handle.data.handle,
+                        (void *)socket,
+                        (void *)socket->io_handle.data.handle,
                         wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
@@ -2641,15 +2696,18 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         }
 
         AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: read would block, returning", socket, socket->io_handle.data.handle);
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: read would block, returning",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: data available for read %llu.",
-        socket,
-        socket->io_handle.data.handle,
+        "id=%p handle=%p: %u bytes available for read.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         bytes_available);
     DWORD bytes_read = 0;
     size_t read_capacity = buffer->capacity - buffer->len;
@@ -2668,8 +2726,8 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: socket ReadFile() failed with error %d",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             error_code);
         return aws_raise_error(aws_error);
     }
@@ -2677,16 +2735,20 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
     *amount_read = bytes_read;
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: successfully read %llu bytes.",
-        socket,
-        socket->io_handle.data.handle,
+        "id=%p handle=%p: successfully read %u bytes.",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         bytes_read);
     buffer->len += bytes_read;
     return AWS_OP_SUCCESS;
 }
 
 static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p handle=%p: reading from socket", socket, socket->io_handle.data.handle);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: reading from socket",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     int read_val = recv(
         (SOCKET)socket->io_handle.data.handle,
@@ -2698,8 +2760,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: read %d bytes from socket",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             read_val);
         *amount_read = (size_t)read_val;
         buffer->len += *amount_read;
@@ -2708,7 +2770,10 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
 
     if (read_val == 0) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed gracefully", socket, socket->io_handle.data.handle);
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket closed gracefully",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         socket->state = CLOSED;
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
@@ -2719,8 +2784,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: read would block, scheduling 0 byte read and returning",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         if (!(socket->state & CONNECTED_WAITING_ON_READABLE)) {
             struct iocp_socket *iocp_socket = socket->impl;
             socket->state |= CONNECTED_WAITING_ON_READABLE;
@@ -2735,8 +2800,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: ReadFile() for 0 byte read failed with error %d",
-                        socket,
-                        socket->io_handle.data.handle,
+                        (void *)socket,
+                        (void *)socket->io_handle.data.handle,
                         wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
@@ -2754,7 +2819,8 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
     }
 
     if (error == EPIPE) {
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", socket, socket->io_handle.data.handle);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, (void *)socket->io_handle.data.handle);
         socket->state = CLOSED;
         return aws_raise_error(AWS_IO_BROKEN_PIPE);
     }
@@ -2762,14 +2828,18 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: ReadFile() failed with error %d",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         error);
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
 
 static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p handle=%p: reading from socket", socket, socket->io_handle.data.handle);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: reading from socket",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
     int read_val = recv(
         (SOCKET)socket->io_handle.data.handle,
         (char *)buffer->buffer + buffer->len,
@@ -2780,8 +2850,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: read %d bytes from socket",
-            socket,
-            socket->io_handle.data.handle,
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
             read_val);
         *amount_read = (size_t)read_val;
         buffer->len += *amount_read;
@@ -2790,7 +2860,10 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
 
     if (read_val == 0) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed gracefully", socket, socket->io_handle.data.handle);
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket closed gracefully",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         socket->state = CLOSED;
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
@@ -2801,8 +2874,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: read would block, scheduling 0 byte read and returning",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         if (!(socket->state & CONNECTED_WAITING_ON_READABLE)) {
             struct iocp_socket *iocp_socket = socket->impl;
             socket->state |= CONNECTED_WAITING_ON_READABLE;
@@ -2831,8 +2904,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: WSARecv() for 0 byte read failed with error %d",
-                        socket,
-                        socket->io_handle.data.handle,
+                        (void *)socket,
+                        (void *)socket->io_handle.data.handle,
                         wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
@@ -2851,7 +2924,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
     }
 
     if (error == EPIPE) {
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", socket, socket->io_handle.data.handle);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, (void *)socket->io_handle.data.handle);
         socket->state = CLOSED;
         return aws_raise_error(AWS_IO_BROKEN_PIPE);
     }
@@ -2859,8 +2933,8 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: ReadFile() failed with error %d",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         error);
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
 }
@@ -2901,8 +2975,8 @@ static void s_socket_written_event(
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: Write Completion callback triggered",
-        socket,
-        socket->io_handle.data.handle);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle);
 
     if (status_code) {
         if (aws_error_code == AWS_IO_SOCKET_CLOSED) {
@@ -2914,9 +2988,9 @@ static void s_socket_written_event(
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Write of size %llu completed",
-            socket,
-            socket->io_handle.data.handle,
-            num_bytes_transferred);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (unsigned long long)num_bytes_transferred);
         assert(num_bytes_transferred == write_cb_args->original_buffer_len);
     }
 
@@ -2942,8 +3016,8 @@ int aws_socket_write(
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: cannot write to because it is not connected",
-            socket,
-            socket->io_handle.data.handle);
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
@@ -2968,8 +3042,8 @@ int aws_socket_write(
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: queueing write of %llu bytes",
-        socket,
-        socket->io_handle.data.handle,
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
         (unsigned long long)cursor->len);
 
     BOOL res = WriteFile(
@@ -2985,8 +3059,8 @@ int aws_socket_write(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: WriteFile() failed with error %d",
-                socket,
-                socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 error_code);
 
             aws_linked_list_remove(&write_cb_data->io_data.node);
