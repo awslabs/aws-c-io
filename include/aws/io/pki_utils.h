@@ -16,9 +16,7 @@
  */
 #include <aws/io/io.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Cleans up and securely zeroes out the outputs of 'aws_decode_pem_to_buffer_list()'
@@ -134,8 +132,6 @@ AWS_IO_API int aws_import_key_pair_to_cert_context(
     PCCERT_CONTEXT *certs);
 #endif /* _WIN32 */
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_PKI_UTILS_H */

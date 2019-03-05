@@ -42,6 +42,8 @@ endif ()
 add_test_case(event_loop_stop_then_restart)
 add_test_case(event_loop_group_setup_and_shutdown)
 
+add_test_case(io_testing_channel)
+
 add_test_case(local_socket_communication)
 add_test_case(tcp_socket_communication)
 add_test_case(udp_socket_communication)
