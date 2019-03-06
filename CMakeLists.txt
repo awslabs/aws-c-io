@@ -77,6 +77,8 @@ if (WIN32)
     set(PLATFORM_LIBS Secur32 Crypt32)
     set(TLS_STACK_DETERMINED ON)
 
+    set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
+
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     file(GLOB AWS_IO_OS_HEADERS
             )
@@ -86,6 +88,9 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             "source/posix/*.c"
             )
     set(PLATFORM_LIBS "")
+
+    set(EVENT_LOOP_DEFINE "EPOLL")
+
 elseif (APPLE)
 
     file(GLOB AWS_IO_OS_HEADERS
@@ -97,14 +102,16 @@ elseif (APPLE)
             "source/darwin/*.c"
             )
 
-        find_library(SECURITY_LIB Security)
-        if (NOT SECURITY_LIB)
-            message(FATAL_ERROR "Security framework not found")
-        endif ()
+    find_library(SECURITY_LIB Security)
+    if (NOT SECURITY_LIB)
+        message(FATAL_ERROR "Security framework not found")
+    endif ()
 
-        #No choice on TLS for apple, darwinssl will always be used.
-        set(PLATFORM_LIBS ${SECURITY_LIB})
-        set(TLS_STACK_DETERMINED ON)
+    #No choice on TLS for apple, darwinssl will always be used.
+    set(PLATFORM_LIBS ${SECURITY_LIB})
+    set(TLS_STACK_DETERMINED ON)
+
+    set(EVENT_LOOP_DEFINE "KQUEUE")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
     file(GLOB AWS_IO_OS_HEADERS
@@ -114,6 +121,8 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             "source/bsd/*.c"
             "source/posix/*.c"
             )
+
+    set(EVENT_LOOP_DEFINE "KQUEUE")
 
 endif()
 
@@ -171,9 +180,7 @@ aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
-if (USE_IO_COMPLETION_PORTS)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_IO_COMPLETION_PORTS")
-endif ()
+target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
 
 if (USE_LIBUV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)

@@ -22,8 +22,25 @@
 
 #include <uv.h>
 
+#if defined(AWS_USE_EPOLL)
+#    include <sys/epoll.h>
+#    define EVENT_LOOP_FLAGS (EPOLLET | EPOLLRDHUP)
+#elif defined(AWS_USE_KQUEUE)
+#    include <sys/event.h>
+#    define EVENT_LOOP_FLAGS EV_CLEAR
+#endif
+
 /* Poison queue_work, this spawns threads */
 #pragma GCC poison uv_queue_work
+
+/* libuv < 1.x had a status param that was largely unused, need to insert it where necessary */
+#if UV_VERSION_MAJOR == 0
+#    define UV_STATUS_PARAM , int _status
+#    define UV_STATUS_PARAM_UNUSED (void)_status
+#else
+#    define UV_STATUS_PARAM
+#    define UV_STATUS_PARAM_UNUSED
+#endif
 
 struct libuv_loop {
     /* The underlying libuv loop */
@@ -145,31 +162,71 @@ static uint64_t s_timestamp_to_uv_millis(struct aws_event_loop *event_loop, cons
     return time_to_run;
 }
 
-static void s_uv_poll_cb(uv_poll_t *handle, int status, int events) {
+static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
 
+    (void)loop;
+
+    uv_poll_t *handle = AWS_CONTAINER_OF(w, uv_poll_t, io_watcher);
     struct handle_data *handle_data = handle->data;
     int aws_events = 0;
 
-    uv_os_fd_t fd = 0;
-    if (uv_fileno((uv_handle_t *)handle, &fd)) {
-        return;
-    }
-
-    if (status >= 0) {
-        if (events & UV_DISCONNECT) {
-            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
-        }
-        if (events & UV_READABLE) {
+#if defined(AWS_USE_EPOLL)
+    if (events & EPOLLERR) {
+        uv_poll_stop(handle);
+        aws_events = AWS_IO_EVENT_TYPE_ERROR;
+    } else {
+        if (events & EPOLLIN) {
             aws_events |= AWS_IO_EVENT_TYPE_READABLE;
         }
-        if (events & UV_WRITABLE) {
+        if (events & EPOLLOUT) {
             aws_events |= AWS_IO_EVENT_TYPE_WRITABLE;
         }
-    } else {
-        aws_events = AWS_IO_EVENT_TYPE_ERROR;
+        if (events & EPOLLRDHUP) {
+            aws_events |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+        }
+        if (events & EPOLLHUP) {
+            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
+        }
     }
+#elif defined(AWS_USE_KQUEUE)
+    if (kevent->flags & EV_ERROR) {
+        aws_events |= AWS_IO_EVENT_TYPE_ERROR;
+    } else if (kevent->filter == EVFILT_READ) {
+        if (kevent->data != 0) {
+            aws_events |= AWS_IO_EVENT_TYPE_READABLE;
+        }
+
+        if (kevent->flags & EV_EOF) {
+            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
+        }
+    } else if (kevent->filter == EVFILT_WRITE) {
+        if (kevent->data != 0) {
+            aws_events |= AWS_IO_EVENT_TYPE_WRITABLE;
+        }
+
+        if (kevent->flags & EV_EOF) {
+            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
+        }
+    }
+#endif
 
     handle_data->on_event(handle_data->event_loop, handle_data->owner, aws_events, handle_data->on_event_user_data);
+}
+
+static void s_do_subscribe(struct libuv_loop *impl, struct handle_data *handle_data) {
+
+    /* Initalize the handle to default state */
+    uv_poll_init(impl->uv_loop, &handle_data->poll, handle_data->owner->data.fd);
+    handle_data->poll.data = handle_data;
+
+    /* Overwrite watcher callback because the default one filters the events down to just readable & writable */
+    handle_data->poll.io_watcher.cb = s_uv_poll_cb;
+
+    /* Set internal flags to a) get edge triggering and b) get remote hangup notifications */
+    handle_data->poll.io_watcher.pevents |= EVENT_LOOP_FLAGS;
+
+    /* Start listening for events */
+    uv_poll_start(&handle_data->poll, handle_data->uv_events, (uv_poll_cb)0xBAADF00D);
 }
 
 static void s_uv_close_handle(uv_handle_t *handle) {
@@ -234,9 +291,13 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     aws_hash_table_clean_up(&impl->active_thread_data.running_tasks);
 
     if (impl->owns_uv_loop) {
+#if UV_VERSION_MAJOR == 0
+        uv_loop_delete(impl->uv_loop);
+#else
         assert(!uv_loop_alive(impl->uv_loop));
         int result = uv_loop_close(impl->uv_loop);
         assert(result == 0);
+#endif
         aws_thread_clean_up(&s_owned(impl)->thread);
     }
     impl->uv_loop = NULL;
@@ -267,7 +328,9 @@ static void s_thread_loop(void *args) {
     s_owned(impl)->state = EVENT_THREAD_STATE_READY_TO_RUN;
 }
 
-static void s_uv_task_timer_cb(uv_timer_t *handle) {
+static void s_uv_task_timer_cb(uv_timer_t *handle UV_STATUS_PARAM) {
+    UV_STATUS_PARAM_UNUSED;
+
     struct task_data *task = handle->data;
     struct libuv_loop *impl = task->event_loop->impl_data;
 
@@ -307,7 +370,9 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
 }
 
 /* Wakes up the event loop and passes pending tasks to the real task scheduler */
-static void s_uv_async_schedule_tasks(uv_async_t *request) {
+static void s_uv_async_schedule_tasks(uv_async_t *request UV_STATUS_PARAM) {
+    UV_STATUS_PARAM_UNUSED;
+
     struct libuv_loop *impl = request->data;
     assert(impl);
 
@@ -346,7 +411,9 @@ static int s_running_tasks_stop(void *context, struct aws_hash_element *element)
 }
 
 /* Wakes up the event loop and stops it */
-static void s_uv_async_stop_loop(uv_async_t *request) {
+static void s_uv_async_stop_loop(uv_async_t *request UV_STATUS_PARAM) {
+    UV_STATUS_PARAM_UNUSED;
+
     struct libuv_loop *impl = request->data;
     assert(impl);
 
@@ -399,19 +466,19 @@ static int s_run(struct aws_event_loop *event_loop) {
     /* Lock the active thread mutex to ensure no one is tweaking the data that will be owned by the uv thread */
     aws_mutex_lock(&impl->active_thread_data.mutex);
 
-    impl->pending_tasks.schedule_async.data = impl;
     if (uv_async_init(impl->uv_loop, &impl->pending_tasks.schedule_async, s_uv_async_schedule_tasks)) {
         aws_mutex_unlock(&impl->active_thread_data.mutex);
         return AWS_OP_ERR;
     }
+    impl->pending_tasks.schedule_async.data = impl;
     uv_unref((uv_handle_t *)&impl->pending_tasks.schedule_async);
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Prep the stop async */
-    impl->stop_async.data = impl;
     if (uv_async_init(impl->uv_loop, &impl->stop_async, s_uv_async_stop_loop)) {
         goto clean_up;
     }
+    impl->stop_async.data = impl;
     uv_unref((uv_handle_t *)&impl->stop_async);
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
@@ -421,10 +488,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         aws_linked_list_end(&impl->active_thread_data.open_subscriptions);
     while (open_subs_it != open_subs_end) {
         struct handle_data *handle_data = AWS_CONTAINER_OF(open_subs_it, struct handle_data, open_subs_node);
-        if (uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb)) {
-            goto clean_up;
-        }
-        aws_atomic_fetch_add(&impl->num_open_handles, 1);
+        s_do_subscribe(impl, handle_data);
 
         open_subs_it = open_subs_it->next;
     }
@@ -566,13 +630,13 @@ static void s_uv_close_sub_async(uv_handle_t *handle) {
     s_uv_close_handle(handle);
 }
 
-static void s_uv_async_poll_start(uv_async_t *handle) {
+static void s_uv_async_poll_start(uv_async_t *handle UV_STATUS_PARAM) {
+    UV_STATUS_PARAM_UNUSED;
 
     struct handle_data *handle_data = handle->data;
     struct libuv_loop *impl = handle_data->event_loop->impl_data;
 
-    uv_poll_init(impl->uv_loop, &handle_data->poll, handle_data->owner->data.fd);
-    uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb);
+    s_do_subscribe(impl, handle_data);
 
     aws_linked_list_push_back(&impl->active_thread_data.open_subscriptions, &handle_data->open_subs_node);
 
@@ -605,15 +669,13 @@ static int s_subscribe_to_io_events(
 
     /* Set parameters */
     AWS_ZERO_STRUCT(*handle_data);
-    handle_data->poll.data = handle_data;
     handle_data->owner = handle;
     handle_data->event_loop = event_loop;
     handle_data->on_event = on_event;
     handle_data->on_event_user_data = user_data;
-    handle_data->poll_start_async.data = handle_data;
 
     /* Calculate event flags */
-    handle_data->uv_events = UV_DISCONNECT;
+    handle_data->uv_events = 0;
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         handle_data->uv_events |= UV_READABLE;
     }
@@ -625,8 +687,7 @@ static int s_subscribe_to_io_events(
         /* If the loop is running, do the subscribe */
         if (s_is_on_callers_thread(event_loop)) {
             /* If on UV thread, directly start sub */
-            uv_poll_init(impl->uv_loop, &handle_data->poll, handle_data->owner->data.fd);
-            uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_cb);
+            s_do_subscribe(impl, handle_data);
 
             aws_linked_list_push_back(&impl->active_thread_data.open_subscriptions, &handle_data->open_subs_node);
         } else {
@@ -634,6 +695,7 @@ static int s_subscribe_to_io_events(
             aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
             uv_async_init(impl->uv_loop, &handle_data->poll_start_async, s_uv_async_poll_start);
+            handle_data->poll_start_async.data = handle_data;
             uv_async_send(&handle_data->poll_start_async);
         }
     } else {
@@ -654,6 +716,8 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct handle_data *handle_data = handle->additional_data;
     handle->additional_data = NULL;
 
+    /* Reset events mask to what uv expects to avoid it thinking we're just modifying the subscription */
+    handle_data->poll.io_watcher.pevents &= ~EVENT_LOOP_FLAGS;
     if (uv_poll_stop(&handle_data->poll)) {
         return AWS_OP_ERR;
     }
@@ -744,17 +808,28 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     struct libuv_loop *impl = NULL;
     struct libuv_owned *owned = NULL;
     uv_loop_t *uv_loop = NULL;
+
+#if UV_VERSION_MAJOR == 0
+    size_t alloc_count = 3;
+#else
+    size_t alloc_count = 4;
+#endif
+
     aws_mem_acquire_many(
         alloc,
-        4,
+        alloc_count,
         &event_loop,
         sizeof(*event_loop),
         &impl,
         sizeof(*impl),
         &owned,
-        sizeof(*owned),
+        sizeof(*owned)
+#if UV_VERSION_MAJOR > 0
+            ,
         &uv_loop,
-        sizeof(*uv_loop));
+        sizeof(*uv_loop)
+#endif
+    );
 
     if (!event_loop) {
         return NULL;
@@ -763,15 +838,18 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     AWS_ZERO_STRUCT(*event_loop);
     AWS_ZERO_STRUCT(*impl);
     AWS_ZERO_STRUCT(*owned);
-    AWS_ZERO_STRUCT(*uv_loop);
 
-    impl->uv_loop = uv_loop;
     impl->owns_uv_loop = true;
     impl->ownership_specific.uv_owned = owned;
 
-    if (uv_loop_init(impl->uv_loop)) {
+#if UV_VERSION_MAJOR == 0
+    uv_loop = uv_loop_new();
+#else
+    AWS_ZERO_STRUCT(*uv_loop);
+    if (uv_loop_init(uv_loop)) {
         goto clean_up;
     }
+#endif
 
     if (aws_thread_init(&owned->thread, alloc)) {
         goto clean_up;
@@ -787,15 +865,21 @@ clean_up:
     if (owned->thread.thread_id) {
         aws_thread_clean_up(&owned->thread);
     }
-    if (impl->uv_loop) {
-        uv_loop_close(impl->uv_loop);
+    if (uv_loop) {
+#if UV_VERSION_MAJOR == 0
+        uv_loop_delete(uv_loop);
+#else
+        uv_loop_close(uv_loop);
+#endif
     }
     aws_mem_release(alloc, event_loop);
 
     return NULL;
 }
 
-static void s_get_uv_thread_id(uv_async_t *request) {
+static void s_get_uv_thread_id(uv_async_t *request UV_STATUS_PARAM) {
+    UV_STATUS_PARAM_UNUSED;
+
     struct libuv_loop *impl = request->data;
 
     s_unowned(impl)->uv_thread_id = aws_thread_current_thread_id();

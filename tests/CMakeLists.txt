@@ -153,11 +153,6 @@ add_test_case(test_pipeline_logger_formatted_test)
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
-# libuv is level triggered, so don't test edge trigger-ness
-if (NOT USE_LIBUV)
-    target_compile_definitions(${TEST_BINARY_NAME} PRIVATE AWS_TEST_EDGE_TRIGGERS=1)
-endif ()
-
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
