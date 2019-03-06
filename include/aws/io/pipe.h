@@ -55,9 +55,7 @@ typedef void(aws_pipe_on_write_completed_fn)(
     struct aws_byte_cursor src_buffer,
     void *user_data);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Opens an OS specific bidirectional pipe.
@@ -155,8 +153,6 @@ AWS_IO_API
 int aws_pipe_get_unique_name(char *dst, size_t dst_size);
 #endif
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_PIPE_H */

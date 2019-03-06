@@ -38,9 +38,7 @@ struct aws_message_pool_creation_args {
     uint8_t small_block_msg_count;
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
 int aws_memory_pool_init(
@@ -93,8 +91,6 @@ struct aws_io_message *aws_message_pool_acquire(
 AWS_IO_API
 void aws_message_pool_release(struct aws_message_pool *msg_pool, struct aws_io_message *message);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_MESSAGE_POOL_H */

@@ -98,9 +98,7 @@ struct aws_host_resolver {
     struct aws_host_resolver_vtable *vtable;
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Copies `from` to `to`.
@@ -208,8 +206,6 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_HOST_RESOLVER_H */

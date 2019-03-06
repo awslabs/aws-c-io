@@ -115,9 +115,7 @@ struct aws_event_loop_group {
     struct aws_atomic_var current_index;
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 #ifdef AWS_USE_IO_COMPLETION_PORTS
 /**
@@ -389,8 +387,6 @@ size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_EVENT_LOOP_H */

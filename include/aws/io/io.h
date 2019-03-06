@@ -139,9 +139,7 @@ enum aws_io_errors {
     AWS_IO_ERROR_END_RANGE = 0x07FF
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Loads error strings for this API so that aws_last_error_str etc... will return useful debug strings.
@@ -149,8 +147,6 @@ extern "C" {
 AWS_IO_API
 void aws_io_load_error_strings(void);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_IO_H */

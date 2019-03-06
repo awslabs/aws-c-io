@@ -18,9 +18,7 @@
 
 #include <aws/io/io.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Reads 'filename' into 'out_buf'. If successful, 'out_buf' is allocated and filled with the data;
@@ -39,8 +37,6 @@ int aws_io_translate_and_raise_file_open_error(int error_no);
 AWS_IO_API
 int aws_io_translate_and_raise_file_write_error(int error_no);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif // AWS_IO_FILE_UTILS_H
