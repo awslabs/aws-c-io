@@ -20,14 +20,19 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include <poll.h>
 #include <uv.h>
 
 #if defined(AWS_USE_EPOLL)
 #    include <sys/epoll.h>
+
+#    define POLLRDHUP EPOLLRDHUP
 #    define EVENT_LOOP_FLAGS (EPOLLET | EPOLLRDHUP)
 #elif defined(AWS_USE_KQUEUE)
 #    include <sys/event.h>
-#    define EVENT_LOOP_FLAGS EV_CLEAR
+
+#    define POLLRDHUP 0x2000
+#    define EVENT_LOOP_FLAGS 0
 #endif
 
 /* Poison queue_work, this spawns threads */
@@ -170,45 +175,23 @@ static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
     struct handle_data *handle_data = handle->data;
     int aws_events = 0;
 
-#if defined(AWS_USE_EPOLL)
-    if (events & EPOLLERR) {
+    if (events & POLLERR) {
         uv_poll_stop(handle);
         aws_events = AWS_IO_EVENT_TYPE_ERROR;
     } else {
-        if (events & EPOLLIN) {
+        if (events & POLLIN) {
             aws_events |= AWS_IO_EVENT_TYPE_READABLE;
         }
-        if (events & EPOLLOUT) {
+        if (events & POLLOUT) {
             aws_events |= AWS_IO_EVENT_TYPE_WRITABLE;
         }
-        if (events & EPOLLRDHUP) {
+        if (events & POLLRDHUP) {
             aws_events |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
         }
-        if (events & EPOLLHUP) {
+        if (events & POLLHUP) {
             aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
         }
     }
-#elif defined(AWS_USE_KQUEUE)
-    if (kevent->flags & EV_ERROR) {
-        aws_events |= AWS_IO_EVENT_TYPE_ERROR;
-    } else if (kevent->filter == EVFILT_READ) {
-        if (kevent->data != 0) {
-            aws_events |= AWS_IO_EVENT_TYPE_READABLE;
-        }
-
-        if (kevent->flags & EV_EOF) {
-            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
-        }
-    } else if (kevent->filter == EVFILT_WRITE) {
-        if (kevent->data != 0) {
-            aws_events |= AWS_IO_EVENT_TYPE_WRITABLE;
-        }
-
-        if (kevent->flags & EV_EOF) {
-            aws_events |= AWS_IO_EVENT_TYPE_CLOSED;
-        }
-    }
-#endif
 
     handle_data->on_event(handle_data->event_loop, handle_data->owner, aws_events, handle_data->on_event_user_data);
 }
@@ -225,8 +208,51 @@ static void s_do_subscribe(struct libuv_loop *impl, struct handle_data *handle_d
     /* Set internal flags to a) get edge triggering and b) get remote hangup notifications */
     handle_data->poll.io_watcher.pevents |= EVENT_LOOP_FLAGS;
 
+#if UV_VERSION_MAJOR == 0
+    /* uv won't let us tell it we care about remote hangups, so we have to trick it into thinking it wants it */
+    handle_data->poll.io_watcher.pevents |= POLLRDHUP;
+#else
+    /* Can't use RDHUP trick here, since uv will turn it off in uv__io_stop */
+    handle_data->uv_events |= UV_DISCONNECT;
+#endif
+
     /* Start listening for events */
     uv_poll_start(&handle_data->poll, handle_data->uv_events, (uv_poll_cb)0xBAADF00D);
+
+#if defined(AWS_USE_KQUEUE)
+    /* Need to re-subscribe using EV_CLEAR. Impl shamelessly stolen from kqueue_event_loop.c */
+    struct kevent changelist[2];
+    AWS_ZERO_ARRAY(changelist);
+    int changelist_size = 0;
+    if (handle_data->uv_events & UV_READABLE) {
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_READ /*filter*/,
+            EV_ADD | EV_RECEIPT | EV_CLEAR /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
+    }
+    if (handle_data->uv_events & UV_WRITABLE) {
+        EV_SET(
+            &changelist[changelist_size++],
+            handle_data->owner->data.fd,
+            EVFILT_WRITE /*filter*/,
+            EV_ADD | EV_RECEIPT | EV_CLEAR /*flags*/,
+            0 /*fflags*/,
+            0 /*data*/,
+            handle_data /*udata*/);
+    }
+
+    kevent(
+        uv_backend_fd(impl->uv_loop),
+        changelist /*changelist*/,
+        changelist_size /*nchanges*/,
+        changelist /*eventlist. It's OK to re-use the same memory for changelist input and eventlist output*/,
+        changelist_size /*nevents*/,
+        NULL /*timeout*/);
+#endif /* AWS_USE_KQUEUE */
 }
 
 static void s_uv_close_handle(uv_handle_t *handle) {
