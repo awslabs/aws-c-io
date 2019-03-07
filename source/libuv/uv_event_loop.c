@@ -196,6 +196,15 @@ static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
     handle_data->on_event(handle_data->event_loop, handle_data->owner, aws_events, handle_data->on_event_user_data);
 }
 
+static void s_uv_poll_assert_cb(uv_poll_t* handle, int status, int events) {
+    (void)handle;
+    (void)status;
+    (void)events;
+
+    /* If this triggers, s_uv_poll_cb wasn't properly installed */
+    AWS_FATAL_ASSERT(false);
+}
+
 static void s_do_subscribe(struct libuv_loop *impl, struct handle_data *handle_data) {
 
     /* Initalize the handle to default state */
@@ -217,7 +226,7 @@ static void s_do_subscribe(struct libuv_loop *impl, struct handle_data *handle_d
 #endif
 
     /* Start listening for events. The callback should never actually be called, so we use a poison. */
-    uv_poll_start(&handle_data->poll, handle_data->uv_events, (uv_poll_cb)0xBAADF00D);
+    uv_poll_start(&handle_data->poll, handle_data->uv_events, s_uv_poll_assert_cb);
 
 #if defined(AWS_USE_KQUEUE)
     /* Need to re-subscribe using EV_CLEAR. Impl shamelessly stolen from kqueue_event_loop.c */
