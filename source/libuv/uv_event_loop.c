@@ -216,7 +216,7 @@ static void s_do_subscribe(struct libuv_loop *impl, struct handle_data *handle_d
     handle_data->uv_events |= UV_DISCONNECT;
 #endif
 
-    /* Start listening for events */
+    /* Start listening for events. The callback should never actually be called, so we use a poison. */
     uv_poll_start(&handle_data->poll, handle_data->uv_events, (uv_poll_cb)0xBAADF00D);
 
 #if defined(AWS_USE_KQUEUE)
@@ -836,9 +836,9 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
     uv_loop_t *uv_loop = NULL;
 
 #if UV_VERSION_MAJOR == 0
-    size_t alloc_count = 3;
+    const size_t alloc_count = 3;
 #else
-    size_t alloc_count = 4;
+    const size_t alloc_count = 4;
 #endif
 
     aws_mem_acquire_many(
