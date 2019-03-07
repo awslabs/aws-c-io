@@ -196,7 +196,7 @@ static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
     handle_data->on_event(handle_data->event_loop, handle_data->owner, aws_events, handle_data->on_event_user_data);
 }
 
-static void s_uv_poll_assert_cb(uv_poll_t* handle, int status, int events) {
+static void s_uv_poll_assert_cb(uv_poll_t *handle, int status, int events) {
     (void)handle;
     (void)status;
     (void)events;

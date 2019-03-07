@@ -63,6 +63,8 @@ if (WIN32)
                 "source/windows/iocp/*.c"
                 )
          list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
+
+         set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
     endif ()
 
     if (MSVC)
@@ -76,8 +78,6 @@ if (WIN32)
     #Also note, you don't get a choice on TLS implementation for Windows.
     set(PLATFORM_LIBS Secur32 Crypt32)
     set(TLS_STACK_DETERMINED ON)
-
-    set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     file(GLOB AWS_IO_OS_HEADERS
