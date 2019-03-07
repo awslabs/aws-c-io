@@ -721,18 +721,14 @@ static int s_state_on_writable(struct thread_tester *tester) {
 
 static int s_state_fail_if_more_readable_events(struct thread_tester *tester) {
     PRINT_STATE();
-#    ifdef AWS_TEST_EDGE_TRIGGERS
     ASSERT_INT_EQUALS(0, tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE]);
-#    endif /* AWS_TEST_EDGE_TRIGGERS */
 
     return AWS_OP_SUCCESS;
 }
 
 static int s_state_fail_if_more_writable_events(struct thread_tester *tester) {
     PRINT_STATE();
-#    ifdef AWS_TEST_EDGE_TRIGGERS
     ASSERT_INT_EQUALS(0, tester->write_handle_event_counts[AWS_IO_EVENT_TYPE_WRITABLE]);
-#    endif /* AWS_TEST_EDGE_TRIGGERS */
 
     return AWS_OP_SUCCESS;
 }
