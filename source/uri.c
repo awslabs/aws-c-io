@@ -93,6 +93,11 @@ int aws_uri_init_from_builder_options(
     struct aws_uri *uri,
     struct aws_allocator *allocator,
     struct aws_uri_builder_options *options) {
+
+    if (options->query_string.len && options->query_params) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
     AWS_ZERO_STRUCT(*uri);
     uri->self_size = sizeof(struct aws_uri);
     uri->allocator = allocator;
@@ -112,16 +117,22 @@ int aws_uri_init_from_builder_options(
 
     buffer_size += options->path.len;
 
-    size_t query_len = aws_array_list_length(&options->query_params);
-    if (query_len) {
+    if (options->query_params) {
+        size_t query_len = aws_array_list_length(options->query_params);
+        if (query_len) {
+            /* for the '?' */
+            buffer_size += 1;
+            for (size_t i = 0; i < query_len; ++i) {
+                struct aws_uri_param *uri_param_ptr = NULL;
+                aws_array_list_get_at_ptr(options->query_params, (void **)&uri_param_ptr, i);
+                /* 2 == 1 for '&' and 1 for '='. who cares if we over-allocate a little?  */
+                buffer_size += uri_param_ptr->key.len + uri_param_ptr->value.len + 2;
+            }
+        }
+    } else if (options->query_string.len) {
         /* for the '?' */
         buffer_size += 1;
-        for (size_t i = 0; i < query_len; ++i) {
-            struct aws_uri_param *uri_param_ptr = NULL;
-            aws_array_list_get_at_ptr(&options->query_params, (void **)&uri_param_ptr, i);
-            /* 2 == 1 for '&' and 1 for '='. who cares if we over-allocate a little?  */
-            buffer_size += uri_param_ptr->key.len + uri_param_ptr->value.len + 2;
-        }
+        buffer_size += options->query_string.len;
     }
 
     if (aws_byte_buf_init(&uri->uri_str, allocator, buffer_size)) {
@@ -148,15 +159,17 @@ int aws_uri_init_from_builder_options(
 
     aws_byte_buf_append(&uri->uri_str, &options->path);
 
-    if (query_len) {
-        struct aws_byte_cursor query_app = aws_byte_cursor_from_c_str("?");
+    struct aws_byte_cursor query_app = aws_byte_cursor_from_c_str("?");
+
+    if (options->query_params) {
         struct aws_byte_cursor query_param_app = aws_byte_cursor_from_c_str("&");
         struct aws_byte_cursor key_value_delim = aws_byte_cursor_from_c_str("=");
 
         aws_byte_buf_append(&uri->uri_str, &query_app);
+        size_t query_len = aws_array_list_length(options->query_params);
         for (size_t i = 0; i < query_len; ++i) {
             struct aws_uri_param *uri_param_ptr = NULL;
-            aws_array_list_get_at_ptr(&options->query_params, (void **)&uri_param_ptr, i);
+            aws_array_list_get_at_ptr(options->query_params, (void **)&uri_param_ptr, i);
             aws_byte_buf_append(&uri->uri_str, &uri_param_ptr->key);
             aws_byte_buf_append(&uri->uri_str, &key_value_delim);
             aws_byte_buf_append(&uri->uri_str, &uri_param_ptr->value);
@@ -165,6 +178,9 @@ int aws_uri_init_from_builder_options(
                 aws_byte_buf_append(&uri->uri_str, &query_param_app);
             }
         }
+    } else if (options->query_string.len) {
+        aws_byte_buf_append(&uri->uri_str, &query_app);
+        aws_byte_buf_append(&uri->uri_str, &options->query_string);
     }
 
     return s_init_from_uri_str(uri);
@@ -366,7 +382,7 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
             return;
         }
 
-        parser->uri->port = (uint16_t) port_int;
+        parser->uri->port = (uint16_t)port_int;
     }
 }
 

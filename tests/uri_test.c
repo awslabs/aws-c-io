@@ -410,7 +410,7 @@ static int s_test_uri_builder(struct aws_allocator *allocator, void *ctx) {
         .path = uri.path,
         .host_name = uri.host_name,
         .port = uri.port,
-        .query_params = params_list,
+        .query_params = &params_list,
     };
 
     struct aws_uri built_uri;
@@ -447,3 +447,59 @@ static int s_test_uri_builder(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(uri_builder, s_test_uri_builder);
+
+static int s_test_uri_builder_from_string(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    const char *str_uri =
+        "https://www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
+
+    struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
+    struct aws_uri uri;
+    ASSERT_SUCCESS(aws_uri_init_parse(&uri, allocator, &uri_csr));
+
+    struct aws_uri_param params[4];
+    AWS_ZERO_ARRAY(params);
+
+    struct aws_byte_cursor query_string =
+        aws_byte_cursor_from_c_str("test1=value1&test%20space=value%20space&test2=value2&test2=value3");
+
+    struct aws_uri_builder_options builder_args = {
+        .scheme = uri.scheme,
+        .path = uri.path,
+        .host_name = uri.host_name,
+        .port = uri.port,
+        .query_string = query_string,
+    };
+
+    struct aws_uri built_uri;
+    ASSERT_SUCCESS(aws_uri_init_from_builder_options(&built_uri, allocator, &builder_args));
+
+    struct aws_byte_cursor expected_scheme = aws_byte_cursor_from_c_str("https");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_scheme.ptr, expected_scheme.len, built_uri.scheme.ptr, built_uri.scheme.len);
+
+    struct aws_byte_cursor expected_authority = aws_byte_cursor_from_c_str("www.test.com:8443");
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_authority.ptr, expected_authority.len, built_uri.authority.ptr, built_uri.authority.len);
+
+    struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, built_uri.host_name.ptr, built_uri.host_name.len);
+
+    ASSERT_UINT_EQUALS(8443, built_uri.port);
+
+    struct aws_byte_cursor expected_path = aws_byte_cursor_from_c_str("/path/to/resource");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_path.ptr, expected_path.len, built_uri.path.ptr, built_uri.path.len);
+
+    ASSERT_BIN_ARRAYS_EQUALS(
+        query_string.ptr, query_string.len, built_uri.query_string.ptr, built_uri.query_string.len);
+
+    struct aws_byte_cursor expected_request_uri = aws_byte_cursor_from_c_str(
+        "/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3");
+    ASSERT_BIN_ARRAYS_EQUALS(
+        expected_request_uri.ptr, expected_request_uri.len, built_uri.path_and_query.ptr, built_uri.path_and_query.len);
+
+    aws_uri_clean_up(&uri);
+    aws_uri_clean_up(&built_uri);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(uri_builder_from_string, s_test_uri_builder_from_string);

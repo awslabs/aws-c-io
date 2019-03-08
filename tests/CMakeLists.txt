@@ -163,6 +163,7 @@ add_test_case(uri_invalid_scheme_parse)
 add_test_case(uri_invalid_port_parse)
 add_test_case(uri_port_too_large_parse)
 add_test_case(uri_builder)
+add_test_case(uri_builder_from_string)
 
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})

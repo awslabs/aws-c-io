@@ -47,13 +47,17 @@ struct aws_uri_param {
 /**
  * Arguments for building a URI instance. All members must
  * be initialized before passing them to aws_uri_init().
+ *
+ * query_string and query_params are exclusive to each other. If you set
+ * query_string, do not prepend it with '?'
  */
 struct aws_uri_builder_options {
     struct aws_byte_cursor scheme;
     struct aws_byte_cursor path;
     struct aws_byte_cursor host_name;
     uint16_t port;
-    struct aws_array_list query_params;
+    struct aws_array_list *query_params;
+    struct aws_byte_cursor query_string;
 };
 
 AWS_EXTERN_C_BEGIN
