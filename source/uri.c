@@ -324,50 +324,50 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
         }
 
         parser->uri->authority = aws_byte_cursor_advance(str, end - str->ptr);
-        assert(parser->uri->authority.ptr);
-        assert(parser->uri->authority.len);
     }
 
     struct aws_byte_cursor authority_parse_csr = parser->uri->authority;
 
-    uint8_t *port_delim = memchr(authority_parse_csr.ptr, ':', authority_parse_csr.len);
+    if (authority_parse_csr.len) {
+        uint8_t *port_delim = memchr(authority_parse_csr.ptr, ':', authority_parse_csr.len);
 
-    if (!port_delim) {
-        parser->uri->port = 0;
-        parser->uri->host_name = parser->uri->authority;
-        return;
-    }
+        if (!port_delim) {
+            parser->uri->port = 0;
+            parser->uri->host_name = parser->uri->authority;
+            return;
+        }
 
-    parser->uri->host_name.ptr = authority_parse_csr.ptr;
-    parser->uri->host_name.len = port_delim - authority_parse_csr.ptr;
+        parser->uri->host_name.ptr = authority_parse_csr.ptr;
+        parser->uri->host_name.len = port_delim - authority_parse_csr.ptr;
 
-    size_t port_len = parser->uri->authority.len - parser->uri->host_name.len - 1;
-    port_delim += 1;
-    for (size_t i = 0; i < port_len; ++i) {
-        if (!isdigit(port_delim[i])) {
+        size_t port_len = parser->uri->authority.len - parser->uri->host_name.len - 1;
+        port_delim += 1;
+        for (size_t i = 0; i < port_len; ++i) {
+            if (!isdigit(port_delim[i])) {
+                parser->state = ERROR;
+                aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
+                return;
+            }
+        }
+
+        if (port_len > 5) {
             parser->state = ERROR;
             aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
             return;
         }
-    }
 
-    if (port_len > 5) {
-        parser->state = ERROR;
-        aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
-        return;
-    }
+        /* why 6? because the port is a 16-bit unsigned integer*/
+        char atoi_buf[6] = {0};
+        memcpy(atoi_buf, port_delim, port_len);
+        int port_int = atoi(atoi_buf);
+        if (port_int > UINT16_MAX) {
+            parser->state = ERROR;
+            aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
+            return;
+        }
 
-    /* why 6? because the port is a 16-bit unsigned integer*/
-    char atoi_buf[6] = {0};
-    memcpy(atoi_buf, port_delim, port_len);
-    int port_int = atoi(atoi_buf);
-    if (port_int > UINT16_MAX) {
-        parser->state = ERROR;
-        aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
-        return;
+        parser->uri->port = (uint16_t) port_int;
     }
-
-    parser->uri->port = (uint16_t)port_int;
 }
 
 static void s_parse_path(struct uri_parser *parser, struct aws_byte_cursor *str) {
