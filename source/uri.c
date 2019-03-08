@@ -249,8 +249,8 @@ int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list
                         .ptr = key_val->ptr,
                         .len = key_val->len,
                     },
-                .value = {0},
             };
+            AWS_ZERO_STRUCT(param_value.value);
 
             if (aws_array_list_push_back(out_params, &param_value)) {
                 goto error;
