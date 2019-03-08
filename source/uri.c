@@ -324,6 +324,8 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
         }
 
         parser->uri->authority = aws_byte_cursor_advance(str, end - str->ptr);
+        assert(parser->uri->authority.ptr);
+        assert(parser->uri->authority.len);
     }
 
     struct aws_byte_cursor authority_parse_csr = parser->uri->authority;
