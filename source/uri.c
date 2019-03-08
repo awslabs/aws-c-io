@@ -67,16 +67,19 @@ static int s_init_from_uri_str(struct aws_uri *uri) {
         s_states[parser.state](&parser, &uri_cur);
     }
 
+    /* Each state function sets the next state, if something goes wrong it sets it to ERROR which is > FINISHED */
     if (parser.state == FINISHED) {
         return AWS_OP_SUCCESS;
     }
 
     aws_byte_buf_clean_up(&uri->uri_str);
+    AWS_ZERO_STRUCT(*uri);
     return AWS_OP_ERR;
 }
 
 int aws_uri_init_parse(struct aws_uri *uri, struct aws_allocator *allocator, const struct aws_byte_cursor *uri_str) {
     AWS_ZERO_STRUCT(*uri);
+    uri->self_size = sizeof(struct aws_uri);
     uri->allocator = allocator;
 
     if (aws_byte_buf_init_copy_from_cursor(&uri->uri_str, allocator, *uri_str)) {
@@ -86,29 +89,37 @@ int aws_uri_init_parse(struct aws_uri *uri, struct aws_allocator *allocator, con
     return s_init_from_uri_str(uri);
 }
 
-int aws_uri_init(struct aws_uri *uri, struct aws_allocator *allocator, struct aws_uri_builder_args *args) {
+int aws_uri_init_from_builder_options(
+    struct aws_uri *uri,
+    struct aws_allocator *allocator,
+    struct aws_uri_builder_options *options) {
     AWS_ZERO_STRUCT(*uri);
+    uri->self_size = sizeof(struct aws_uri);
     uri->allocator = allocator;
 
     size_t buffer_size = 0;
-    if (args->scheme.len) {
-        buffer_size += args->scheme.len + 3;
+    if (options->scheme.len) {
+        /* 3 for :// */
+        buffer_size += options->scheme.len + 3;
     }
 
-    buffer_size += args->host_name.len;
+    buffer_size += options->host_name.len;
 
-    if (args->port) {
+    if (options->port) {
+        /* max strlen of a 16 bit integer is 5 */
         buffer_size += 6;
     }
 
-    buffer_size += args->path.len;
+    buffer_size += options->path.len;
 
-    size_t query_len = aws_array_list_length(&args->query_params);
+    size_t query_len = aws_array_list_length(&options->query_params);
     if (query_len) {
+        /* for the '?' */
         buffer_size += 1;
         for (size_t i = 0; i < query_len; ++i) {
-            struct aws_uri_params *uri_param_ptr = NULL;
-            aws_array_list_get_at_ptr(&args->query_params, (void **)&uri_param_ptr, i);
+            struct aws_uri_param *uri_param_ptr = NULL;
+            aws_array_list_get_at_ptr(&options->query_params, (void **)&uri_param_ptr, i);
+            /* 2 == 1 for '&' and 1 for '='. who cares if we over-allocate a little?  */
             buffer_size += uri_param_ptr->key.len + uri_param_ptr->value.len + 2;
         }
     }
@@ -118,24 +129,24 @@ int aws_uri_init(struct aws_uri *uri, struct aws_allocator *allocator, struct aw
     }
 
     uri->uri_str.len = 0;
-    if (args->scheme.len) {
-        aws_byte_buf_append(&uri->uri_str, &args->scheme);
+    if (options->scheme.len) {
+        aws_byte_buf_append(&uri->uri_str, &options->scheme);
         struct aws_byte_cursor scheme_app = aws_byte_cursor_from_c_str("://");
         aws_byte_buf_append(&uri->uri_str, &scheme_app);
     }
 
-    aws_byte_buf_append(&uri->uri_str, &args->host_name);
+    aws_byte_buf_append(&uri->uri_str, &options->host_name);
 
     struct aws_byte_cursor port_app = aws_byte_cursor_from_c_str(":");
-    if (args->port) {
+    if (options->port) {
         aws_byte_buf_append(&uri->uri_str, &port_app);
         char port_arr[6] = {0};
-        sprintf(port_arr, "%" PRIu16, args->port);
+        sprintf(port_arr, "%" PRIu16, options->port);
         struct aws_byte_cursor port_csr = aws_byte_cursor_from_c_str(port_arr);
         aws_byte_buf_append(&uri->uri_str, &port_csr);
     }
 
-    aws_byte_buf_append(&uri->uri_str, &args->path);
+    aws_byte_buf_append(&uri->uri_str, &options->path);
 
     if (query_len) {
         struct aws_byte_cursor query_app = aws_byte_cursor_from_c_str("?");
@@ -144,8 +155,8 @@ int aws_uri_init(struct aws_uri *uri, struct aws_allocator *allocator, struct aw
 
         aws_byte_buf_append(&uri->uri_str, &query_app);
         for (size_t i = 0; i < query_len; ++i) {
-            struct aws_uri_params *uri_param_ptr = NULL;
-            aws_array_list_get_at_ptr(&args->query_params, (void **)&uri_param_ptr, i);
+            struct aws_uri_param *uri_param_ptr = NULL;
+            aws_array_list_get_at_ptr(&options->query_params, (void **)&uri_param_ptr, i);
             aws_byte_buf_append(&uri->uri_str, &uri_param_ptr->key);
             aws_byte_buf_append(&uri->uri_str, &key_value_delim);
             aws_byte_buf_append(&uri->uri_str, &uri_param_ptr->value);
@@ -182,8 +193,8 @@ const struct aws_byte_cursor *aws_uri_query_string(const struct aws_uri *uri) {
     return &uri->query_string;
 }
 
-const struct aws_byte_cursor *aws_uri_request_uri(const struct aws_uri *uri) {
-    return &uri->request_uri;
+const struct aws_byte_cursor *aws_uri_path_and_query(const struct aws_uri *uri) {
+    return &uri->path_and_query;
 }
 
 const struct aws_byte_cursor *aws_uri_host_name(const struct aws_uri *uri) {
@@ -194,7 +205,7 @@ uint16_t aws_uri_port(const struct aws_uri *uri) {
     return uri->port;
 }
 
-int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list *params) {
+int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list *out_params) {
     if (uri->query_string.len == 0) {
         return AWS_OP_SUCCESS;
     }
@@ -215,7 +226,7 @@ int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list
         uint8_t *delim = memchr(key_val->ptr, '=', key_val->len);
 
         if (delim) {
-            struct aws_uri_params param_value = {
+            struct aws_uri_param param_value = {
                 .key =
                     {
                         .ptr = key_val->ptr,
@@ -228,16 +239,30 @@ int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list
                     },
             };
 
-            if (aws_array_list_push_back(params, &param_value)) {
+            if (aws_array_list_push_back(out_params, &param_value)) {
+                goto error;
+            }
+        } else {
+            struct aws_uri_param param_value = {
+                .key =
+                    {
+                        .ptr = key_val->ptr,
+                        .len = key_val->len,
+                    },
+                .value = {0},
+            };
+
+            if (aws_array_list_push_back(out_params, &param_value)) {
                 goto error;
             }
         }
     }
+
     aws_array_list_clean_up(&key_val_array);
     return AWS_OP_SUCCESS;
 error:
     aws_array_list_clean_up(&key_val_array);
-    aws_array_list_clear(params);
+    aws_array_list_clear(out_params);
     return AWS_OP_ERR;
 }
 
@@ -255,9 +280,8 @@ static void s_parse_scheme(struct uri_parser *parser, struct aws_byte_cursor *st
         return;
     }
 
-    parser->uri->scheme.ptr = str->ptr, parser->uri->scheme.len = location_of_colon - str->ptr;
-
-    aws_byte_cursor_advance(str, parser->uri->scheme.len);
+    const size_t scheme_len = location_of_colon - str->ptr;
+    parser->uri->scheme = aws_byte_cursor_advance(str, scheme_len);
 
     if (str->len < 3 || str->ptr[0] != ':' || str->ptr[1] != '/' || str->ptr[2] != '/') {
         aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
@@ -265,6 +289,7 @@ static void s_parse_scheme(struct uri_parser *parser, struct aws_byte_cursor *st
         return;
     }
 
+    /* advance past the "://" */
     aws_byte_cursor_advance(str, 3);
     parser->state = ON_AUTHORITY;
 }
@@ -281,28 +306,25 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
 
         parser->uri->path.ptr = (uint8_t *)s_default_path;
         parser->uri->path.len = 1;
-        parser->uri->request_uri = parser->uri->path;
+        parser->uri->path_and_query = parser->uri->path;
         parser->state = FINISHED;
         aws_byte_cursor_advance(str, parser->uri->authority.len);
     } else if (!str->len) {
         parser->state = ERROR;
         aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
         return;
+    } else {
+        uint8_t *end = str->ptr + str->len;
+        if (location_of_slash) {
+            parser->state = ON_PATH;
+            end = location_of_slash;
+        } else if (location_of_qmark) {
+            parser->state = ON_QUERY_STRING;
+            end = location_of_qmark;
+        }
+
+        parser->uri->authority = aws_byte_cursor_advance(str, end - str->ptr);
     }
-
-    uint8_t *end = str->ptr + str->len;
-    if (location_of_slash) {
-        parser->state = ON_PATH;
-        end = location_of_slash;
-    } else if (location_of_qmark) {
-        parser->state = ON_QUERY_STRING;
-        end = location_of_qmark;
-    }
-
-    parser->uri->authority.ptr = str->ptr;
-    parser->uri->authority.len = end - str->ptr;
-
-    aws_byte_cursor_advance(str, parser->uri->authority.len);
 
     struct aws_byte_cursor authority_parse_csr = parser->uri->authority;
 
@@ -336,12 +358,18 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
     /* why 6? because the port is a 16-bit unsigned integer*/
     char atoi_buf[6] = {0};
     memcpy(atoi_buf, port_delim, port_len);
-    parser->uri->port = (uint16_t)atoi(atoi_buf);
-    return;
+    int port_int = atoi(atoi_buf);
+    if (port_int > UINT16_MAX) {
+        parser->state = ERROR;
+        aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
+        return;
+    }
+
+    parser->uri->port = (uint16_t)port_int;
 }
 
 static void s_parse_path(struct uri_parser *parser, struct aws_byte_cursor *str) {
-    parser->uri->request_uri = *str;
+    parser->uri->path_and_query = *str;
 
     uint8_t *location_of_q_mark = memchr(str->ptr, '?', str->len);
 
@@ -366,8 +394,8 @@ static void s_parse_path(struct uri_parser *parser, struct aws_byte_cursor *str)
 }
 
 static void s_parse_query_string(struct uri_parser *parser, struct aws_byte_cursor *str) {
-    if (!parser->uri->request_uri.ptr) {
-        parser->uri->request_uri = *str;
+    if (!parser->uri->path_and_query.ptr) {
+        parser->uri->path_and_query = *str;
     }
     /* we don't want the '?' character. */
     if (str->len) {
