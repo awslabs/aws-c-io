@@ -132,9 +132,7 @@ struct aws_channel_handler {
 
 extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Initializes channel_task for use.
@@ -418,8 +416,6 @@ int aws_channel_handler_shutdown(
 AWS_IO_API
 size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CHANNEL_H */

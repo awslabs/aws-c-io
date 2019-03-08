@@ -164,9 +164,8 @@ static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 typedef struct aws_channel_handler *(
     *aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol, void *user_data);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
+
 /******************************** tls options init stuff ***********************/
 AWS_IO_API void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options);
 AWS_IO_API void aws_tls_ctx_options_init_client_mtls(
@@ -311,8 +310,6 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handl
  */
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /*AWS_IO_TLS_HANDLER_H*/

@@ -131,9 +131,7 @@ struct aws_server_bootstrap {
     struct aws_atomic_var ref_count;
 };
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Initializes the client bootstrap with `allocator` and `el_group`. This object manages client connections and
@@ -280,8 +278,6 @@ AWS_IO_API int aws_server_bootstrap_destroy_socket_listener(
     struct aws_server_bootstrap *bootstrap,
     struct aws_socket *listener);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CHANNEL_BOOTSTRAP_H */

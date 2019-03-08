@@ -22,9 +22,7 @@ struct aws_channel_handler;
 struct aws_channel_slot;
 struct aws_event_loop;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 /**
  * Socket handlers should be the first slot/handler in a channel. It interacts directly with the channel's event loop
  * for read and write notifications. max_read_size is the maximum amount of data it will read from the socket
@@ -36,8 +34,6 @@ AWS_IO_API struct aws_channel_handler *aws_socket_handler_new(
     struct aws_channel_slot *slot,
     size_t max_read_size);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /*AWS_IO_SOCKET_HANDLER_H */

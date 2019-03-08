@@ -134,9 +134,7 @@ aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+AWS_EXTERN_C_BEGIN
 
 /**
  * Initializes a socket object with socket options. options will be copied.
@@ -300,8 +298,6 @@ AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
  */
 AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
 
-#ifdef __cplusplus
-}
-#endif
+AWS_EXTERN_C_END
 
 #endif /*AWS_IO_SOCKET_H */
