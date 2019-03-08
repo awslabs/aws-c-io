@@ -331,6 +331,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 #else
         assert(!uv_loop_alive(impl->uv_loop));
         int result = uv_loop_close(impl->uv_loop);
+        (void)result;
         assert(result == 0);
 #endif
         aws_thread_clean_up(&s_owned(impl)->thread);
