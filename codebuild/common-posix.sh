@@ -15,7 +15,7 @@ function install_library {
     CURRENT_DIR=`pwd`
     cd $BUILD_PATH
     git clone https://github.com/awslabs/$1.git
-    
+
     cd $1
     if [ -n "$2" ]; then
         git checkout $2
