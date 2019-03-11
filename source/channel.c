@@ -371,16 +371,17 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
     size_t size_hint) {
 
     struct aws_io_message *message = aws_message_pool_acquire(channel->msg_pool, message_type, size_hint);
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_CHANNEL,
-        "id=%p: acquired message %p of length %llu from pool %p.",
-        (void *)channel,
-        (void *)message,
-        (unsigned long long)size_hint,
-        (void *)channel->msg_pool);
 
     if (AWS_LIKELY(message)) {
         message->owning_channel = channel;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL,
+            "id=%p: acquired message %p of length %llu from pool %p. Requested size was %llu",
+            (void *)channel,
+            (void *)message,
+            (unsigned long long)message->message_data.len,
+            (void *)channel->msg_pool,
+            (unsigned long long)size_hint);
     }
 
     return message;
