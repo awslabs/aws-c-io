@@ -362,7 +362,7 @@ static int s_s2n_handler_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+    struct s2n_handler *s2n_handler = handler->impl;
 
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
@@ -591,7 +591,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 };
 
 static int s_parse_protocol_preferences(
-    const char *alpn_list_str,
+    struct aws_byte_buf *alpn_list_buf,
     const char protocol_output[4][128],
     size_t *protocol_count) {
     size_t max_count = *protocol_count;
@@ -600,7 +600,7 @@ static int s_parse_protocol_preferences(
     struct aws_byte_cursor alpn_list_buffer[4];
     AWS_ZERO_ARRAY(alpn_list_buffer);
     struct aws_array_list alpn_list;
-    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_c_str(alpn_list_str);
+    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_buf(alpn_list_buf);
 
     aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
 
@@ -663,9 +663,13 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     s2n_handler->protocol = aws_byte_buf_from_array(NULL, 0);
 
-    if (options->server_name) {
-        s2n_handler->server_name = aws_byte_buf_from_c_str(options->server_name);
-        if (s2n_set_server_name(s2n_handler->connection, options->server_name)) {
+    if (options->server_name.len) {
+        s2n_handler->server_name = options->server_name;
+        char server_name[255];
+        AWS_ZERO_ARRAY(server_name);
+        assert(options->server_name.len <= 255);
+        memcpy(server_name, options->server_name.buffer, options->server_name.len);
+        if (s2n_set_server_name(s2n_handler->connection, server_name)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -679,13 +683,13 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
-    if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s", (void *)&s2n_handler->handler, options->alpn_list);
+    if (options->alpn_list.len) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list", (void *)&s2n_handler->handler);
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
+        if (s_parse_protocol_preferences(&options->alpn_list, protocols_cpy, &protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -790,34 +794,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
     }
 
-    if (options->certificate_path && options->private_key_path) {
+    if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
-        struct aws_byte_buf certificate_chain, private_key;
-
-        if (aws_byte_buf_init_from_file(&certificate_chain, alloc, options->certificate_path)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: Failed to load %s", options->certificate_path);
-            goto cleanup_s2n_config;
-        }
-
-        if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: Failed to load %s", options->private_key_path);
-            aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
-            aws_byte_buf_clean_up(&certificate_chain);
-            goto cleanup_s2n_config;
-        }
-
         int err_code = s2n_config_add_cert_chain_and_key(
-            s2n_ctx->s2n_config, (const char *)certificate_chain.buffer, (const char *)private_key.buffer);
+            s2n_ctx->s2n_config, (const char *)options->certificate.buffer, (const char *)options->private_key.buffer);
 
         if (mode == S2N_CLIENT) {
             s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
         }
-
-        aws_secure_zero(certificate_chain.buffer, certificate_chain.len);
-        aws_byte_buf_clean_up(&certificate_chain);
-        aws_secure_zero(private_key.buffer, private_key.len);
-        aws_byte_buf_clean_up(&private_key);
 
         if (err_code != S2N_ERR_T_OK) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
@@ -834,8 +819,16 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
         }
 
-        if (options->ca_path || options->ca_file) {
-            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, options->ca_file, options->ca_path)) {
+        if (options->ca_path) {
+            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, NULL, options->ca_path)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
+            }
+        }
+
+        if (options->ca_file.len) {
+            if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
@@ -858,12 +851,12 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
     }
 
-    if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", options->alpn_list);
+    if (options->alpn_list.len) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list.");
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
+        if (s_parse_protocol_preferences(&options->alpn_list, protocols_cpy, &protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
