@@ -531,8 +531,7 @@ static int s_s2n_handler_increment_read_window(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
 
-    size_t increment_by = downstream_size - current_window_size;
-    size_t likely_records_count = (size_t)ceil((double)(increment_by) / (double)(MAX_RECORD_SIZE));
+    size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(MAX_RECORD_SIZE));
     size_t offset_size = aws_mul_size_saturating(likely_records_count, EST_TLS_RECORD_OVERHEAD);
     size_t total_desired_size = aws_add_size_saturating(offset_size, downstream_size);
 

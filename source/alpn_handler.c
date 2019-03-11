@@ -64,9 +64,9 @@ static int s_alpn_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
-static size_t s_alpn_get_current_window_size(struct aws_channel_handler *handler) {
+static size_t s_alpn_get_initial_window_size(struct aws_channel_handler *handler) {
     (void)handler;
-    return SIZE_MAX;
+    return sizeof(struct aws_tls_negotiated_protocol_message);
 }
 
 static void s_alpn_destroy(struct aws_channel_handler *handler) {
@@ -81,7 +81,7 @@ static size_t s_alpn_message_overhead(struct aws_channel_handler *handler) {
 }
 
 static struct aws_channel_handler_vtable s_alpn_handler_vtable = {
-    .initial_window_size = s_alpn_get_current_window_size,
+    .initial_window_size = s_alpn_get_initial_window_size,
     .increment_read_window = NULL,
     .shutdown = s_alpn_shutdown,
     .process_write_message = NULL,
