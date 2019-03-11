@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <s2n.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -522,7 +523,7 @@ static int s_s2n_handler_increment_read_window(
     struct aws_channel_slot *slot,
     size_t size) {
     (void)size;
-    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+    struct s2n_handler *s2n_handler = handler->impl;
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
@@ -530,10 +531,12 @@ static int s_s2n_handler_increment_read_window(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
 
-    if (downstream_size <= current_window_size) {
-        size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
+    if (downstream_size > current_window_size) {
+        size_t increment_by = downstream_size - current_window_size;
+        size_t likely_records_count = (size_t)ceil((double)(increment_by) / (double)(MAX_RECORD_SIZE));
         size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
-        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+        size_t total_desired_size = offset_size + downstream_size;
+        size_t window_update_size = total_desired_size - current_window_size;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Propagating read window increment of size %llu",

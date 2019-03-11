@@ -31,6 +31,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -1306,13 +1307,13 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
 
-    /* expand our window when the downstream window is larger than ours. This keeps us from buffering too much data. */
-    if (downstream_size <= current_window_size) {
-        size_t likely_records_count = (downstream_size - current_window_size) % READ_IN_SIZE;
+    if (downstream_size > current_window_size) {
+        size_t increment_by = downstream_size - current_window_size;
+        size_t likely_records_count = (size_t)ceil((double)(increment_by) / (double)(READ_IN_SIZE));
         size_t offset_size =
             likely_records_count * (sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
-        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
-
+        size_t total_desired_size = offset_size + downstream_size;
+        size_t window_update_size = total_desired_size - current_window_size;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
             "id=%p: Propagating read window increment of size %llu",

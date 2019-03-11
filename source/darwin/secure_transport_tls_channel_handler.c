@@ -29,6 +29,7 @@
 #include <Security/SecureTransport.h>
 #include <Security/Security.h>
 #include <dlfcn.h>
+#include <math.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
@@ -636,8 +637,6 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
 }
 
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
-    aws_channel_slot_increment_read_window(slot, size + EST_TLS_RECORD_OVERHEAD);
-
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     AWS_LOGF_TRACE(
@@ -646,13 +645,15 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
 
-    if (downstream_size <= current_window_size) {
-        size_t likely_records_count = (downstream_size - current_window_size) % MAX_RECORD_SIZE;
+    if (downstream_size > current_window_size) {
+        size_t increment_by = downstream_size - current_window_size;
+        size_t likely_records_count = (size_t)ceil((double)(increment_by) / (double)(MAX_RECORD_SIZE));
         size_t offset_size = likely_records_count * (EST_TLS_RECORD_OVERHEAD);
-        size_t window_update_size = (downstream_size - current_window_size) + offset_size;
+        size_t total_desired_size = offset_size + downstream_size;
+        size_t window_update_size = total_desired_size - current_window_size;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
-            "id=%p: propagating read window increment of size %llu",
+            "id=%p: Propagating read window increment of size %llu",
             (void *)handler,
             (unsigned long long)window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
