@@ -50,7 +50,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     }
 
     if (options->pkcs12_password.len) {
-        aws_secure_zero(options->pkcs12_pwd.buffer, options->pkcs12_pwd.len);
+        aws_secure_zero(options->pkcs12_password.buffer, options->pkcs12_password.len);
         aws_byte_buf_clean_up(&options->pkcs12_password);
     }
 #endif

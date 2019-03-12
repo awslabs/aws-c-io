@@ -266,7 +266,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_tls_ctx_options server_ctx_options;
 #ifdef __APPLE__
-    aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", "1234");
+    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
+    aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", &pwd_cur);
 #else
     aws_tls_ctx_options_init_default_server_from_path(
         &server_ctx_options, allocator, "./unittests.crt", "./unittests.key");
