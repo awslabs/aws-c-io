@@ -318,10 +318,6 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
  * set verify_peer to true.
  */
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
-AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_from_path(
-    struct aws_tls_ctx_options *options,
-    const char *ca_path,
-    const char *ca_file);
 
 /**
  * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
