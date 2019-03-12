@@ -680,7 +680,8 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
     if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list", (void *)&s2n_handler->handler);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s",
+                (void *)&s2n_handler->handler, (const char *)aws_string_bytes(options->alpn_list));
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
@@ -849,7 +850,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list.");
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", (const char *)aws_string_bytes(options->alpn_list));
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
