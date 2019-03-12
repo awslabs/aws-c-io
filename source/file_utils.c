@@ -15,6 +15,8 @@
 
 #include <aws/io/file_utils.h>
 
+#include <aws/io/logging.h>
+
 #include <errno.h>
 #include <stdio.h>
 
@@ -28,6 +30,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to seek file %s with errno %d", filename, errno);
             fclose(fp);
             return aws_io_translate_and_raise_file_open_error(errno);
         }
@@ -45,6 +48,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         out_buf->buffer[out_buf->len] = 0;
 
         if (fseek(fp, 0L, SEEK_SET)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to seek file %s with errno %d", filename, errno);
             aws_byte_buf_clean_up(out_buf);
             fclose(fp);
             return aws_io_translate_and_raise_file_open_error(errno);
@@ -53,6 +57,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         size_t read = fread(out_buf->buffer, 1, out_buf->len, fp);
         fclose(fp);
         if (read < out_buf->len) {
+            AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to read file %s with errno %d", filename, errno);
             aws_secure_zero(out_buf->buffer, out_buf->len);
             aws_byte_buf_clean_up(out_buf);
             return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
@@ -60,6 +65,8 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 
         return AWS_OP_SUCCESS;
     }
+
+    AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to open file %s with errno %d", filename, errno);
 
     return aws_io_translate_and_raise_file_open_error(errno);
 }

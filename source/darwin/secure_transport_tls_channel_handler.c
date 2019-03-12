@@ -371,8 +371,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 secure_transport_handler->server_name_array);
         }
 
-        if (secure_transport_handler->parent_slot->adj_right &&
-            secure_transport_handler->advertise_alpn_message && protocol) {
+        if (secure_transport_handler->parent_slot->adj_right && secure_transport_handler->advertise_alpn_message &&
+            protocol) {
             struct aws_io_message *message = aws_channel_acquire_message_from_pool(
                 secure_transport_handler->parent_slot->channel,
                 AWS_IO_MESSAGE_APPLICATION_DATA,
@@ -837,8 +837,8 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (options->server_name) {
         size_t server_name_len = options->server_name->len;
-        SSLSetPeerDomainName(secure_transport_handler->ctx,
-                (const char *)aws_string_bytes(options->server_name), server_name_len);
+        SSLSetPeerDomainName(
+            secure_transport_handler->ctx, (const char *)aws_string_bytes(options->server_name), server_name_len);
     }
 
     struct aws_string *alpn_list = NULL;
@@ -850,7 +850,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             (const char *)aws_string_bytes(options->alpn_list));
         alpn_list = options->alpn_list;
 
-    } else if (secure_transport_ctx->alpn_list){
+    } else if (secure_transport_ctx->alpn_list) {
         alpn_list = secure_transport_ctx->alpn_list;
     }
 
@@ -957,9 +957,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
 cleanup_wrapped_allocator:
     aws_wrapped_cf_allocator_destroy(secure_transport_ctx->wrapped_allocator);
 
-if (secure_transport_ctx->alpn_list) {
-    aws_string_destroy(secure_transport_ctx->alpn_list);
-}
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
+    }
 
 cleanup_secure_transport_ctx:
     aws_mem_release(alloc, secure_transport_ctx);

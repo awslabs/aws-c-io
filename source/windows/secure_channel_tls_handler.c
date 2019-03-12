@@ -16,8 +16,8 @@
 
 #include <aws/io/tls_channel_handler.h>
 
-#include <aws/common/task_scheduler.h>
 #include <aws/common/math.h>
+#include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
@@ -266,8 +266,7 @@ static void s_on_negotiation_success(struct aws_channel_handler *handler) {
     }
 
     if (sc_handler->on_negotiation_result) {
-        sc_handler->on_negotiation_result(
-            handler, sc_handler->slot, AWS_OP_SUCCESS, sc_handler->user_data);
+        sc_handler->on_negotiation_result(handler, sc_handler->slot, AWS_OP_SUCCESS, sc_handler->user_data);
     }
 }
 
@@ -394,7 +393,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, (const char *)aws_string_bytes(sc_handler->alpn_list));
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, (const char *)aws_string_bytes(sc_handler->alpn_list));
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             return AWS_OP_ERR;
@@ -1046,8 +1046,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len -= copy_size;
 
             if (sc_handler->on_data_read) {
-                sc_handler->on_data_read(
-                    handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->user_data);
+                sc_handler->on_data_read(handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->user_data);
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(read_out_msg->allocator, read_out_msg);
@@ -1581,11 +1580,14 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     if (sc_handler->alpn_list) {
-
     }
 
     if (options->server_name) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting SNI to %s", (void *)&sc_handler->handler, (const char *)aws_string_bytes(options->server_name));
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: Setting SNI to %s",
+            (void *)&sc_handler->handler,
+            (const char *)aws_string_bytes(options->server_name));
         struct aws_byte_cursor server_name_crsr = aws_byte_cursor_from_string(options->server_name);
         if (aws_byte_buf_init_copy_from_cursor(&sc_handler->server_name, alloc, server_name_crsr)) {
             aws_mem_release(alloc, sc_handler);

@@ -285,6 +285,31 @@ void aws_tls_connection_options_init_from_ctx(
     conn_options->ctx = ctx;
 }
 
+int aws_tls_connection_options_copy(
+    struct aws_tls_connection_options *to,
+    const struct aws_tls_connection_options *from) {
+    /* copy everything copyable over, then override the rest with deep copies. */
+    *to = *from;
+    if (from->alpn_list) {
+        to->alpn_list = aws_string_new_from_string(from->alpn_list->allocator, from->alpn_list);
+
+        if (!to->alpn_list) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (from->server_name) {
+        to->server_name = aws_string_new_from_string(from->server_name->allocator, from->server_name);
+
+        if (!to->server_name) {
+            aws_string_destroy(to->server_name);
+            return AWS_OP_ERR;
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 void aws_tls_connection_options_clean_up(struct aws_tls_connection_options *connection_options) {
     if (connection_options->alpn_list) {
         aws_string_destroy(connection_options->alpn_list);

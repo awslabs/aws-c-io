@@ -341,7 +341,9 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         s_tls_handler_test_server_setup_callback,
         s_tls_handler_test_server_shutdown_callback,
         &incoming_args);
-
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&tls_server_conn_options);
     ASSERT_NOT_NULL(listener);
 
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
@@ -357,7 +359,9 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         s_tls_handler_test_client_setup_callback,
         s_tls_handler_test_client_shutdown_callback,
         &outgoing_args));
-
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&tls_client_conn_options);
     /* wait for both ends to setup */
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &incoming_args));
@@ -365,7 +369,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_FALSE(incoming_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#ifndef __MACH__
+#ifndef __APPLE__
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
 
     /* check ALPN and SNI was properly negotiated */
@@ -521,6 +525,9 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
         s_tls_handler_test_client_shutdown_callback,
         &outgoing_args));
 
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&tls_client_conn_options);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
@@ -540,7 +547,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
-    aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
     aws_event_loop_group_clean_up(&el_group);
 
@@ -677,6 +683,9 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
         s_tls_handler_test_client_setup_callback,
         s_tls_handler_test_client_shutdown_callback,
         &outgoing_args));
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &outgoing_args));
@@ -704,7 +713,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
-    aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
     aws_event_loop_group_clean_up(&el_group);
 

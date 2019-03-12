@@ -233,6 +233,11 @@ void s_connection_args_release(struct client_connection_args *args) {
         if (args->host_name) {
             aws_string_destroy(args->host_name);
         }
+
+        if (args->channel_data.use_tls) {
+            aws_tls_connection_options_clean_up(&args->channel_data.tls_options);
+        }
+
         aws_mem_release(allocator, args);
     }
 }
@@ -665,8 +670,11 @@ static inline int s_new_client_channel(
     client_connection_args->outgoing_port = port;
 
     if (connection_options) {
+        if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, connection_options)) {
+            goto error;
+        }
         client_connection_args->channel_data.use_tls = true;
-        client_connection_args->channel_data.tls_options = *connection_options;
+
         client_connection_args->channel_data.on_protocol_negotiated = bootstrap->on_protocol_negotiated;
         client_connection_args->channel_data.tls_user_data = connection_options->user_data;
 
@@ -743,6 +751,9 @@ static inline int s_new_client_channel(
 
 error:
     if (client_connection_args) {
+        if (client_connection_args->channel_data.use_tls) {
+            aws_tls_connection_options_clean_up(&client_connection_args->channel_data.tls_options);
+        }
         s_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;
@@ -1049,6 +1060,11 @@ error:
         err_code,
         NULL,
         channel_data->server_connection_args->user_data);
+
+    if (channel_data->server_connection_args->use_tls) {
+        aws_tls_connection_options_clean_up(&channel_data->server_connection_args->tls_options);
+    }
+
     aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
 }
 
@@ -1071,6 +1087,11 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     aws_channel_destroy(channel);
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, channel_data->socket);
+
+    if (channel_data->server_connection_args->use_tls) {
+        aws_tls_connection_options_clean_up(&channel_data->server_connection_args->tls_options);
+    }
+
     aws_mem_release(allocator, channel_data);
 }
 
@@ -1177,7 +1198,10 @@ static inline struct aws_socket *s_server_new_socket_listener(
 
     if (connection_options) {
         AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap);
-        server_connection_args->tls_options = *connection_options;
+        if (aws_tls_connection_options_copy(&server_connection_args->tls_options, connection_options)) {
+            goto cleanup_server_connection_args;
+        }
+
         server_connection_args->use_tls = true;
 
         server_connection_args->tls_user_data = connection_options->user_data;

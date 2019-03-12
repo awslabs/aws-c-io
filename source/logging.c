@@ -362,6 +362,7 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "channel-bootstrap",
         "Subject for channel bootstrap (client and server modes)"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_FILE_UTILS, "file-utils", "Subject for file operations"),
 };
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {

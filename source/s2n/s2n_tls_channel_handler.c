@@ -74,10 +74,14 @@ struct s2n_handler {
     struct aws_linked_list input_queue;
     struct aws_byte_buf protocol;
     struct aws_byte_buf server_name;
-    struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     struct aws_channel_task sequential_tasks;
     void *latest_message_completion_user_data;
+    aws_tls_on_negotiation_result_fn *on_negotiation_result;
+    aws_tls_on_data_read_fn *on_data_read;
+    aws_tls_on_error_fn *on_error;
+    void *user_data;
+    bool advertise_alpn_message;
     bool negotiation_finished;
 };
 
@@ -275,7 +279,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 s2n_handler->server_name = aws_byte_buf_from_c_str(server_name);
             }
 
-            if (s2n_handler->slot->adj_right && s2n_handler->options.advertise_alpn_message && protocol) {
+            if (s2n_handler->slot->adj_right && s2n_handler->advertise_alpn_message && protocol) {
                 struct aws_io_message *message = aws_channel_acquire_message_from_pool(
                     s2n_handler->slot->channel,
                     AWS_IO_MESSAGE_APPLICATION_DATA,
@@ -293,9 +297,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 }
             }
 
-            if (s2n_handler->options.on_negotiation_result) {
-                s2n_handler->options.on_negotiation_result(
-                    handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->options.user_data);
+            if (s2n_handler->on_negotiation_result) {
+                s2n_handler->on_negotiation_result(handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->user_data);
             }
 
             break;
@@ -321,9 +324,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
-            if (s2n_handler->options.on_negotiation_result) {
-                s2n_handler->options.on_negotiation_result(
-                    handler, s2n_handler->slot, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, s2n_handler->options.user_data);
+            if (s2n_handler->on_negotiation_result) {
+                s2n_handler->on_negotiation_result(
+                    handler, s2n_handler->slot, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, s2n_handler->user_data);
             }
 
             return AWS_OP_ERR;
@@ -429,9 +432,8 @@ static int s_s2n_handler_process_read_message(
         processed += read;
         outgoing_read_message->message_data.len = (size_t)read;
 
-        if (s2n_handler->options.on_data_read) {
-            s2n_handler->options.on_data_read(
-                handler, slot, &outgoing_read_message->message_data, s2n_handler->options.user_data);
+        if (s2n_handler->on_data_read) {
+            s2n_handler->on_data_read(handler, slot, &outgoing_read_message->message_data, s2n_handler->user_data);
         }
 
         if (slot->adj_right) {
@@ -654,8 +656,12 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_handler->handler.impl = s2n_handler;
     s2n_handler->handler.alloc = allocator;
     s2n_handler->handler.vtable = &s_handler_vtable;
+    s2n_handler->user_data = options->user_data;
+    s2n_handler->on_data_read = options->on_data_read;
+    s2n_handler->on_error = options->on_error;
+    s2n_handler->on_negotiation_result = options->on_negotiation_result;
+    s2n_handler->advertise_alpn_message = options->advertise_alpn_message;
 
-    s2n_handler->options = *options;
     s2n_handler->latest_message_completion_user_data = NULL;
     s2n_handler->latest_message_on_completion = NULL;
     s2n_handler->slot = slot;
@@ -680,8 +686,11 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
     if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s",
-                (void *)&s2n_handler->handler, (const char *)aws_string_bytes(options->alpn_list));
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: Setting ALPN list %s",
+            (void *)&s2n_handler->handler,
+            (const char *)aws_string_bytes(options->alpn_list));
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
