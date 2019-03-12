@@ -225,4 +225,6 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
         COMPONENT Development)
 
 include(CTest)
-add_subdirectory(tests)
+if (BUILD_TESTING)
+    add_subdirectory(tests)
+endif ()
