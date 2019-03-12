@@ -15,6 +15,8 @@
  * permissions and limitations under the License.
  */
 #include <aws/common/byte_buf.h>
+#include <aws/common/string.h>
+
 #include <aws/io/io.h>
 
 struct aws_channel_slot;
@@ -70,7 +72,7 @@ struct aws_tls_connection_options {
     /** semi-colon delimited list of protocols. Example:
      *  h2;http/1.1
      */
-    struct aws_byte_buf alpn_list;
+    struct aws_string *alpn_list;
     /**
      * Serves two purposes. If SNI is supported (hint... it is),
      * this sets the SNI extension.
@@ -78,7 +80,7 @@ struct aws_tls_connection_options {
      * For X.509 validation this also sets the name that will be used
      * for verifying the subj alt name and common name of the peer's certificate.
      */
-    struct aws_byte_buf server_name;
+    struct aws_string *server_name;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
@@ -106,13 +108,13 @@ struct aws_tls_ctx_options {
      * Only used on Unix systems using an openssl style trust API.
      * this is typically something like /etc/pki/tls/certs/"
      */
-    const char *ca_path;
+    struct aws_string *ca_path;
     /**
      * Sets ctx wide alpn string. This is most useful for servers.
      * This is a semi-colon delimited list. example:
      * h2;http/1.1
      */
-    struct aws_byte_buf alpn_list;
+    struct aws_string *alpn_list;
     /**
      * This is the path to PEM armored PKCS#7
      * certificate file. It is supported on every
@@ -121,7 +123,7 @@ struct aws_tls_ctx_options {
     struct aws_byte_buf certificate;
 
 #ifdef __WIN32
-   /** The path to a system
+    /** The path to a system
      * installed certficate/private key pair. Example:
      * CurrentUser\\MY\\<thumprint>
      */
@@ -178,7 +180,9 @@ typedef struct aws_channel_handler *(
 AWS_EXTERN_C_BEGIN
 
 /******************************** tls options init stuff ***********************/
-AWS_IO_API void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator);
+AWS_IO_API void aws_tls_ctx_options_init_default_client(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator);
 AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_tls_ctx_options *options,
@@ -186,45 +190,52 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     const char *cert_path,
     const char *pkey_path);
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
-        struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
-        struct aws_byte_cursor *cert,
-        struct aws_byte_cursor *pkey);
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *cert,
+    struct aws_byte_cursor *pkey);
 AWS_IO_API int aws_tls_ctx_options_init_default_server_from_path(
-        struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
-        const char *cert_path,
-        const char *pkey_path);
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_path,
+    const char *pkey_path);
 AWS_IO_API int aws_tls_ctx_options_init_default_server(
-        struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
-        struct aws_byte_cursor *cert,
-        struct aws_byte_cursor *pkey);
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *cert,
+    struct aws_byte_cursor *pkey);
 #ifdef __APPLE__
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
-    struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
     const char *pkcs12_path,
     struct aws_byte_cursor *pkcs_pwd);
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
-        struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
-        struct aws_byte_cursor *pkcs12,
-        struct aws_byte_cursor *pkcs_pwd);
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *pkcs12,
+    struct aws_byte_cursor *pkcs_pwd);
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
-    struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
     const char *pkcs12_path,
     struct aws_byte_cursor *pkcs_password);
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12(
-        struct aws_tls_ctx_options *options, struct aws_allocator *allocator,
-        struct aws_byte_cursor *pkcs12,
-        struct aws_byte_cursor *pkcs_password);
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *pkcs12,
+    struct aws_byte_cursor *pkcs_password);
 #endif /* __APPLE__ */
 
-AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, struct aws_byte_cursor *alpn_list);
+AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list);
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
     const char *ca_file);
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store(
-        struct aws_tls_ctx_options *options,
-        struct aws_byte_cursor *ca_file);
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor *ca_file);
 AWS_IO_API void aws_tls_connection_options_init_from_ctx(
     struct aws_tls_connection_options *conn_options,
     struct aws_tls_ctx *ctx);
@@ -237,12 +248,14 @@ AWS_IO_API void aws_tls_connection_options_set_callbacks(
     void *user_data);
 
 AWS_IO_API int aws_tls_connection_options_set_server_name(
-    struct aws_tls_connection_options *conn_options, struct aws_allocator *allocator,
+    struct aws_tls_connection_options *conn_options,
+    struct aws_allocator *allocator,
     struct aws_byte_cursor *server_name);
 
 AWS_IO_API int aws_tls_connection_options_set_alpn_list(
-    struct aws_tls_connection_options *conn_options, struct aws_allocator *allocator,
-    struct aws_byte_cursor *alpn_list);
+    struct aws_tls_connection_options *conn_options,
+    struct aws_allocator *allocator,
+    const char *alpn_list);
 
 /********************************* TLS context and state management *********************************/
 /**

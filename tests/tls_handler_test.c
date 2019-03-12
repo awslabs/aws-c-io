@@ -268,11 +268,10 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 #ifdef __APPLE__
     aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", "1234");
 #else
-    aws_tls_ctx_options_init_default_server_from_path(&server_ctx_options, allocator,
-            "./unittests.crt", "./unittests.key");
+    aws_tls_ctx_options_init_default_server_from_path(
+        &server_ctx_options, allocator, "./unittests.crt", "./unittests.key");
 #endif /* __APPLE__ */
-    struct aws_byte_cursor alpn_list = aws_byte_cursor_from_c_str("h2;http/1.1");
-    aws_tls_ctx_options_set_alpn_list(&server_ctx_options, &alpn_list);
+    aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
     ASSERT_NOT_NULL(server_ctx);
@@ -312,7 +311,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
-    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, &alpn_list);
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "h2;http/1.1");
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &server_name);
@@ -645,8 +644,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
     aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, "/etc/ssl/certs", NULL);
-    struct aws_byte_cursor alpn_list = aws_byte_cursor_from_c_str("h2;http/1.1");
-    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, &alpn_list);
+    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -656,7 +654,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
-    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, &alpn_list);
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "h2;http/1.1");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);

@@ -591,7 +591,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 };
 
 static int s_parse_protocol_preferences(
-    struct aws_byte_buf *alpn_list_buf,
+    struct aws_string *alpn_list_str,
     const char protocol_output[4][128],
     size_t *protocol_count) {
     size_t max_count = *protocol_count;
@@ -600,7 +600,7 @@ static int s_parse_protocol_preferences(
     struct aws_byte_cursor alpn_list_buffer[4];
     AWS_ZERO_ARRAY(alpn_list_buffer);
     struct aws_array_list alpn_list;
-    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_buf(alpn_list_buf);
+    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_string(alpn_list_str);
 
     aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
 
@@ -663,13 +663,9 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     s2n_handler->protocol = aws_byte_buf_from_array(NULL, 0);
 
-    if (options->server_name.len) {
-        s2n_handler->server_name = options->server_name;
-        char server_name[255];
-        AWS_ZERO_ARRAY(server_name);
-        assert(options->server_name.len <= 255);
-        memcpy(server_name, options->server_name.buffer, options->server_name.len);
-        if (s2n_set_server_name(s2n_handler->connection, server_name)) {
+    if (options->server_name) {
+
+        if (s2n_set_server_name(s2n_handler->connection, (const char *)aws_string_bytes(options->server_name))) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -683,13 +679,13 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
-    if (options->alpn_list.len) {
+    if (options->alpn_list) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN list", (void *)&s2n_handler->handler);
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(&options->alpn_list, protocols_cpy, &protocols_size)) {
+        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -820,7 +816,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (options->ca_path) {
-            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, NULL, options->ca_path)) {
+            if (s2n_config_set_verification_ca_location(
+                    s2n_ctx->s2n_config, NULL, (const char *)aws_string_bytes(options->ca_path))) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
@@ -851,12 +848,12 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
     }
 
-    if (options->alpn_list.len) {
+    if (options->alpn_list) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list.");
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(&options->alpn_list, protocols_cpy, &protocols_size)) {
+        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
