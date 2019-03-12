@@ -108,6 +108,28 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     return AWS_OP_SUCCESS;
 }
 
+#ifdef _WIN32
+void aws_tls_ctx_options_init_client_mtls_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path) {
+    AWS_ZERO_STRUCT(*options);
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->verify_peer = true;
+    options->allocator = allocator;
+    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    options->system_certificate_path = cert_reg_path;
+}
+
+void aws_tls_ctx_options_init_default_server_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path) {
+    aws_tls_ctx_options_init_client_mtls_from_system_path(options, allocator, cert_reg_path);
+    options->verify_peer = false;
+}
+#endif /* _WIN32 */
+
 #ifdef __APPLE__
 int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,

@@ -122,7 +122,7 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf certificate;
 
-#ifdef __WIN32
+#ifdef _WIN32
     /** The path to a system
      * installed certficate/private key pair. Example:
      * CurrentUser\\MY\\<thumprint>
@@ -204,6 +204,17 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey);
+#ifdef _WIN32
+AWS_IO_API void aws_tls_ctx_options_init_client_mtls_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path);
+
+AWS_IO_API void aws_tls_ctx_options_init_default_server_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path);
+#endif /* _WIN32 */
 #ifdef __APPLE__
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
