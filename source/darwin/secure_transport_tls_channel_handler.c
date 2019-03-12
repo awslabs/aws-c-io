@@ -97,11 +97,15 @@ struct secure_transport_handler {
     /*per spec the max length for a server name is 255 bytes (plus the null character). */
     char server_name_array[256];
     struct aws_byte_buf server_name;
-    struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
     struct aws_channel_task read_task;
+    aws_tls_on_negotiation_result_fn *on_negotiation_result;
+    aws_tls_on_data_read_fn *on_data_read;
+    aws_tls_on_error_fn *on_error;
+    void *user_data;
+    bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
     bool read_task_pending;
@@ -300,9 +304,9 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    if (secure_transport_handler->options.on_negotiation_result) {
-        secure_transport_handler->options.on_negotiation_result(
-            handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->options.user_data);
+    if (secure_transport_handler->on_negotiation_result) {
+        secure_transport_handler->on_negotiation_result(
+            handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->user_data);
     }
 }
 
@@ -368,7 +372,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         }
 
         if (secure_transport_handler->parent_slot->adj_right &&
-            secure_transport_handler->options.advertise_alpn_message && protocol) {
+            secure_transport_handler->advertise_alpn_message && protocol) {
             struct aws_io_message *message = aws_channel_acquire_message_from_pool(
                 secure_transport_handler->parent_slot->channel,
                 AWS_IO_MESSAGE_APPLICATION_DATA,
@@ -603,9 +607,9 @@ static int s_process_read_message(
         processed += read;
         outgoing_read_message->message_data.len = read;
 
-        if (secure_transport_handler->options.on_data_read) {
-            secure_transport_handler->options.on_data_read(
-                handler, slot, &outgoing_read_message->message_data, secure_transport_handler->options.user_data);
+        if (secure_transport_handler->on_data_read) {
+            secure_transport_handler->on_data_read(
+                handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
         }
 
         if (slot->adj_right) {
@@ -735,6 +739,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
+    secure_transport_handler->advertise_alpn_message = options->advertise_alpn_message;
+    secure_transport_handler->on_data_read = options->on_data_read;
+    secure_transport_handler->on_error = options->on_error;
+    secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
+    secure_transport_handler->user_data = options->user_data;
+
     secure_transport_handler->ctx =
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
@@ -839,15 +849,14 @@ static struct aws_channel_handler *s_tls_handler_new(
             (void *)&secure_transport_handler->handler,
             (const char *)aws_string_bytes(options->alpn_list));
         alpn_list = options->alpn_list;
-    } else {
+
+    } else if (secure_transport_ctx->alpn_list){
         alpn_list = secure_transport_ctx->alpn_list;
     }
 
     if (alpn_list) {
         s_set_protocols(secure_transport_handler, allocator, alpn_list);
     }
-
-    secure_transport_handler->options = *options;
 
     return &secure_transport_handler->handler;
 
