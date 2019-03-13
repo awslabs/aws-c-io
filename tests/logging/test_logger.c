@@ -25,7 +25,7 @@
  */
 #define TEST_LOGGER_MAX_LOG_LINE_SIZE 256
 
-int s_test_logger_log_fn(
+int s_test_logger_log(
     struct aws_logger *logger,
     enum aws_log_level log_level,
     aws_log_subject_t subject,
@@ -60,7 +60,7 @@ int s_test_logger_log_fn(
     return AWS_OP_SUCCESS;
 }
 
-enum aws_log_level s_test_logger_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
+enum aws_log_level s_test_logger_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)subject;
 
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
@@ -68,20 +68,18 @@ enum aws_log_level s_test_logger_get_log_level_fn(struct aws_logger *logger, aws
     return impl->level;
 }
 
-int s_test_logger_cleanup(struct aws_logger *logger) {
+void s_test_logger_clean_up(struct aws_logger *logger) {
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
 
     aws_byte_buf_clean_up(&impl->log_buffer);
 
     struct aws_allocator *allocator = logger->allocator;
     aws_mem_release(allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
-static struct aws_logger_vtable s_test_logger_vtable = {.get_log_level = s_test_logger_get_log_level_fn,
-                                                        .log = s_test_logger_log_fn,
-                                                        .cleanup = s_test_logger_cleanup};
+static struct aws_logger_vtable s_test_logger_vtable = {.get_log_level = s_test_logger_get_log_level,
+                                                        .log = s_test_logger_log,
+                                                        .clean_up = s_test_logger_clean_up};
 
 int test_logger_init(struct aws_logger *logger, struct aws_allocator *allocator, enum aws_log_level level) {
 

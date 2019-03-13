@@ -47,7 +47,7 @@ struct aws_default_log_formatter_impl {
     enum aws_date_format date_format;
 };
 
-static int s_default_aws_log_formatter_format_fn(
+static int s_default_aws_log_formatter_format(
     struct aws_log_formatter *formatter,
     struct aws_string **formatted_output,
     enum aws_log_level level,
@@ -91,7 +91,7 @@ static int s_default_aws_log_formatter_format_fn(
     struct aws_string *raw_string =
         (struct aws_string *)aws_mem_acquire(formatter->allocator, sizeof(struct aws_string) + total_length);
     if (raw_string == NULL) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     char *log_line_buffer = (char *)raw_string->bytes;
@@ -102,12 +102,12 @@ static int s_default_aws_log_formatter_format_fn(
      */
     const char *level_string = NULL;
     if (aws_log_level_to_string(level, &level_string)) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     int log_level_length = snprintf(log_line_buffer, total_length, "[%s] [", level_string);
     if (log_level_length < 0) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     current_index += log_level_length;
@@ -130,7 +130,7 @@ static int s_default_aws_log_formatter_format_fn(
 
     int result = aws_date_time_to_utc_time_str(&current_time, impl->date_format, &timestamp_buffer);
     if (result != AWS_OP_SUCCESS) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     current_index += timestamp_buffer.len;
@@ -142,7 +142,7 @@ static int s_default_aws_log_formatter_format_fn(
     int thread_id_written =
         snprintf(log_line_buffer + current_index, total_length - current_index, "] [%" PRIu64 "] ", current_thread_id);
     if (thread_id_written < 0) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     current_index += thread_id_written;
@@ -153,7 +153,7 @@ static int s_default_aws_log_formatter_format_fn(
             snprintf(log_line_buffer + current_index, total_length - current_index, "[%s]", subject_name);
 
         if (subject_written < 0) {
-            goto error_cleanup;
+            goto error_clean_up;
         }
 
         current_index += subject_written;
@@ -171,7 +171,7 @@ static int s_default_aws_log_formatter_format_fn(
     int written_count = vsnprintf(log_line_buffer + current_index, total_length - current_index, format, args);
 #endif // WIN32
     if (written_count < 0) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     /*
@@ -180,7 +180,7 @@ static int s_default_aws_log_formatter_format_fn(
     current_index += written_count;
     written_count = snprintf(log_line_buffer + current_index, total_length - current_index, "\n");
     if (written_count < 0) {
-        goto error_cleanup;
+        goto error_clean_up;
     }
 
     *(struct aws_allocator **)(&raw_string->allocator) = formatter->allocator;
@@ -190,7 +190,7 @@ static int s_default_aws_log_formatter_format_fn(
 
     return AWS_OP_SUCCESS;
 
-error_cleanup:
+error_clean_up:
 
     if (raw_string != NULL) {
         aws_mem_release(formatter->allocator, raw_string);
@@ -199,15 +199,14 @@ error_cleanup:
     return AWS_OP_ERR;
 }
 
-static int s_default_aws_log_formatter_cleanup_fn(struct aws_log_formatter *formatter) {
+static void s_default_aws_log_formatter_clean_up(struct aws_log_formatter *formatter) {
     aws_mem_release(formatter->allocator, formatter->impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_log_formatter_vtable s_default_log_formatter_vtable = {
-    .format = s_default_aws_log_formatter_format_fn,
-    .cleanup = s_default_aws_log_formatter_cleanup_fn};
+    .format = s_default_aws_log_formatter_format,
+    .clean_up = s_default_aws_log_formatter_clean_up,
+};
 
 int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,
@@ -224,7 +223,7 @@ int aws_log_formatter_init_default(
     return AWS_OP_SUCCESS;
 }
 
-int aws_log_formatter_cleanup(struct aws_log_formatter *formatter) {
-    assert(formatter->vtable->cleanup);
-    return (formatter->vtable->cleanup)(formatter);
+void aws_log_formatter_clean_up(struct aws_log_formatter *formatter) {
+    assert(formatter->vtable->clean_up);
+    (formatter->vtable->clean_up)(formatter);
 }

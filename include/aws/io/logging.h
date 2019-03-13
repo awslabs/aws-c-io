@@ -123,7 +123,7 @@ struct aws_logger_vtable {
 #endif /* non-ms compilers: TODO - find out what versions format support was added in */
         ;
     enum aws_log_level (*const get_log_level)(struct aws_logger *logger, aws_log_subject_t subject);
-    int (*const cleanup)(struct aws_logger *logger);
+    void (*const clean_up)(struct aws_logger *logger);
 };
 
 struct aws_logger {
@@ -147,9 +147,15 @@ struct aws_logger_pipeline {
     enum aws_log_level level;
 };
 
+/**
+ * Options for aws_logger_init_standard().
+ * Set `filename` to open a file for logging and close it when the logger cleans up.
+ * Set `file` to use a file that is already open, such as `stderr` or `stdout`.
+ */
 struct aws_logger_standard_options {
     enum aws_log_level level;
     const char *filename;
+    FILE *file;
 };
 
 /**
@@ -227,10 +233,10 @@ AWS_IO_API
 struct aws_logger *aws_logger_get(void);
 
 /**
- * Cleans up all resources used by the logger; simply invokes the cleanup v-function
+ * Cleans up all resources used by the logger; simply invokes the clean_up v-function
  */
 AWS_IO_API
-int aws_logger_cleanup(struct aws_logger *logger);
+void aws_logger_clean_up(struct aws_logger *logger);
 
 /**
  * Converts a log level to a c-string constant.  Intended primarily to support building log lines that
@@ -272,6 +278,12 @@ int aws_logger_init_from_external(
 
 /**
  * Connects log subject strings with log subject integer values
+ */
+AWS_IO_API
+void aws_register_log_subject_info_list(struct aws_log_subject_info_list *log_subject_list);
+
+/**
+ * Load aws-c-io's log subject strings.
  */
 AWS_IO_API
 void aws_io_load_log_subject_strings(void);

@@ -178,8 +178,8 @@ int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *pkcs12_path,
-    struct aws_byte_cursor *pkcs_pwd) {
-    if (aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(options, allocator, pkcs12_path, pkcs_pwd)) {
+    struct aws_byte_cursor *pkcs_password) {
+    if (aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(options, allocator, pkcs12_path, pkcs_password)) {
         return AWS_OP_ERR;
     }
 
@@ -191,8 +191,8 @@ int aws_tls_ctx_options_init_server_pkcs12(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *pkcs12,
-    struct aws_byte_cursor *pkcs_pwd) {
-    if (aws_tls_ctx_options_init_client_mtls_pkcs12(options, allocator, pkcs12, pkcs_pwd)) {
+    struct aws_byte_cursor *pkcs_password) {
+    if (aws_tls_ctx_options_init_client_mtls_pkcs12(options, allocator, pkcs12, pkcs_password)) {
         return AWS_OP_ERR;
     }
 

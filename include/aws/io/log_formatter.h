@@ -35,7 +35,7 @@ struct aws_string;
  */
 struct aws_log_formatter;
 
-typedef int (*aws_log_formatter_format_fn)(
+typedef int(aws_log_formatter_format_fn)(
     struct aws_log_formatter *formatter,
     struct aws_string **formatted_output,
     enum aws_log_level level,
@@ -43,11 +43,11 @@ typedef int (*aws_log_formatter_format_fn)(
     const char *format,
     va_list args);
 
-typedef int (*aws_log_formatter_cleanup_fn)(struct aws_log_formatter *logger);
+typedef void(aws_log_formatter_clean_up_fn)(struct aws_log_formatter *logger);
 
 struct aws_log_formatter_vtable {
-    const aws_log_formatter_format_fn format;
-    const aws_log_formatter_cleanup_fn cleanup;
+    aws_log_formatter_format_fn *format;
+    aws_log_formatter_clean_up_fn *clean_up;
 };
 
 struct aws_log_formatter {
@@ -74,11 +74,11 @@ int aws_log_formatter_init_default(
     struct aws_log_formatter_standard_options *options);
 
 /*
- * Cleans up a log formatter (minus the base structure memory) by calling the formatter's cleanup function
+ * Cleans up a log formatter (minus the base structure memory) by calling the formatter's clean_up function
  * via the vtable.
  */
 AWS_IO_API
-int aws_log_formatter_cleanup(struct aws_log_formatter *formatter);
+void aws_log_formatter_clean_up(struct aws_log_formatter *formatter);
 
 AWS_EXTERN_C_END
 

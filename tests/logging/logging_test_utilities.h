@@ -38,11 +38,11 @@ int do_log_test(
  * A macro capable of defining simple logging tests that follow the do_log_test function pattern
  */
 #define TEST_LEVEL_FILTER(log_level, expected, action_fn)                                                              \
-    static int s_logging_filter_at_##log_level##_##action_fn##_fn(struct aws_allocator *allocator, void *ctx) {        \
+    static int s_logging_filter_at_##log_level##_##action_fn(struct aws_allocator *allocator, void *ctx) {             \
         (void)ctx;                                                                                                     \
         return do_log_test(allocator, log_level, expected, action_fn);                                                 \
     }                                                                                                                  \
-    AWS_TEST_CASE(test_logging_filter_at_##log_level##_##action_fn, s_logging_filter_at_##log_level##_##action_fn##_fn);
+    AWS_TEST_CASE(test_logging_filter_at_##log_level##_##action_fn, s_logging_filter_at_##log_level##_##action_fn);
 
 /**
  * A macro that defines a function that invokes all 6 LOGF_<level> variants
