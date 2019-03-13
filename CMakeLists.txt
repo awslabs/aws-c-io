@@ -31,6 +31,10 @@ file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
 
+file(GLOB AWS_IO_UV_HEADERS
+        "include/aws/io/uv/*.h"
+        )
+
 file(GLOB AWS_IO_TESTING_HEADERS
         "include/aws/testing/*.h"
         )
@@ -192,6 +196,12 @@ if (USE_LIBUV)
     if (UV_LINK_LIBRARY)
         target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC ${LIBUV_LIBRARY})
     endif ()
+
+    # Allow specific overriding of uv.h location
+    if (UV_HEADER_PATH)
+        message(STATUS "Using uv.h location: ${UV_HEADER_PATH}")
+        target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "UV_HEADER_PATH=${UV_HEADER_PATH}")
+    endif ()
 endif ()
 
 if (BUILD_JNI_BINDINGS)
@@ -217,6 +227,9 @@ aws_prepare_shared_lib_exports(${CMAKE_PROJECT_NAME})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io" COMPONENT Development)
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing" COMPONENT Development)
+if (USE_LIBUV)
+    install(FILES ${AWS_IO_UV_HEADERS} DESTINATION "include/aws/io/uv" COMPONENT Development)
+endif ()
 
 install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
         DESTINATION "${LIBRARY_DIRECTORY}/${CMAKE_PROJECT_NAME}/cmake/"

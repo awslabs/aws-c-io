@@ -832,7 +832,7 @@ int aws_host_resolver_init_default(
 
 #ifdef AWS_USE_LIBUV
 
-#    include <uv.h>
+#    include <aws/io/uv/uv_include.h>
 
 struct uv_host_resolver {
     /* This needs to be the first element in the struct so the pointers are safely castable.
