@@ -130,7 +130,7 @@ if (NOT USE_IO_COMPLETION_PORTS)
     # LIBUV event_loop not supported under IOCP
     option(USE_LIBUV "Use libuv event loop instead of kqueue/epoll" OFF)
     # Disable this if you'll be linking against an executable that includes UV, like Node.js
-    option(UV_LINK_LIBRARY "Link against the libuv.a library found by find_library" ON)
+    option(UV_LINK_LIBRARY "Link against the libuv.a library found by find_library (NOTE: if this is set to OFF, your executable will need to manually link against libuv)" ON)
 else ()
     set(USE_LIBUV OFF)
 endif ()
