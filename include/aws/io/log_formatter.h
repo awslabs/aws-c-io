@@ -35,7 +35,7 @@ struct aws_string;
  */
 struct aws_log_formatter;
 
-typedef int (*aws_log_formatter_format_fn)(
+typedef int(aws_log_formatter_format_fn)(
     struct aws_log_formatter *formatter,
     struct aws_string **formatted_output,
     enum aws_log_level level,
@@ -43,11 +43,11 @@ typedef int (*aws_log_formatter_format_fn)(
     const char *format,
     va_list args);
 
-typedef void (*aws_log_formatter_clean_up_fn)(struct aws_log_formatter *logger);
+typedef void(aws_log_formatter_clean_up_fn)(struct aws_log_formatter *logger);
 
 struct aws_log_formatter_vtable {
-    const aws_log_formatter_format_fn format;
-    const aws_log_formatter_clean_up_fn clean_up;
+    aws_log_formatter_format_fn *format;
+    aws_log_formatter_clean_up_fn *clean_up;
 };
 
 struct aws_log_formatter {

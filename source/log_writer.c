@@ -36,7 +36,7 @@ struct aws_file_writer {
     bool close_file_on_cleanup;
 };
 
-static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struct aws_string *output) {
+static int s_aws_file_writer_write(struct aws_log_writer *writer, const struct aws_string *output) {
     struct aws_file_writer *impl = (struct aws_file_writer *)writer->impl;
 
     size_t length = output->len;
@@ -47,7 +47,7 @@ static int s_aws_file_writer_write_fn(struct aws_log_writer *writer, const struc
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_file_writer_clean_up_fn(struct aws_log_writer *writer) {
+static void s_aws_file_writer_clean_up(struct aws_log_writer *writer) {
     struct aws_file_writer *impl = (struct aws_file_writer *)writer->impl;
 
     if (impl->close_file_on_cleanup) {
@@ -57,8 +57,8 @@ static void s_aws_file_writer_clean_up_fn(struct aws_log_writer *writer) {
     aws_mem_release(writer->allocator, impl);
 }
 
-static struct aws_log_writer_vtable s_aws_file_writer_vtable = {.write = s_aws_file_writer_write_fn,
-                                                                .clean_up = s_aws_file_writer_clean_up_fn};
+static struct aws_log_writer_vtable s_aws_file_writer_vtable = {.write = s_aws_file_writer_write,
+                                                                .clean_up = s_aws_file_writer_clean_up};
 
 /*
  * Shared internal init implementation

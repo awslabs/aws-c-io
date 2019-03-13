@@ -32,12 +32,12 @@ struct aws_log_writer;
  */
 struct aws_log_channel;
 
-typedef int (*aws_log_channel_send_fn)(struct aws_log_channel *channel, struct aws_string *output);
-typedef void (*aws_log_channel_clean_up_fn)(struct aws_log_channel *channel);
+typedef int(aws_log_channel_send_fn)(struct aws_log_channel *channel, struct aws_string *output);
+typedef void(aws_log_channel_clean_up_fn)(struct aws_log_channel *channel);
 
 struct aws_log_channel_vtable {
-    const aws_log_channel_send_fn send;
-    const aws_log_channel_clean_up_fn clean_up;
+    aws_log_channel_send_fn *send;
+    aws_log_channel_clean_up_fn *clean_up;
 };
 
 struct aws_log_channel {

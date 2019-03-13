@@ -30,12 +30,12 @@ struct aws_string;
  */
 struct aws_log_writer;
 
-typedef int (*aws_log_writer_write_fn)(struct aws_log_writer *writer, const struct aws_string *output);
-typedef void (*aws_log_writer_clean_up_fn)(struct aws_log_writer *writer);
+typedef int(aws_log_writer_write_fn)(struct aws_log_writer *writer, const struct aws_string *output);
+typedef void(aws_log_writer_clean_up_fn)(struct aws_log_writer *writer);
 
 struct aws_log_writer_vtable {
-    const aws_log_writer_write_fn write;
-    const aws_log_writer_clean_up_fn clean_up;
+    aws_log_writer_write_fn *write;
+    aws_log_writer_clean_up_fn *clean_up;
 };
 
 struct aws_log_writer {

@@ -33,11 +33,11 @@ static const char *s_test_file_name =
     "./aws_log_writer_test.log";
 #endif
 
-typedef void (*log_test_fn)(void);
+typedef void(log_test_fn)(void);
 
 int do_pipeline_logger_test(
     struct aws_allocator *allocator,
-    log_test_fn log_fn,
+    log_test_fn *log_fn,
     const char **expected_user_content,
     size_t user_content_count) {
 
@@ -122,7 +122,7 @@ static const char *expected_test_user_content[] =
     {"trace log call", "debug log call", "info log call", "warn log call", "error log call", "fatal log call"};
 
 #define DEFINE_PIPELINE_LOGGER_TEST(test_name, callback_function)                                                      \
-    static int s_pipeline_logger_##test_name##_fn(struct aws_allocator *allocator, void *ctx) {                        \
+    static int s_pipeline_logger_##test_name(struct aws_allocator *allocator, void *ctx) {                             \
         (void)ctx;                                                                                                     \
         return do_pipeline_logger_test(                                                                                \
             allocator,                                                                                                 \
@@ -130,7 +130,7 @@ static const char *expected_test_user_content[] =
             expected_test_user_content,                                                                                \
             sizeof(expected_test_user_content) / sizeof(expected_test_user_content[0]));                               \
     }                                                                                                                  \
-    AWS_TEST_CASE(test_pipeline_logger_##test_name, s_pipeline_logger_##test_name##_fn);
+    AWS_TEST_CASE(test_pipeline_logger_##test_name, s_pipeline_logger_##test_name);
 
 DEFINE_PIPELINE_LOGGER_TEST(unformatted_test, s_unformatted_pipeline_logger_test_callback)
 DEFINE_PIPELINE_LOGGER_TEST(formatted_test, s_formatted_pipeline_logger_test_callback)

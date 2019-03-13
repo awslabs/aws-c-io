@@ -47,7 +47,7 @@ struct aws_default_log_formatter_impl {
     enum aws_date_format date_format;
 };
 
-static int s_default_aws_log_formatter_format_fn(
+static int s_default_aws_log_formatter_format(
     struct aws_log_formatter *formatter,
     struct aws_string **formatted_output,
     enum aws_log_level level,
@@ -199,13 +199,14 @@ error_clean_up:
     return AWS_OP_ERR;
 }
 
-static void s_default_aws_log_formatter_clean_up_fn(struct aws_log_formatter *formatter) {
+static void s_default_aws_log_formatter_clean_up(struct aws_log_formatter *formatter) {
     aws_mem_release(formatter->allocator, formatter->impl);
 }
 
 static struct aws_log_formatter_vtable s_default_log_formatter_vtable = {
-    .format = s_default_aws_log_formatter_format_fn,
-    .clean_up = s_default_aws_log_formatter_clean_up_fn};
+    .format = s_default_aws_log_formatter_format,
+    .clean_up = s_default_aws_log_formatter_clean_up,
+};
 
 int aws_log_formatter_init_default(
     struct aws_log_formatter *formatter,

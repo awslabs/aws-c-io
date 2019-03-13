@@ -24,11 +24,11 @@
 
 #define TEST_FORMATTER_MAX_BUFFER_SIZE 4096
 
-typedef int (*log_formatter_test_fn)(struct aws_log_formatter *formatter, struct aws_string **output);
+typedef int(log_formatter_test_fn)(struct aws_log_formatter *formatter, struct aws_string **output);
 
 int do_default_log_formatter_test(
     struct aws_allocator *allocator,
-    log_formatter_test_fn test_fn,
+    log_formatter_test_fn *test_fn,
     const char *expected_user_output,
     enum aws_log_level log_level,
     enum aws_date_format date_format) {
@@ -150,11 +150,11 @@ int do_default_log_formatter_test(
 }
 
 #define DEFINE_LOG_FORMATTER_TEST(test_function, log_level, date_format, expected_user_string)                         \
-    static int s_log_formatter_##test_function##_fn(struct aws_allocator *allocator, void *ctx) {                      \
+    static int s_log_formatter_##test_function(struct aws_allocator *allocator, void *ctx) {                           \
         (void)ctx;                                                                                                     \
         return do_default_log_formatter_test(allocator, test_function, expected_user_string, log_level, date_format);  \
     }                                                                                                                  \
-    AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function##_fn);
+    AWS_TEST_CASE(test_log_formatter_##test_function, s_log_formatter_##test_function);
 
 static int invoke_formatter(
     struct aws_log_formatter *formatter,

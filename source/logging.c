@@ -27,14 +27,14 @@
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 
-static enum aws_log_level s_null_logger_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
+static enum aws_log_level s_null_logger_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)logger;
     (void)subject;
 
     return AWS_LL_NONE;
 }
 
-static int s_null_logger_log_fn(
+static int s_null_logger_log(
     struct aws_logger *logger,
     enum aws_log_level log_level,
     aws_log_subject_t subject,
@@ -48,13 +48,15 @@ static int s_null_logger_log_fn(
     return AWS_OP_SUCCESS;
 }
 
-static void s_null_logger_clean_up_fn(struct aws_logger *logger) {
+static void s_null_logger_clean_up(struct aws_logger *logger) {
     (void)logger;
 }
 
-static struct aws_logger_vtable s_null_vtable = {.get_log_level = s_null_logger_get_log_level_fn,
-                                                 .log = s_null_logger_log_fn,
-                                                 .clean_up = s_null_logger_clean_up_fn};
+static struct aws_logger_vtable s_null_vtable = {
+    .get_log_level = s_null_logger_get_log_level,
+    .log = s_null_logger_log,
+    .clean_up = s_null_logger_clean_up,
+};
 
 static struct aws_logger s_null_logger = {.vtable = &s_null_vtable, .allocator = NULL, .p_impl = NULL};
 
@@ -92,7 +94,7 @@ int aws_log_level_to_string(enum aws_log_level log_level, const char **level_str
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_logger_pipeline_owned_clean_up_fn(struct aws_logger *logger) {
+static void s_aws_logger_pipeline_owned_clean_up(struct aws_logger *logger) {
     struct aws_logger_pipeline *impl = logger->p_impl;
 
     assert(impl->channel->vtable->clean_up != NULL);
@@ -114,7 +116,7 @@ static void s_aws_logger_pipeline_owned_clean_up_fn(struct aws_logger *logger) {
 /*
  * Pipeline logger implementation
  */
-static int s_aws_logger_pipeline_log_fn(
+static int s_aws_logger_pipeline_log(
     struct aws_logger *logger,
     enum aws_log_level log_level,
     aws_log_subject_t subject,
@@ -147,7 +149,7 @@ static int s_aws_logger_pipeline_log_fn(
     return AWS_OP_SUCCESS;
 }
 
-static enum aws_log_level s_aws_logger_pipeline_get_log_level_fn(struct aws_logger *logger, aws_log_subject_t subject) {
+static enum aws_log_level s_aws_logger_pipeline_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
     (void)subject;
 
     struct aws_logger_pipeline *impl = logger->p_impl;
@@ -155,9 +157,11 @@ static enum aws_log_level s_aws_logger_pipeline_get_log_level_fn(struct aws_logg
     return impl->level;
 }
 
-struct aws_logger_vtable g_pipeline_logger_owned_vtable = {.get_log_level = s_aws_logger_pipeline_get_log_level_fn,
-                                                           .log = s_aws_logger_pipeline_log_fn,
-                                                           .clean_up = s_aws_logger_pipeline_owned_clean_up_fn};
+struct aws_logger_vtable g_pipeline_logger_owned_vtable = {
+    .get_log_level = s_aws_logger_pipeline_get_log_level,
+    .log = s_aws_logger_pipeline_log,
+    .clean_up = s_aws_logger_pipeline_owned_clean_up,
+};
 
 int aws_logger_init_standard(
     struct aws_logger *logger,
@@ -241,16 +245,17 @@ on_allocate_writer_failure:
  * Pipeline logger implementation where all the components are externally owned.  No clean up
  * is done on the components.  Useful for tests where components are on the stack and often mocked.
  */
-static void s_aws_pipeline_logger_unowned_clean_up_fn(struct aws_logger *logger) {
+static void s_aws_pipeline_logger_unowned_clean_up(struct aws_logger *logger) {
     struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)logger->p_impl;
 
     aws_mem_release(impl->allocator, impl);
 }
 
 static struct aws_logger_vtable s_pipeline_logger_unowned_vtable = {
-    .get_log_level = s_aws_logger_pipeline_get_log_level_fn,
-    .log = s_aws_logger_pipeline_log_fn,
-    .clean_up = s_aws_pipeline_logger_unowned_clean_up_fn};
+    .get_log_level = s_aws_logger_pipeline_get_log_level,
+    .log = s_aws_logger_pipeline_log,
+    .clean_up = s_aws_pipeline_logger_unowned_clean_up,
+};
 
 int aws_logger_init_from_external(
     struct aws_logger *logger,

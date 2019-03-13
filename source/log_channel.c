@@ -31,7 +31,7 @@ struct aws_log_foreground_channel {
     struct aws_mutex sync;
 };
 
-static int s_foreground_channel_send_fn(struct aws_log_channel *channel, struct aws_string *log_line) {
+static int s_foreground_channel_send(struct aws_log_channel *channel, struct aws_string *log_line) {
 
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
@@ -51,7 +51,7 @@ static int s_foreground_channel_send_fn(struct aws_log_channel *channel, struct 
     return AWS_OP_SUCCESS;
 }
 
-static void s_foreground_channel_clean_up_fn(struct aws_log_channel *channel) {
+static void s_foreground_channel_clean_up(struct aws_log_channel *channel) {
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
     aws_mutex_clean_up(&impl->sync);
@@ -59,8 +59,8 @@ static void s_foreground_channel_clean_up_fn(struct aws_log_channel *channel) {
     aws_mem_release(channel->allocator, impl);
 }
 
-static struct aws_log_channel_vtable s_foreground_channel_vtable = {.send = s_foreground_channel_send_fn,
-                                                                    .clean_up = s_foreground_channel_clean_up_fn};
+static struct aws_log_channel_vtable s_foreground_channel_vtable = {.send = s_foreground_channel_send,
+                                                                    .clean_up = s_foreground_channel_clean_up};
 
 int aws_log_channel_init_foreground(
     struct aws_log_channel *channel,
@@ -93,7 +93,7 @@ struct aws_log_background_channel {
     bool finished;
 };
 
-static int s_background_channel_send_fn(struct aws_log_channel *channel, struct aws_string *log_line) {
+static int s_background_channel_send(struct aws_log_channel *channel, struct aws_string *log_line) {
 
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
@@ -105,7 +105,7 @@ static int s_background_channel_send_fn(struct aws_log_channel *channel, struct 
     return AWS_OP_SUCCESS;
 }
 
-static void s_background_channel_clean_up_fn(struct aws_log_channel *channel) {
+static void s_background_channel_clean_up(struct aws_log_channel *channel) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
     aws_mutex_lock(&impl->sync);
@@ -122,10 +122,10 @@ static void s_background_channel_clean_up_fn(struct aws_log_channel *channel) {
     aws_mem_release(channel->allocator, impl);
 }
 
-static struct aws_log_channel_vtable s_background_channel_vtable = {.send = s_background_channel_send_fn,
-                                                                    .clean_up = s_background_channel_clean_up_fn};
+static struct aws_log_channel_vtable s_background_channel_vtable = {.send = s_background_channel_send,
+                                                                    .clean_up = s_background_channel_clean_up};
 
-static bool s_background_wait_fn(void *context) {
+static bool s_background_wait(void *context) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)context;
 
     /*
@@ -134,7 +134,7 @@ static bool s_background_wait_fn(void *context) {
     return impl->finished || aws_array_list_length(&impl->pending_log_lines) > 0;
 }
 
-static void s_background_thread_writer_fn(void *thread_data) {
+static void s_background_thread_writer(void *thread_data) {
     (void)thread_data;
 
     struct aws_log_channel *channel = (struct aws_log_channel *)thread_data;
@@ -148,7 +148,7 @@ static void s_background_thread_writer_fn(void *thread_data) {
 
     while (true) {
         aws_mutex_lock(&impl->sync);
-        aws_condition_variable_wait_pred(&impl->pending_line_signal, &impl->sync, s_background_wait_fn, impl);
+        aws_condition_variable_wait_pred(&impl->pending_line_signal, &impl->sync, s_background_wait, impl);
 
         size_t line_count = aws_array_list_length(&impl->pending_log_lines);
         bool finished = impl->finished;
@@ -229,7 +229,7 @@ int aws_log_channel_init_background(
      */
     struct aws_thread_options thread_options = {.stack_size = 0};
 
-    if (aws_thread_launch(&impl->background_thread, s_background_thread_writer_fn, channel, &thread_options) ==
+    if (aws_thread_launch(&impl->background_thread, s_background_thread_writer, channel, &thread_options) ==
         AWS_OP_SUCCESS) {
         return AWS_OP_SUCCESS;
     }
