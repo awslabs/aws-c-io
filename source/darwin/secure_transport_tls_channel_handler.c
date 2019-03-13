@@ -97,11 +97,15 @@ struct secure_transport_handler {
     /*per spec the max length for a server name is 255 bytes (plus the null character). */
     char server_name_array[256];
     struct aws_byte_buf server_name;
-    struct aws_tls_connection_options options;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
     struct aws_channel_task read_task;
+    aws_tls_on_negotiation_result_fn *on_negotiation_result;
+    aws_tls_on_data_read_fn *on_data_read;
+    aws_tls_on_error_fn *on_error;
+    void *user_data;
+    bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
     bool read_task_pending;
@@ -245,14 +249,14 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
 static void s_set_protocols(
     struct secure_transport_handler *handler,
     struct aws_allocator *alloc,
-    const char *alpn_list) {
+    struct aws_string *alpn_list) {
 
     (void)handler;
     (void)alloc;
     (void)alpn_list;
 #if ALPN_AVAILABLE
     if (s_SSLSetALPNProtocols) {
-        struct aws_byte_cursor alpn_data = aws_byte_cursor_from_c_str(alpn_list);
+        struct aws_byte_cursor alpn_data = aws_byte_cursor_from_string(alpn_list);
         struct aws_array_list alpn_list_array;
         if (aws_array_list_init_dynamic(&alpn_list_array, alloc, 2, sizeof(struct aws_byte_cursor))) {
             return;
@@ -300,9 +304,9 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    if (secure_transport_handler->options.on_negotiation_result) {
-        secure_transport_handler->options.on_negotiation_result(
-            handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->options.user_data);
+    if (secure_transport_handler->on_negotiation_result) {
+        secure_transport_handler->on_negotiation_result(
+            handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->user_data);
     }
 }
 
@@ -367,8 +371,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 secure_transport_handler->server_name_array);
         }
 
-        if (secure_transport_handler->parent_slot->adj_right &&
-            secure_transport_handler->options.advertise_alpn_message && protocol) {
+        if (secure_transport_handler->parent_slot->adj_right && secure_transport_handler->advertise_alpn_message &&
+            protocol) {
             struct aws_io_message *message = aws_channel_acquire_message_from_pool(
                 secure_transport_handler->parent_slot->channel,
                 AWS_IO_MESSAGE_APPLICATION_DATA,
@@ -603,9 +607,9 @@ static int s_process_read_message(
         processed += read;
         outgoing_read_message->message_data.len = read;
 
-        if (secure_transport_handler->options.on_data_read) {
-            secure_transport_handler->options.on_data_read(
-                handler, slot, &outgoing_read_message->message_data, secure_transport_handler->options.user_data);
+        if (secure_transport_handler->on_data_read) {
+            secure_transport_handler->on_data_read(
+                handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
         }
 
         if (slot->adj_right) {
@@ -711,7 +715,7 @@ struct secure_transport_ctx {
     CFArrayRef certs;
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
-    const char *alpn_list;
+    struct aws_string *alpn_list;
     bool veriify_peer;
 };
 
@@ -735,6 +739,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
+    secure_transport_handler->advertise_alpn_message = options->advertise_alpn_message;
+    secure_transport_handler->on_data_read = options->on_data_read;
+    secure_transport_handler->on_error = options->on_error;
+    secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
+    secure_transport_handler->user_data = options->user_data;
+
     secure_transport_handler->ctx =
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);
 
@@ -826,27 +836,27 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->latest_message_on_completion = NULL;
 
     if (options->server_name) {
-        size_t server_name_len = strlen(options->server_name);
-        SSLSetPeerDomainName(secure_transport_handler->ctx, options->server_name, server_name_len);
+        size_t server_name_len = options->server_name->len;
+        SSLSetPeerDomainName(
+            secure_transport_handler->ctx, (const char *)aws_string_bytes(options->server_name), server_name_len);
     }
 
-    const char *alpn_list = NULL;
+    struct aws_string *alpn_list = NULL;
     if (options->alpn_list) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
             "id=%p: setting ALPN list %s",
             (void *)&secure_transport_handler->handler,
-            options->alpn_list);
+            (const char *)aws_string_bytes(options->alpn_list));
         alpn_list = options->alpn_list;
-    } else {
+
+    } else if (secure_transport_ctx->alpn_list) {
         alpn_list = secure_transport_ctx->alpn_list;
     }
 
     if (alpn_list) {
         s_set_protocols(secure_transport_handler, allocator, alpn_list);
     }
-
-    secure_transport_handler->options = *options;
 
     return &secure_transport_handler->handler;
 
@@ -888,32 +898,25 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
         goto cleanup_secure_transport_ctx;
     }
 
-    secure_transport_ctx->alpn_list = options->alpn_list;
+    if (options->alpn_list) {
+        secure_transport_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
+
+        if (!secure_transport_ctx->alpn_list) {
+            goto cleanup_secure_transport_ctx;
+        }
+    }
+
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
 
-    if (options->certificate_path && options->private_key_path) {
+    if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
-        struct aws_byte_buf cert_chain;
-        if (aws_byte_buf_init_from_file(&cert_chain, alloc, options->certificate_path)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->certificate_path);
-            goto cleanup_wrapped_allocator;
-        }
-
-        struct aws_byte_buf private_key;
-        if (aws_byte_buf_init_from_file(&private_key, alloc, options->private_key_path)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->private_key_path);
-            aws_secure_zero(cert_chain.buffer, cert_chain.len);
-            aws_byte_buf_clean_up(&cert_chain);
-            goto cleanup_wrapped_allocator;
-        }
-
-        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&cert_chain);
-        struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&private_key);
+        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
+        struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
@@ -922,33 +925,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
                 &secure_transport_ctx->certs)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
-            aws_secure_zero(cert_chain.buffer, cert_chain.len);
-            aws_byte_buf_clean_up(&cert_chain);
-            aws_secure_zero(private_key.buffer, private_key.len);
-            aws_byte_buf_clean_up(&private_key);
             goto cleanup_wrapped_allocator;
         }
+    } else if (options->pkcs12.len) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
-        aws_secure_zero(cert_chain.buffer, cert_chain.len);
-        aws_byte_buf_clean_up(&cert_chain);
-        aws_secure_zero(private_key.buffer, private_key.len);
-        aws_byte_buf_clean_up(&private_key);
-    } else if (options->pkcs12_path) {
-
-        struct aws_byte_buf pkcs12_blob;
-        if (aws_byte_buf_init_from_file(&pkcs12_blob, alloc, options->pkcs12_path)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->pkcs12_path);
-            goto cleanup_wrapped_allocator;
-        }
-
-        struct aws_byte_buf password = {.buffer = NULL, .len = 0, .allocator = NULL, .capacity = 0};
-
-        if (options->pkcs12_password) {
-            password = aws_byte_buf_from_c_str(options->pkcs12_password);
-        }
-
-        struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&pkcs12_blob);
-        struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&password);
+        struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
+        struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
         if (aws_import_pkcs12_to_identity(
                 secure_transport_ctx->wrapped_allocator,
                 &pkcs12_blob_cur,
@@ -956,37 +939,29 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws
                 &secure_transport_ctx->certs)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-            aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
-            aws_byte_buf_clean_up(&pkcs12_blob);
             goto cleanup_wrapped_allocator;
         }
-        aws_secure_zero(pkcs12_blob.buffer, pkcs12_blob.len);
-        aws_byte_buf_clean_up(&pkcs12_blob);
     }
 
-    if (options->ca_file) {
+    if (options->ca_file.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
-        struct aws_byte_buf ca_blob;
-        if (aws_byte_buf_init_from_file(&ca_blob, alloc, options->ca_file)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load file %s.", options->ca_file);
-            goto cleanup_wrapped_allocator;
-        }
 
-        struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&ca_blob);
+        struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
-            aws_byte_buf_clean_up(&ca_blob);
             goto cleanup_wrapped_allocator;
         }
-
-        aws_byte_buf_clean_up(&ca_blob);
     }
 
     return &secure_transport_ctx->ctx;
 
 cleanup_wrapped_allocator:
     aws_wrapped_cf_allocator_destroy(secure_transport_ctx->wrapped_allocator);
+
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
+    }
 
 cleanup_secure_transport_ctx:
     aws_mem_release(alloc, secure_transport_ctx);
@@ -1011,6 +986,10 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
 
     if (secure_transport_ctx->ca_cert) {
         aws_release_certificates(secure_transport_ctx->ca_cert);
+    }
+
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
     }
 
     CFRelease(secure_transport_ctx->wrapped_allocator);

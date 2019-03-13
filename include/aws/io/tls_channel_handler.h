@@ -15,6 +15,8 @@
  * permissions and limitations under the License.
  */
 #include <aws/common/byte_buf.h>
+#include <aws/common/string.h>
+
 #include <aws/io/io.h>
 
 struct aws_channel_slot;
@@ -70,7 +72,7 @@ struct aws_tls_connection_options {
     /** semi-colon delimited list of protocols. Example:
      *  h2;http/1.1
      */
-    const char *alpn_list;
+    struct aws_string *alpn_list;
     /**
      * Serves two purposes. If SNI is supported (hint... it is),
      * this sets the SNI extension.
@@ -78,7 +80,7 @@ struct aws_tls_connection_options {
      * For X.509 validation this also sets the name that will be used
      * for verifying the subj alt name and common name of the peer's certificate.
      */
-    const char *server_name;
+    struct aws_string *server_name;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
@@ -88,6 +90,8 @@ struct aws_tls_connection_options {
 };
 
 struct aws_tls_ctx_options {
+    struct aws_allocator *allocator;
+
     /**
      *  minimum tls version to use. If you just want us to use the
      *  system defaults, you can set: AWS_IO_TLS_VER_SYS_DEFAULTS. This
@@ -99,46 +103,55 @@ struct aws_tls_ctx_options {
      * A PEM armored PKCS#7 collection of CAs you want to trust. Only
      * use this if it's a CA not currently installed on your system.
      */
-    const char *ca_file;
+    struct aws_byte_buf ca_file;
     /**
      * Only used on Unix systems using an openssl style trust API.
      * this is typically something like /etc/pki/tls/certs/"
      */
-    const char *ca_path;
+    struct aws_string *ca_path;
     /**
      * Sets ctx wide alpn string. This is most useful for servers.
      * This is a semi-colon delimited list. example:
      * h2;http/1.1
      */
-    const char *alpn_list;
+    struct aws_string *alpn_list;
     /**
      * This is the path to PEM armored PKCS#7
      * certificate file. It is supported on every
      * operating system.
-     *
-     * Also, on windows, this can be the path to a system
+     */
+    struct aws_byte_buf certificate;
+
+#ifdef _WIN32
+    /** The path to a system
      * installed certficate/private key pair. Example:
      * CurrentUser\\MY\\<thumprint>
      */
-    const char *certificate_path;
+    const char *system_certificate_path;
+#endif
+
     /**
      * The path to a PEM armored PKCS#7 private key.
      *
      * On windows, this field should be NULL only if you are
      * using a system installed certficate.
      */
-    const char *private_key_path;
+    struct aws_byte_buf private_key;
+
+#ifdef __APPLE__
     /**
      * Apple Only!
      *
      * On Apple OS you can also use a pkcs#12 file for your certificate
      * and private key. This is the path to that file.
      */
-    const char *pkcs12_path;
+    struct aws_byte_buf pkcs12;
+
     /**
-     * Password for the pkcs12 file in pkcs12_path.
+     * Password for the pkcs12 file in pkcs12.
      */
-    const char *pkcs12_password;
+    struct aws_byte_buf pkcs12_password;
+#endif
 
     /** max tls fragment size. Default is the value of g_aws_channel_max_fragment_size. */
     size_t max_fragment_size;
@@ -167,34 +180,186 @@ typedef struct aws_channel_handler *(
 AWS_EXTERN_C_BEGIN
 
 /******************************** tls options init stuff ***********************/
-AWS_IO_API void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options);
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls(
+/**
+ * Initializes options with default client options
+ */
+AWS_IO_API void aws_tls_ctx_options_init_default_client(
     struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator);
+/**
+ * Cleans up resources allocated by init_* functions
+ */
+AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
+
+/**
+ * Initializes options for use with mutual tls in client mode.
+ * cert_path and pkey_path are paths to files on disk. cert_path
+ * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
+ * from disk and stored in buffers internally.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path);
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls_pkcs12(
+
+/**
+ * Initializes options for use with mutual tls in client mode.
+ * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
+ * armored.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
-    const char *pkcs12_path,
-    const char *pkcs_pwd);
-AWS_IO_API void aws_tls_ctx_options_init_default_server(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *cert,
+    struct aws_byte_cursor *pkey);
+
+/**
+ * Initializes options for use with in server mode.
+ * cert_path and pkey_path are paths to files on disk. cert_path
+ * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
+ * from disk and stored in buffers internally.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_default_server_from_path(
     struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path);
-AWS_IO_API void aws_tls_ctx_options_init_server_pkcs12(
+
+/**
+ * Initializes options for use with in server mode.
+ * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
+ * armored.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *cert,
+    struct aws_byte_cursor *pkey);
+
+#ifdef _WIN32
+/**
+ * Initializes options for use with mutual tls in client mode. This function is only available on
+ * windows. cert_reg_path is the path to a system
+ * installed certficate/private key pair. Example:
+ * CurrentUser\\MY\\<thumprint>
+ */
+AWS_IO_API void aws_tls_ctx_options_init_client_mtls_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path);
+
+/**
+ * Initializes options for use with server mode. This function is only available on
+ * windows. cert_reg_path is the path to a system
+ * installed certficate/private key pair. Example:
+ * CurrentUser\\MY\\<thumprint>
+ */
+AWS_IO_API void aws_tls_ctx_options_init_default_server_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path);
+#endif /* _WIN32 */
+
+#ifdef __APPLE__
+/**
+ * Initializes options for use with mutual tls in client mode. This function is only available on
+ * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
     const char *pkcs12_path,
-    const char *pkcs_pwd);
-AWS_IO_API void aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list);
+    struct aws_byte_cursor *pkcs_pwd);
+
+/**
+ * Initializes options for use with mutual tls in client mode. This function is only available on
+ * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *pkcs12,
+    struct aws_byte_cursor *pkcs_pwd);
+
+/**
+ * Initializes options for use in server mode. This function is only available on
+ * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *pkcs12_path,
+    struct aws_byte_cursor *pkcs_password);
+
+/**
+ * Initializes options for use in server mode. This function is only available on
+ * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *pkcs12,
+    struct aws_byte_cursor *pkcs_password);
+#endif /* __APPLE__ */
+
+/**
+ * Sets alpn list in the form <protocol1;protocol2;...>. A maximum of 4 protocols are supported.
+ * alpn_list is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list);
+
+/**
+ * Enables or disables x.509 validation. Disable this only for testing. To enable mutual TLS in server mode,
+ * set verify_peer to true.
+ */
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
-AWS_IO_API void aws_tls_ctx_options_override_default_trust_store(
+
+/**
+ * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
+ * ca_file is copied.
+ */
+AWS_IO_API int aws_tls_ctx_options_override_default_trust_store(
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor *ca_file);
+
+/**
+ * Override the default trust store. ca_path is a path to a directory on disk containing trusted certificates. This is
+ * only supported on Unix systems (otherwise this parameter is ignored). ca_file is a path to a file on disk containing
+ * trusted certificates. ca_file is loaded from disk and stored in an internal buffer.
+ */
+AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
     const char *ca_file);
 
+/**
+ * Initializes default connection options from an instance ot aws_tls_ctx.
+ */
 AWS_IO_API void aws_tls_connection_options_init_from_ctx(
     struct aws_tls_connection_options *conn_options,
     struct aws_tls_ctx *ctx);
 
+/**
+ * Cleans up resources in aws_tls_connection_options. This can be called immediately after initializing
+ * a tls handler, or if using the bootstrap api, immediately after asking for a channel.
+ */
+AWS_IO_API void aws_tls_connection_options_clean_up(struct aws_tls_connection_options *connection_options);
+
+/**
+ * Copies 'from' to 'to'
+ */
+AWS_IO_API int aws_tls_connection_options_copy(
+    struct aws_tls_connection_options *to,
+    const struct aws_tls_connection_options *from);
+
+/**
+ * Sets callbacks for use with a tls connection.
+ */
 AWS_IO_API void aws_tls_connection_options_set_callbacks(
     struct aws_tls_connection_options *conn_options,
     aws_tls_on_negotiation_result_fn *on_negotiation_result,
@@ -202,12 +367,23 @@ AWS_IO_API void aws_tls_connection_options_set_callbacks(
     aws_tls_on_error_fn *on_error,
     void *user_data);
 
-AWS_IO_API void aws_tls_connection_options_set_server_name(
+/**
+ * Sets server name to use for the SNI extension (supported everywhere), as well as x.509 validation. If you don't
+ * set this, your x.509 validation will likely fail.
+ */
+AWS_IO_API int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
-    const char *server_name);
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *server_name);
 
-AWS_IO_API void aws_tls_connection_options_set_alpn_list(
+/**
+ * Sets alpn list in the form <protocol1;protocol2;...>. A maximum of 4 protocols are supported.
+ * alpn_list is copied. This value is already inherited from aws_tls_ctx, but the aws_tls_ctx is expensive,
+ * and should be used across as many connections as possible. If you want to set this per connection, set it here.
+ */
+AWS_IO_API int aws_tls_connection_options_set_alpn_list(
     struct aws_tls_connection_options *conn_options,
+    struct aws_allocator *allocator,
     const char *alpn_list);
 
 /********************************* TLS context and state management *********************************/
