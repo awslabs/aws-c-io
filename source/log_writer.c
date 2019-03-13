@@ -70,7 +70,7 @@ static int s_aws_file_writer_init_internal(
     FILE *currently_open_file) {
 
     /* One or the other should be set */
-    if (!(file_name_to_open != NULL ^ currently_open_file != NULL)) {
+    if (!((file_name_to_open != NULL) ^ (currently_open_file != NULL))) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 

@@ -155,7 +155,7 @@ struct aws_logger_pipeline {
 struct aws_logger_standard_options {
     enum aws_log_level level;
     const char *filename;
-    FILE* file;
+    FILE *file;
 };
 
 /**
