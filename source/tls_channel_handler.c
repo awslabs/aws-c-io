@@ -39,19 +39,16 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     }
 
     if (options->private_key.len) {
-        aws_secure_zero(options->private_key.buffer, options->private_key.len);
-        aws_byte_buf_clean_up(&options->private_key);
+        aws_byte_buf_clean_up_secure(&options->private_key);
     }
 
 #ifdef __APPLE__
     if (options->pkcs12.len) {
-        aws_secure_zero(options->pkcs12.buffer, options->pkcs12.len);
-        aws_byte_buf_clean_up(&options->pkcs12);
+        aws_byte_buf_clean_up_secure(&options->pkcs12);
     }
 
     if (options->pkcs12_password.len) {
-        aws_secure_zero(options->pkcs12_password.buffer, options->pkcs12_password.len);
-        aws_byte_buf_clean_up(&options->pkcs12_password);
+        aws_byte_buf_clean_up_secure(&options->pkcs12_password);
     }
 #endif
 
@@ -147,7 +144,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     }
 
     if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12_password, allocator, *pkcs_pwd)) {
-        aws_byte_buf_clean_up(&options->pkcs12);
+        aws_byte_buf_clean_up_secure(&options->pkcs12);
         return AWS_OP_ERR;
     }
 
@@ -170,7 +167,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     }
 
     if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12_password, allocator, *pkcs_pwd)) {
-        aws_byte_buf_clean_up(&options->pkcs12);
+        aws_byte_buf_clean_up_secure(&options->pkcs12);
         return AWS_OP_ERR;
     }
 
