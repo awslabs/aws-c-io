@@ -48,15 +48,13 @@ static int s_null_logger_log_fn(
     return AWS_OP_SUCCESS;
 }
 
-static int s_null_logger_cleanup_fn(struct aws_logger *logger) {
+static void s_null_logger_clean_up_fn(struct aws_logger *logger) {
     (void)logger;
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_logger_vtable s_null_vtable = {.get_log_level = s_null_logger_get_log_level_fn,
                                                  .log = s_null_logger_log_fn,
-                                                 .cleanup = s_null_logger_cleanup_fn};
+                                                 .clean_up = s_null_logger_clean_up_fn};
 
 static struct aws_logger s_null_logger = {.vtable = &s_null_vtable, .allocator = NULL, .p_impl = NULL};
 
@@ -74,10 +72,10 @@ struct aws_logger *aws_logger_get(void) {
     return s_root_logger_ptr;
 }
 
-int aws_logger_cleanup(struct aws_logger *logger) {
-    assert(logger->vtable->cleanup != NULL);
+void aws_logger_clean_up(struct aws_logger *logger) {
+    assert(logger->vtable->clean_up != NULL);
 
-    return logger->vtable->cleanup(logger);
+    logger->vtable->clean_up(logger);
 }
 
 static const char *s_log_level_strings[AWS_LL_COUNT] = {"NONE ", "FATAL", "ERROR", "WARN ", "INFO ", "DEBUG", "TRACE"};
@@ -94,25 +92,23 @@ int aws_log_level_to_string(enum aws_log_level log_level, const char **level_str
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_logger_pipeline_owned_cleanup_fn(struct aws_logger *logger) {
+static void s_aws_logger_pipeline_owned_clean_up_fn(struct aws_logger *logger) {
     struct aws_logger_pipeline *impl = logger->p_impl;
 
-    assert(impl->channel->vtable->cleanup != NULL);
-    (impl->channel->vtable->cleanup)(impl->channel);
+    assert(impl->channel->vtable->clean_up != NULL);
+    (impl->channel->vtable->clean_up)(impl->channel);
 
-    assert(impl->formatter->vtable->cleanup != NULL);
-    (impl->formatter->vtable->cleanup)(impl->formatter);
+    assert(impl->formatter->vtable->clean_up != NULL);
+    (impl->formatter->vtable->clean_up)(impl->formatter);
 
-    assert(impl->writer->vtable->cleanup != NULL);
-    (impl->writer->vtable->cleanup)(impl->writer);
+    assert(impl->writer->vtable->clean_up != NULL);
+    (impl->writer->vtable->clean_up)(impl->writer);
 
     aws_mem_release(impl->allocator, impl->channel);
     aws_mem_release(impl->allocator, impl->formatter);
     aws_mem_release(impl->allocator, impl->writer);
 
     aws_mem_release(impl->allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 /*
@@ -161,7 +157,7 @@ static enum aws_log_level s_aws_logger_pipeline_get_log_level_fn(struct aws_logg
 
 struct aws_logger_vtable g_pipeline_logger_owned_vtable = {.get_log_level = s_aws_logger_pipeline_get_log_level_fn,
                                                            .log = s_aws_logger_pipeline_log_fn,
-                                                           .cleanup = s_aws_logger_pipeline_owned_cleanup_fn};
+                                                           .clean_up = s_aws_logger_pipeline_owned_clean_up_fn};
 
 int aws_logger_init_standard(
     struct aws_logger *logger,
@@ -180,7 +176,10 @@ int aws_logger_init_standard(
         goto on_allocate_writer_failure;
     }
 
-    struct aws_log_writer_file_options file_writer_options = {.filename = options->filename};
+    struct aws_log_writer_file_options file_writer_options = {
+        .filename = options->filename,
+        .file = options->file,
+    };
 
     if (aws_log_writer_init_file(writer, allocator, &file_writer_options)) {
         goto on_init_writer_failure;
@@ -221,13 +220,13 @@ int aws_logger_init_standard(
     aws_mem_release(allocator, channel);
 
 on_allocate_channel_failure:
-    aws_log_formatter_cleanup(formatter);
+    aws_log_formatter_clean_up(formatter);
 
 on_init_formatter_failure:
     aws_mem_release(allocator, formatter);
 
 on_allocate_formatter_failure:
-    aws_log_writer_cleanup(writer);
+    aws_log_writer_clean_up(writer);
 
 on_init_writer_failure:
     aws_mem_release(allocator, writer);
@@ -242,18 +241,16 @@ on_allocate_writer_failure:
  * Pipeline logger implementation where all the components are externally owned.  No clean up
  * is done on the components.  Useful for tests where components are on the stack and often mocked.
  */
-static int s_aws_pipeline_logger_unowned_cleanup_fn(struct aws_logger *logger) {
+static void s_aws_pipeline_logger_unowned_clean_up_fn(struct aws_logger *logger) {
     struct aws_logger_pipeline *impl = (struct aws_logger_pipeline *)logger->p_impl;
 
     aws_mem_release(impl->allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_logger_vtable s_pipeline_logger_unowned_vtable = {
     .get_log_level = s_aws_logger_pipeline_get_log_level_fn,
     .log = s_aws_logger_pipeline_log_fn,
-    .cleanup = s_aws_pipeline_logger_unowned_cleanup_fn};
+    .clean_up = s_aws_pipeline_logger_unowned_clean_up_fn};
 
 int aws_logger_init_from_external(
     struct aws_logger *logger,

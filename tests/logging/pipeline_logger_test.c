@@ -56,7 +56,7 @@ int do_pipeline_logger_test(
 
     aws_logger_set(NULL);
 
-    aws_logger_cleanup(&logger);
+    aws_logger_clean_up(&logger);
 
     char buffer[TEST_PIPELINE_MAX_BUFFER_SIZE];
     FILE *file = fopen(s_test_file_name, "r");

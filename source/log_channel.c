@@ -51,18 +51,16 @@ static int s_foreground_channel_send_fn(struct aws_log_channel *channel, struct 
     return AWS_OP_SUCCESS;
 }
 
-static int s_foreground_channel_cleanup_fn(struct aws_log_channel *channel) {
+static void s_foreground_channel_clean_up_fn(struct aws_log_channel *channel) {
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
     aws_mutex_clean_up(&impl->sync);
 
     aws_mem_release(channel->allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_log_channel_vtable s_foreground_channel_vtable = {.send = s_foreground_channel_send_fn,
-                                                                    .cleanup = s_foreground_channel_cleanup_fn};
+                                                                    .clean_up = s_foreground_channel_clean_up_fn};
 
 int aws_log_channel_init_foreground(
     struct aws_log_channel *channel,
@@ -107,7 +105,7 @@ static int s_background_channel_send_fn(struct aws_log_channel *channel, struct 
     return AWS_OP_SUCCESS;
 }
 
-static int s_background_channel_cleanup_fn(struct aws_log_channel *channel) {
+static void s_background_channel_clean_up_fn(struct aws_log_channel *channel) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
     aws_mutex_lock(&impl->sync);
@@ -122,12 +120,10 @@ static int s_background_channel_cleanup_fn(struct aws_log_channel *channel) {
     aws_array_list_clean_up(&impl->pending_log_lines);
     aws_mutex_clean_up(&impl->sync);
     aws_mem_release(channel->allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_log_channel_vtable s_background_channel_vtable = {.send = s_background_channel_send_fn,
-                                                                    .cleanup = s_background_channel_cleanup_fn};
+                                                                    .clean_up = s_background_channel_clean_up_fn};
 
 static bool s_background_wait_fn(void *context) {
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)context;
@@ -208,19 +204,19 @@ int aws_log_channel_init_background(
     impl->finished = false;
 
     if (aws_mutex_init(&impl->sync)) {
-        goto cleanup_sync_init_fail;
+        goto clean_up_sync_init_fail;
     }
 
     if (aws_array_list_init_dynamic(&impl->pending_log_lines, allocator, 10, sizeof(struct aws_string *))) {
-        goto cleanup_pending_log_lines_init_fail;
+        goto clean_up_pending_log_lines_init_fail;
     }
 
     if (aws_condition_variable_init(&impl->pending_line_signal)) {
-        goto cleanup_pending_line_signal_init_fail;
+        goto clean_up_pending_line_signal_init_fail;
     }
 
     if (aws_thread_init(&impl->background_thread, allocator)) {
-        goto cleanup_background_thread_init_fail;
+        goto clean_up_background_thread_init_fail;
     }
 
     channel->vtable = &s_background_channel_vtable;
@@ -240,22 +236,22 @@ int aws_log_channel_init_background(
 
     aws_thread_clean_up(&impl->background_thread);
 
-cleanup_background_thread_init_fail:
+clean_up_background_thread_init_fail:
     aws_condition_variable_clean_up(&impl->pending_line_signal);
 
-cleanup_pending_line_signal_init_fail:
+clean_up_pending_line_signal_init_fail:
     aws_array_list_clean_up(&impl->pending_log_lines);
 
-cleanup_pending_log_lines_init_fail:
+clean_up_pending_log_lines_init_fail:
     aws_mutex_clean_up(&impl->sync);
 
-cleanup_sync_init_fail:
+clean_up_sync_init_fail:
     aws_mem_release(allocator, impl);
 
     return AWS_OP_ERR;
 }
 
-int aws_log_channel_cleanup(struct aws_log_channel *channel) {
-    assert(channel->vtable->cleanup);
-    return (channel->vtable->cleanup)(channel);
+void aws_log_channel_clean_up(struct aws_log_channel *channel) {
+    assert(channel->vtable->clean_up);
+    (channel->vtable->clean_up)(channel);
 }

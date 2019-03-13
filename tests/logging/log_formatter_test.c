@@ -45,7 +45,7 @@ int do_default_log_formatter_test(
     struct aws_string *output = NULL;
     int result = (*test_fn)(&formatter, &output);
 
-    aws_log_formatter_cleanup(&formatter);
+    aws_log_formatter_clean_up(&formatter);
 
     char buffer[TEST_FORMATTER_MAX_BUFFER_SIZE];
     snprintf(buffer, TEST_FORMATTER_MAX_BUFFER_SIZE, "%s", (const char *)output->bytes);

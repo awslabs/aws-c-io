@@ -48,7 +48,7 @@ static int s_mock_log_writer_write_fn(struct aws_log_writer *writer, const struc
     return AWS_OP_SUCCESS;
 }
 
-static int s_mock_log_writer_cleanup_fn(struct aws_log_writer *writer) {
+static void s_mock_log_writer_clean_up_fn(struct aws_log_writer *writer) {
     struct mock_log_writer_impl *impl = (struct mock_log_writer_impl *)writer->impl;
 
     size_t line_count = aws_array_list_length(&impl->log_lines);
@@ -64,12 +64,10 @@ static int s_mock_log_writer_cleanup_fn(struct aws_log_writer *writer) {
     aws_array_list_clean_up(&impl->log_lines);
 
     aws_mem_release(writer->allocator, impl);
-
-    return AWS_OP_SUCCESS;
 }
 
 static struct aws_log_writer_vtable s_mock_writer_vtable = {.write = s_mock_log_writer_write_fn,
-                                                            .cleanup = s_mock_log_writer_cleanup_fn};
+                                                            .clean_up = s_mock_log_writer_clean_up_fn};
 
 static int s_aws_mock_log_writer_init(struct aws_log_writer *writer, struct aws_allocator *allocator) {
     struct mock_log_writer_impl *impl =
@@ -170,13 +168,13 @@ static int s_do_channel_test(
         }
     }
 
-    aws_log_channel_cleanup(&log_channel);
+    aws_log_channel_clean_up(&log_channel);
 
     if (!s_verify_mock_equal(log_channel.writer, test_lines, test_lines_length)) {
         result = AWS_OP_ERR;
     }
 
-    aws_log_writer_cleanup(&mock_writer);
+    aws_log_writer_clean_up(&mock_writer);
 
     return result;
 }

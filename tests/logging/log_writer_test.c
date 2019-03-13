@@ -49,7 +49,7 @@ int do_default_log_writer_test(
 
     int result = writer->vtable->write(writer, output);
 
-    aws_log_writer_cleanup(writer);
+    aws_log_writer_clean_up(writer);
 
     /*
      * When we redirect stdout/stderr to a file, we need to close the file manually since the writer implementations do
