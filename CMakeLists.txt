@@ -129,14 +129,18 @@ endif()
 if (NOT USE_IO_COMPLETION_PORTS)
     # LIBUV event_loop not supported under IOCP
     option(USE_LIBUV "Use libuv event loop instead of kqueue/epoll" OFF)
+    # Disable this if you'll be linking against an executable that includes UV, like Node.js
+    option(UV_LINK_LIBRARY "Link against the libuv.a library found by find_library (NOTE: if this is set to OFF, your executable will need to manually link against libuv)" ON)
 else ()
     set(USE_LIBUV OFF)
 endif ()
 
 if (USE_LIBUV)
     list(APPEND AWS_IO_OS_SRC "source/libuv/uv_event_loop.c")
-    # Prefer static version if available
-    find_library(LIBUV_LIBRARY NAMES uv_a uv)
+    if (UV_LINK_LIBRARY)
+        # Prefer static version if available
+        find_library(LIBUV_LIBRARY NAMES uv_a uv)
+    endif ()
 endif ()
 
 if (NOT CUSTOM_TLS)
@@ -184,7 +188,10 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_
 
 if (USE_LIBUV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)
-    target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC ${LIBUV_LIBRARY})
+
+    if (UV_LINK_LIBRARY)
+        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC ${LIBUV_LIBRARY})
+    endif ()
 endif ()
 
 if (BUILD_JNI_BINDINGS)
