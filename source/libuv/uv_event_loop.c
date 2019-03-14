@@ -20,8 +20,9 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include <aws/io/uv/uv_include.h>
+
 #include <poll.h>
-#include <uv.h>
 
 #if defined(AWS_USE_EPOLL)
 #    include <sys/epoll.h>
