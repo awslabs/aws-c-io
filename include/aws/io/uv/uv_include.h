@@ -16,7 +16,10 @@
  * permissions and limitations under the License.
  */
 
-/* This file exists to support the UV_HEADER_PATH macro */
+/**
+ * This file exists to support the UV_HEADER_PATH macro, which
+ * may be defined by CMake when building against things that bundle libuv (ie. nodejs).
+ */
 
 /* Default, just search the include paths */
 #ifndef UV_HEADER_PATH
