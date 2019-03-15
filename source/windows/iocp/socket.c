@@ -958,7 +958,7 @@ static inline int s_tcp_connect(
     }
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS,
+        AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connection pending, scheduling timeout task",
         (void *)socket,
         (void *)socket->io_handle.data.handle);

@@ -87,7 +87,14 @@ struct secure_channel_handler {
     struct aws_byte_buf server_name;
     TimeStamp sspi_timestamp;
     int (*s_connection_state_fn)(struct aws_channel_handler *handler);
-    uint8_t buffered_read_in_data[READ_IN_SIZE];
+    /* TODO: this is twice the size it needs to be because we can get fragments like:
+         1 incomplete message of 15kb
+         1 message with the remaining 1kb + another 15kb (another incomplete message).
+         Doubling it makes sure we don't run out of space. I suspect the RIGHT fix is to
+         improve the part that uses this buffer to only do small copies at a time. For now
+         this fixes the issue, but it needs to be reworked.
+    */
+    uint8_t buffered_read_in_data[2 * READ_IN_SIZE];
     struct aws_byte_buf buffered_read_in_data_buf;
     size_t estimated_incomplete_size;
     size_t read_extra;
@@ -315,7 +322,8 @@ static int s_fillin_alpn_data(
     struct aws_byte_cursor alpn_buffer_array[4];
     aws_array_list_init_static(&alpn_buffers, alpn_buffer_array, 4, sizeof(struct aws_byte_cursor));
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Setting ALPN extension with string %s.", (const char *)sc_handler->alpn_list);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS, "Setting ALPN extension with string %s.", (const char *)aws_string_bytes(sc_handler->alpn_list));
     struct aws_byte_cursor alpn_str_cur = aws_byte_cursor_from_string(sc_handler->alpn_list);
     if (aws_byte_cursor_split_on_char(&alpn_str_cur, ';', &alpn_buffers)) {
         return AWS_OP_ERR;
@@ -623,15 +631,13 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
             } else {
-                AWS_LOGF_ERROR(
+                AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
                     "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
                     (int)status);
                 int aws_error = s_determine_sspi_error(status);
                 aws_raise_error(aws_error);
-                s_invoke_negotiation_error(handler, aws_error);
-                return AWS_OP_ERR;
             }
         }
 #endif
@@ -668,7 +674,11 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     /* add alpn data to the client hello if it's supported. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN data as %s", handler, sc_handler->alpn_list);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: Setting ALPN data as %s",
+            handler,
+            (const char *)aws_string_bytes(sc_handler->alpn_list));
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             s_invoke_negotiation_error(handler, aws_last_error());
@@ -908,15 +918,13 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
             } else {
-                AWS_LOGF_DEBUG(
+                AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
                     "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
                     (int)status);
                 int aws_error = s_determine_sspi_error(status);
                 aws_raise_error(aws_error);
-                s_invoke_negotiation_error(handler, aws_error);
-                return AWS_OP_ERR;
             }
         }
 #endif
@@ -1075,6 +1083,7 @@ static void s_process_pending_output_task(struct aws_channel_task *task, void *a
     (void)task;
     struct aws_channel_handler *handler = arg;
 
+    aws_channel_task_init(task, NULL, NULL);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (s_process_pending_output_messages(handler)) {
             struct secure_channel_handler *sc_handler = arg;
@@ -1153,6 +1162,7 @@ static int s_process_read_message(
                     sc_handler->buffered_read_in_data_buf.buffer + move_pos,
                     sc_handler->read_extra);
                 sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
+                sc_handler->read_extra = 0;
             } else {
                 sc_handler->buffered_read_in_data_buf.len = 0;
             }
@@ -1340,7 +1350,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (sc_handler->negotiation_finished) {
+    if (sc_handler->negotiation_finished && !sc_handler->sequential_task_storage.task_fn) {
         aws_channel_task_init(&sc_handler->sequential_task_storage, s_process_pending_output_task, handler);
         aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
     }
@@ -1575,11 +1585,16 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);
+        if (!sc_handler->alpn_list) {
+            aws_mem_release(alloc, sc_handler);
+            return NULL;
+        }
     } else if (options->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
-    }
-
-    if (sc_handler->alpn_list) {
+        if (!sc_handler->alpn_list) {
+            aws_mem_release(alloc, sc_handler);
+            return NULL;
+        }
     }
 
     if (options->server_name) {
