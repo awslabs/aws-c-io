@@ -458,11 +458,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
     size_t data_to_write_len = output_buffer.cbBuffer;
 
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS,
-        "id=%p: Sending ServerHello. Data size %llu",
-        (void *)handler,
-        (unsigned long long)data_to_write_len);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Sending ServerHello. Data size %zu", (void *)handler, data_to_write_len);
     /* send the server hello. */
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
@@ -736,10 +732,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     size_t data_to_write_len = output_buffer.cbBuffer;
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS,
-        "id=%p: Sending client handshake data of size %llu",
-        (void *)handler,
-        (unsigned long long)data_to_write_len);
+        AWS_LS_IO_TLS, "id=%p: Sending client handshake data of size %zu", (void *)handler, data_to_write_len);
 
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
@@ -842,9 +835,9 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
-            "id=%p: Incomplete buffer recieved. Incomplete size is %llu. Waiting for more data.",
+            "id=%p: Incomplete buffer recieved. Incomplete size is %zu. Waiting for more data.",
             (void *)handler,
-            (unsigned long long)sc_handler->estimated_incomplete_size);
+            sc_handler->estimated_incomplete_size);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
@@ -935,13 +928,13 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    bool has_extra = false;
-    int error = AWS_OP_SUCCESS;
+    /* I know this is an unncessary initialization, it's initialized here to make linters happy.*/
+    int error = AWS_OP_ERR;
     /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
        always say BLOCKED_ON_READ or SUCCESS. There will never be left over reads.*/
     do {
-        has_extra = false;
+        error = AWS_OP_ERR;
         /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
         SecBuffer input_buffers[4];
         AWS_ZERO_ARRAY(input_buffers);
@@ -962,43 +955,34 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             .pBuffers = input_buffers,
         };
 
-        sc_handler->read_extra = 0;
-
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
         if (status == SEC_E_OK) {
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
-               As far as I can tell, we don't care what's in the third buffer for TLS usage.*/
+               We don't care what's in the third buffer for TLS usage.*/
             if (input_buffers[1].BufferType == SECBUFFER_DATA) {
                 size_t decrypted_length = input_buffers[1].cbBuffer;
                 AWS_LOGF_TRACE(
-                    AWS_LS_IO_TLS,
-                    "id=%p: Decrypted message with length %llu.",
-                    (void *)handler,
-                    (unsigned long long)decrypted_length);
+                    AWS_LS_IO_TLS, "id=%p: Decrypted message with length %zu.", (void *)handler, decrypted_length);
 
-                assert(
-                    decrypted_length <=
-                    sc_handler->buffered_read_out_data_buf.capacity - sc_handler->buffered_read_out_data_buf.len);
-                /* take what was decrypted and append it to the output buffers.*/
-                memcpy(
-                    sc_handler->buffered_read_out_data_buf.buffer + sc_handler->buffered_read_out_data_buf.len,
-                    (uint8_t *)input_buffers[1].pvBuffer,
-                    decrypted_length);
-                sc_handler->buffered_read_out_data_buf.len += decrypted_length;
+                struct aws_byte_cursor to_append =
+                    aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
+                int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
+                assert(!append_failed);
+                (void)assert(!append_failed);
 
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
                 if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
                     sc_handler->read_extra = input_buffers[3].cbBuffer;
                     AWS_LOGF_TRACE(
                         AWS_LS_IO_TLS,
-                        "id=%p: Extra (incomplete) message received with length %llu.",
+                        "id=%p: Extra (incomplete) message received with length %zu.",
                         (void *)handler,
-                        (unsigned long long)sc_handler->read_extra);
-                    has_extra = true;
+                        sc_handler->read_extra);
                 } else {
+                    error = AWS_OP_SUCCESS;
                     /* this means we processed everything in the buffer. */
                     sc_handler->buffered_read_in_data_buf.len = 0;
                     AWS_LOGF_TRACE(
@@ -1014,24 +998,22 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: (incomplete) message received. Expecting remaining portion of size %llu.",
+                "id=%p: (incomplete) message received. Expecting remaining portion of size %zu.",
                 (void *)handler,
-                (unsigned long long)sc_handler->estimated_incomplete_size);
+                sc_handler->estimated_incomplete_size);
             memmove(
                 sc_handler->buffered_read_in_data_buf.buffer,
                 sc_handler->buffered_read_in_data_buf.buffer + offset,
                 read_len);
             sc_handler->buffered_read_in_data_buf.len = read_len;
             aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-            error = AWS_OP_ERR;
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             int aws_error = s_determine_sspi_error(status);
             aws_raise_error(aws_error);
-            return AWS_OP_ERR;
         }
-    } while (has_extra);
+    } while (sc_handler->read_extra);
 
     return error;
 }
@@ -1047,18 +1029,14 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
-        "id=%p: Processing incomming messages. Downstream window is %llu",
+        "id=%p: Processing incomming messages. Downstream window is %zu",
         (void *)handler,
-        (unsigned long long)downstream_window);
+        downstream_window);
     while (sc_handler->buffered_read_out_data_buf.len && downstream_window) {
         size_t requested_message_size = sc_handler->buffered_read_out_data_buf.len > downstream_window
                                             ? downstream_window
                                             : sc_handler->buffered_read_out_data_buf.len;
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS,
-            "id=%p: Requested message size is %llu",
-            (void *)handler,
-            (unsigned long long)requested_message_size);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Requested message size is %zu", (void *)handler, requested_message_size);
 
         if (sc_handler->slot->adj_right) {
             struct aws_io_message *read_out_msg = aws_channel_acquire_message_from_pool(
@@ -1090,11 +1068,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
 
             downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: Downstream window is %llu",
-                (void *)handler,
-                (unsigned long long)downstream_window);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window is %zu", (void *)handler, downstream_window);
         } else {
             if (sc_handler->on_data_read) {
                 sc_handler->on_data_read(
@@ -1131,9 +1105,9 @@ static int s_process_read_message(
         /* note, most of these functions log internally, so the log messages in this function are sparse. */
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
-            "id=%p: processing incoming message of size %llu",
+            "id=%p: processing incoming message of size %zu",
             (void *)handler,
-            (unsigned long long)message->message_data.len);
+            message->message_data.len);
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
@@ -1240,19 +1214,13 @@ static int s_process_write_message(
 
     if (message) {
         AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS,
-            "id=%p: processing ougoing message of size %llu",
-            (void *)handler,
-            (unsigned long long)message->message_data.len);
+            AWS_LS_IO_TLS, "id=%p: processing ougoing message of size %zu", (void *)handler, message->message_data.len);
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
         while (message_cursor.len) {
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: processing message fragment of size %llu",
-                (void *)handler,
-                (unsigned long long)message_cursor.len);
+                AWS_LS_IO_TLS, "id=%p: processing message fragment of size %zu", (void *)handler, message_cursor.len);
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
             size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
             size_t requested_length =
@@ -1323,9 +1291,9 @@ static int s_process_write_message(
                                                      sc_handler->stream_sizes.cbTrailer;
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
-                    "id=%p:message fragment encrypted successfully: size is %llu",
+                    "id=%p:message fragment encrypted successfully: size is %zu",
                     (void *)handler,
-                    (unsigned long long)outgoing_message->message_data.len);
+                    outgoing_message->message_data.len);
 
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
@@ -1352,8 +1320,7 @@ static int s_process_write_message(
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Increment read window message received %zu", (void *)handler, size);
 
     if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
         SECURITY_STATUS status =
@@ -1377,10 +1344,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     if (total_desired_size > current_window_size) {
         size_t window_update_size = total_desired_size - current_window_size;
         AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS,
-            "id=%p: Propagating read window increment of size %llu",
-            (void *)handler,
-            (unsigned long long)window_update_size);
+            AWS_LS_IO_TLS, "id=%p: Propagating read window increment of size %zu", (void *)handler, window_update_size);
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
