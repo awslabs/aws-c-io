@@ -87,14 +87,10 @@ struct secure_channel_handler {
     struct aws_byte_buf server_name;
     TimeStamp sspi_timestamp;
     int (*s_connection_state_fn)(struct aws_channel_handler *handler);
-    /* TODO: this is twice the size it needs to be because we can get fragments like:
-         1 incomplete message of 15kb
-         1 message with the remaining 1kb + another 15kb (another incomplete message).
-         Doubling it makes sure we don't run out of space. I suspect the RIGHT fix is to
-         improve the part that uses this buffer to only do small copies at a time. For now
-         this fixes the issue, but it needs to be reworked.
-    */
-    uint8_t buffered_read_in_data[2 * READ_IN_SIZE];
+    /*
+     * Give a little bit of extra head room, for split records.
+     */
+    uint8_t buffered_read_in_data[READ_IN_SIZE + KB_1];
     struct aws_byte_buf buffered_read_in_data_buf;
     size_t estimated_incomplete_size;
     size_t read_extra;
@@ -939,73 +935,105 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
-    SecBuffer input_buffers[4];
-    AWS_ZERO_ARRAY(input_buffers);
-    input_buffers[0] = (SecBuffer){
-        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
-        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
-        .BufferType = SECBUFFER_DATA,
-    };
+    bool has_extra = false;
+    int error = AWS_OP_SUCCESS;
+    /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
+       any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
+       always say BLOCKED_ON_READ or SUCCESS. There will never be left over reads.*/
+    do {
+        has_extra = false;
+        /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
+        SecBuffer input_buffers[4];
+        AWS_ZERO_ARRAY(input_buffers);
 
-    SecBufferDesc buffer_desc = {
-        .ulVersion = SECBUFFER_VERSION,
-        .cBuffers = 4,
-        .pBuffers = input_buffers,
-    };
+        size_t read_len = sc_handler->read_extra ? sc_handler->read_extra : sc_handler->buffered_read_in_data_buf.len;
+        size_t offset = sc_handler->read_extra ? sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra : 0;
+        sc_handler->read_extra = 0;
 
-    SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
+        input_buffers[0] = (SecBuffer){
+            .cbBuffer = (unsigned long)(read_len),
+            .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer + offset,
+            .BufferType = SECBUFFER_DATA,
+        };
 
-    if (status == SEC_E_OK) {
-        /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
-           If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
-           everything before doing another decrypt operation.
-           As far as I can tell, we don't care what's in the third buffer for TLS usage.*/
-        if (input_buffers[1].BufferType == SECBUFFER_DATA) {
-            size_t decrypted_length = input_buffers[1].cbBuffer;
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: Decrypted message with length %llu.",
-                (void *)handler,
-                (unsigned long long)decrypted_length);
+        SecBufferDesc buffer_desc = {
+            .ulVersion = SECBUFFER_VERSION,
+            .cBuffers = 4,
+            .pBuffers = input_buffers,
+        };
 
-            if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
-                sc_handler->read_extra = input_buffers[3].cbBuffer;
+        sc_handler->read_extra = 0;
+
+        SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
+
+        if (status == SEC_E_OK) {
+            /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
+               If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
+               everything before doing another decrypt operation.
+               As far as I can tell, we don't care what's in the third buffer for TLS usage.*/
+            if (input_buffers[1].BufferType == SECBUFFER_DATA) {
+                size_t decrypted_length = input_buffers[1].cbBuffer;
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
-                    "id=%p: Extra (incomplete) message received with length %llu.",
+                    "id=%p: Decrypted message with length %llu.",
                     (void *)handler,
-                    (unsigned long long)sc_handler->read_extra);
+                    (unsigned long long)decrypted_length);
+
+                assert(
+                    decrypted_length <=
+                    sc_handler->buffered_read_out_data_buf.capacity - sc_handler->buffered_read_out_data_buf.len);
+                /* take what was decrypted and append it to the output buffers.*/
+                memcpy(
+                    sc_handler->buffered_read_out_data_buf.buffer + sc_handler->buffered_read_out_data_buf.len,
+                    (uint8_t *)input_buffers[1].pvBuffer,
+                    decrypted_length);
+                sc_handler->buffered_read_out_data_buf.len += decrypted_length;
+
+                /* if we have extra we have to move the pointer and do another Decrypt operation. */
+                if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
+                    sc_handler->read_extra = input_buffers[3].cbBuffer;
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_TLS,
+                        "id=%p: Extra (incomplete) message received with length %llu.",
+                        (void *)handler,
+                        (unsigned long long)sc_handler->read_extra);
+                    has_extra = true;
+                } else {
+                    /* this means we processed everything in the buffer. */
+                    sc_handler->buffered_read_in_data_buf.len = 0;
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_TLS,
+                        "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
+                        (void *)handler);
+                }
             }
-
-            assert(
-                decrypted_length <=
-                sc_handler->buffered_read_out_data_buf.capacity - sc_handler->buffered_read_out_data_buf.len);
-            memcpy(
-                sc_handler->buffered_read_out_data_buf.buffer + sc_handler->buffered_read_out_data_buf.len,
-                (uint8_t *)input_buffers[1].pvBuffer,
-                decrypted_length);
-            sc_handler->buffered_read_out_data_buf.len += decrypted_length;
         }
-
-        return AWS_OP_SUCCESS;
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
            append our next read to it and try again. */
-    } else if (status == SEC_E_INCOMPLETE_MESSAGE) {
-        sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS,
-            "id=%p: (incomplete) message received. Expecting remaining portion of size %llu.",
-            (void *)handler,
-            (unsigned long long)sc_handler->estimated_incomplete_size);
-        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-    } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-        int aws_error = s_determine_sspi_error(status);
-        aws_raise_error(aws_error);
-        return AWS_OP_ERR;
-    }
+        else if (status == SEC_E_INCOMPLETE_MESSAGE) {
+            sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: (incomplete) message received. Expecting remaining portion of size %llu.",
+                (void *)handler,
+                (unsigned long long)sc_handler->estimated_incomplete_size);
+            memmove(
+                sc_handler->buffered_read_in_data_buf.buffer,
+                sc_handler->buffered_read_in_data_buf.buffer + offset,
+                read_len);
+            sc_handler->buffered_read_in_data_buf.len = read_len;
+            aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+            error = AWS_OP_ERR;
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+            int aws_error = s_determine_sspi_error(status);
+            aws_raise_error(aws_error);
+            return AWS_OP_ERR;
+        }
+    } while (has_extra);
+
+    return error;
 }
 
 static int s_process_pending_output_messages(struct aws_channel_handler *handler) {
@@ -1137,6 +1165,12 @@ static int s_process_read_message(
                     /* throw this one as a protocol error. */
                     aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
                 } else {
+                    if (sc_handler->buffered_read_out_data_buf.len) {
+                        err = s_process_pending_output_messages(handler);
+                        if (err) {
+                            break;
+                        }
+                    }
                     /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
                        record, and the amount they're requesting is less than the size of a tls record. */
                     size_t window_size = slot->window_size;
