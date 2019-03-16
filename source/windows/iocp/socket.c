@@ -835,8 +835,8 @@ void s_socket_connection_completion(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: connect completion triggered with error %d",
-                (void *)socket_args->socket,
-                (void *)socket_args->socket->io_handle.data.handle,
+                (void *)socket,
+                (void *)socket->io_handle.data.handle,
                 status_code);
             int error = s_determine_socket_error(status_code);
             socket_impl->vtable->connection_error(socket, error);
@@ -958,7 +958,7 @@ static inline int s_tcp_connect(
     }
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS,
+        AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connection pending, scheduling timeout task",
         (void *)socket,
         (void *)socket->io_handle.data.handle);
