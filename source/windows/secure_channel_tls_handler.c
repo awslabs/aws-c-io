@@ -971,7 +971,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
                 assert(!append_failed);
-                (void)assert(!append_failed);
+                (void)append_failed;
 
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
                 if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
