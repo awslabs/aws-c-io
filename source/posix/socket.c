@@ -1096,10 +1096,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             ival_in_secs = socket->options.keep_alive_timeout_sec;
             success =
                 setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs));
-
-            ival_in_secs = socket->options.keep_alive_max_failed_probes;
-            success =
-                setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &ival_in_secs, sizeof(ival_in_secs));
         }
 
         if (socket->options.keep_alive_max_failed_probes) {

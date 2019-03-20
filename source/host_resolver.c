@@ -790,13 +790,13 @@ static int default_resolve_host(
         aws_array_list_clean_up(&callback_address_list);
 
         return error_code;
-    } else {
-        struct pending_callback *pending_callback =
-            aws_mem_acquire(default_host_resolver->allocator, sizeof(struct pending_callback));
-        pending_callback->user_data = user_data;
-        pending_callback->callback = res;
-        aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
     }
+
+    struct pending_callback *pending_callback =
+        aws_mem_acquire(default_host_resolver->allocator, sizeof(struct pending_callback));
+    pending_callback->user_data = user_data;
+    pending_callback->callback = res;
+    aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
 
     if (!host_entry->keep_active) {
         aws_thread_clean_up(&host_entry->resolver_thread);
