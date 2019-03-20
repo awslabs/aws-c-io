@@ -580,7 +580,7 @@ static void s_on_host_resolved(
             s_connection_args_acquire(client_connection_args);
 
             struct aws_host_address *host_address_ptr = NULL;
-            aws_array_list_get_at_ptr(host_addresses, (void *)&host_address_ptr, i);
+            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address_ptr, i);
 
             struct aws_socket_endpoint connection_endpoint;
             connection_endpoint.port = client_connection_args->outgoing_port;
@@ -598,6 +598,12 @@ static void s_on_host_resolved(
 
             struct aws_socket *outgoing_socket =
                 aws_mem_acquire(client_connection_args->bootstrap->allocator, sizeof(struct aws_socket));
+
+            if (!outgoing_socket) {
+                client_connection_args->failed_count++;
+                s_connection_args_release(client_connection_args);
+                break;
+            }
 
             if (aws_socket_init(outgoing_socket, client_connection_args->bootstrap->allocator, &options)) {
                 client_connection_args->failed_count++;
@@ -629,7 +635,9 @@ static void s_on_host_resolved(
     }
 
     AWS_LOGF_ERROR(
-        AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: dns resolution failed.", (void *)client_connection_args->bootstrap);
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
+        (void *)client_connection_args->bootstrap);
     client_connection_args->setup_callback(
         client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);

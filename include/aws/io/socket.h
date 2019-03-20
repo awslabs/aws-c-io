@@ -46,7 +46,7 @@ struct aws_socket_options {
     uint16_t keep_alive_interval_sec;
     uint16_t keep_alive_timeout_sec;
     /* If set, sets the number of keep alive probes allowed to fail before the connection is considered
-     * lost. The default uses OS defaults.*/
+     * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 };
