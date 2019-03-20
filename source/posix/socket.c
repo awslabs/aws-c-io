@@ -1077,7 +1077,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     socket->options = *options;
 
     int option_value = 1;
-    if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL, &option_value, sizeof(option_value))) {
+    if (AWS_UNLIKELY(
+            setsockopt(socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL, &option_value, sizeof(option_value)))) {
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: setsockopt() for NO_SIGNAL failed with errno %d. If you are having SIGPIPE signals thrown, "
@@ -1099,7 +1100,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
         if (socket->options.keepalive) {
             int keep_alive = 1;
-            if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int))) {
+            if (AWS_UNLIKELY(
+                    setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling SO_KEEPALIVE failed with errno %d."(void *)socket,
@@ -1110,7 +1112,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
         if (socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec) {
             int ival_in_secs = socket->options.keep_alive_interval_sec;
-            if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs))) {
+            if (AWS_UNLIKELY(setsockopt(
+                    socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPIDLE for TCP failed with errno %d."(void *)socket,
@@ -1119,7 +1122,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             }
 
             ival_in_secs = socket->options.keep_alive_timeout_sec;
-            if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs))) {
+            if (AWS_UNLIKELY(setsockopt(
+                    socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPINTVL for TCP failed with errno %d."(void *)socket,
@@ -1130,7 +1134,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
         if (socket->options.keep_alive_max_failed_probes) {
             int max_probes = socket->options.keep_alive_max_failed_probes;
-            if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes))) {
+            if (AWS_UNLIKELY(
+                    setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPCNT for TCP failed with errno %d."(void *)socket,
