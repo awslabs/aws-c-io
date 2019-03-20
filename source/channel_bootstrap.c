@@ -131,6 +131,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
         (void *)bootstrap,
         (void *)el_group);
 
+    AWS_ZERO_STRUCT(*bootstrap);
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
@@ -221,12 +222,15 @@ struct client_connection_args {
 
 void s_connection_args_acquire(struct client_connection_args *args) {
     assert(args);
-    args->ref_count++;
+    if (args->ref_count++ == 0) {
+        s_client_bootstrap_acquire(args->bootstrap);
+    }
 }
 
 void s_connection_args_release(struct client_connection_args *args) {
     assert(args);
     assert(args->ref_count > 0);
+
     if (--args->ref_count == 0) {
         struct aws_allocator *allocator = args->bootstrap->allocator;
         s_client_bootstrap_release(args->bootstrap);
@@ -572,14 +576,11 @@ static void s_on_host_resolved(
             aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
         client_connection_args->addresses_count = (uint8_t)host_addresses_len;
 
-        /* retain the connection args in case an early connection fails */
-        s_connection_args_acquire(client_connection_args);
         for (size_t i = 0; i < host_addresses_len; ++i) {
-            /* retain args, need 1 ref per socket */
             s_connection_args_acquire(client_connection_args);
 
             struct aws_host_address *host_address_ptr = NULL;
-            aws_array_list_get_at(host_addresses, (void *)&host_address_ptr, i);
+            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address_ptr, i);
 
             struct aws_socket_endpoint connection_endpoint;
             connection_endpoint.port = client_connection_args->outgoing_port;
@@ -598,9 +599,16 @@ static void s_on_host_resolved(
             struct aws_socket *outgoing_socket =
                 aws_mem_acquire(client_connection_args->bootstrap->allocator, sizeof(struct aws_socket));
 
+            if (!outgoing_socket) {
+                client_connection_args->failed_count++;
+                s_connection_args_release(client_connection_args);
+                break;
+            }
+
             if (aws_socket_init(outgoing_socket, client_connection_args->bootstrap->allocator, &options)) {
                 client_connection_args->failed_count++;
                 aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
+                s_connection_args_release(client_connection_args);
                 break;
             }
 
@@ -619,16 +627,17 @@ static void s_on_host_resolved(
                 continue;
             }
         }
-        /* release connection args. If all connections failed, this will kill the args */
-        s_connection_args_release(client_connection_args);
 
         if (client_connection_args->failed_count < client_connection_args->addresses_count) {
+            s_connection_args_release(client_connection_args);
             return;
         }
     }
 
     AWS_LOGF_ERROR(
-        AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: dns resolution failed.", (void *)client_connection_args->bootstrap);
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
+        (void *)client_connection_args->bootstrap);
     client_connection_args->setup_callback(
         client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);
@@ -663,7 +672,7 @@ static inline int s_new_client_channel(
     AWS_ZERO_STRUCT(*client_connection_args);
     client_connection_args->user_data = user_data;
     client_connection_args->bootstrap = bootstrap;
-    s_client_bootstrap_acquire(client_connection_args->bootstrap);
+    s_connection_args_acquire(client_connection_args);
     client_connection_args->setup_callback = setup_callback;
     client_connection_args->shutdown_callback = shutdown_callback;
     client_connection_args->outgoing_options = *options;
@@ -738,7 +747,6 @@ static inline int s_new_client_channel(
 
         struct aws_event_loop *connect_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
-        s_connection_args_acquire(client_connection_args);
         if (aws_socket_connect(
                 outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
             aws_socket_clean_up(outgoing_socket);

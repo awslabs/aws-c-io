@@ -1065,34 +1065,89 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: Keep Alive %d, Keep Idle %d, Keep Alive Interval %d,",
+        "id=%p fd=%d: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive probe "
+        "count %d.",
         (void *)socket,
         socket->io_handle.data.fd,
         (int)options->keepalive,
         (int)options->keep_alive_timeout_sec,
-        (int)options->keep_alive_interval_sec);
+        (int)options->keep_alive_interval_sec,
+        (int)options->keep_alive_max_failed_probes);
 
     socket->options = *options;
 
     int option_value = 1;
-    setsockopt(socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL, &option_value, sizeof(option_value));
+    if (AWS_UNLIKELY(
+            setsockopt(socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL, &option_value, sizeof(option_value)))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: setsockopt() for NO_SIGNAL failed with errno %d. If you are having SIGPIPE signals thrown, "
+            "you may"
+            " want to install a signal trap in your application layer.",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            errno);
+    }
 
     int reuse = 1;
-    setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
+    if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: setsockopt() for SO_REUSEADDR failed with errno %d.",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            errno);
+    }
 
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
-
         if (socket->options.keepalive) {
             int keep_alive = 1;
-            setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int));
+            if (AWS_UNLIKELY(
+                    setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int)))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() for enabling SO_KEEPALIVE failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    errno);
+            }
         }
 
         if (socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec) {
             int ival_in_secs = socket->options.keep_alive_interval_sec;
-            setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs));
+            if (AWS_UNLIKELY(setsockopt(
+                    socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs)))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPIDLE for TCP failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    errno);
+            }
 
             ival_in_secs = socket->options.keep_alive_timeout_sec;
-            setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs));
+            if (AWS_UNLIKELY(setsockopt(
+                    socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs)))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPINTVL for TCP failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    errno);
+            }
+        }
+
+        if (socket->options.keep_alive_max_failed_probes) {
+            int max_probes = socket->options.keep_alive_max_failed_probes;
+            if (AWS_UNLIKELY(
+                    setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes)))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPCNT for TCP failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    errno);
+            }
         }
     }
 
@@ -1573,6 +1628,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     if (error == EPIPE) {
         AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket is closed.", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
+    }
+
+    if (error == ETIMEDOUT) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket timed out.", (void *)socket, socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
     }
 
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);

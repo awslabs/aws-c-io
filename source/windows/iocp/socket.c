@@ -2165,23 +2165,44 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: Keep Alive %d, Keep Idle %d, Keep Alive Interval %d,",
+        "id=%p handle=%p: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, max failed "
+        "probe count %d",
         (void *)socket,
-        socket->io_handle.data.fd,
+        (void *)socket->io_handle.data.handle,
         (int)options->keepalive,
         (int)options->keep_alive_timeout_sec,
-        (int)options->keep_alive_interval_sec);
+        (int)options->keep_alive_interval_sec,
+        (int)options->keep_alive_max_failed_probes);
 
     socket->options = *options;
 
     int reuse = 1;
-    setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int));
+    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+    }
+
     if (socket->options.domain != AWS_SOCKET_LOCAL && socket->options.type == AWS_SOCKET_STREAM) {
         if (socket->options.keepalive &&
             !(socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec)) {
             int keep_alive = 1;
-            setsockopt(
-                (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_KEEPALIVE, (char *)&keep_alive, sizeof(int));
+            if (setsockopt(
+                    (SOCKET)socket->io_handle.data.handle,
+                    SOL_SOCKET,
+                    SO_KEEPALIVE,
+                    (char *)&keep_alive,
+                    sizeof(int))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: setsockopt() call for enabling keep-alive failed with WSAError %d",
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle,
+                    WSAGetLastError());
+            }
         } else if (socket->options.keepalive) {
             ULONG keep_alive_timeout = (ULONG)aws_timestamp_convert(
                 socket->options.keep_alive_timeout_sec, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_MILLIS, NULL);
@@ -2193,17 +2214,47 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 .keepaliveinterval = keep_alive_interval,
             };
             DWORD bytes_returned = 0;
-            WSAIoctl(
-                (SOCKET)socket->io_handle.data.handle,
-                SIO_KEEPALIVE_VALS,
-                &keepalive_args,
-                sizeof(keepalive_args),
-                NULL,
-                0,
-                &bytes_returned,
-                NULL,
-                NULL);
+            if (WSAIoctl(
+                    (SOCKET)socket->io_handle.data.handle,
+                    SIO_KEEPALIVE_VALS,
+                    &keepalive_args,
+                    sizeof(keepalive_args),
+                    NULL,
+                    0,
+                    &bytes_returned,
+                    NULL,
+                    NULL)) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: WSAIoctl() call for setting keep-alive values failed with WSAError %d",
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle,
+                    WSAGetLastError());
+            }
         }
+/* this is only available in Windows 10 1703 and later. It doesn't, matter if this runs on an older version
+   the call will just fail, no harm done.*/
+#ifdef TCP_KEEPCNT
+        if (socket->options.keep_alive_max_failed_probes) {
+            DWORD max_probes = socket->options.keep_alive_max_failed_probes;
+            if (setsockopt(
+                    (SOCKET)socket->io_handle.data.handle,
+                    IPPROTO_TCP,
+                    TCP_KEEPCNT,
+                    (char *)&max_probes,
+                    sizeof(max_probes))) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: setsockopt() call for setting keep-alive probe count value failed with WSAError "
+                    "%d. This likely"
+                    " isn't a problem. It's more likely you're on an old version of windows. This feature was added in "
+                    "Windows 10 1703",
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle,
+                    WSAGetLastError());
+            }
+        }
+#endif
     }
 
     return AWS_OP_SUCCESS;

@@ -56,17 +56,17 @@ static void s_default_host_resolved_test_callback(
     struct aws_host_address *host_address = NULL;
 
     if (aws_array_list_length(host_addresses) >= 2) {
-        aws_array_list_get_at(host_addresses, &host_address, 0);
+        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
 
         aws_host_address_copy(host_address, &callback_data->aaaa_address);
 
-        aws_array_list_get_at(host_addresses, &host_address, 1);
+        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 1);
 
         aws_host_address_copy(host_address, &callback_data->a_address);
         callback_data->has_aaaa_address = true;
         callback_data->has_a_address = true;
     } else if (aws_array_list_length(host_addresses) == 1) {
-        aws_array_list_get_at(host_addresses, &host_address, 0);
+        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
 
         if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_A) {
             aws_host_address_copy(host_address, &callback_data->a_address);
