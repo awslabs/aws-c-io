@@ -1083,7 +1083,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: setsockopt() for NO_SIGNAL failed with errno %d. If you are having SIGPIPE signals thrown, "
             "you may"
-            " want to install a signal trap in your application layer."(void *)socket,
+            " want to install a signal trap in your application layer.",
+            (void *)socket,
             socket->io_handle.data.fd,
             errno);
     }
@@ -1092,7 +1093,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)))) {
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: setsockopt() for SO_REUSEADDR failed with errno %d."(void *)socket,
+            "id=%p fd=%d: setsockopt() for SO_REUSEADDR failed with errno %d.",
+            (void *)socket,
             socket->io_handle.data.fd,
             errno);
     }
@@ -1104,7 +1106,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p fd=%d: setsockopt() for enabling SO_KEEPALIVE failed with errno %d."(void *)socket,
+                    "id=%p fd=%d: setsockopt() for enabling SO_KEEPALIVE failed with errno %d.",
+                    (void *)socket,
                     socket->io_handle.data.fd,
                     errno);
             }
@@ -1116,7 +1119,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPIDLE for TCP failed with errno %d."(void *)socket,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPIDLE for TCP failed with errno %d.",
+                    (void *)socket,
                     socket->io_handle.data.fd,
                     errno);
             }
@@ -1126,7 +1130,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPINTVL for TCP failed with errno %d."(void *)socket,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPINTVL for TCP failed with errno %d.",
+                    (void *)socket,
                     socket->io_handle.data.fd,
                     errno);
             }
@@ -1138,7 +1143,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes)))) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPCNT for TCP failed with errno %d."(void *)socket,
+                    "id=%p fd=%d: setsockopt() for enabling TCP_KEEPCNT for TCP failed with errno %d.",
+                    (void *)socket,
                     socket->io_handle.data.fd,
                     errno);
             }
