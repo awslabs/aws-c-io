@@ -2203,6 +2203,18 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 &bytes_returned,
                 NULL,
                 NULL);
+
+#ifdef TCP_KEEPCNT
+            if (socket->options.keep_alive_max_failed_probes) {
+                DWORD max_probes = socket->options.keep_alive_max_failed_probes;
+                success = setsockopt(
+                    (SOCKET)socket->io_handle.data.handle,
+                    IPPROTO_TCP,
+                    TCP_KEEPCNT,
+                    (char *)&max_probes,
+                    sizeof(max_probes));
+            }
+#endif
         }
     }
 

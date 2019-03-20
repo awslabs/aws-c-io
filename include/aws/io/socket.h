@@ -45,6 +45,9 @@ struct aws_socket_options {
      * If interval or timeout are zero, then default values are used. */
     uint16_t keep_alive_interval_sec;
     uint16_t keep_alive_timeout_sec;
+    /* If set, sets the number of keep alive probes allowed to fail before the connection is considered
+     * lost. The default uses OS defaults.*/
+    uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 };
 

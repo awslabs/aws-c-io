@@ -1080,6 +1080,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     int reuse = 1;
     setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int));
 
+    int success = -1;
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
 
         if (socket->options.keepalive) {
@@ -1089,12 +1090,24 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
         if (socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec) {
             int ival_in_secs = socket->options.keep_alive_interval_sec;
-            setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs));
+            success =
+                setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs));
 
             ival_in_secs = socket->options.keep_alive_timeout_sec;
-            setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs));
+            success =
+                setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs));
+
+            ival_in_secs = socket->options.keep_alive_max_failed_probes;
+            success =
+                setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &ival_in_secs, sizeof(ival_in_secs));
+        }
+
+        if (socket->options.keep_alive_max_failed_probes) {
+            int max_probes = socket->options.keep_alive_max_failed_probes;
+            success = setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes));
         }
     }
+    (void)success;
 
     return AWS_OP_SUCCESS;
 }
@@ -1573,6 +1586,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     if (error == EPIPE) {
         AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket is closed.", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
+    }
+
+    if (error == ETIMEDOUT) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket timed out.", (void *)socket, socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
     }
 
     return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
