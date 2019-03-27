@@ -94,6 +94,9 @@ struct secure_channel_handler {
     struct aws_byte_buf buffered_read_in_data_buf;
     size_t estimated_incomplete_size;
     size_t read_extra;
+    /* This is to accomodate the extra head room we added above.
+       because we're allowing for splts, we may have more data decrypted
+       than we can fit in this buffer if we don't make them match. */
     uint8_t buffered_read_out_data[READ_OUT_SIZE + KB_1];
     struct aws_byte_buf buffered_read_out_data_buf;
     struct aws_channel_task sequential_task_storage;
