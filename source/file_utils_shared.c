@@ -15,6 +15,8 @@
 
 #include <aws/io/file_utils.h>
 
+#include <aws/common/environment.h>
+#include <aws/common/string.h>
 #include <aws/io/logging.h>
 
 #include <errno.h>
@@ -94,4 +96,8 @@ int aws_io_translate_and_raise_file_write_error(int error_no) {
         default:
             return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
+}
+
+bool aws_is_any_directory_separator(char value) {
+    return value == '\\' || value == '/';
 }

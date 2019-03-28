@@ -31,11 +31,35 @@ AWS_IO_API int aws_byte_buf_init_from_file(
     struct aws_allocator *alloc,
     const char *filename);
 
+/**
+ * Convert a c library error from opening a file into an aws error.  Consider merging with below.
+ */
 AWS_IO_API
 int aws_io_translate_and_raise_file_open_error(int error_no);
 
+/**
+ * Convert a c library error from reading a file into an aws error. Consider merging with above.
+ */
 AWS_IO_API
 int aws_io_translate_and_raise_file_write_error(int error_no);
+
+/**
+ * Returns true iff the character is a directory separator on ANY supported platform.
+ */
+AWS_IO_API
+bool aws_is_any_directory_separator(char value);
+
+/**
+ * Returns the directory separator used by the local platform
+ */
+AWS_IO_API
+char aws_get_platform_directory_separator(void);
+
+/**
+ * Returns the current user's home directory.
+ */
+AWS_IO_API
+struct aws_string *aws_get_home_directory(struct aws_allocator *allocator);
 
 AWS_EXTERN_C_END
 
