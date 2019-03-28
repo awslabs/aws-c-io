@@ -20,7 +20,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
-#include <aws/io/uv/uv_include.h>
+#include <uv.h>
 
 #include <poll.h>
 
