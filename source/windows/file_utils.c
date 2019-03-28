@@ -1,0 +1,84 @@
+/*
+ * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License").
+ * You may not use this file except in compliance with the License.
+ * A copy of the License is located at
+ *
+ *  http://aws.amazon.com/apache2.0
+ *
+ * or in the "license" file accompanying this file. This file is distributed
+ * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ */
+
+#include <aws/io/file_utils.h>
+
+#include <aws/common/environment.h>
+#include <aws/common/string.h>
+
+char aws_get_platform_directory_separator(void) {
+    return '\\';
+}
+
+AWS_STATIC_STRING_FROM_LITERAL(s_userprofile_env_var, "USERPROFILE");
+AWS_STATIC_STRING_FROM_LITERAL(s_homedrive_env_var, "HOMEDRIVE");
+AWS_STATIC_STRING_FROM_LITERAL(s_homepath_env_var, "HOMEPATH");
+
+AWS_STATIC_STRING_FROM_LITERAL(s_home_env_var, "HOME");
+
+struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
+
+    /*
+     * 1. Check HOME
+     */
+    struct aws_string *home_env_var_value = NULL;
+    if (aws_get_environment_value(allocator, s_home_env_var, &home_env_var_value) == 0 && home_env_var_value != NULL) {
+        return home_env_var_value;
+    }
+
+    /*
+     * 2. (Windows) Check USERPROFILE
+     */
+    struct aws_string *userprofile_env_var_value = NULL;
+    if (aws_get_environment_value(allocator, s_userprofile_env_var, &userprofile_env_var_value) == 0 &&
+        userprofile_env_var_value != NULL) {
+        return userprofile_env_var_value;
+    }
+
+    /*
+     * 3. (Windows) Check HOMEDRIVE ++ HOMEPATH
+     */
+    struct aws_string *final_path = NULL;
+    struct aws_string *homedrive_env_var_value = NULL;
+    if (aws_get_environment_value(allocator, s_homedrive_env_var, &homedrive_env_var_value) == 0 &&
+        homedrive_env_var_value != NULL) {
+        struct aws_string *homepath_env_var_value = NULL;
+        if (aws_get_environment_value(allocator, s_homepath_env_var, &homepath_env_var_value) == 0 &&
+            homepath_env_var_value != NULL) {
+            struct aws_byte_buf concatenated_dir;
+            aws_byte_buf_init(
+                &concatenated_dir, allocator, homedrive_env_var_value->len + homepath_env_var_value->len + 1);
+
+            struct aws_byte_cursor drive_cursor = aws_byte_cursor_from_string(homedrive_env_var_value);
+            struct aws_byte_cursor path_cursor = aws_byte_cursor_from_string(homepath_env_var_value);
+
+            aws_byte_buf_append(&concatenated_dir, &drive_cursor);
+            aws_byte_buf_append(&concatenated_dir, &path_cursor);
+
+            final_path = aws_string_new_from_array(allocator, concatenated_dir.buffer, concatenated_dir.len);
+
+            aws_byte_buf_clean_up(&concatenated_dir);
+            aws_string_destroy(homepath_env_var_value);
+        }
+
+        aws_string_destroy(homedrive_env_var_value);
+    }
+
+    if (final_path != NULL) {
+        return final_path;
+    }
+
+    return NULL;
+}
