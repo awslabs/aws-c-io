@@ -165,6 +165,8 @@ add_test_case(uri_port_too_large_parse)
 add_test_case(uri_builder)
 add_test_case(uri_builder_from_string)
 
+add_test_case(test_home_directory_not_null)
+
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

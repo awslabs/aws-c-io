@@ -15,6 +15,8 @@
 
 #include <aws/io/file_utils.h>
 
+#include <aws/common/environment.h>
+#include <aws/common/string.h>
 #include <aws/io/logging.h>
 
 #include <errno.h>
@@ -94,4 +96,19 @@ int aws_io_translate_and_raise_file_write_error(int error_no) {
         default:
             return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
+}
+
+bool aws_is_directory_separator(char value) {
+    return value == '\\' || value == '/';
+}
+
+AWS_STATIC_STRING_FROM_LITERAL(s_home_env_var, "HOME");
+
+struct aws_string *aws_get_home_directory_environment_value(struct aws_allocator *allocator) {
+    struct aws_string *home_env_var_value = NULL;
+    if (aws_get_environment_value(allocator, s_home_env_var, &home_env_var_value) == 0 && home_env_var_value != NULL) {
+        return home_env_var_value;
+    }
+
+    return NULL;
 }
