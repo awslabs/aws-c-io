@@ -18,7 +18,7 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
-char aws_get_local_platform_directory_separator(void) {
+char aws_get_platform_directory_separator(void) {
     return '\\';
 }
 
@@ -26,13 +26,15 @@ AWS_STATIC_STRING_FROM_LITERAL(s_userprofile_env_var, "USERPROFILE");
 AWS_STATIC_STRING_FROM_LITERAL(s_homedrive_env_var, "HOMEDRIVE");
 AWS_STATIC_STRING_FROM_LITERAL(s_homepath_env_var, "HOMEPATH");
 
+AWS_STATIC_STRING_FROM_LITERAL(s_home_env_var, "HOME");
+
 struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
 
     /*
      * 1. Check HOME
      */
-    struct aws_string *home_env_var_value = aws_get_home_directory_environment_value(allocator);
-    if (home_env_var_value != NULL) {
+    struct aws_string *home_env_var_value = NULL;
+    if (aws_get_environment_value(allocator, s_home_env_var, &home_env_var_value) == 0 && home_env_var_value != NULL) {
         return home_env_var_value;
     }
 
