@@ -94,7 +94,10 @@ struct secure_channel_handler {
     struct aws_byte_buf buffered_read_in_data_buf;
     size_t estimated_incomplete_size;
     size_t read_extra;
-    uint8_t buffered_read_out_data[READ_OUT_SIZE];
+    /* This is to accommodate the extra head room we added above.
+       because we're allowing for splits, we may have more data decrypted
+       than we can fit in this buffer if we don't make them match. */
+    uint8_t buffered_read_out_data[READ_OUT_SIZE + KB_1];
     struct aws_byte_buf buffered_read_out_data_buf;
     struct aws_channel_task sequential_task_storage;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
@@ -1047,7 +1050,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
 
             size_t copy_size = read_out_msg->message_data.capacity < requested_message_size
-                                   ? read_out_msg->message_data.len
+                                   ? read_out_msg->message_data.capacity
                                    : requested_message_size;
 
             memcpy(read_out_msg->message_data.buffer, sc_handler->buffered_read_out_data_buf.buffer, copy_size);
