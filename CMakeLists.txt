@@ -200,7 +200,7 @@ if (USE_LIBUV)
     # Allow specific overriding of uv.h location
     if (UV_HEADER_PATH)
         message(STATUS "Using uv.h location: ${UV_HEADER_PATH}")
-        target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "UV_HEADER_PATH=${UV_HEADER_PATH}")
+        target_include_directories(${CMAKE_PROJECT_NAME} BEFORE PUBLIC ${UV_HEADER_PATH})
     endif ()
 endif ()
 
