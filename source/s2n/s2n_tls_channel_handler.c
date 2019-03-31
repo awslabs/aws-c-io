@@ -917,7 +917,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 ca_file = s_default_ca_file;
             }
 
-            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, ca_file, ca_path)) {
+            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, ca_file, ca_dir)) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
