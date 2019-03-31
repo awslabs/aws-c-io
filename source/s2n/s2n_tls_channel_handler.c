@@ -772,7 +772,7 @@ static const char *s_determine_default_pki_dir(void) {
 
     /* android */
     if (aws_does_path_exist("/system/etc/security/cacerts")) {
-        return "/system/etc/security/cacerts"
+        return "/system/etc/security/cacerts";
     }
 
     /* Free BSD */
@@ -801,7 +801,7 @@ static const char *s_determine_default_pki_ca_file(void) {
 
     /* Open SUSE */
     if (aws_does_path_exist("/etc/ssl/ca-bundle.pem")) {
-        return "/etc/ssl/ca-bundle.pem"
+        return "/etc/ssl/ca-bundle.pem";
     }
 
     /* Open ELEC */
