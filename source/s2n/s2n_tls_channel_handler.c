@@ -36,6 +36,9 @@
 #define MAX_RECORD_SIZE (KB_1 * 16)
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
+static const char *s_default_ca_dir = NULL;
+static const char *s_default_ca_file = NULL;
+
 /* this is completely absurd and the reason I hate dependencies, but I'm assuming
  * you don't want your older versions of openssl's libcrypto crashing on you. */
 #if defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER == 0x20000000L)
@@ -50,8 +53,6 @@
 
 static struct aws_mutex *s_libcrypto_locks = NULL;
 static struct aws_allocator *s_libcrypto_allocator = NULL;
-static const char *s_default_ca_dir = NULL;
-static const char *s_default_ca_file = NULL;
 
 static void s_locking_fn(int mode, int n, const char *unused0, int unused1) {
     (void)unused0;
