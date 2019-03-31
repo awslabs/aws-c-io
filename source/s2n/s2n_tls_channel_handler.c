@@ -759,6 +759,64 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     }
 }
 
+static const char *s_determine_default_pki_dir(void) {
+    /* debian variants */
+    if (aws_does_path_exist("/etc/ssl/certs")) {
+        return "/etc/ssl/certs";
+    }
+
+    /* RHEL variants */
+    if (aws_does_path_exist("/etc/pki/tls/certs")) {
+        return "/etc/pki/tls/certs";
+    }
+
+    /* android */
+    if (aws_does_path_exist("/system/etc/security/cacerts")) {
+        return "/system/etc/security/cacerts"
+    }
+
+    /* Free BSD */
+    if (aws_does_path_exist("/usr/local/share/certs")) {
+        return "/usr/local/share/certs";
+    }
+
+    /* Net BSD */
+    if (aws_does_path_exist("/etc/openssl/certs") {
+        return "/etc/openssl/certs";
+    }
+
+    return NULL;
+}
+
+static const char *s_determine_default_pki_ca_file(void) {
+    /* debian variants */
+    if (aws_does_path_exist("/etc/ssl/certs/ca-certificates.crt")) {
+        return "/etc/ssl/certs/ca-certificates.crt";
+    }
+
+    /* Old RHEL variants */
+    if (aws_does_path_exist("/etc/pki/tls/certs/ca-bundle.crt")) {
+        return "/etc/pki/tls/certs/ca-bundle.crt";
+    }
+
+    /* Open SUSE */
+    if (aws_does_path_exist("/etc/ssl/ca-bundle.pem")) {
+        return "/etc/ssl/ca-bundle.pem"
+    }
+
+    /* Open ELEC */
+    if (aws_does_path_exist("/etc/pki/tls/cacert.pem")) {
+        return "/etc/pki/tls/cacert.pem";
+    }
+
+    /* Modern RHEL variants */
+    if (aws_does_path_exist("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem") {
+        return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem";
+    }
+
+    return NULL;
+}
+
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     struct aws_tls_ctx_options *options,
@@ -836,6 +894,25 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
         if (options->ca_file.len) {
             if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
+            }
+        }
+
+        if (!options->ca_path && !options->ca_file.len) {
+            const char *ca_path = s_determine_default_pki_dir();
+            const char *ca_file = NULL;
+
+            if (!ca_path) {
+                ca_file = s_determine_default_pki_ca_file();
+            }
+
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: no CA directory or file was set, based on OS, we detected the default path as %s, and ca file as %s",
+                    ca_path, ca_file);
+
+            if (s2n_config_set_verification_ca_location(
+                    s2n_ctx->s2n_config, ca_file, ca_path)) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
