@@ -781,7 +781,7 @@ static const char *s_determine_default_pki_dir(void) {
     }
 
     /* Net BSD */
-    if (aws_does_path_exist("/etc/openssl/certs") {
+    if (aws_does_path_exist("/etc/openssl/certs")) {
         return "/etc/openssl/certs";
     }
 
@@ -810,7 +810,7 @@ static const char *s_determine_default_pki_ca_file(void) {
     }
 
     /* Modern RHEL variants */
-    if (aws_does_path_exist("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem") {
+    if (aws_does_path_exist("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")) {
         return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem";
     }
 
