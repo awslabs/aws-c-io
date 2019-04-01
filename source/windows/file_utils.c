@@ -18,6 +18,8 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
+#include <Shlwapi.h>
+
 char aws_get_platform_directory_separator(void) {
     return '\\';
 }
@@ -81,4 +83,8 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
     }
 
     return NULL;
+}
+
+bool aws_path_exists(const char *path) {
+    return PathFileExistsA(path) == TRUE;
 }

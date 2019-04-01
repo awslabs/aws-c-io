@@ -481,7 +481,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, "/etc/ssl/certs", NULL);
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -650,7 +649,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, "/etc/ssl/certs", NULL);
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);

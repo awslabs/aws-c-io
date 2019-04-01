@@ -36,6 +36,9 @@
 #define MAX_RECORD_SIZE (KB_1 * 16)
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
+static const char *s_default_ca_dir = NULL;
+static const char *s_default_ca_file = NULL;
+
 /* this is completely absurd and the reason I hate dependencies, but I'm assuming
  * you don't want your older versions of openssl's libcrypto crashing on you. */
 #if defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER == 0x20000000L)
@@ -90,6 +93,64 @@ struct s2n_ctx {
     struct s2n_config *s2n_config;
 };
 
+static const char *s_determine_default_pki_dir(void) {
+    /* debian variants */
+    if (aws_path_exists("/etc/ssl/certs")) {
+        return "/etc/ssl/certs";
+    }
+
+    /* RHEL variants */
+    if (aws_path_exists("/etc/pki/tls/certs")) {
+        return "/etc/pki/tls/certs";
+    }
+
+    /* android */
+    if (aws_path_exists("/system/etc/security/cacerts")) {
+        return "/system/etc/security/cacerts";
+    }
+
+    /* Free BSD */
+    if (aws_path_exists("/usr/local/share/certs")) {
+        return "/usr/local/share/certs";
+    }
+
+    /* Net BSD */
+    if (aws_path_exists("/etc/openssl/certs")) {
+        return "/etc/openssl/certs";
+    }
+
+    return NULL;
+}
+
+static const char *s_determine_default_pki_ca_file(void) {
+    /* debian variants */
+    if (aws_path_exists("/etc/ssl/certs/ca-certificates.crt")) {
+        return "/etc/ssl/certs/ca-certificates.crt";
+    }
+
+    /* Old RHEL variants */
+    if (aws_path_exists("/etc/pki/tls/certs/ca-bundle.crt")) {
+        return "/etc/pki/tls/certs/ca-bundle.crt";
+    }
+
+    /* Open SUSE */
+    if (aws_path_exists("/etc/ssl/ca-bundle.pem")) {
+        return "/etc/ssl/ca-bundle.pem";
+    }
+
+    /* Open ELEC */
+    if (aws_path_exists("/etc/pki/tls/cacert.pem")) {
+        return "/etc/pki/tls/cacert.pem";
+    }
+
+    /* Modern RHEL variants */
+    if (aws_path_exists("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")) {
+        return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem";
+    }
+
+    return NULL;
+}
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
     (void)alloc;
@@ -116,6 +177,14 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         CRYPTO_set_id_callback(s_id_fn);
     }
 #endif
+
+    s_default_ca_dir = s_determine_default_pki_dir();
+    s_default_ca_file = s_determine_default_pki_ca_file();
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "ctx: Based on OS, we detected the default PKI path as %s, and ca file as %s",
+        s_default_ca_dir,
+        s_default_ca_file);
 }
 
 void aws_tls_clean_up_thread_local_state(void) {
@@ -836,6 +905,20 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
         if (options->ca_file.len) {
             if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
+            }
+        }
+
+        if (!options->ca_path && !options->ca_file.len) {
+            const char *ca_dir = s_default_ca_dir;
+            const char *ca_file = NULL;
+            if (!ca_dir) {
+                ca_file = s_default_ca_file;
+            }
+
+            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, ca_file, ca_dir)) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
