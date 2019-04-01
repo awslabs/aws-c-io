@@ -23,7 +23,7 @@
 
 #ifndef WIN32
 #    include <sys/file.h>
-#endif // WIN32
+#endif /* WIN32 */
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */

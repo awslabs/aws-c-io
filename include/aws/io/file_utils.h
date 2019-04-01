@@ -69,4 +69,4 @@ bool aws_path_exists(const char *path);
 
 AWS_EXTERN_C_END
 
-#endif // AWS_IO_FILE_UTILS_H
+#endif /* AWS_IO_FILE_UTILS_H */
