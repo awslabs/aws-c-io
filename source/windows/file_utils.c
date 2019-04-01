@@ -85,6 +85,6 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
     return NULL;
 }
 
-bool aws_does_path_exist(const char *path) {
+bool aws_path_exists(const char *path) {
     return PathFileExistsA(path) == TRUE;
 }

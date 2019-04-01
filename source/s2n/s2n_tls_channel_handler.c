@@ -95,27 +95,27 @@ struct s2n_ctx {
 
 static const char *s_determine_default_pki_dir(void) {
     /* debian variants */
-    if (aws_does_path_exist("/etc/ssl/certs")) {
+    if (aws_path_exists("/etc/ssl/certs")) {
         return "/etc/ssl/certs";
     }
 
     /* RHEL variants */
-    if (aws_does_path_exist("/etc/pki/tls/certs")) {
+    if (aws_path_exists("/etc/pki/tls/certs")) {
         return "/etc/pki/tls/certs";
     }
 
     /* android */
-    if (aws_does_path_exist("/system/etc/security/cacerts")) {
+    if (aws_path_exists("/system/etc/security/cacerts")) {
         return "/system/etc/security/cacerts";
     }
 
     /* Free BSD */
-    if (aws_does_path_exist("/usr/local/share/certs")) {
+    if (aws_path_exists("/usr/local/share/certs")) {
         return "/usr/local/share/certs";
     }
 
     /* Net BSD */
-    if (aws_does_path_exist("/etc/openssl/certs")) {
+    if (aws_path_exists("/etc/openssl/certs")) {
         return "/etc/openssl/certs";
     }
 
@@ -124,27 +124,27 @@ static const char *s_determine_default_pki_dir(void) {
 
 static const char *s_determine_default_pki_ca_file(void) {
     /* debian variants */
-    if (aws_does_path_exist("/etc/ssl/certs/ca-certificates.crt")) {
+    if (aws_path_exists("/etc/ssl/certs/ca-certificates.crt")) {
         return "/etc/ssl/certs/ca-certificates.crt";
     }
 
     /* Old RHEL variants */
-    if (aws_does_path_exist("/etc/pki/tls/certs/ca-bundle.crt")) {
+    if (aws_path_exists("/etc/pki/tls/certs/ca-bundle.crt")) {
         return "/etc/pki/tls/certs/ca-bundle.crt";
     }
 
     /* Open SUSE */
-    if (aws_does_path_exist("/etc/ssl/ca-bundle.pem")) {
+    if (aws_path_exists("/etc/ssl/ca-bundle.pem")) {
         return "/etc/ssl/ca-bundle.pem";
     }
 
     /* Open ELEC */
-    if (aws_does_path_exist("/etc/pki/tls/cacert.pem")) {
+    if (aws_path_exists("/etc/pki/tls/cacert.pem")) {
         return "/etc/pki/tls/cacert.pem";
     }
 
     /* Modern RHEL variants */
-    if (aws_does_path_exist("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")) {
+    if (aws_path_exists("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")) {
         return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem";
     }
 
