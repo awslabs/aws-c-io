@@ -23,6 +23,7 @@
 #include <aws/io/logging.h>
 
 #include <stdio.h>
+#include <stdarg.h>
 
 struct aws_allocator;
 struct aws_string;
