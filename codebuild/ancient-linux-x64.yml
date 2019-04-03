@@ -1,0 +1,16 @@
+version: 0.2
+#this build spec assumes the ancientlinux-x64 image
+#additional packages we installed: cmake 3.5, libcrypto 1.1.0j, gcc 4.8.4
+phases:
+  install:
+    commands:
+  pre_build:
+    commands:
+      - export CC=gcc
+  build:
+    commands:
+      - echo Build started on `date`
+      - ./codebuild/common-posix.sh
+  post_build:
+    commands:
+      - echo Build completed on `date`
