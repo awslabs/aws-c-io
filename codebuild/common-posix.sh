@@ -29,8 +29,10 @@ function install_library {
 
 # If TRAVIS_OS_NAME is OSX, skip this step (will resolve to empty string on CodeBuild)
 if [ "$TRAVIS_OS_NAME" != "osx" ]; then
-    sudo apt-get install libssl-dev -y
-    install_library s2n 7c9069618e68214802ac7fbf45705d5f8b53135f
+    if [ `which lsb_release` != "" ]; then # filters out ancientlinux
+        sudo apt-get install libssl-dev -y
+    fi
+    install_library s2n e23fb83e80f567c225279cdeb6c9e271b2ff459c
 fi
 install_library aws-c-common
 
