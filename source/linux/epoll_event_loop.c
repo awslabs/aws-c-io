@@ -167,16 +167,16 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     AWS_LOGF_DEBUG(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Eventfd not available, falling back to pipe for cross-thread notification.",
-        loop);
+        (void*)loop);
 
     int pipe_fds[2] = {0};
     /* this pipe is for task scheduling. */
     if (aws_open_nonblocking_posix_pipe(pipe_fds)) {
-        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to open pipe handle.", loop);
+        AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to open pipe handle.", (void*)loop);
         goto clean_up_thread;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: pipe descriptors read %d, write %d.", loop, pipe_fds[0], pipe_fds[1]);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: pipe descriptors read %d, write %d.", (void*)loop, pipe_fds[0], pipe_fds[1]);
     epoll_loop->write_task_handle.data.fd = pipe_fds[1];
     epoll_loop->read_task_handle.data.fd = pipe_fds[0];
 #endif
