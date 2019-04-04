@@ -359,7 +359,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
         task_args->error_code = error_code;
         task_args->alloc = channel->alloc;
         aws_task_init(&task_args->task, s_shutdown_task, task_args);
-        /* since we came in off of the event-loop thread, and we have to guarantee, this function
+        /* since we came in off of the event-loop thread, and we have to guarantee this function
            is safe to call multiple times during shutdown, grab a hold so nothing cleans the channel
            up while we're waiting on this task to run. */
         aws_channel_acquire_hold(task_args->channel);
