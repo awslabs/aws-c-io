@@ -715,6 +715,48 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
 
 AWS_TEST_CASE(channel_cancels_pending_tasks, s_test_channel_cancels_pending_tasks)
 
+static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_channel *channel = NULL;
+
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_completed = false,
+    };
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_INT_EQUALS(0, test_args.error_code);
+
+    ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
+    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+
+    /* make sure this doesn't explode! */
+    ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_duplicate_shutdown, s_test_channel_duplicate_shutdown)
+
 struct channel_connect_test_args {
     struct aws_mutex *mutex;
     struct aws_condition_variable cv;
