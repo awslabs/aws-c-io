@@ -502,6 +502,11 @@ static void s_channel_test_shutdown(struct aws_channel *channel, int error_code,
     aws_condition_variable_notify_one(&test_args->condition_variable);
 }
 
+static bool s_channel_test_shutdown_predicate(void *arg) {
+    struct channel_setup_test_args *test_args = (struct channel_setup_test_args *)arg;
+    return test_args->shutdown_completed;
+}
+
 enum tasks_run_id {
     TASK_NOW_OFF_THREAD,
     TASK_NOW_ON_THREAD,
@@ -650,7 +655,8 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_channel_test_shutdown_predicate, &test_args));
 
     struct aws_channel_task task;
     aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
@@ -703,7 +709,8 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
     ASSERT_INT_EQUALS(100, test_args.task_status);
 
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_channel_test_shutdown_predicate, &test_args));
 
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, test_args.task_status);
 
@@ -745,7 +752,8 @@ static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, vo
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_channel_test_shutdown_predicate, &test_args));
 
     /* make sure this doesn't explode! */
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
