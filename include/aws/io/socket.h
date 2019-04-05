@@ -303,4 +303,4 @@ AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
 
 AWS_EXTERN_C_END
 
-#endif /*AWS_IO_SOCKET_H */
+#endif /* AWS_IO_SOCKET_H */
