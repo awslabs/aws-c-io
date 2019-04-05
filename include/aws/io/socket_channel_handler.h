@@ -1,5 +1,5 @@
-#ifndef AWS_IO_SOCKET_HANDLER_H
-#define AWS_IO_SOCKET_HANDLER_H
+#ifndef AWS_IO_SOCKET_CHANNEL_HANDLER_H
+#define AWS_IO_SOCKET_CHANNEL_HANDLER_H
 /*
  * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
  *
@@ -36,4 +36,4 @@ AWS_IO_API struct aws_channel_handler *aws_socket_handler_new(
 
 AWS_EXTERN_C_END
 
-#endif /*AWS_IO_SOCKET_HANDLER_H */
+#endif /* AWS_IO_SOCKET_CHANNEL_HANDLER_H */
