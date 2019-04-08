@@ -15,6 +15,7 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -88,14 +89,15 @@ static struct aws_event_loop_vtable s_vtable = {
 struct epoll_loop {
     struct aws_task_scheduler scheduler;
     struct aws_thread thread;
+    struct aws_atomic_var thread_id;
     struct aws_io_handle read_task_handle;
     struct aws_io_handle write_task_handle;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
-    bool should_process_task_pre_queue;
-    int epoll_fd;
-    bool should_continue;
     struct aws_task stop_task;
+    int epoll_fd;
+    bool should_process_task_pre_queue;
+    bool should_continue;
 };
 
 struct epoll_event_data {
@@ -135,6 +137,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     }
 
     AWS_ZERO_STRUCT(*epoll_loop);
+    aws_atomic_init_int(&epoll_loop->thread_id, 0);
 
     aws_linked_list_init(&epoll_loop->task_pre_queue);
     epoll_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
@@ -232,6 +235,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     aws_event_loop_stop(event_loop);
     s_wait_for_stop_completion(event_loop);
 
+    aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_current_thread_id());
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
 
     while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
@@ -267,6 +271,8 @@ static int s_run(struct aws_event_loop *event_loop) {
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
     }
+
+    aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_get_id(&epoll_loop->thread));
 
     return AWS_OP_SUCCESS;
 }
@@ -460,7 +466,8 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    return aws_thread_current_thread_id() == aws_thread_get_id(&epoll_loop->thread);
+    uint64_t thread_id = aws_atomic_load_int(&epoll_loop->thread_id);
+    return aws_thread_current_thread_id() == thread_id;
 }
 
 /* We treat the pipe fd with a subscription to io events just like any other managed file descriptor.
@@ -640,4 +647,5 @@ static void s_main_loop(void *args) {
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
+    aws_atomic_store_int(&epoll_loop->thread_id, (size_t)0);
 }

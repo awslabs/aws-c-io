@@ -15,6 +15,7 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -106,6 +107,7 @@ enum event_thread_state {
 /** This struct is owned by libuv_loop if the uv_loop is owned by us */
 struct libuv_owned {
     struct aws_thread thread;
+    struct aws_atomic_var thread_id;
     enum event_thread_state state;
 };
 static struct libuv_owned *s_owned(struct libuv_loop *loop) {
@@ -322,6 +324,10 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     /* Wait for completion */
     s_wait_for_stop_completion(event_loop);
 
+    if (impl->owns_uv_loop) {
+        aws_atomic_store_int(&impl->ownership_specific.uv_owned->thread_id, (size_t)aws_thread_current_thread_id());
+    }
+
     /* Tasks in scheduler get cancelled */
     aws_hash_table_foreach(&impl->active_thread_data.running_tasks, s_running_tasks_destroy, NULL);
     aws_hash_table_clean_up(&impl->active_thread_data.running_tasks);
@@ -362,6 +368,7 @@ static void s_thread_loop(void *args) {
     }
 
     s_owned(impl)->state = EVENT_THREAD_STATE_READY_TO_RUN;
+    aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)0);
 }
 
 static void s_uv_task_timer_cb(uv_timer_t *handle UV_STATUS_PARAM) {
@@ -540,6 +547,8 @@ static int s_run(struct aws_event_loop *event_loop) {
         if (aws_thread_launch(&s_owned(impl)->thread, &s_thread_loop, impl, NULL)) {
             goto clean_up;
         }
+
+        aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)aws_thread_get_id(&s_owned(impl)->thread));
     }
 
     /* If there are pending tasks (someone called schedule while stopped), schedule them */
@@ -774,8 +783,13 @@ static void s_free_io_event_resources(void *user_data) {
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct libuv_loop *impl = event_loop->impl_data;
 
-    const uint64_t uv_tid =
-        impl->owns_uv_loop ? aws_thread_get_id(&s_owned(impl)->thread) : s_unowned(impl)->uv_thread_id;
+    const uint64_t uv_tid = 0;
+
+    if (impl->owns_uv_loop) {
+        uv_tid = aws_atomic_load_int(&s_owned(impl)->thread_id);
+    } else {
+        uv_tid = s_unowned(impl)->uv_thread_id;
+    }
 
     return uv_tid == aws_thread_current_thread_id();
 }
@@ -877,6 +891,7 @@ struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws
 
     impl->owns_uv_loop = true;
     impl->ownership_specific.uv_owned = owned;
+    aws_atomic_init_int(&impl->ownership_specific.uv_owned->thread_id, 0);
 
 #if UV_VERSION_MAJOR == 0
     uv_loop = uv_loop_new();
