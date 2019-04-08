@@ -27,6 +27,7 @@ add_pipe_test_case(pipe_writes_are_fifo)
 add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
 
 add_test_case(event_loop_xthread_scheduled_tasks_execute)
+add_test_case(event_loop_canceled_tasks_run_in_el_thread)
 if (USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
 else ()
