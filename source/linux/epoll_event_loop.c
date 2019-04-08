@@ -235,6 +235,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     aws_event_loop_stop(event_loop);
     s_wait_for_stop_completion(event_loop);
 
+    /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
     aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_current_thread_id());
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
 
@@ -271,8 +272,6 @@ static int s_run(struct aws_event_loop *event_loop) {
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
     }
-
-    aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_get_id(&epoll_loop->thread));
 
     return AWS_OP_SUCCESS;
 }
@@ -535,6 +534,8 @@ static void s_main_loop(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
+
+    aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_current_thread_id());
 
     int err = s_subscribe_to_io_events(
         event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_tasks_to_schedule, NULL);

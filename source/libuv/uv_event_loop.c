@@ -325,6 +325,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_wait_for_stop_completion(event_loop);
 
     if (impl->owns_uv_loop) {
+        /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
         aws_atomic_store_int(&impl->ownership_specific.uv_owned->thread_id, (size_t)aws_thread_current_thread_id());
     }
 
@@ -362,6 +363,7 @@ static void s_thread_loop(void *args) {
     struct libuv_loop *impl = args;
 
     s_owned(impl)->state = EVENT_THREAD_STATE_RUNNING;
+    aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)aws_thread_current_thread_id());
 
     while (s_owned(impl)->state == EVENT_THREAD_STATE_RUNNING) {
         uv_run(impl->uv_loop, UV_RUN_ONCE);
@@ -547,8 +549,6 @@ static int s_run(struct aws_event_loop *event_loop) {
         if (aws_thread_launch(&s_owned(impl)->thread, &s_thread_loop, impl, NULL)) {
             goto clean_up;
         }
-
-        aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)aws_thread_get_id(&s_owned(impl)->thread));
     }
 
     /* If there are pending tasks (someone called schedule while stopped), schedule them */

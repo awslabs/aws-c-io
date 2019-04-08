@@ -60,8 +60,13 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
+    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                  .mutex = AWS_MUTEX_INIT,
+                                  .invoked = false,
+                                  .was_in_thread = false,
+                                  .status = -1,
+                                  .loop = event_loop,
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -974,8 +979,13 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
+    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                  .mutex = AWS_MUTEX_INIT,
+                                  .invoked = false,
+                                  .was_in_thread = false,
+                                  .status = -1,
+                                  .loop = event_loop,
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);

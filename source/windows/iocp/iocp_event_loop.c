@@ -288,6 +288,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         return;
     }
 
+    /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
     aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
     /* Clean up task-related stuff first.
@@ -352,7 +353,6 @@ static int s_run(struct aws_event_loop *event_loop) {
         goto clean_up;
     }
 
-    aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_get_id(&impl->thread));
     return AWS_OP_SUCCESS;
 
 clean_up:
@@ -615,6 +615,9 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
 
     struct iocp_loop *impl = event_loop->impl_data;
+
+    aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
+
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
