@@ -277,7 +277,7 @@ definitions that may be helpful.
 
 ### Run-time Polymorphic
 This means that the API is driven by a virtual-table. This is simply a struct of function pointers. They are invoked via
-a c extern style API, but ultimately those public functions simply invoke the cooresponding function in the v-table.
+a c extern style API, but ultimately those public functions simply invoke the corresponding function in the v-table.
 
 These are reserved for types that:
 a.) Need to be configurable, changable at runtime
@@ -349,7 +349,7 @@ This function is invoked when the event loop is finished processing and is ready
     int (*run) (struct aws_event_loop *);
 
 This function starts the running of the event loop and then immediately returns. This could kick off a thread, or setup some resources to run and
-recieve events in a back channel API. For example, you could have an epoll loop that runs in a thread, or you could have an event loop pumped by a system
+receive events in a back channel API. For example, you could have an epoll loop that runs in a thread, or you could have an event loop pumped by a system
 loop such as glib, or libevent etc... and then publish events to your event loop implementation.
 
     int (*stop) (struct aws_event_loop *,
