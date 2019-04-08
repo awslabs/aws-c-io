@@ -50,6 +50,12 @@ struct aws_shutdown_notification_task {
     bool shutdown_immediately;
 };
 
+struct shutdown_task {
+    struct aws_channel_task task;
+    struct aws_channel *channel;
+    int error_code;
+};
+
 struct aws_channel {
     struct aws_allocator *alloc;
     struct aws_event_loop *loop;
@@ -68,6 +74,7 @@ struct aws_channel {
         struct aws_mutex lock;
         struct aws_linked_list list;
         struct aws_task scheduling_task;
+        struct shutdown_task shutdown_task;
         bool is_channel_shut_down;
     } cross_thread_tasks;
 };
@@ -294,16 +301,15 @@ struct channel_shutdown_task_args {
     struct aws_task task;
 };
 
-static void s_shutdown_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     (void)task;
-    struct channel_shutdown_task_args *task_args = (struct channel_shutdown_task_args *)arg;
+
+    struct shutdown_task *shutdown_task = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        aws_channel_shutdown(task_args->channel, task_args->error_code);
+        aws_channel_shutdown(shutdown_task->channel, shutdown_task->error_code);
     }
-
-    aws_mem_release(task_args->alloc, (void *)task_args);
 }
 
 static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status);
@@ -347,19 +353,29 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
             "event-loop thread, scheduling task.",
             (void *)channel);
 
-        struct channel_shutdown_task_args *task_args =
-            aws_mem_acquire(channel->alloc, sizeof(struct channel_shutdown_task_args));
+        bool need_to_schedule = true;
+        aws_mutex_lock(&channel->cross_thread_tasks.lock);
+        if (channel->cross_thread_tasks.shutdown_task.task.task_fn) {
+            need_to_schedule = false;
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: Channel shutdown is already pending, not scheduling another.",
+                (void *)channel);
 
-        if (!task_args) {
-            return AWS_OP_ERR;
+        } else {
+            aws_channel_task_init(
+                &channel->cross_thread_tasks.shutdown_task.task,
+                s_shutdown_task,
+                &channel->cross_thread_tasks.shutdown_task);
+            channel->cross_thread_tasks.shutdown_task.channel = channel;
+            channel->cross_thread_tasks.shutdown_task.error_code = error_code;
         }
 
-        task_args->channel = channel;
-        task_args->error_code = error_code;
-        task_args->alloc = channel->alloc;
-        aws_task_init(&task_args->task, s_shutdown_task, task_args);
+        aws_mutex_unlock(&channel->cross_thread_tasks.lock);
 
-        aws_event_loop_schedule_task_now(channel->loop, &task_args->task);
+        if (need_to_schedule) {
+            aws_channel_schedule_task_now(channel, &channel->cross_thread_tasks.shutdown_task.task);
+        }
     }
 
     return AWS_OP_SUCCESS;

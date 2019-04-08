@@ -30,14 +30,14 @@
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 
-// (max) strlen of "[<LogLevel>]"
+/* (max) strlen of "[<LogLevel>]" */
 #define LOG_LEVEL_PREFIX_PADDING 7
 
-// (max) strlen of "[<ThreadId>]"
+/* (max) strlen of "[<ThreadId>]" */
 #define THREAD_ID_PREFIX_PADDING 22
 
-// strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 +
-// subject_name padding
+/* strlen of (user-content separator) " - " + "\n" + spaces between prefix fields + brackets around timestamp + 1 +
+   subject_name padding */
 #define MISC_PADDING 15
 
 #define MAX_LOG_LINE_PREFIX_SIZE                                                                                       \
@@ -169,7 +169,7 @@ static int s_default_aws_log_formatter_format(
         vsnprintf_s(log_line_buffer + current_index, total_length - current_index, _TRUNCATE, format, args);
 #else
     int written_count = vsnprintf(log_line_buffer + current_index, total_length - current_index, format, args);
-#endif // WIN32
+#endif /* WIN32 */
     if (written_count < 0) {
         goto error_clean_up;
     }

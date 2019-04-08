@@ -25,7 +25,7 @@
 #        endif /* AWS_IO_EXPORTS */
 #    else
 #        define AWS_IO_API
-#    endif // USE_IMPORT_EXPORT
+#    endif /* USE_IMPORT_EXPORT */
 
 #else
 #    if ((__GNUC__ >= 4) || defined(__clang__)) && defined(AWS_IO_USE_IMPORT_EXPORT) && defined(AWS_IO_EXPORTS)
