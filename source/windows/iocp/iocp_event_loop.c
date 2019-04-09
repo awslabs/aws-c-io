@@ -192,6 +192,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         goto clean_up;
     }
     AWS_ZERO_STRUCT(*impl);
+    /* initialize thread id to 0. This will be updated once the event loop thread starts. */
     aws_atomic_init_int(&impl->thread_id, 0);
 
     impl->iocp_handle = CreateIoCompletionPort(
@@ -616,6 +617,7 @@ static void s_event_thread_main(void *user_data) {
 
     struct iocp_loop *impl = event_loop->impl_data;
 
+    /* Set thread id to event loop thread id. */
     aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -720,5 +722,6 @@ static void s_event_thread_main(void *user_data) {
         }
     }
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
+    /* set back to 0. This should be updated again in destroy, right before task cancelation happens. */
     aws_atomic_store_int(&impl->thread_id, (size_t)0);
 }

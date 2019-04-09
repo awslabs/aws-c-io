@@ -363,6 +363,7 @@ static void s_thread_loop(void *args) {
     struct libuv_loop *impl = args;
 
     s_owned(impl)->state = EVENT_THREAD_STATE_RUNNING;
+    /* while thread is running we want to report the event-loop thread */
     aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)aws_thread_current_thread_id());
 
     while (s_owned(impl)->state == EVENT_THREAD_STATE_RUNNING) {
@@ -370,6 +371,7 @@ static void s_thread_loop(void *args) {
     }
 
     s_owned(impl)->state = EVENT_THREAD_STATE_READY_TO_RUN;
+    /* set back to 0 for sanity. it should be updated in destroy before canceling tasks. */
     aws_atomic_store_int(&s_owned(impl)->thread_id, (size_t)0);
 }
 
@@ -783,7 +785,7 @@ static void s_free_io_event_resources(void *user_data) {
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct libuv_loop *impl = event_loop->impl_data;
 
-    const uint64_t uv_tid = 0;
+    uint64_t uv_tid = 0;
 
     if (impl->owns_uv_loop) {
         uv_tid = aws_atomic_load_int(&s_owned(impl)->thread_id);
@@ -820,6 +822,7 @@ static int s_libuv_loop_init(
     }
 
     impl->uv_loop = uv_loop;
+    /* init thread id to 0 until the event-loop thread starts. */
     aws_atomic_init_int(&impl->num_open_handles, 0);
 
     /* Init cross-thread data */

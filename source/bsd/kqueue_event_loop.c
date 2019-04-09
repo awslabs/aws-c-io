@@ -163,6 +163,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     if (!impl) {
         goto clean_up;
     }
+    /* intialize thread id to 0. It will be set when the event loop thread starts. */
     aws_atomic_init_int(&impl->thread_id, (size_t)0);
     clean_up_impl_mem = true;
     AWS_ZERO_STRUCT(*impl);
@@ -798,6 +799,7 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct kqueue_loop *impl = event_loop->impl_data;
 
+    /* set thread id to the event-loop's thread. */
     aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
@@ -957,5 +959,6 @@ static void s_event_thread_main(void *user_data) {
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
+    /* reset to 0. This should be updated again during destroy before tasks are canceled. */
     aws_atomic_store_int(&impl->thread_id, 0);
 }

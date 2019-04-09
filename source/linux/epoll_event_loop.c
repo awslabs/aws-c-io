@@ -137,6 +137,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     }
 
     AWS_ZERO_STRUCT(*epoll_loop);
+    /* initialize thread id to 0, it should be updated when the event loop thread starts. */
     aws_atomic_init_int(&epoll_loop->thread_id, 0);
 
     aws_linked_list_init(&epoll_loop->task_pre_queue);
@@ -535,6 +536,7 @@ static void s_main_loop(void *args) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    /* set thread id to the thread of the event loop */
     aws_atomic_store_int(&epoll_loop->thread_id, (size_t)aws_thread_current_thread_id());
 
     int err = s_subscribe_to_io_events(
@@ -648,5 +650,6 @@ static void s_main_loop(void *args) {
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
+    /* set thread id back to 0. This should be updated again in destroy, before tasks are canceled. */
     aws_atomic_store_int(&epoll_loop->thread_id, (size_t)0);
 }
