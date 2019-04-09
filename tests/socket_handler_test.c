@@ -293,7 +293,11 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    /* this should never get used for this case. */
+    struct aws_host_resolver dummy_resolver;
+    AWS_ZERO_STRUCT(dummy_resolver);
+    struct aws_client_bootstrap *client_bootstrap =
+        aws_client_bootstrap_new(allocator, &el_group, &dummy_resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -356,7 +360,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
-    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
     aws_server_bootstrap_destroy(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 
@@ -439,7 +443,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    /* this should not get used for a unix domain socket. */
+    struct aws_host_resolver dummy_resolver;
+    AWS_ZERO_STRUCT(dummy_resolver);
+    struct aws_client_bootstrap *client_bootstrap =
+        aws_client_bootstrap_new(allocator, &el_group, &dummy_resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -470,7 +478,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
 
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
-    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
     aws_server_bootstrap_destroy(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 

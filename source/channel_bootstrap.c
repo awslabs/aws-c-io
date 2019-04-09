@@ -92,12 +92,6 @@ static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_grou
 void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     assert(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
-
-    if (bootstrap->host_resolver && bootstrap->owns_resolver) {
-        aws_host_resolver_clean_up(bootstrap->host_resolver);
-        aws_mem_release(bootstrap->allocator, bootstrap->host_resolver);
-    }
-
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
 
@@ -118,6 +112,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_host_resolution_config *host_resolution_config) {
     assert(allocator);
     assert(el_group);
+    assert(host_resolver);
 
     struct aws_client_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_client_bootstrap));
 
@@ -136,23 +131,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
     aws_atomic_init_int(&bootstrap->ref_count, 1);
-
-    if (host_resolver) {
-        bootstrap->host_resolver = host_resolver;
-        bootstrap->owns_resolver = false;
-    } else {
-        bootstrap->host_resolver = aws_mem_acquire(allocator, sizeof(struct aws_host_resolver));
-        if (!bootstrap->host_resolver) {
-            goto handle_error;
-        }
-
-        if (aws_host_resolver_init_default(bootstrap->host_resolver, allocator, MAX_HOST_RESOLVER_ENTRIES)) {
-            aws_mem_release(allocator, bootstrap->host_resolver);
-            goto handle_error;
-        }
-
-        bootstrap->owns_resolver = true;
-    }
+    bootstrap->host_resolver = host_resolver;
 
     if (host_resolution_config) {
         bootstrap->host_resolver_config = *host_resolution_config;
@@ -165,12 +144,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     }
 
     return bootstrap;
-handle_error:
-    if (bootstrap) {
-        s_client_bootstrap_destroy_impl(bootstrap);
-    }
-
-    return NULL;
+    ;
 }
 
 int aws_client_bootstrap_set_alpn_callback(
@@ -183,7 +157,7 @@ int aws_client_bootstrap_set_alpn_callback(
     return AWS_OP_SUCCESS;
 }
 
-void aws_client_bootstrap_destroy(struct aws_client_bootstrap *bootstrap) {
+void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
 
     /* if destroy is being called, the user intends to not use the bootstrap anymore
@@ -486,6 +460,10 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             host_address.host = connection_args->host_name;
             host_address.address =
                 aws_string_new_from_c_str(connection_args->bootstrap->allocator, socket->remote_endpoint.address);
+            host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
+                                           ? AWS_ADDRESS_RECORD_TYPE_AAAA
+                                           : AWS_ADDRESS_RECORD_TYPE_A;
+
             if (host_address.address) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_CHANNEL_BOOTSTRAP,

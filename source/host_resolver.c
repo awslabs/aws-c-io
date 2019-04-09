@@ -408,12 +408,13 @@ static void resolver_thread_fn(void *arg) {
             struct aws_linked_list_node *resolution_callback_node = aws_linked_list_pop_front(&pending_resolve_copy);
             struct pending_callback *pending_callback =
                 AWS_CONTAINER_OF(resolution_callback_node, struct pending_callback, node);
+
             aws_rw_lock_wlock(&host_entry->entry_lock);
             struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
             struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
             aws_rw_lock_wunlock(&host_entry->entry_lock);
 
-            if (aaaa_address || a_address) {
+            if ((aaaa_address || a_address) && host_entry->keep_active) {
                 struct aws_host_address address_array[2];
                 AWS_ZERO_ARRAY(address_array);
                 struct aws_array_list callback_address_list;
@@ -446,6 +447,12 @@ static void resolver_thread_fn(void *arg) {
                     pending_callback->user_data);
                 aws_array_list_clean_up(&callback_address_list);
             } else {
+
+                if (!host_entry->keep_active && !err_code) {
+                    aws_raise_error(AWS_ERROR_IO_OPERATION_CANCELLED);
+                    err_code = AWS_ERROR_IO_OPERATION_CANCELLED;
+                }
+
                 pending_callback->callback(
                     host_entry->resolver, host_entry->host_name, err_code, NULL, pending_callback->user_data);
             }
@@ -489,9 +496,13 @@ static void on_host_value_removed(void *value) {
         aws_thread_clean_up(&host_entry->resolver_thread);
     }
 
+    if (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
+        aws_raise_error(AWS_IO_DNS_HOST_REMOVED_FROM_CACHE);
+    }
+
     while (!aws_linked_list_empty(&host_entry->pending_resolution_callbacks)) {
         struct aws_linked_list_node *resolution_callback_node =
-            aws_linked_list_front(&host_entry->pending_resolution_callbacks);
+            aws_linked_list_pop_front(&host_entry->pending_resolution_callbacks);
         struct pending_callback *pending_callback =
             AWS_CONTAINER_OF(resolution_callback_node, struct pending_callback, node);
         pending_callback->callback(
