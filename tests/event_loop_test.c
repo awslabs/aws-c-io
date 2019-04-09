@@ -19,23 +19,30 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
 
+#include <aws/common/thread.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct task_args {
     bool invoked;
+    bool was_in_thread;
+    uint64_t thread_id;
+    struct aws_event_loop *loop;
+    enum aws_task_status status;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
 };
 
 static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     (void)task;
-    (void)status;
     struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
+    args->thread_id = aws_thread_current_thread_id();
     args->invoked = true;
-    aws_condition_variable_notify_one(&args->condition_variable);
+    args->status = status;
+    args->was_in_thread = aws_event_loop_thread_is_callers_thread(args->loop);
     aws_mutex_unlock((&args->mutex));
+    aws_condition_variable_notify_one(&args->condition_variable);
 }
 
 static bool s_task_ran_predicate(void *args) {
@@ -53,8 +60,13 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
+    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                  .mutex = AWS_MUTEX_INIT,
+                                  .invoked = false,
+                                  .was_in_thread = false,
+                                  .status = -1,
+                                  .loop = event_loop,
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);
@@ -70,6 +82,8 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
+
+    ASSERT_FALSE(task_args.thread_id == aws_thread_current_thread_id());
 
     /* Test "now" tasks */
     task_args.invoked = false;
@@ -88,6 +102,75 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
 }
 
 AWS_TEST_CASE(event_loop_xthread_scheduled_tasks_execute, s_test_event_loop_xthread_scheduled_tasks_execute)
+
+static bool s_test_cancel_thread_task_predicate(void *args) {
+    struct task_args *task_args = args;
+    return task_args->invoked;
+}
+/*
+ * Test that a scheduled task from a non-event loop owned thread executes.
+ */
+static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocator *allocator, void *ctx) {
+
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct task_args task1_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                   .mutex = AWS_MUTEX_INIT,
+                                   .invoked = false,
+                                   .was_in_thread = false,
+                                   .status = -1,
+                                   .loop = event_loop,
+                                   .thread_id = 0};
+    struct task_args task2_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                   .mutex = AWS_MUTEX_INIT,
+                                   .invoked = false,
+                                   .was_in_thread = false,
+                                   .status = -1,
+                                   .loop = event_loop,
+                                   .thread_id = 0};
+
+    struct aws_task task1;
+    aws_task_init(&task1, s_test_task, &task1_args);
+    struct aws_task task2;
+    aws_task_init(&task2, s_test_task, &task2_args);
+
+    aws_event_loop_schedule_task_now(event_loop, &task1);
+    uint64_t now;
+    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+    aws_event_loop_schedule_task_future(event_loop, &task2, now + 10000000000);
+
+    ASSERT_FALSE(aws_event_loop_thread_is_callers_thread(event_loop));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&task1_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
+    ASSERT_TRUE(task1_args.invoked);
+    ASSERT_TRUE(task1_args.was_in_thread);
+    ASSERT_FALSE(task1_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
+    aws_mutex_unlock(&task1_args.mutex);
+
+    aws_event_loop_destroy(event_loop);
+
+    aws_mutex_lock(&task1_args.mutex);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &task2_args.condition_variable, &task2_args.mutex, s_test_cancel_thread_task_predicate, &task2_args));
+    ASSERT_TRUE(task2_args.invoked);
+    aws_mutex_unlock(&task2_args.mutex);
+
+    ASSERT_TRUE(task2_args.was_in_thread);
+    ASSERT_TRUE(task2_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_canceled_tasks_run_in_el_thread, s_test_event_loop_canceled_tasks_run_in_el_thread)
 
 #if AWS_USE_IO_COMPLETION_PORTS
 
@@ -896,8 +979,13 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT, .mutex = AWS_MUTEX_INIT, .invoked = false};
+    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                  .mutex = AWS_MUTEX_INIT,
+                                  .invoked = false,
+                                  .was_in_thread = false,
+                                  .status = -1,
+                                  .loop = event_loop,
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args);

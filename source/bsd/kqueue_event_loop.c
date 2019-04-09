@@ -17,6 +17,7 @@
 
 #include <aws/io/logging.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
@@ -68,6 +69,7 @@ enum pipe_fd_index {
 
 struct kqueue_loop {
     struct aws_thread thread;
+    struct aws_atomic_var thread_id;
     int kq_fd; /* kqueue file descriptor */
 
     /* Pipe for signaling to event-thread that cross_thread_data has changed. */
@@ -161,6 +163,8 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     if (!impl) {
         goto clean_up;
     }
+    /* intialize thread id to 0. It will be set when the event loop thread starts. */
+    aws_atomic_init_int(&impl->thread_id, (size_t)0);
     clean_up_impl_mem = true;
     AWS_ZERO_STRUCT(*impl);
 
@@ -294,6 +298,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         assert("Failed to destroy event-thread, resources have been leaked." == NULL);
         return;
     }
+    /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
+    aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
     /* Clean up task-related stuff first. It's possible the a cancelled task adds further tasks to this event_loop.
      * Tasks added in this way will be in cross_thread_data.tasks_to_schedule, so we clean that up last */
@@ -706,9 +712,9 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
-    assert(aws_thread_get_detach_state(&impl->thread) == AWS_THREAD_JOINABLE);
 
-    return aws_thread_current_thread_id() == aws_thread_get_id(&impl->thread);
+    uint64_t thread_id = aws_atomic_load_int(&impl->thread_id);
+    return aws_thread_current_thread_id() == thread_id;
 }
 
 /* Called from thread.
@@ -792,6 +798,9 @@ static void s_event_thread_main(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct kqueue_loop *impl = event_loop->impl_data;
+
+    /* set thread id to the event-loop's thread. */
+    aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
@@ -950,4 +959,6 @@ static void s_event_thread_main(void *user_data) {
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
+    /* reset to 0. This should be updated again during destroy before tasks are canceled. */
+    aws_atomic_store_int(&impl->thread_id, 0);
 }
