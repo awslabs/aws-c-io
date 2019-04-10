@@ -17,6 +17,8 @@
 
 #include <aws/io/io.h>
 
+struct aws_event_loop_group;
+
 typedef enum aws_address_record_type {
     /* ipv4 address. */
     AWS_ADDRESS_RECORD_TYPE_A,
@@ -159,7 +161,8 @@ AWS_IO_API int aws_default_dns_resolve(
 AWS_IO_API int aws_host_resolver_init_default(
     struct aws_host_resolver *resolver,
     struct aws_allocator *allocator,
-    size_t max_entries);
+    size_t max_entries,
+    struct aws_event_loop_group *el_group);
 
 #ifdef AWS_USE_LIBUV
 

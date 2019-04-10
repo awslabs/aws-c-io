@@ -883,8 +883,11 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1_ipv4));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 8, &event_loop_group));
+
     struct aws_client_bootstrap *bootstrap =
-        aws_client_bootstrap_new(allocator, &event_loop_group, NULL, &mock_resolver_config);
+        aws_client_bootstrap_new(allocator, &event_loop_group, &resolver, &mock_resolver_config);
     ASSERT_NOT_NULL(bootstrap);
 
     struct aws_socket_options options;
@@ -928,7 +931,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     /* clean up */
     aws_host_address_clean_up(resolved_address);
-    aws_client_bootstrap_destroy(bootstrap);
+    aws_client_bootstrap_release(bootstrap);
+    aws_host_resolver_clean_up(&resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
     aws_event_loop_group_clean_up(&event_loop_group);
 

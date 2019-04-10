@@ -228,6 +228,9 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
+
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
@@ -346,7 +349,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     aws_tls_connection_options_clean_up(&tls_server_conn_options);
     ASSERT_NOT_NULL(listener);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, &resolver, NULL);
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
@@ -443,16 +446,16 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
-    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
-    aws_server_bootstrap_destroy(server_bootstrap);
+    aws_server_bootstrap_release(server_bootstrap);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     aws_tls_ctx_options_clean_up(&server_ctx_options);
     aws_tls_connection_options_clean_up(&tls_server_conn_options);
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_destroy(server_ctx);
-
+    aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
     aws_tls_clean_up_static_state();
     return AWS_OP_SUCCESS;
@@ -475,6 +478,9 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
+
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -511,7 +517,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     aws_mutex_lock(&mutex);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, &resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -542,10 +548,11 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
             "Warning: the connection timed out and we're not completely certain"
             " that this fails for the right reasons. Maybe run the test again?\n");
     }
-    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
+    aws_host_resolver_clean_up(&resolver);
 
     aws_event_loop_group_clean_up(&el_group);
 
@@ -633,6 +640,9 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
+
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
@@ -669,7 +679,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_mutex_lock(&mutex);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, NULL, NULL);
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, &resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -707,11 +717,12 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
-    aws_client_bootstrap_destroy(client_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
 
+    aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
 
     aws_tls_clean_up_static_state();

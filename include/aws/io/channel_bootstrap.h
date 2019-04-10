@@ -77,7 +77,6 @@ struct aws_client_bootstrap {
     struct aws_host_resolver *host_resolver;
     struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    bool owns_resolver;
     struct aws_atomic_var ref_count;
 };
 
@@ -135,9 +134,8 @@ AWS_EXTERN_C_BEGIN
 
 /**
  * Initializes the client bootstrap with `allocator` and `el_group`. This object manages client connections and
- * channels. If host_resolver is NULL, the default configuration will be used. Otherwise, the provided host_resolver
- * will be used for resolving host names. If host_resolution_config is NULL, the default will be used.
- * host_resolution_config will be copied.
+ * channels. host_resolver will be used for resolving host names.
+ * If host_resolution_config is NULL, the default will be used, host_resolution_config will be copied.
  */
 AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
@@ -150,7 +148,7 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
  * calling this if you don't want a memory leak. Note that this will not necessarily free the memory immediately if
  * there are channels or channel events outstanding.
  */
-AWS_IO_API void aws_client_bootstrap_destroy(struct aws_client_bootstrap *bootstrap);
+AWS_IO_API void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added
@@ -215,7 +213,7 @@ AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
  * calling this if you don't want a memory leak. Note that the memory will not be freed right away if there are
  * outstanding channels or channel events
  */
-AWS_IO_API void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap);
+AWS_IO_API void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added
