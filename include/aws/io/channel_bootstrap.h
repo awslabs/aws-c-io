@@ -213,7 +213,7 @@ AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
  * calling this if you don't want a memory leak. Note that the memory will not be freed right away if there are
  * outstanding channels or channel events
  */
-AWS_IO_API void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap);
+AWS_IO_API void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap);
 
 /**
  * When using TLS, if ALPN is used, this callback will be invoked from the channel. The returned handler will be added

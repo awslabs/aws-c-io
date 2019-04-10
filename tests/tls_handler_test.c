@@ -229,7 +229,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 64));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -448,7 +448,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
-    aws_server_bootstrap_destroy(server_bootstrap);
+    aws_server_bootstrap_release(server_bootstrap);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     aws_tls_ctx_options_clean_up(&server_ctx_options);
@@ -480,7 +480,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 64));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -641,7 +641,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
 
     struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 64));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;

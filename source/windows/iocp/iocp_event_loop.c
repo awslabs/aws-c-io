@@ -343,7 +343,6 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     /* If asserts hit, you must call stop() and wait_for_stop_completion() before calling run() again */
     assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
-    assert(impl->synced_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
 
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 

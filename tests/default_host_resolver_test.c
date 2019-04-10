@@ -16,7 +16,10 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
+
+#include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
+
 #include <aws/testing/aws_test_harness.h>
 
 #include "mock_dns_resolver.h"
@@ -86,7 +89,9 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -135,7 +140,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
     aws_host_resolver_clean_up(&resolver);
-
+    aws_event_loop_group_clean_up(&el_group);
     return 0;
 }
 
@@ -146,7 +151,9 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -188,6 +195,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
     aws_host_resolver_clean_up(&resolver);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -206,7 +214,9 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
@@ -290,6 +300,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_string_destroy((void *)host_name_1);
     aws_string_destroy((void *)host_name_2);
     aws_host_resolver_clean_up(&resolver);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -300,8 +311,9 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
-
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
     const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
@@ -449,6 +461,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_clean_up(&resolver);
     aws_string_destroy((void *)host_name);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -459,7 +472,9 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -630,6 +645,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_clean_up(&resolver);
     aws_string_destroy((void *)host_name);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -640,8 +656,9 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
-
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
     const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
@@ -799,6 +816,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_clean_up(&resolver);
     aws_string_destroy((void *)host_name);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -809,7 +827,9 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
     ASSERT_NOT_NULL(host_name);
@@ -850,6 +870,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
     aws_host_resolver_clean_up(&resolver);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -859,7 +880,9 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     (void)ctx;
     struct aws_host_resolver resolver;
 
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10));
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "::1");
     ASSERT_NOT_NULL(host_name);
@@ -900,6 +923,7 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_string_destroy((void *)host_name);
     aws_host_resolver_clean_up(&resolver);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }

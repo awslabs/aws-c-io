@@ -144,7 +144,6 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     }
 
     return bootstrap;
-    ;
 }
 
 int aws_client_bootstrap_set_alpn_callback(
@@ -818,7 +817,7 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
     return bootstrap;
 }
 
-void aws_server_bootstrap_destroy(struct aws_server_bootstrap *bootstrap) {
+void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
     /* if destroy is being called, the user intends to not use the bootstrap anymore
      * so we clean up the thread local state while the event loop thread is
      * still alive */

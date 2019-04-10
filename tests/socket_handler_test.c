@@ -361,7 +361,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
     aws_client_bootstrap_release(client_bootstrap);
-    aws_server_bootstrap_destroy(server_bootstrap);
+    aws_server_bootstrap_release(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;
@@ -479,7 +479,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
     aws_client_bootstrap_release(client_bootstrap);
-    aws_server_bootstrap_destroy(server_bootstrap);
+    aws_server_bootstrap_release(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
 
     return AWS_OP_SUCCESS;

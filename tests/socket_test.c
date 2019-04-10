@@ -469,10 +469,10 @@ static void s_test_host_resolved_test_callback(
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -484,7 +484,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -530,7 +530,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
 
     aws_socket_clean_up(&outgoing);
-    aws_event_loop_destroy(event_loop);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
@@ -774,10 +774,11 @@ static void s_test_destroy_socket_task(struct aws_task *task, void *arg, enum aw
 static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -789,7 +790,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -846,7 +847,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     ASSERT_FALSE(outgoing_args.connect_invoked);
     ASSERT_FALSE(outgoing_args.error_invoked);
 
-    aws_event_loop_destroy(event_loop);
+    aws_event_loop_group_clean_up(&el_group);
 
     return 0;
 }
