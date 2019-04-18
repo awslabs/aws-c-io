@@ -375,8 +375,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
             AWS_LOGF_WARN(
                 AWS_LS_IO_TLS,
-                "id=%p: negotiation failed with error %s",
+                "id=%p: negotiation failed with error %s (%s)",
                 (void *)handler,
+                s2n_strerror(s2n_error, "EN"),
                 s2n_strerror_debug(s2n_error, "EN"));
 
             if (s2n_error_get_type(s2n_error) == S2N_ERR_T_ALERT) {
@@ -785,8 +786,9 @@ static struct aws_channel_handler *s_new_tls_handler(
     if (s2n_connection_set_config(s2n_handler->connection, s2n_ctx->s2n_config)) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
-            "id=%p: configuration error %s",
+            "id=%p: configuration error %s (%s)",
             (void *)&s2n_handler->handler,
+            s2n_strerror(s2n_errno, "EN"),
             s2n_strerror_debug(s2n_errno, "EN"));
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_conn;
@@ -880,7 +882,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (err_code != S2N_ERR_T_OK) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s (%s)", s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
@@ -897,7 +899,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         if (options->ca_path) {
             if (s2n_config_set_verification_ca_location(
                     s2n_ctx->s2n_config, NULL, (const char *)aws_string_bytes(options->ca_path))) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s (%s)", s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
@@ -905,7 +907,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
         if (options->ca_file.len) {
             if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s (%s)", s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
@@ -919,14 +921,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             }
 
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, ca_file, ca_dir)) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s (%s)", s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
         }
 
         if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s", s2n_strerror_debug(s2n_errno, "EN"));
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "ctx: configuration error %s (%s)", s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
