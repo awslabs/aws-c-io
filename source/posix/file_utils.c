@@ -42,3 +42,15 @@ bool aws_path_exists(const char *path) {
     struct stat buffer;
     return stat(path, &buffer) == 0;
 }
+
+int aws_fseek(FILE *file, size_t offset, int whence) {
+
+    /*
+     * We have a static assert on sizeof(off_t) == sizeof(size_t)
+     */
+    if (fseeko(file, (off_t) offset, whence)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}

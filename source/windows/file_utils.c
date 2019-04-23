@@ -88,3 +88,23 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
 bool aws_path_exists(const char *path) {
     return PathFileExistsA(path) == TRUE;
 }
+
+/*
+ * Wrapper for highest-resolution platform-dependent seek implementation.
+ * Maps to:
+ *
+ *   _fseeki64() on windows
+ *   fseeko() on linux
+ */
+
+int aws_fseek(FILE *file, size_t offset, int whence) {
+    if (offset > INT64_MAX) {
+        return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
+    }
+
+    if (_fseeki64(file, offset, whence)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}

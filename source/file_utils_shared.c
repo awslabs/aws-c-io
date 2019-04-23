@@ -98,6 +98,17 @@ int aws_io_translate_and_raise_file_write_error(int error_no) {
     }
 }
 
+int aws_io_translate_and_raise_file_seek_error(int error_no) {
+    switch (error_no) {
+        case EINVAL:
+            return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
+        case ESPIPE:
+            return aws_raise_error(AWS_IO_STREAM_UNSEEKABLE);
+        default:
+            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    }
+}
+
 bool aws_is_any_directory_separator(char value) {
     return value == '\\' || value == '/';
 }
