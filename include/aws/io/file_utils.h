@@ -18,11 +18,6 @@
 
 #include <aws/io/io.h>
 
-/*
- * If this fails then you need to build the libraries with large file and large file offset support.
- */
-AWS_STATIC_ASSERT(sizeof(size_t) == sizeof(off_t));
-
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -86,7 +81,7 @@ bool aws_path_exists(const char *path);
  *   fseeko() on linux
  */
 AWS_IO_API
-int aws_fseek(FILE *file, size_t offset, int whence);
+int aws_fseek(FILE *file, aws_off_t offset, int whence);
 
 AWS_EXTERN_C_END
 

@@ -32,6 +32,8 @@ static void s_destroy_memory_stream(struct aws_input_stream *stream) {
 }
 
 static struct aws_input_stream *s_create_file_stream(struct aws_allocator *allocator) {
+    remove(s_test_file_name);
+
     FILE *file = fopen(s_test_file_name, "w+");
     fprintf(file, "%s", (char *)s_simple_test->bytes);
     fclose(file);
@@ -53,23 +55,28 @@ static int s_do_simple_input_stream_test(struct aws_input_stream *stream, struct
     aws_byte_buf_init(&result_buf, allocator, 1024);
 
     bool eof = false;
-    ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == 0);
+    ASSERT_TRUE(aws_input_stream_is_end_of_stream(stream, &eof) == 0);
     ASSERT_TRUE(eof == false);
 
     while (!eof) {
         size_t amount_read = 0;
         ASSERT_TRUE(aws_input_stream_read(stream, &read_buf, &amount_read) == 0);
 
-        struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&read_buf);
-        aws_byte_buf_append_dynamic(&result_buf, &dest_cursor);
+        if (amount_read > 0) {
+            struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&read_buf);
+            aws_byte_buf_append_dynamic(&result_buf, &dest_cursor);
+        }
 
         read_buf.len = 0;
 
-        ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == 0);
+        ASSERT_TRUE(aws_input_stream_is_end_of_stream(stream, &eof) == 0);
     }
 
     struct aws_byte_cursor result_cursor = aws_byte_cursor_from_buf(&result_buf);
     ASSERT_TRUE(aws_byte_cursor_eq(expected_contents, &result_cursor));
+
+    aws_byte_buf_clean_up(&read_buf);
+    aws_byte_buf_clean_up(&result_buf);
 
     return AWS_OP_SUCCESS;
 }
@@ -135,20 +142,19 @@ static int s_test_input_stream_file_iterate(struct aws_allocator *allocator, voi
 AWS_TEST_CASE(test_input_stream_file_iterate, s_test_input_stream_file_iterate);
 
 
-static int s_do_input_stream_seek_test(struct aws_input_stream *stream, struct aws_allocator *allocator, size_t offset, enum aws_stream_seek_basis basis, struct aws_byte_cursor *expected_contents) {
+static int s_do_input_stream_seek_test(struct aws_input_stream *stream, struct aws_allocator *allocator, aws_off_t offset, enum aws_stream_seek_basis basis, struct aws_byte_cursor *expected_contents) {
     struct aws_byte_buf read_buf;
     aws_byte_buf_init(&read_buf, allocator, 1024);
 
-    ASSERT_TRUE(aws_input_stream_seek(stream, ))
-        size_t amount_read = 0;
-        ASSERT_TRUE(aws_input_stream_read(stream, &read_buf, &amount_read) == 0);
+    ASSERT_TRUE(aws_input_stream_seek(stream, offset, basis) == AWS_OP_SUCCESS);
 
-        struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&read_buf);
-        aws_byte_buf_append_dynamic(&result_buf, &dest_cursor);
+    size_t amount_read = 0;
+    ASSERT_TRUE(aws_input_stream_read(stream, &read_buf, &amount_read) == AWS_OP_SUCCESS);
 
+    struct aws_byte_cursor read_buf_cursor = aws_byte_cursor_from_buf(&read_buf);
+    ASSERT_TRUE(aws_byte_cursor_eq(expected_contents, &read_buf_cursor));
 
-    struct aws_byte_cursor result_cursor = aws_byte_cursor_from_buf(&result_buf);
-    ASSERT_TRUE(aws_byte_cursor_eq(expected_contents, &result_cursor));
+    aws_byte_buf_clean_up(&read_buf);
 
     return AWS_OP_SUCCESS;
 }
@@ -158,88 +164,105 @@ static int s_do_input_stream_seek_test(struct aws_input_stream *stream, struct a
 static int s_test_input_stream_memory_seek_beginning(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_byte_buf dest;
-    aws_byte_buf_init(&dest, allocator, 100);
+    struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
-    struct aws_input_stream *stream = aws_input_stream_new_from_cursor(allocator, &test_cursor);
-    ASSERT_TRUE(stream != NULL);
+    aws_byte_cursor_advance(&test_cursor, SEEK_BEGINNING_OFFSET);
+    ASSERT_TRUE(s_do_input_stream_seek_test(stream, allocator, SEEK_BEGINNING_OFFSET, AWS_SSB_BEGIN, &test_cursor) == AWS_OP_SUCCESS);
 
-    ASSERT_TRUE(aws_input_stream_seek(stream, SEEK_BEGINNING_OFFSET, AWS_SSB_BEGIN) == AWS_OP_SUCCESS);
-
-    bool eof = false;
-    ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == 0);
-    ASSERT_TRUE(eof == false);
-
-    size_t amount_read = 0;
-    ASSERT_TRUE(aws_input_stream_read(stream, &dest, &amount_read) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(amount_read == s_simple_test->len - SEEK_BEGINNING_OFFSET);
-
-    ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(eof == true);
-
-    struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&dest);
-    ASSERT_TRUE(aws_byte_cursor_eq(&test_cursor, &dest_cursor));
-    ASSERT_TRUE(strncmp((char *)s_simple_test->bytes + SEEK_BEGINNING_OFFSET, (char *)dest_cursor.ptr, amount_read) == AWS_OP_SUCCESS);
-
-    aws_input_stream_destroy(stream);
-    aws_byte_buf_clean_up(&dest);
+    s_destroy_memory_stream(stream);
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(test_input_stream_memory_seek_beginning, s_test_input_stream_memory_seek_beginning);
 
-#define SEEK_END_OFFSET 3
+static int s_test_input_stream_file_seek_beginning(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_file_stream(allocator);
+
+    struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
+    aws_byte_cursor_advance(&test_cursor, SEEK_BEGINNING_OFFSET);
+    ASSERT_TRUE(s_do_input_stream_seek_test(stream, allocator, SEEK_BEGINNING_OFFSET, AWS_SSB_BEGIN, &test_cursor) == AWS_OP_SUCCESS);
+
+    s_destroy_file_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_file_seek_beginning, s_test_input_stream_file_seek_beginning);
+
+#define SEEK_END_OFFSET -3
 
 static int s_test_input_stream_memory_seek_end(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_byte_buf dest;
-    aws_byte_buf_init(&dest, allocator, 100);
+    struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
-    struct aws_input_stream *stream = aws_input_stream_new_from_cursor(allocator, &test_cursor);
-    ASSERT_TRUE(stream != NULL);
+    aws_byte_cursor_advance(&test_cursor, (size_t)((int64_t)s_simple_test->len + SEEK_END_OFFSET));
+    ASSERT_TRUE(s_do_input_stream_seek_test(stream, allocator, SEEK_END_OFFSET, AWS_SSB_END, &test_cursor) == AWS_OP_SUCCESS);
 
-    ASSERT_TRUE(aws_input_stream_seek(stream, SEEK_END_OFFSET, AWS_SSB_END) == AWS_OP_SUCCESS);
-
-    bool eof = false;
-    ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == 0);
-    ASSERT_TRUE(eof == false);
-
-    size_t amount_read = 0;
-    ASSERT_TRUE(aws_input_stream_read(stream, &dest, &amount_read) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(amount_read == SEEK_END_OFFSET);
-
-    ASSERT_TRUE(aws_input_stream_eof(stream, &eof) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(eof == true);
-
-    struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&dest);
-    ASSERT_TRUE(aws_byte_cursor_eq(&test_cursor, &dest_cursor));
-    ASSERT_TRUE(strncmp((char *)s_simple_test->bytes + s_simple_test->len - SEEK_END_OFFSET, (char *)dest_cursor.ptr, amount_read) == AWS_OP_SUCCESS);
-
-    aws_input_stream_destroy(stream);
-    aws_byte_buf_clean_up(&dest);
+    s_destroy_memory_stream(stream);
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(test_input_stream_memory_seek_end, s_test_input_stream_memory_seek_end);
 
-static int s_test_input_stream_memory_seek_invalid(struct aws_allocator *allocator, void *ctx) {
-    (void) ctx;
+static int s_test_input_stream_file_seek_end(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_file_stream(allocator);
 
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
-    struct aws_input_stream *stream = aws_input_stream_new_from_cursor(allocator, &test_cursor);
-    ASSERT_TRUE(stream != NULL);
+    aws_byte_cursor_advance(&test_cursor, (size_t)((int64_t)s_simple_test->len + SEEK_END_OFFSET));
+    ASSERT_TRUE(s_do_input_stream_seek_test(stream, allocator, SEEK_END_OFFSET, AWS_SSB_END, &test_cursor) == AWS_OP_SUCCESS);
 
-    ASSERT_TRUE(aws_input_stream_seek(stream, s_simple_test->len + 3, AWS_SSB_BEGIN) == AWS_OP_ERR);
-    ASSERT_TRUE(aws_last_error() == AWS_IO_STREAM_INVALID_SEEK_POSITION);
-
-    aws_input_stream_destroy(stream);
+    s_destroy_file_stream(stream);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(test_input_stream_memory_seek_invalid, s_test_input_stream_memory_seek_invalid);
+AWS_TEST_CASE(test_input_stream_file_seek_end, s_test_input_stream_file_seek_end);
+
+static int s_test_input_stream_memory_seek_past_end(struct aws_allocator *allocator, void *ctx) {
+    (void) ctx;
+
+    struct aws_input_stream *stream = s_create_memory_stream(allocator);
+
+    ASSERT_TRUE(aws_input_stream_seek(stream, 13, AWS_SSB_BEGIN) == AWS_OP_ERR);
+    ASSERT_TRUE(aws_last_error() == AWS_IO_STREAM_INVALID_SEEK_POSITION);
+
+    aws_reset_error();
+
+    ASSERT_TRUE(aws_input_stream_seek(stream, 1, AWS_SSB_END) == AWS_OP_ERR);
+    ASSERT_TRUE(aws_last_error() == AWS_IO_STREAM_INVALID_SEEK_POSITION);
+
+    s_destroy_memory_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_memory_seek_past_end, s_test_input_stream_memory_seek_past_end);
+
+static int s_test_input_stream_memory_seek_before_start(struct aws_allocator *allocator, void *ctx) {
+    (void) ctx;
+
+    struct aws_input_stream *stream = s_create_memory_stream(allocator);
+
+    ASSERT_TRUE(aws_input_stream_seek(stream, -13, AWS_SSB_END) == AWS_OP_ERR);
+    ASSERT_TRUE(aws_last_error() == AWS_IO_STREAM_INVALID_SEEK_POSITION);
+
+    aws_reset_error();
+
+    ASSERT_TRUE(aws_input_stream_seek(stream, -1, AWS_SSB_BEGIN) == AWS_OP_ERR);
+    ASSERT_TRUE(aws_last_error() == AWS_IO_STREAM_INVALID_SEEK_POSITION);
+
+    s_destroy_memory_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_memory_seek_before_start, s_test_input_stream_memory_seek_before_start);

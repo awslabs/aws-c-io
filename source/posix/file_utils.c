@@ -43,14 +43,14 @@ bool aws_path_exists(const char *path) {
     return stat(path, &buffer) == 0;
 }
 
-int aws_fseek(FILE *file, size_t offset, int whence) {
+int aws_fseek(FILE *file, aws_off_t offset, int whence) {
 
-    /*
-     * We have a static assert on sizeof(off_t) == sizeof(size_t)
-     */
-    if (fseeko(file, (off_t) offset, whence)) {
-        return AWS_OP_ERR;
-    }
+    int result =
+#if _FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L
+        fseeko(file, offset, whence);
+#else
+        fseek(file, offset, whence);
+#endif
 
-    return AWS_OP_SUCCESS;
+    return (result == 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
