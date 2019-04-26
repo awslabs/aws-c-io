@@ -223,6 +223,8 @@ static void s_call_setup_callback(
     struct client_connection_args *connection_args,
     int error_code,
     struct aws_channel *channel) {
+    /* this may only ever be called once per connection */
+    assert(connection_args->setup_callback);
     aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
     connection_args->setup_callback = NULL;
     setup_callback(connection_args->bootstrap, error_code, channel, connection_args->user_data);
