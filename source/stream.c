@@ -29,16 +29,10 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     return stream->vtable->read(stream, dest, amount_read);
 }
 
-int aws_input_stream_is_end_of_stream(struct aws_input_stream *stream, bool *is_end_of_stream) {
-    assert(stream && stream->vtable && stream->vtable->is_end_of_stream);
+int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
+    assert(stream && stream->vtable && stream->vtable->get_status);
 
-    return stream->vtable->is_end_of_stream(stream, is_end_of_stream);
-}
-
-int aws_input_stream_is_valid(struct aws_input_stream *stream, bool *is_valid) {
-    assert(stream && stream->vtable && stream->vtable->is_end_of_stream);
-
-    return stream->vtable->is_valid(stream, is_valid);
+    return stream->vtable->get_status(stream, status);
 }
 
 void aws_input_stream_destroy(struct aws_input_stream *stream) {
@@ -62,22 +56,26 @@ struct aws_input_stream_byte_cursor_impl {
 
 /*
  * This is an ugly function that, in the absence of better guidance, is designed to handle all possible combinations of
- *  aws_off_t (int32_t, int64_t) x all possible combinations of size_t (uint32_t, uint64_t).  Whether the anomalous combination of
- *  int64_t vs. uint32_t is even possible on any real platform is unknown.  If size_t ever exceeds 64 bits this function will fail badly.
+ *  aws_off_t (int32_t, int64_t) x all possible combinations of size_t (uint32_t, uint64_t).  Whether the anomalous
+ * combination of int64_t vs. uint32_t is even possible on any real platform is unknown.  If size_t ever exceeds 64 bits
+ * this function will fail badly.
  *
- *  Safety and invariant assumptions are sprinkled via comments.  The overall strategy is to cast up to 64 bits and perform all
- *  arithmetic there, being careful with signed vs. unsigned to prevent bad operations.
+ *  Safety and invariant assumptions are sprinkled via comments.  The overall strategy is to cast up to 64 bits and
+ * perform all arithmetic there, being careful with signed vs. unsigned to prevent bad operations.
  *
  *  Assumption #1: aws_off_t resolves to a signed integer 64 bits or smaller
  *  Assumption #2: size_t resolves to an unsigned integer 64 bits or smaller
  */
-static int s_aws_input_stream_byte_cursor_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis) {
+static int s_aws_input_stream_byte_cursor_seek(
+    struct aws_input_stream *stream,
+    aws_off_t offset,
+    enum aws_stream_seek_basis basis) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
     uint64_t final_offset = 0;
     int64_t checked_offset = offset; /* safe by assumption 1 */
 
-    switch(basis) {
+    switch (basis) {
         case AWS_SSB_BEGIN:
             /*
              * (uint64_t)checked_offset -- safe by virtue of the earlier is-negative check + Assumption 1
@@ -96,7 +94,8 @@ static int s_aws_input_stream_byte_cursor_seek(struct aws_input_stream *stream, 
              * -checked_offset -- safe as long checked_offset is not INT64_MIN which was previously checked
              * (uint64_t)(-checked_offset) -- safe because (-checked_offset) is positive (and < INT64_MAX < UINT64_MAX)
              */
-            if (checked_offset > 0 || checked_offset == INT64_MIN || (uint64_t)(-checked_offset) > (uint64_t)impl->original_cursor.len) {
+            if (checked_offset > 0 || checked_offset == INT64_MIN ||
+                (uint64_t)(-checked_offset) > (uint64_t)impl->original_cursor.len) {
                 return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
             }
 
@@ -111,12 +110,15 @@ static int s_aws_input_stream_byte_cursor_seek(struct aws_input_stream *stream, 
     impl->current_cursor = impl->original_cursor;
 
     /* (size_t) final_offset - safe via previous assert's reasoning */
-    aws_byte_cursor_advance(&impl->current_cursor, (size_t) final_offset);
+    aws_byte_cursor_advance(&impl->current_cursor, (size_t)final_offset);
 
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read) {
+static int s_aws_input_stream_byte_cursor_read(
+    struct aws_input_stream *stream,
+    struct aws_byte_buf *dest,
+    size_t *amount_read) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
     *amount_read = 0;
@@ -137,18 +139,13 @@ static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, 
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_byte_cursor_is_end_of_stream(struct aws_input_stream *stream, bool *is_end_of_stream) {
+static int s_aws_input_stream_byte_cursor_get_status(
+    struct aws_input_stream *stream,
+    struct aws_stream_status *status) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
-    *is_end_of_stream = impl->current_cursor.len == 0;
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_aws_input_stream_byte_cursor_is_valid(struct aws_input_stream *stream, bool *is_valid) {
-    (void)stream;
-
-    *is_valid = true;
+    status->is_end_of_stream = impl->current_cursor.len == 0;
+    status->is_valid = true;
 
     return AWS_OP_SUCCESS;
 }
@@ -162,12 +159,12 @@ static void s_aws_input_stream_byte_cursor_clean_up(struct aws_input_stream *str
 static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .seek = s_aws_input_stream_byte_cursor_seek,
     .read = s_aws_input_stream_byte_cursor_read,
-    .is_end_of_stream = s_aws_input_stream_byte_cursor_is_end_of_stream,
-    .is_valid = s_aws_input_stream_byte_cursor_is_valid,
-    .clean_up = s_aws_input_stream_byte_cursor_clean_up
-};
+    .get_status = s_aws_input_stream_byte_cursor_get_status,
+    .clean_up = s_aws_input_stream_byte_cursor_clean_up};
 
-struct aws_input_stream *aws_input_stream_new_from_cursor(struct aws_allocator *allocator, const struct aws_byte_cursor *cursor) {
+struct aws_input_stream *aws_input_stream_new_from_cursor(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *cursor) {
     struct aws_input_stream *input_stream = aws_mem_acquire(allocator, sizeof(struct aws_input_stream));
     if (input_stream == NULL) {
         return NULL;
@@ -178,7 +175,8 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(struct aws_allocator *
     input_stream->allocator = allocator;
     input_stream->vtable = &s_aws_input_stream_byte_cursor_vtable;
 
-    struct aws_input_stream_byte_cursor_impl *impl = aws_mem_acquire(allocator, sizeof(struct aws_input_stream_byte_cursor_impl));
+    struct aws_input_stream_byte_cursor_impl *impl =
+        aws_mem_acquire(allocator, sizeof(struct aws_input_stream_byte_cursor_impl));
     if (impl == NULL) {
         goto on_error;
     }
@@ -206,7 +204,10 @@ struct aws_input_stream_file_impl {
     bool close_on_clean_up;
 };
 
-static int s_aws_input_stream_file_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis) {
+static int s_aws_input_stream_file_seek(
+    struct aws_input_stream *stream,
+    aws_off_t offset,
+    enum aws_stream_seek_basis basis) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
     int whence = (basis == AWS_SSB_BEGIN) ? SEEK_SET : SEEK_END;
@@ -217,7 +218,10 @@ static int s_aws_input_stream_file_seek(struct aws_input_stream *stream, aws_off
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read) {
+static int s_aws_input_stream_file_read(
+    struct aws_input_stream *stream,
+    struct aws_byte_buf *dest,
+    size_t *amount_read) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
     *amount_read = 0;
@@ -237,18 +241,11 @@ static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct 
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_file_is_end_of_stream(struct aws_input_stream *stream, bool *is_end_of_stream) {
+static int s_aws_input_stream_file_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
-    *is_end_of_stream = feof(impl->file) != 0;
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_aws_input_stream_file_is_valid(struct aws_input_stream *stream, bool *is_valid) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
-
-    *is_valid = ferror(impl->file) == 0;
+    status->is_end_of_stream = feof(impl->file) != 0;
+    status->is_valid = ferror(impl->file) == 0;
 
     return AWS_OP_SUCCESS;
 }
@@ -263,13 +260,11 @@ static void s_aws_input_stream_file_clean_up(struct aws_input_stream *stream) {
     aws_mem_release(stream->allocator, impl);
 }
 
-static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
-    .seek = s_aws_input_stream_file_seek,
-    .read = s_aws_input_stream_file_read,
-    .is_end_of_stream = s_aws_input_stream_file_is_end_of_stream,
-    .is_valid = s_aws_input_stream_file_is_valid,
-    .clean_up = s_aws_input_stream_file_clean_up
-};
+static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {.seek = s_aws_input_stream_file_seek,
+                                                                        .read = s_aws_input_stream_file_read,
+                                                                        .get_status =
+                                                                            s_aws_input_stream_file_get_status,
+                                                                        .clean_up = s_aws_input_stream_file_clean_up};
 
 struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *allocator, const char *file_name) {
     struct aws_input_stream *input_stream = aws_mem_acquire(allocator, sizeof(struct aws_input_stream));

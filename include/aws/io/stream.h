@@ -18,30 +18,30 @@
 
 #include <aws/io/io.h>
 
+struct aws_input_stream;
+struct aws_byte_buf;
+
 /*
  * For seek calls, where in the stream to seek from
  * CUR support can come later
  * Intentionally mirror clib constants
  */
-enum aws_stream_seek_basis {
-    AWS_SSB_BEGIN = 0,
-    AWS_SSB_END = 2
+enum aws_stream_seek_basis { AWS_SSB_BEGIN = 0, AWS_SSB_END = 2 };
+
+struct aws_stream_status {
+    bool is_end_of_stream;
+    bool is_valid;
 };
 
-struct aws_input_stream;
-struct aws_byte_buf;
-
-typedef int (aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis);
-typedef int (aws_input_stream_read_fn)(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
-typedef int (aws_input_stream_is_end_of_stream_fn)(struct aws_input_stream *stream, bool *is_end_of_stream);
-typedef int (aws_input_stream_is_valid_fn)(struct aws_input_stream *stream, bool *is_valid);
-typedef void (aws_input_stream_clean_up_fn)(struct aws_input_stream *stream);
+typedef int(aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis);
+typedef int(aws_input_stream_read_fn)(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
+typedef int(aws_input_stream_get_status_fn)(struct aws_input_stream *stream, struct aws_stream_status *status);
+typedef void(aws_input_stream_clean_up_fn)(struct aws_input_stream *stream);
 
 struct aws_input_stream_vtable {
     aws_input_stream_seek_fn *seek;
     aws_input_stream_read_fn *read;
-    aws_input_stream_is_end_of_stream_fn *is_end_of_stream;
-    aws_input_stream_is_valid_fn *is_valid;
+    aws_input_stream_get_status_fn *get_status;
     aws_input_stream_clean_up_fn *clean_up;
 };
 
@@ -65,14 +65,9 @@ int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enu
 int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
 
 /*
- * Queries if the stream has reached the end of input
+ * Queries miscellaneous properties of the stream
  */
-int aws_input_stream_is_end_of_stream(struct aws_input_stream *stream, bool *is_end_of_stream);
-
-/*
- * Queries if the stream can be read from or if it's in an error state
- */
-int aws_input_stream_is_valid(struct aws_input_stream *stream, bool *is_valid);
+int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status);
 
 /*
  * Tears down the stream
@@ -82,7 +77,9 @@ void aws_input_stream_destroy(struct aws_input_stream *stream);
 /*
  * Creates a stream that operates on a range of bytes
  */
-struct aws_input_stream *aws_input_stream_new_from_cursor(struct aws_allocator *allocator, const struct aws_byte_cursor *cursor);
+struct aws_input_stream *aws_input_stream_new_from_cursor(
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *cursor);
 
 /*
  * Creates a stream that operates on a (not-yet-opened) file.
