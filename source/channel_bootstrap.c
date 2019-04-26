@@ -430,14 +430,14 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
         (void *)channel,
         error_code);
 
-    struct aws_allocator *allocator = NULL;
+    struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     {
         /* note it's not safe to reference the bootstrap outside of this scope. */
         struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
-        allocator = bootstrap->allocator;
 
-        /* If the connection setup_callback has not been called for this connect attempt,
-         * call it instead. This usually means a connection failure occurred during TLS negotation */
+        /* If the connection setup_callback has not been called for this connect attempt (because it 
+         * was intercepted for TLS setup), call it instead. This usually means a connection failure 
+         * occurred during TLS negotation */
         if (connection_args->negotiating_tls) {
             connection_args->setup_callback(
                 connection_args->bootstrap, error_code, channel, connection_args->user_data);
