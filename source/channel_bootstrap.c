@@ -190,6 +190,7 @@ struct client_connection_args {
     uint8_t addresses_count;
     uint8_t failed_count;
     bool connection_chosen;
+    bool negotiating_tls;
     uint32_t ref_count;
 };
 
@@ -219,17 +220,6 @@ void s_connection_args_release(struct client_connection_args *args) {
     }
 }
 
-static void s_call_setup_callback(
-    struct client_connection_args *connection_args,
-    int error_code,
-    struct aws_channel *channel) {
-    /* this may only ever be called once per connection */
-    assert(connection_args->setup_callback);
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
-    connection_args->setup_callback = NULL;
-    setup_callback(connection_args->bootstrap, error_code, channel, connection_args->user_data);
-}
-
 static void s_tls_client_on_negotiation_result(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -237,6 +227,7 @@ static void s_tls_client_on_negotiation_result(
     void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
+    connection_args->negotiating_tls = false;
     if (connection_args->channel_data.user_on_negotiation_result) {
         connection_args->channel_data.user_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);
@@ -250,7 +241,8 @@ static void s_tls_client_on_negotiation_result(
         err_code,
         (void *)slot->channel);
 
-    s_call_setup_callback(connection_args, err_code, channel);
+    aws_client_bootstrap_on_channel_setup_fn *setup_callback = connection_args->setup_callback;
+    setup_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
@@ -399,12 +391,14 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         if (connection_args->channel_data.use_tls) {
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
+            connection_args->negotiating_tls = true;
             if (s_setup_client_tls(connection_args, channel)) {
                 err_code = aws_last_error();
                 goto error;
             }
         } else {
-            s_call_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
+            connection_args->setup_callback(
+                connection_args->bootstrap, AWS_OP_SUCCESS, channel, connection_args->user_data);
         }
 
         return;
@@ -418,7 +412,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         err_code);
 
 error:
-    s_call_setup_callback(connection_args, err_code, NULL);
+    connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
 
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
@@ -442,10 +436,11 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
         struct aws_client_bootstrap *bootstrap = connection_args->bootstrap;
         allocator = bootstrap->allocator;
 
-        /* If the connection setup_callback has never been called, call it instead.
-         * Usually this means a connection failure occurred during TLS negotation */
-        if (connection_args->setup_callback) {
-            s_call_setup_callback(connection_args, error_code, channel);
+        /* If the connection setup_callback has not been called for this connect attempt,
+         * call it instead. This usually means a connection failure occurred during TLS negotation */
+        if (connection_args->negotiating_tls) {
+            connection_args->setup_callback(
+                connection_args->bootstrap, error_code, channel, connection_args->user_data);
         } else {
             void *shutdown_user_data = connection_args->user_data;
             aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = connection_args->shutdown_callback;
@@ -511,7 +506,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 "id=%p: Connection failed with error_code %d.",
                 (void *)connection_args->bootstrap,
                 error_code);
-            s_call_setup_callback(connection_args, error_code, NULL);
+            connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         }
         /* release the ref from s_on_host_resolved */
         s_connection_args_release(connection_args);
@@ -542,7 +537,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         connection_args->failed_count++;
 
         if (connection_args->failed_count == connection_args->addresses_count) {
-            s_call_setup_callback(connection_args, error_code, NULL);
+            connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         }
         /* release the ref from s_on_host_resolved */
         s_connection_args_release(connection_args);
@@ -635,7 +630,8 @@ static void s_on_host_resolved(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
         (void *)client_connection_args->bootstrap);
-    s_call_setup_callback(client_connection_args, aws_last_error(), NULL);
+    client_connection_args->setup_callback(
+        client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);
 }
 
