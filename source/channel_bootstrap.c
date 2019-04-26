@@ -412,7 +412,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         err_code);
 
 error:
-    connection_args->setup_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
+    connection_args->setup_callback(connection_args->bootstrap, err_code, NULL, connection_args->user_data);
 
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
