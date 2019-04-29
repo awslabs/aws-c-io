@@ -33,7 +33,8 @@ struct aws_stream_status {
     bool is_valid;
 };
 
-typedef int(aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis);
+typedef int(
+    aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
 typedef int(aws_input_stream_read_fn)(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
 typedef int(aws_input_stream_get_status_fn)(struct aws_input_stream *stream, struct aws_stream_status *status);
 typedef int(aws_input_stream_get_length_fn)(struct aws_input_stream *stream, size_t *out_length);
@@ -58,7 +59,7 @@ AWS_EXTERN_C_BEGIN
 /*
  * Seek to a position within a stream; analagous to fseek() and its relatives
  */
-int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis);
+int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
 
 /*
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes

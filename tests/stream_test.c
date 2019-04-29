@@ -207,7 +207,7 @@ static int s_test_input_stream_file_seek_beginning(struct aws_allocator *allocat
 
 AWS_TEST_CASE(test_input_stream_file_seek_beginning, s_test_input_stream_file_seek_beginning);
 
-#define SEEK_END_OFFSET -3
+#define SEEK_END_OFFSET (-3)
 
 static int s_test_input_stream_memory_seek_end(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
