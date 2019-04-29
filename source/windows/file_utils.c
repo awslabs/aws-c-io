@@ -18,6 +18,7 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
+#include <io.h>
 #include <Shlwapi.h>
 
 char aws_get_platform_directory_separator(void) {
@@ -98,17 +99,17 @@ int aws_fseek(FILE *file, aws_off_t offset, int whence) {
 }
 
 int aws_file_get_length(FILE *file, size_t *length) {
-    int fd = fileno(file);
+    int fd = _fileno(file);
     if (fd == -1) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    HANDLE os_file = _get_osfhandle(fd);
-    if (os_file == -1) {
+    HANDLE os_file = (HANDLE) _get_osfhandle(fd);
+    if (os_file == INVALID_HANDLE_VALUE) {
         return aws_io_translate_and_raise_io_error(errno);
     }
 
-    struct LARGE_INTEGER os_size;
+    LARGE_INTEGER os_size;
     if (!GetFileSizeEx(os_file, &os_size)) {
         return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }

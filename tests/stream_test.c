@@ -18,6 +18,10 @@
 #include <aws/common/string.h>
 #include <aws/io/stream.h>
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* fopen */
+#endif
+
 AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
 
 const char *s_test_file_name = "stream.txt";

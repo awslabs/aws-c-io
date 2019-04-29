@@ -17,6 +17,10 @@
 
 #include <aws/io/file_utils.h>
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* fopen */
+#endif
+
 int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis) {
     assert(stream && stream->vtable && stream->vtable->seek);
 
