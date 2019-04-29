@@ -282,3 +282,49 @@ static int s_test_input_stream_memory_seek_before_start(struct aws_allocator *al
 }
 
 AWS_TEST_CASE(test_input_stream_memory_seek_before_start, s_test_input_stream_memory_seek_before_start);
+
+#define LENGTH_SEEK_OFFSET 3
+
+static int s_test_input_stream_memory_length(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_memory_stream(allocator);
+
+    size_t length = 0;
+    ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
+    ASSERT_TRUE(length == s_simple_test->len);
+
+    /* invariant under seeking */
+    aws_input_stream_seek(stream, LENGTH_SEEK_OFFSET, AWS_SSB_BEGIN);
+
+    ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
+    ASSERT_TRUE(length == s_simple_test->len);
+
+    s_destroy_memory_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_memory_length, s_test_input_stream_memory_length);
+
+static int s_test_input_stream_file_length(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_file_stream(allocator);
+
+    size_t length = 0;
+    ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
+    ASSERT_TRUE(length == s_simple_test->len);
+
+    /* invariant under seeking */
+    aws_input_stream_seek(stream, LENGTH_SEEK_OFFSET, AWS_SSB_BEGIN);
+
+    ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
+    ASSERT_TRUE(length == s_simple_test->len);
+
+    s_destroy_file_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_file_length, s_test_input_stream_file_length);

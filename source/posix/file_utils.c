@@ -18,6 +18,7 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
+#include <errno.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -52,5 +53,27 @@ int aws_fseek(FILE *file, aws_off_t offset, int whence) {
         fseek(file, offset, whence);
 #endif
 
-    return (result == 0) ? AWS_OP_SUCCESS : AWS_OP_ERR;
+    if (result != 0) {
+        return aws_raise_error(aws_io_translate_and_raise_io_error(errno));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_file_get_length(FILE *file, size_t *length) {
+
+    struct stat file_stats;
+
+    int fd = fileno(file);
+    if (fd == -1) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    if (fstat(fd, &file_stats)) {
+        return aws_raise_error(aws_io_translate_and_raise_io_error(errno));
+    }
+
+    *length = file_stats.st_size;
+
+    return AWS_OP_SUCCESS;
 }

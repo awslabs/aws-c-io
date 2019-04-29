@@ -179,6 +179,8 @@ add_test_case(test_input_stream_file_simple)
 add_test_case(test_input_stream_file_iterate)
 add_test_case(test_input_stream_file_seek_beginning)
 add_test_case(test_input_stream_file_seek_end)
+add_test_case(test_input_stream_memory_length)
+add_test_case(test_input_stream_file_length)
 
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})

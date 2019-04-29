@@ -32,22 +32,10 @@ AWS_IO_API int aws_byte_buf_init_from_file(
     const char *filename);
 
 /**
- * Convert a c library error from opening a file into an aws error.  Consider merging with below.
+ * Convert a c library io error into an aws error.
  */
 AWS_IO_API
-int aws_io_translate_and_raise_file_open_error(int error_no);
-
-/**
- * Convert a c library error from reading a file into an aws error. Consider merging with above.
- */
-AWS_IO_API
-int aws_io_translate_and_raise_file_write_error(int error_no);
-
-/**
- * Convert a c library error from seeking within a file into an aws error. Consider merging with above.
- */
-AWS_IO_API
-int aws_io_translate_and_raise_file_seek_error(int error_no);
+int aws_io_translate_and_raise_io_error(int error_no);
 
 /**
  * Returns true iff the character is a directory separator on ANY supported platform.
@@ -82,6 +70,16 @@ bool aws_path_exists(const char *path);
  */
 AWS_IO_API
 int aws_fseek(FILE *file, aws_off_t offset, int whence);
+
+/*
+ * Wrapper for os-specific file length query.  We can't use fseek(END, 0)
+ * because support for it is not technically required.
+ *
+ * Unix flavors call fstat, while Windows variants use GetFileSize on a
+ * HANDLE queried from the libc FILE pointer.
+ */
+AWS_IO_API
+int aws_file_get_length(FILE *file, size_t *length);
 
 AWS_EXTERN_C_END
 
