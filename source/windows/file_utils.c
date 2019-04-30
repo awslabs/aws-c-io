@@ -18,8 +18,8 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
-#include <io.h>
 #include <Shlwapi.h>
+#include <io.h>
 
 char aws_get_platform_directory_separator(void) {
     return '\\';
@@ -104,7 +104,7 @@ int aws_file_get_length(FILE *file, size_t *length) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    HANDLE os_file = (HANDLE) _get_osfhandle(fd);
+    HANDLE os_file = (HANDLE)_get_osfhandle(fd);
     if (os_file == INVALID_HANDLE_VALUE) {
         return aws_io_translate_and_raise_io_error(errno);
     }
