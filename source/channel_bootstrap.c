@@ -593,12 +593,14 @@ static void s_on_host_resolved(
 
             if (!outgoing_socket) {
                 client_connection_args->failed_count++;
+                err_code = aws_last_error();
                 s_connection_args_release(client_connection_args);
                 break;
             }
 
             if (aws_socket_init(outgoing_socket, client_connection_args->bootstrap->allocator, &options)) {
                 client_connection_args->failed_count++;
+                err_code = aws_last_error();
                 aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
                 s_connection_args_release(client_connection_args);
                 break;
@@ -611,6 +613,7 @@ static void s_on_host_resolved(
                     s_on_client_connection_established,
                     client_connection_args)) {
                 client_connection_args->failed_count++;
+                err_code = aws_last_error();
                 aws_host_resolver_record_connection_failure(
                     client_connection_args->bootstrap->host_resolver, host_address_ptr);
                 aws_socket_clean_up(outgoing_socket);
@@ -630,6 +633,10 @@ static void s_on_host_resolved(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
         (void *)client_connection_args->bootstrap);
+    /* ensure that there is always an error to report to the setup_callback */
+    if (err_code == 0) {
+        err_code = AWS_IO_SOCKET_NOT_CONNECTED;
+    }
     client_connection_args->setup_callback(
         client_connection_args->bootstrap, err_code, NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);
