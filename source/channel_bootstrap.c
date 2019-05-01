@@ -631,7 +631,7 @@ static void s_on_host_resolved(
         "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
         (void *)client_connection_args->bootstrap);
     client_connection_args->setup_callback(
-        client_connection_args->bootstrap, aws_last_error(), NULL, client_connection_args->user_data);
+        client_connection_args->bootstrap, err_code, NULL, client_connection_args->user_data);
     s_connection_args_release(client_connection_args);
 }
 
