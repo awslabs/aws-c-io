@@ -37,7 +37,7 @@ typedef int(
     aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
 typedef int(aws_input_stream_read_fn)(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
 typedef int(aws_input_stream_get_status_fn)(struct aws_input_stream *stream, struct aws_stream_status *status);
-typedef int(aws_input_stream_get_length_fn)(struct aws_input_stream *stream, size_t *out_length);
+typedef int(aws_input_stream_get_length_fn)(struct aws_input_stream *stream, int64_t *out_length);
 typedef void(aws_input_stream_clean_up_fn)(struct aws_input_stream *stream);
 
 struct aws_input_stream_vtable {
@@ -77,7 +77,7 @@ int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stre
  * a valid stream may return an error instead when there is not a good answer (socket stream, for example).
  *
  */
-int aws_input_stream_get_length(struct aws_input_stream *stream, size_t *out_length);
+int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
 
 /*
  * Tears down the stream

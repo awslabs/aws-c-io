@@ -294,7 +294,7 @@ static int s_test_input_stream_memory_length(struct aws_allocator *allocator, vo
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
-    size_t length = 0;
+    int64_t length = 0;
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
     ASSERT_TRUE(length == s_simple_test->len);
 
@@ -316,7 +316,7 @@ static int s_test_input_stream_file_length(struct aws_allocator *allocator, void
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 
-    size_t length = 0;
+    int64_t length = 0;
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
     ASSERT_TRUE(length == s_simple_test->len);
 

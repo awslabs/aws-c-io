@@ -17,6 +17,8 @@
 
 #include <aws/io/file_utils.h>
 
+#include <errno.h>
+
 #if _MSC_VER
 #    pragma warning(disable : 4996) /* fopen */
 #endif
@@ -39,7 +41,7 @@ int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stre
     return stream->vtable->get_status(stream, status);
 }
 
-int aws_input_stream_get_length(struct aws_input_stream *stream, size_t *out_length) {
+int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length) {
     assert(stream && stream->vtable && stream->vtable->get_length);
 
     return stream->vtable->get_length(stream, out_length);
@@ -76,6 +78,10 @@ struct aws_input_stream_byte_cursor_impl {
  *  Assumption #1: aws_off_t resolves to a signed integer 64 bits or smaller
  *  Assumption #2: size_t resolves to an unsigned integer 64 bits or smaller
  */
+
+AWS_STATIC_ASSERT(sizeof(aws_off_t) <= 8);
+AWS_STATIC_ASSERT(sizeof(size_t) <= 8);
+
 static int s_aws_input_stream_byte_cursor_seek(
     struct aws_input_stream *stream,
     aws_off_t offset,
@@ -117,10 +123,17 @@ static int s_aws_input_stream_byte_cursor_seek(
     /* true because we already validated against (impl->original_cursor.len) which is <= SIZE_MAX */
     assert(final_offset <= SIZE_MAX);
 
+    /* safe via previous assert */
+    size_t final_offset_sz = (size_t)final_offset;
+
+    /* sanity */
+    assert(final_offset_sz <= impl->current_cursor.len);
+
     impl->current_cursor = impl->original_cursor;
 
-    /* (size_t) final_offset - safe via previous assert's reasoning */
-    aws_byte_cursor_advance(&impl->current_cursor, (size_t)final_offset);
+    /* let's skip advance */
+    impl->current_cursor.ptr += final_offset_sz;
+    impl->current_cursor.len -= final_offset_sz;
 
     return AWS_OP_SUCCESS;
 }
@@ -131,7 +144,9 @@ static int s_aws_input_stream_byte_cursor_read(
     size_t *amount_read) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
-    *amount_read = 0;
+    if (amount_read != NULL) {
+        *amount_read = 0;
+    }
 
     size_t actually_read = dest->capacity - dest->len;
     if (actually_read > impl->current_cursor.len) {
@@ -144,7 +159,9 @@ static int s_aws_input_stream_byte_cursor_read(
 
     aws_byte_cursor_advance(&impl->current_cursor, actually_read);
 
-    *amount_read = actually_read;
+    if (amount_read != NULL) {
+        *amount_read = actually_read;
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -160,10 +177,15 @@ static int s_aws_input_stream_byte_cursor_get_status(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *stream, size_t *out_length) {
+static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *stream, int64_t *out_length) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
-    *out_length = impl->original_cursor.len;
+    size_t length = impl->original_cursor.len;
+    if (length > INT64_MAX) {
+        return AWS_OP_ERR;
+    }
+
+    *out_length = (int64_t)impl->original_cursor.len;
 
     return AWS_OP_SUCCESS;
 }
@@ -231,7 +253,7 @@ static int s_aws_input_stream_file_seek(
 
     int whence = (basis == AWS_SSB_BEGIN) ? SEEK_SET : SEEK_END;
     if (aws_fseek(impl->file, offset, whence)) {
-        return aws_raise_error(aws_io_translate_and_raise_io_error(aws_last_error()));
+        return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
@@ -249,7 +271,7 @@ static int s_aws_input_stream_file_read(
     size_t actually_read = fread(dest->buffer + dest->len, 1, max_read, impl->file);
     if (actually_read == 0) {
         if (ferror(impl->file)) {
-            return AWS_OP_ERR;
+            return aws_raise_error(AWS_IO_STREAM_READ_FAILED);
         }
     }
 
@@ -269,7 +291,7 @@ static int s_aws_input_stream_file_get_status(struct aws_input_stream *stream, s
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_file_get_length(struct aws_input_stream *stream, size_t *length) {
+static int s_aws_input_stream_file_get_length(struct aws_input_stream *stream, int64_t *length) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
     return aws_file_get_length(impl->file, length);
@@ -311,6 +333,7 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
     AWS_ZERO_STRUCT(*impl);
     impl->file = fopen(file_name, "r");
     if (impl->file == NULL) {
+        aws_io_translate_and_raise_io_error(errno);
         goto on_error;
     }
 
@@ -340,6 +363,7 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
 
     struct aws_input_stream_file_impl *impl = aws_mem_acquire(allocator, sizeof(struct aws_input_stream_file_impl));
     if (impl == NULL) {
+        aws_io_translate_and_raise_io_error(errno);
         goto on_error;
     }
 

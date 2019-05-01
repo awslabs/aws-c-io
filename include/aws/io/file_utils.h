@@ -67,6 +67,8 @@ bool aws_path_exists(const char *path);
  *
  *   _fseeki64() on windows
  *   fseeko() on linux
+ *
+ * whence can either be SEEK_SET or SEEK_END
  */
 AWS_IO_API
 int aws_fseek(FILE *file, aws_off_t offset, int whence);
@@ -79,7 +81,7 @@ int aws_fseek(FILE *file, aws_off_t offset, int whence);
  * HANDLE queried from the libc FILE pointer.
  */
 AWS_IO_API
-int aws_file_get_length(FILE *file, size_t *length);
+int aws_file_get_length(FILE *file, int64_t *length);
 
 AWS_EXTERN_C_END
 
