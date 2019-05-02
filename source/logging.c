@@ -302,7 +302,7 @@ static const struct aws_log_subject_info *s_get_log_subject_info_by_id(aws_log_s
 
     const struct aws_log_subject_info_list *subject_slot = s_log_subject_slots[slot_index];
 
-    if (!subject_slot || slot_index >= subject_slot->count) {
+    if (!subject_slot || subject_index >= subject_slot->count) {
         return NULL;
     }
 

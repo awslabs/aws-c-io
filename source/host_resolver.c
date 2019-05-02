@@ -116,7 +116,7 @@ struct host_entry {
     struct aws_mutex semaphore_mutex;
     struct aws_condition_variable resolver_thread_semaphore;
     const struct aws_string *host_name;
-    struct aws_host_resolution_config *resolution_config;
+    struct aws_host_resolution_config resolution_config;
     struct aws_linked_list pending_resolution_callbacks;
     int64_t resolve_frequency_ns;
     /* this member will be a monotonic increasing value and not protected by a memory barrier.
@@ -297,7 +297,7 @@ static void resolver_thread_fn(void *arg) {
 
     uint64_t last_updated = 0;
     size_t unsolicited_resolve_count = 0;
-    size_t unsolicited_resolve_max = host_entry->resolution_config->max_ttl;
+    size_t unsolicited_resolve_max = host_entry->resolution_config.max_ttl;
     struct aws_array_list address_list;
     if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
         return;
@@ -318,13 +318,13 @@ static void resolver_thread_fn(void *arg) {
         last_updated = host_entry->last_use;
 
         /* resolve and then process each record */
-        int err_code = host_entry->resolution_config->impl(
-            host_entry->allocator, host_entry->host_name, &address_list, host_entry->resolution_config->impl_data);
+        int err_code = host_entry->resolution_config.impl(
+            host_entry->allocator, host_entry->host_name, &address_list, host_entry->resolution_config.impl_data);
         uint64_t timestamp = 0;
         aws_sys_clock_get_ticks(&timestamp);
 
         if (!err_code) {
-            uint64_t new_expiry = timestamp + (host_entry->resolution_config->max_ttl * NS_PER_SEC);
+            uint64_t new_expiry = timestamp + (host_entry->resolution_config.max_ttl * NS_PER_SEC);
 
             for (size_t i = 0; i < aws_array_list_length(&address_list); ++i) {
                 struct aws_host_address *fresh_resolved_address = NULL;
@@ -630,7 +630,7 @@ static inline int create_and_init_host_entry(
     /*add the current callback here */
     aws_rw_lock_init(&new_host_entry->entry_lock);
     new_host_entry->keep_active = false;
-    new_host_entry->resolution_config = config;
+    new_host_entry->resolution_config = *config;
     aws_mutex_init(&new_host_entry->semaphore_mutex);
     aws_condition_variable_init(&new_host_entry->resolver_thread_semaphore);
 

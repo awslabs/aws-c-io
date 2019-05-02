@@ -188,7 +188,7 @@ AWS_IO_API int aws_host_resolver_init_uv(
 AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *resolver);
 
 /**
- * calls resolve_host on the vtable.
+ * calls resolve_host on the vtable. config will be copied.
  */
 AWS_IO_API int aws_host_resolver_resolve_host(
     struct aws_host_resolver *resolver,
