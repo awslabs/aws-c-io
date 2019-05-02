@@ -19,6 +19,7 @@
 #include <aws/common/string.h>
 
 #include <Shlwapi.h>
+#include <io.h>
 
 char aws_get_platform_directory_separator(void) {
     return '\\';
@@ -87,4 +88,38 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
 
 bool aws_path_exists(const char *path) {
     return PathFileExistsA(path) == TRUE;
+}
+
+int aws_fseek(FILE *file, aws_off_t offset, int whence) {
+    if (_fseeki64(file, offset, whence)) {
+        return aws_io_translate_and_raise_io_error(errno);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_file_get_length(FILE *file, int64_t *length) {
+    int fd = _fileno(file);
+    if (fd == -1) {
+        return aws_raise_error(AWS_IO_INVALID_FILE_HANDLE);
+    }
+
+    HANDLE os_file = (HANDLE)_get_osfhandle(fd);
+    if (os_file == INVALID_HANDLE_VALUE) {
+        return aws_io_translate_and_raise_io_error(errno);
+    }
+
+    LARGE_INTEGER os_size;
+    if (!GetFileSizeEx(os_file, &os_size)) {
+        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    }
+
+    int64_t size = os_size.QuadPart;
+    if (size < 0) {
+        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    }
+
+    *length = size;
+
+    return AWS_OP_SUCCESS;
 }
