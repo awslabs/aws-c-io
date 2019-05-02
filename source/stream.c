@@ -193,9 +193,7 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
 }
 
 static void s_aws_input_stream_byte_cursor_clean_up(struct aws_input_stream *stream) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
-
-    aws_mem_release(stream->allocator, impl);
+    (void)stream;
 }
 
 static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
@@ -208,35 +206,33 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
 struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor) {
-    struct aws_input_stream *input_stream = aws_mem_acquire(allocator, sizeof(struct aws_input_stream));
-    if (input_stream == NULL) {
+
+    struct aws_input_stream *input_stream = NULL;
+    struct aws_input_stream_byte_cursor_impl *impl = NULL;
+
+    aws_mem_acquire_many(
+        allocator,
+        2,
+        &input_stream,
+        sizeof(struct aws_input_stream),
+        &impl,
+        sizeof(struct aws_input_stream_byte_cursor_impl));
+
+    if (!input_stream) {
         return NULL;
     }
 
     AWS_ZERO_STRUCT(*input_stream);
+    AWS_ZERO_STRUCT(*impl);
 
     input_stream->allocator = allocator;
     input_stream->vtable = &s_aws_input_stream_byte_cursor_vtable;
+    input_stream->impl = impl;
 
-    struct aws_input_stream_byte_cursor_impl *impl =
-        aws_mem_acquire(allocator, sizeof(struct aws_input_stream_byte_cursor_impl));
-    if (impl == NULL) {
-        goto on_error;
-    }
-
-    AWS_ZERO_STRUCT(*impl);
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
 
-    input_stream->impl = impl;
-
     return input_stream;
-
-on_error:
-
-    aws_input_stream_destroy(input_stream);
-
-    return NULL;
 }
 
 /*
@@ -305,8 +301,6 @@ static void s_aws_input_stream_file_clean_up(struct aws_input_stream *stream) {
     if (impl->close_on_clean_up && impl->file) {
         fclose(impl->file);
     }
-
-    aws_mem_release(stream->allocator, impl);
 }
 
 static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
@@ -317,22 +311,24 @@ static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
     .clean_up = s_aws_input_stream_file_clean_up};
 
 struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *allocator, const char *file_name) {
-    struct aws_input_stream *input_stream = aws_mem_acquire(allocator, sizeof(struct aws_input_stream));
-    if (input_stream == NULL) {
+
+    struct aws_input_stream *input_stream = NULL;
+    struct aws_input_stream_file_impl *impl = NULL;
+
+    aws_mem_acquire_many(
+        allocator, 2, &input_stream, sizeof(struct aws_input_stream), &impl, sizeof(struct aws_input_stream_file_impl));
+
+    if (!input_stream) {
         return NULL;
     }
 
     AWS_ZERO_STRUCT(*input_stream);
+    AWS_ZERO_STRUCT(*impl);
 
     input_stream->allocator = allocator;
     input_stream->vtable = &s_aws_input_stream_file_vtable;
+    input_stream->impl = impl;
 
-    struct aws_input_stream_file_impl *impl = aws_mem_acquire(allocator, sizeof(struct aws_input_stream_file_impl));
-    if (impl == NULL) {
-        goto on_error;
-    }
-
-    AWS_ZERO_STRUCT(*impl);
     impl->file = fopen(file_name, "r");
     if (impl->file == NULL) {
         aws_io_translate_and_raise_io_error(errno);
@@ -340,8 +336,6 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
     }
 
     impl->close_on_clean_up = true;
-
-    input_stream->impl = impl;
 
     return input_stream;
 
@@ -353,33 +347,25 @@ on_error:
 }
 
 struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file) {
-    struct aws_input_stream *input_stream = aws_mem_acquire(allocator, sizeof(struct aws_input_stream));
-    if (input_stream == NULL) {
+    struct aws_input_stream *input_stream = NULL;
+    struct aws_input_stream_file_impl *impl = NULL;
+
+    aws_mem_acquire_many(
+        allocator, 2, &input_stream, sizeof(struct aws_input_stream), &impl, sizeof(struct aws_input_stream_file_impl));
+
+    if (!input_stream) {
         return NULL;
     }
 
     AWS_ZERO_STRUCT(*input_stream);
+    AWS_ZERO_STRUCT(*impl);
 
     input_stream->allocator = allocator;
     input_stream->vtable = &s_aws_input_stream_file_vtable;
+    input_stream->impl = impl;
 
-    struct aws_input_stream_file_impl *impl = aws_mem_acquire(allocator, sizeof(struct aws_input_stream_file_impl));
-    if (impl == NULL) {
-        aws_io_translate_and_raise_io_error(errno);
-        goto on_error;
-    }
-
-    AWS_ZERO_STRUCT(*impl);
     impl->file = file;
     impl->close_on_clean_up = false;
 
-    input_stream->impl = impl;
-
     return input_stream;
-
-on_error:
-
-    aws_input_stream_destroy(input_stream);
-
-    return NULL;
 }

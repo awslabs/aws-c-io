@@ -296,13 +296,13 @@ static int s_test_input_stream_memory_length(struct aws_allocator *allocator, vo
 
     int64_t length = 0;
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(length == s_simple_test->len);
+    ASSERT_TRUE(length == (int64_t)s_simple_test->len);
 
     /* invariant under seeking */
     aws_input_stream_seek(stream, LENGTH_SEEK_OFFSET, AWS_SSB_BEGIN);
 
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(length == s_simple_test->len);
+    ASSERT_TRUE(length == (int64_t)s_simple_test->len);
 
     s_destroy_memory_stream(stream);
 
@@ -318,13 +318,13 @@ static int s_test_input_stream_file_length(struct aws_allocator *allocator, void
 
     int64_t length = 0;
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(length == s_simple_test->len);
+    ASSERT_TRUE(length == (int64_t)s_simple_test->len);
 
     /* invariant under seeking */
     aws_input_stream_seek(stream, LENGTH_SEEK_OFFSET, AWS_SSB_BEGIN);
 
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
-    ASSERT_TRUE(length == s_simple_test->len);
+    ASSERT_TRUE(length == (int64_t)s_simple_test->len);
 
     s_destroy_file_stream(stream);
 
