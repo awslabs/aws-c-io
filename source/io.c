@@ -139,6 +139,18 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_DNS_HOST_REMOVED_FROM_CACHE,
         "The entries for host name were removed from the local dns cache."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_INVALID_SEEK_POSITION,
+        "The seek position was outside of a stream's bounds"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_UNSEEKABLE,
+        "Stream does not support seek operations"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_READ_FAILED,
+        "Stream failed to read from the underlying io source"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_INVALID_FILE_HANDLE,
+        "Operation failed because the file handle was invalid"),
 };
 /* clang-format on */
 

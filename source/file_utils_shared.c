@@ -34,7 +34,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
         if (fseek(fp, 0L, SEEK_END)) {
             AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to seek file %s with errno %d", filename, errno);
             fclose(fp);
-            return aws_io_translate_and_raise_file_open_error(errno);
+            return aws_io_translate_and_raise_io_error(errno);
         }
 
         size_t allocation_size = (size_t)ftell(fp) + 1;
@@ -53,7 +53,7 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
             AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to seek file %s with errno %d", filename, errno);
             aws_byte_buf_clean_up(out_buf);
             fclose(fp);
-            return aws_io_translate_and_raise_file_open_error(errno);
+            return aws_io_translate_and_raise_io_error(errno);
         }
 
         size_t read = fread(out_buf->buffer, 1, out_buf->len, fp);
@@ -70,11 +70,15 @@ int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocat
 
     AWS_LOGF_ERROR(AWS_LS_IO_FILE_UTILS, "static: Failed to open file %s with errno %d", filename, errno);
 
-    return aws_io_translate_and_raise_file_open_error(errno);
+    return aws_io_translate_and_raise_io_error(errno);
 }
 
-int aws_io_translate_and_raise_file_open_error(int error_no) {
+int aws_io_translate_and_raise_io_error(int error_no) {
     switch (error_no) {
+        case EINVAL:
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        case ESPIPE:
+            return aws_raise_error(AWS_IO_STREAM_UNSEEKABLE);
         case EPERM:
         case EACCES:
             return aws_raise_error(AWS_IO_NO_PERMISSION);
@@ -86,13 +90,6 @@ int aws_io_translate_and_raise_file_open_error(int error_no) {
             return aws_raise_error(AWS_IO_MAX_FDS_EXCEEDED);
         case ENOMEM:
             return aws_raise_error(AWS_ERROR_OOM);
-        default:
-            return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-    }
-}
-
-int aws_io_translate_and_raise_file_write_error(int error_no) {
-    switch (error_no) {
         default:
             return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
     }
