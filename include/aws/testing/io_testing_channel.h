@@ -18,6 +18,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/logging.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct testing_loop {
@@ -229,14 +230,46 @@ AWS_STATIC_IMPL size_t testing_channel_last_window_update(struct testing_channel
     return testing->handler_impl->latest_window_update;
 }
 
-/** When you want to execute any tasks that were scheduled, call this, it will execute the tasks on the current thread.
+/** Executes all currently scheduled tasks whose time has come.
+ * Use testing_channel_drain_queued_tasks() to repeatedly run tasks until only future-tasks remain.
  */
-AWS_STATIC_IMPL void testing_channel_execute_queued_tasks(struct testing_channel *testing) {
+AWS_STATIC_IMPL void testing_channel_run_currently_queued_tasks(struct testing_channel *testing) {
+    assert(aws_channel_thread_is_callers_thread(testing->channel));
+
     uint64_t now = 0;
     aws_event_loop_current_clock_time(testing->loop, &now);
     aws_task_scheduler_run_all(&testing->loop_impl->scheduler, now);
 }
 
+/** Repeatedly executes scheduled tasks until only those in the future remain.
+ * This covers the common case where there's a chain reaction of now-tasks scheduling further now-tasks.
+ */
+AWS_STATIC_IMPL void testing_channel_drain_queued_tasks(struct testing_channel *testing) {
+    assert(aws_channel_thread_is_callers_thread(testing->channel));
+
+    uint64_t now = 0;
+    uint64_t next_task_time = 0;
+    size_t count = 0;
+
+    while (true) {
+        aws_event_loop_current_clock_time(testing->loop, &now);
+        if (aws_task_scheduler_has_tasks(&testing->loop_impl->scheduler, &next_task_time) && (next_task_time <= now)) {
+            aws_task_scheduler_run_all(&testing->loop_impl->scheduler, now);
+        } else {
+            break;
+        }
+
+        /* NOTE: This will loop infinitely if there's a task the perpetually re-schedules another task.
+         * Consider capping the number of loops if we want to support that behavior. */
+        if ((++count % 1000) == 0) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: testing_channel_drain_queued_tasks() has looped %zu times.",
+                (void *)testing->channel,
+                count);
+        }
+    }
+}
 /** When you want to force the  "not on channel thread path" for your handler, set 'on_users_thread' to false.
  * when you want to undo that, set it back to true. If you set it to false, you'll need to call
  * 'testing_channel_execute_queued_tasks()' to invoke the tasks that ended up being scheduled. */
@@ -260,11 +293,8 @@ AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct
     testing->channel = aws_channel_new(allocator, testing->loop, &callbacks);
 
     /* Wait for channel to finish setup */
-    size_t ticks = 0;
-    while (!testing->channel_setup_completed) {
-        ASSERT_TRUE(++ticks < 100);
-        testing_channel_execute_queued_tasks(testing);
-    }
+    testing_channel_drain_queued_tasks(testing);
+    ASSERT_TRUE(testing->channel_setup_completed);
 
     testing->handler_slot = aws_channel_slot_new(testing->channel);
     struct aws_channel_handler *handler = s_new_testing_channel_handler(allocator);
@@ -278,11 +308,8 @@ AWS_STATIC_IMPL int testing_channel_clean_up(struct testing_channel *testing) {
     aws_channel_shutdown(testing->channel, AWS_ERROR_SUCCESS);
 
     /* Wait for channel to finish shutdown */
-    size_t ticks = 0;
-    while (!testing->channel_shutdown_completed) {
-        ASSERT_TRUE(++ticks < 100);
-        testing_channel_execute_queued_tasks(testing);
-    }
+    testing_channel_drain_queued_tasks(testing);
+    ASSERT_TRUE(testing->channel_shutdown_completed);
 
     aws_channel_destroy(testing->channel);
 
