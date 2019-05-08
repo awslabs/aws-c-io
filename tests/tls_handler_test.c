@@ -243,7 +243,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     struct tls_test_rw_args incoming_rw_args = {
         .mutex = &mutex,
         .condition_variable = &condition_variable,
-        .received_message = aws_byte_buf_from_array(incoming_received_message, 0),
+        .received_message = aws_byte_buf_from_empty_array(incoming_received_message, sizeof(incoming_received_message)),
         .invocation_happened = false,
         .read_invocations = 0,
     };
@@ -251,7 +251,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     struct tls_test_rw_args outgoing_rw_args = {
         .mutex = &mutex,
         .condition_variable = &condition_variable,
-        .received_message = aws_byte_buf_from_array(outgoing_received_message, 0),
+        .received_message = aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message)),
         .invocation_happened = false,
         .read_invocations = 0,
     };
