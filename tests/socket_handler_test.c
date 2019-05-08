@@ -209,24 +209,22 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     struct socket_test_rw_args incoming_rw_args = {
         .mutex = &mutex,
         .condition_variable = &condition_variable,
-        .received_message = aws_byte_buf_from_array(incoming_received_message, sizeof(incoming_received_message)),
+        .received_message = aws_byte_buf_from_empty_array(incoming_received_message, sizeof(incoming_received_message)),
         .invocation_happened = false,
         .shutdown_finished = false,
         .amount_read = 0,
         .expected_read = (int)write_tag.len,
     };
-    incoming_rw_args.received_message.len = 0;
 
     struct socket_test_rw_args outgoing_rw_args = {
         .mutex = &mutex,
         .condition_variable = &condition_variable,
-        .received_message = aws_byte_buf_from_array(outgoing_received_message, 0),
+        .received_message = aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message)),
         .invocation_happened = false,
         .shutdown_finished = false,
         .amount_read = 0,
         .expected_read = (int)read_tag.len,
     };
-    outgoing_rw_args.received_message.len = 0;
 
     /* make the windows small to make sure back pressure is honored. */
     static size_t s_outgoing_initial_read_window = 9;
