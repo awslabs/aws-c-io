@@ -59,35 +59,38 @@ AWS_EXTERN_C_BEGIN
 /*
  * Seek to a position within a stream; analagous to fseek() and its relatives
  */
-int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
+AWS_IO_API int aws_input_stream_seek(
+    struct aws_input_stream *stream,
+    aws_off_t offset,
+    enum aws_stream_seek_basis basis);
 
 /*
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes
  * in the destination buffer.
  */
-int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
+AWS_IO_API int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
 
 /*
  * Queries miscellaneous properties of the stream
  */
-int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status);
+AWS_IO_API int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status);
 
 /*
  * Returns the total stream length, if able, regardless of current stream position.  Under certain conditions,
  * a valid stream may return an error instead when there is not a good answer (socket stream, for example).
  *
  */
-int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
+AWS_IO_API int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
 
 /*
  * Tears down the stream
  */
-void aws_input_stream_destroy(struct aws_input_stream *stream);
+AWS_IO_API void aws_input_stream_destroy(struct aws_input_stream *stream);
 
 /*
  * Creates a stream that operates on a range of bytes
  */
-struct aws_input_stream *aws_input_stream_new_from_cursor(
+AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor);
 
@@ -95,13 +98,15 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
  * Creates a stream that operates on a (not-yet-opened) file.
  * Destruction closes the file.
  */
-struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *allocator, const char *file_name);
+AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_file(
+    struct aws_allocator *allocator,
+    const char *file_name);
 
 /*
  * Creates an input stream that reads from an already opened file.
  * Destruction does not close the file.
  */
-struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
+AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
 
 AWS_EXTERN_C_END
 

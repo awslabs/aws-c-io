@@ -70,13 +70,40 @@ int aws_tls_ctx_options_init_client_mtls(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
-        return AWS_OP_ERR;
+    /* s2n relies on null terminated c_strings, so, we need to make sure we're properly
+     * terminated, but we don't want length to reflect the terminator because
+     * Apple and Windows will fail hard if you use a null terminator. */
+    if (cert->ptr[cert->len - 1] == 0) {
+        if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
+            return AWS_OP_ERR;
+        }
+
+        options->certificate.len -= 1;
+    } else {
+        if (aws_byte_buf_init(&options->certificate, allocator, cert->len + 1)) {
+            return AWS_OP_ERR;
+        }
+
+        memcpy(options->certificate.buffer, cert->ptr, cert->len);
+        options->certificate.buffer[cert->len] = 0;
+        options->certificate.len = cert->len;
     }
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->private_key, allocator, *pkey)) {
-        aws_byte_buf_clean_up(&options->certificate);
-        return AWS_OP_ERR;
+    if (pkey->ptr[pkey->len - 1] == 0) {
+        if (aws_byte_buf_init_copy_from_cursor(&options->private_key, allocator, *pkey)) {
+            aws_byte_buf_clean_up(&options->certificate);
+            return AWS_OP_ERR;
+        }
+        options->private_key.len -= 1;
+    } else {
+        if (aws_byte_buf_init(&options->certificate, allocator, cert->len + 1)) {
+            aws_byte_buf_clean_up(&options->certificate);
+            return AWS_OP_ERR;
+        }
+
+        memcpy(options->private_key.buffer, pkey->ptr, pkey->len);
+        options->private_key.buffer[pkey->len] = 0;
+        options->private_key.len = pkey->len;
     }
 
     return AWS_OP_SUCCESS;
@@ -93,6 +120,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
+    /* this code already handles null termination properly */
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
         return AWS_OP_ERR;
     }
@@ -266,8 +294,23 @@ int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *ca_file) {
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_file)) {
-        return AWS_OP_ERR;
+    /* s2n relies on null terminated c_strings, so, we need to make sure we're properly
+     * terminated, but we don't want length to reflect the terminator because
+     * Apple and Windows will fail hard if you use a null terminator. */
+    if (ca_file->ptr[ca_file->len - 1] == 0) {
+        if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_file)) {
+            return AWS_OP_ERR;
+        }
+        options->ca_file.len -= 1;
+    } else {
+        if (aws_byte_buf_init(&options->ca_file, options->allocator, ca_file->len + 1)) {
+            aws_byte_buf_clean_up(&options->certificate);
+            return AWS_OP_ERR;
+        }
+
+        memcpy(options->ca_file.buffer, ca_file->ptr, ca_file->len);
+        options->ca_file.buffer[ca_file->len] = 0;
+        options->private_key.len = ca_file->len;
     }
 
     return AWS_OP_SUCCESS;
