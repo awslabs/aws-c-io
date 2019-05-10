@@ -310,7 +310,7 @@ int aws_tls_ctx_options_override_default_trust_store(
 
         memcpy(options->ca_file.buffer, ca_file->ptr, ca_file->len);
         options->ca_file.buffer[ca_file->len] = 0;
-        options->private_key.len = ca_file->len;
+        options->ca_file.len = ca_file->len;
     }
 
     return AWS_OP_SUCCESS;
