@@ -59,6 +59,29 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     AWS_ZERO_STRUCT(*options);
 }
 
+static int s_load_null_terminated_buffer_from_cursor(
+    struct aws_byte_buf *load_into,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *from) {
+    if (from->ptr[from->len - 1] == 0) {
+        if (aws_byte_buf_init_copy_from_cursor(load_into, allocator, *from)) {
+            return AWS_OP_ERR;
+        }
+
+        load_into->len -= 1;
+    } else {
+        if (aws_byte_buf_init(load_into, allocator, from->len + 1)) {
+            return AWS_OP_ERR;
+        }
+
+        memcpy(load_into->buffer, from->ptr, from->len);
+        load_into->buffer[from->len] = 0;
+        load_into->len = from->len;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
@@ -70,11 +93,14 @@ int aws_tls_ctx_options_init_client_mtls(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
+    /* s2n relies on null terminated c_strings, so we need to make sure we're properly
+     * terminated, but we don't want length to reflect the terminator because
+     * Apple and Windows will fail hard if you use a null terminator. */
+    if (s_load_null_terminated_buffer_from_cursor(&options->certificate, allocator, cert)) {
         return AWS_OP_ERR;
     }
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->private_key, allocator, *pkey)) {
+    if (s_load_null_terminated_buffer_from_cursor(&options->private_key, allocator, pkey)) {
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
@@ -162,11 +188,11 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12, allocator, *pkcs12)) {
+    if (s_load_null_terminated_buffer_from_cursor(&options->pkcs12, allocator, pkcs12)) {
         return AWS_OP_ERR;
     }
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12_password, allocator, *pkcs_pwd)) {
+    if (s_load_null_terminated_buffer_from_cursor(&options->pkcs12_password, allocator, pkcs_pwd)) {
         aws_byte_buf_clean_up_secure(&options->pkcs12);
         return AWS_OP_ERR;
     }
@@ -266,7 +292,10 @@ int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *ca_file) {
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_file)) {
+    /* s2n relies on null terminated c_strings, so we need to make sure we're properly
+     * terminated, but we don't want length to reflect the terminator because
+     * Apple and Windows will fail hard if you use a null terminator. */
+    if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
         return AWS_OP_ERR;
     }
 
