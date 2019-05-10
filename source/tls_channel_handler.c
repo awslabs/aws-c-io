@@ -96,7 +96,7 @@ int aws_tls_ctx_options_init_client_mtls(
         }
         options->private_key.len -= 1;
     } else {
-        if (aws_byte_buf_init(&options->certificate, allocator, cert->len + 1)) {
+        if (aws_byte_buf_init(&options->private_key, allocator, pkey->len + 1)) {
             aws_byte_buf_clean_up(&options->certificate);
             return AWS_OP_ERR;
         }
