@@ -17,8 +17,6 @@
 
 #include <aws/common/thread.h>
 
-#include <assert.h>
-
 int aws_memory_pool_init(
     struct aws_memory_pool *mempool,
     struct aws_allocator *alloc,
@@ -100,7 +98,7 @@ void *s_message_pool_mem_acquire(struct aws_allocator *allocator, size_t size) {
     (void)size;
 
     /* no one should ever call this ever. */
-    assert(0);
+    AWS_ASSERT(0);
     return NULL;
 }
 
@@ -166,7 +164,7 @@ struct aws_io_message *aws_message_pool_acquire(
             }
             break;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             aws_raise_error(AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE);
             return NULL;
     }
@@ -212,7 +210,7 @@ void aws_message_pool_release(struct aws_message_pool *msg_pool, struct aws_io_m
             }
             break;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             aws_raise_error(AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE);
     }
 }

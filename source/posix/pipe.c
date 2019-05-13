@@ -28,7 +28,6 @@
 #    define HAVE_PIPE2 0
 #endif
 
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -91,7 +90,7 @@ static void s_write_end_on_event(
     void *user_data);
 
 static int s_translate_posix_error(int err) {
-    assert(err);
+    AWS_ASSERT(err);
 
     switch (err) {
         case EPIPE:
@@ -150,11 +149,11 @@ int aws_pipe_init(
     struct aws_event_loop *write_end_event_loop,
     struct aws_allocator *allocator) {
 
-    assert(read_end);
-    assert(read_end_event_loop);
-    assert(write_end);
-    assert(write_end_event_loop);
-    assert(allocator);
+    AWS_ASSERT(read_end);
+    AWS_ASSERT(read_end_event_loop);
+    AWS_ASSERT(write_end);
+    AWS_ASSERT(write_end_event_loop);
+    AWS_ASSERT(allocator);
 
     AWS_ZERO_STRUCT(*read_end);
     AWS_ZERO_STRUCT(*write_end);
@@ -273,7 +272,7 @@ struct aws_event_loop *aws_pipe_get_write_end_event_loop(const struct aws_pipe_w
 }
 
 int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *num_bytes_read) {
-    assert(dst_buffer && dst_buffer->buffer);
+    AWS_ASSERT(dst_buffer && dst_buffer->buffer);
 
     struct read_end_impl *read_impl = read_end->impl_data;
     if (!read_impl) {
@@ -317,12 +316,12 @@ static void s_read_end_on_event(
     /* Note that it should be impossible for this to run after read-end has been unsubscribed or cleaned up */
     struct aws_pipe_read_end *read_end = user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
-    assert(read_impl->event_loop == event_loop);
-    assert(&read_impl->handle == handle);
-    assert(read_impl->is_subscribed);
-    assert(events != 0);
-    assert(read_impl->did_user_callback_clean_up_read_end == NULL);
+    AWS_ASSERT(read_impl);
+    AWS_ASSERT(read_impl->event_loop == event_loop);
+    AWS_ASSERT(&read_impl->handle == handle);
+    AWS_ASSERT(read_impl->is_subscribed);
+    AWS_ASSERT(events != 0);
+    AWS_ASSERT(read_impl->did_user_callback_clean_up_read_end == NULL);
 
     /* Set up handshake, so we can be informed if the read-end is cleaned up while invoking a user callback */
     bool did_user_callback_clean_up_read_end = false;
@@ -358,7 +357,7 @@ int aws_pipe_subscribe_to_readable_events(
     aws_pipe_on_readable_fn *on_readable,
     void *user_data) {
 
-    assert(on_readable);
+    AWS_ASSERT(on_readable);
 
     struct read_end_impl *read_impl = read_end->impl_data;
     if (!read_impl) {
@@ -421,7 +420,7 @@ int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end
 static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *write_end, int error_code) {
     struct write_end_impl *write_impl = write_end->impl_data;
 
-    assert(!aws_linked_list_empty(&write_impl->write_list));
+    AWS_ASSERT(!aws_linked_list_empty(&write_impl->write_list));
     struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
     struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
 
@@ -450,7 +449,7 @@ static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *
 /* Process write requests as long as the pipe remains writable */
 static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
+    AWS_ASSERT(write_impl);
 
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&write_impl->write_list);
@@ -504,9 +503,9 @@ static void s_write_end_on_event(
     /* Note that it should be impossible for this to run after write-end has been unsubscribed or cleaned up */
     struct aws_pipe_write_end *write_end = user_data;
     struct write_end_impl *write_impl = write_end->impl_data;
-    assert(write_impl);
-    assert(write_impl->event_loop == event_loop);
-    assert(&write_impl->handle == handle);
+    AWS_ASSERT(write_impl);
+    AWS_ASSERT(write_impl->event_loop == event_loop);
+    AWS_ASSERT(&write_impl->handle == handle);
 
     /* Only care about the writable event. */
     if ((events & AWS_IO_EVENT_TYPE_WRITABLE) == 0) {
@@ -524,7 +523,7 @@ int aws_pipe_write(
     aws_pipe_on_write_completed_fn *on_completed,
     void *user_data) {
 
-    assert(src_buffer.ptr);
+    AWS_ASSERT(src_buffer.ptr);
 
     struct write_end_impl *write_impl = write_end->impl_data;
     if (!write_impl) {

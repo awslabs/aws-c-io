@@ -118,7 +118,7 @@ void aws_overlapped_init(
     aws_event_loop_on_completion_fn *on_completion,
     void *user_data) {
 
-    assert(overlapped);
+    AWS_ASSERT(overlapped);
 
     AWS_ZERO_STRUCT(overlapped->overlapped);
     overlapped->on_completion = on_completion;
@@ -126,7 +126,7 @@ void aws_overlapped_init(
 }
 
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
-    assert(overlapped);
+    AWS_ASSERT(overlapped);
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 
@@ -145,22 +145,22 @@ struct aws_event_loop_vtable s_iocp_vtable = {
 };
 
 struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
-    assert(alloc);
-    assert(clock);
+    AWS_ASSERT(alloc);
+    AWS_ASSERT(clock);
 
     if (!s_set_info_fn) {
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
 
         if (!ntdll) {
             AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "static: failed to load ntdll.dll");
-            assert(0);
+            AWS_ASSERT(0);
             exit(-1);
         }
 
         s_set_info_fn = (NTSetInformationFile *)GetProcAddress(ntdll, "NtSetInformationFile");
         if (!s_set_info_fn) {
             AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "static: failed to load NtSetInformationFile()");
-            assert(0);
+            AWS_ASSERT(0);
             exit(-1);
         }
     }
@@ -275,7 +275,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event-loop", (void *)event_loop);
 
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     /* Stop the event-thread. This might have already happened. It's safe to call multiple times. */
     aws_event_loop_stop(event_loop);
@@ -285,7 +285,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Failed to destroy event-thread, resources have been leaked.",
             (void *)event_loop);
-        assert(0 && "Failed to destroy event-thread, resources have been leaked.");
+        AWS_ASSERT(0 && "Failed to destroy event-thread, resources have been leaked.");
         return;
     }
 
@@ -306,7 +306,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     /* Clean up everything else */
     bool close_iocp_success = CloseHandle(impl->iocp_handle);
-    assert(close_iocp_success);
+    AWS_ASSERT(close_iocp_success);
     (void)close_iocp_success;
 
     aws_mutex_clean_up(&impl->synced_data.mutex);
@@ -321,7 +321,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
  * This should only be called after changing synced_data.thread_signaled from false to true. */
 static void s_signal_synced_data_changed(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", (void *)event_loop);
     /* Enqueue a special completion packet to inform the event-loop that synced_data has changed.
@@ -342,7 +342,7 @@ static int s_run(struct aws_event_loop *event_loop) {
      * and it's ok to touch synced_data without locking the mutex */
 
     /* If asserts hit, you must call stop() and wait_for_stop_completion() before calling run() again */
-    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
 
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 
@@ -363,7 +363,7 @@ clean_up:
 /* Called from any thread */
 static int s_stop(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     bool signal_thread = false;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
@@ -387,12 +387,12 @@ static int s_stop(struct aws_event_loop *event_loop) {
 /* Should not be called from event-thread */
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
 #ifdef DEBUG_BUILD
     aws_mutex_lock(&impl->synced_data.mutex);
     /* call stop() before wait_for_stop_completion() or you'll wait forever */
-    assert(impl->synced_data.state != EVENT_THREAD_STATE_RUNNING);
+    AWS_ASSERT(impl->synced_data.state != EVENT_THREAD_STATE_RUNNING);
     aws_mutex_unlock(&impl->synced_data.mutex);
 #endif
 
@@ -414,8 +414,8 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
  * Called from any thread */
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
-    assert(task);
+    AWS_ASSERT(impl);
+    AWS_ASSERT(task);
 
     /* If we're on the event-thread, just schedule it directly */
     if (s_is_event_thread(event_loop)) {
@@ -481,7 +481,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 /* Called from any thread */
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     uint64_t el_thread_id = aws_atomic_load_int(&impl->thread_id);
     return el_thread_id == aws_thread_current_thread_id();
@@ -490,8 +490,8 @@ static bool s_is_event_thread(struct aws_event_loop *event_loop) {
 /* Called from any thread */
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
-    assert(handle);
+    AWS_ASSERT(impl);
+    AWS_ASSERT(handle);
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
@@ -527,7 +527,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
  * Takes tasks from tasks_to_schedule and adds them to the scheduler. */
 static void s_process_tasks_to_schedule(struct aws_event_loop *event_loop, struct aws_linked_list *tasks_to_schedule) {
     struct iocp_loop *impl = event_loop->impl_data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     while (!aws_linked_list_empty(tasks_to_schedule)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(tasks_to_schedule);
@@ -619,7 +619,7 @@ static void s_event_thread_main(void *user_data) {
     /* Set thread id to event loop thread id. */
     aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
-    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
     DWORD timeout_ms = DEFAULT_TIMEOUT_MS;
@@ -673,7 +673,7 @@ static void s_event_thread_main(void *user_data) {
             }
         } else {
             /* If no completion entries were dequeued then the timeout must have triggered */
-            assert(GetLastError() == WAIT_TIMEOUT);
+            AWS_ASSERT(GetLastError() == WAIT_TIMEOUT);
         }
 
         /* Process synced_data */

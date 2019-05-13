@@ -438,7 +438,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    assert(handle->additional_data);
+    AWS_ASSERT(handle->additional_data);
     struct epoll_event_data *additional_handle_data = handle->additional_data;
 
     struct epoll_event dummy_event;

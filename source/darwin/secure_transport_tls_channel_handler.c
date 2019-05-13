@@ -724,7 +724,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     SSLProtocolSide protocol_side) {
-    assert(options->ctx);
+    AWS_ASSERT(options->ctx);
     struct secure_transport_ctx *secure_transport_ctx = options->ctx->impl;
 
     struct secure_transport_handler *secure_transport_handler =
@@ -782,7 +782,7 @@ static struct aws_channel_handler *s_tls_handler_new(
              * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be
              * used.
              */
-            assert(0);
+            AWS_ASSERT(0);
 #endif
             break;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:

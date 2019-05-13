@@ -78,7 +78,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
        at the docs, 128 bytes should be plenty to store that segment.
        https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations */
     char store_path[128] = {0};
-    assert(location_of_next_segment - store_path_start < sizeof(store_path));
+    AWS_ASSERT(location_of_next_segment - store_path_start < sizeof(store_path));
     memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
 
     location_of_next_segment += 1;

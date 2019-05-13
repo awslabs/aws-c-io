@@ -151,7 +151,7 @@ int aws_decode_pem_to_buffer_list(
     struct aws_allocator *alloc,
     const struct aws_byte_cursor *pem_cursor,
     struct aws_array_list *cert_chain_or_key) {
-    assert(aws_array_list_length(cert_chain_or_key) == 0);
+    AWS_ASSERT(aws_array_list_length(cert_chain_or_key) == 0);
     struct aws_array_list base_64_buffer_list;
 
     if (aws_array_list_init_dynamic(&base_64_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -221,7 +221,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to read file %s.", filename);
         return AWS_OP_ERR;
     }
-    assert(raw_file_buffer.buffer);
+    AWS_ASSERT(raw_file_buffer.buffer);
 
     struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
     if (aws_decode_pem_to_buffer_list(alloc, &file_cursor, cert_chain_or_key)) {

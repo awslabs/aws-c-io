@@ -18,7 +18,6 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -173,7 +172,7 @@ AWS_IO_API int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
 
     LARGE_INTEGER timestamp;
     bool success = QueryPerformanceCounter(&timestamp);
-    assert(success);
+    AWS_ASSERT(success);
     (void)success; /* QueryPerformanceCounter() always succeeds on XP and later */
 
     /* snprintf() returns number of characters (not including '\0') which would have written if dst_size was ignored */
@@ -187,7 +186,7 @@ AWS_IO_API int aws_pipe_get_unique_name(char *dst, size_t dst_size) {
         timestamp.HighPart,
         timestamp.LowPart);
 
-    assert(ideal_strlen > 0);
+    AWS_ASSERT(ideal_strlen > 0);
     if (dst_size < (size_t)(ideal_strlen + 1)) {
         return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
     }
@@ -202,11 +201,11 @@ int aws_pipe_init(
     struct aws_event_loop *write_end_event_loop,
     struct aws_allocator *allocator) {
 
-    assert(read_end);
-    assert(read_end_event_loop);
-    assert(write_end);
-    assert(write_end_event_loop);
-    assert(allocator);
+    AWS_ASSERT(read_end);
+    AWS_ASSERT(read_end_event_loop);
+    AWS_ASSERT(write_end);
+    AWS_ASSERT(write_end_event_loop);
+    AWS_ASSERT(allocator);
 
     AWS_ZERO_STRUCT(*write_end);
     AWS_ZERO_STRUCT(*read_end);
@@ -425,7 +424,7 @@ static bool s_read_end_is_subscribed(struct aws_pipe_read_end *read_end) {
  * complete and we will report the event. */
 static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_end, int request_reason) {
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    AWS_ASSERT(read_impl);
 
     /* We only do async monitoring while user is subscribed, but not if we've
      * reported an error and moved into the SUBSCRIBE_ERROR state */
@@ -443,7 +442,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
         return;
     }
 
-    assert(read_impl->error_code_to_report == 0);
+    AWS_ASSERT(read_impl->error_code_to_report == 0);
 
     read_impl->monitoring_request_reasons = 0;
     read_impl->state = READ_END_STATE_SUBSCRIBED;
@@ -478,7 +477,7 @@ static void s_read_end_report_error_task(struct aws_task *task, void *user_data,
     (void)status; /* Do same work whether or not this is a "cancelled" task */
 
     struct async_operation *async_op = AWS_CONTAINER_OF(task, struct async_operation, op);
-    assert(async_op->is_active);
+    AWS_ASSERT(async_op->is_active);
     async_op->is_active = false;
 
     /* If the read end has been cleaned up, don't report the error, just free the task's memory. */
@@ -489,12 +488,12 @@ static void s_read_end_report_error_task(struct aws_task *task, void *user_data,
 
     struct aws_pipe_read_end *read_end = user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    AWS_ASSERT(read_impl);
 
     /* Only report the error if we're still in the SUBSCRIBE_ERROR state.
      * If the user unsubscribed since this task was queued, then we'd be in a different state. */
     if (read_impl->state == READ_END_STATE_SUBSCRIBE_ERROR) {
-        assert(read_impl->error_code_to_report != 0);
+        AWS_ASSERT(read_impl->error_code_to_report != 0);
 
         if (read_impl->on_readable_user_callback) {
             read_impl->on_readable_user_callback(
@@ -522,7 +521,7 @@ static void s_read_end_on_zero_byte_read_completion(
 
     struct aws_pipe_read_end *read_end = overlapped->user_data;
     struct read_end_impl *read_impl = read_end->impl_data;
-    assert(read_impl);
+    AWS_ASSERT(read_impl);
 
     /* Only report events to user when in the SUBSCRIBED state.
      * If in the SUBSCRIBING state, this completion is from an operation begun during a previous subscription. */
@@ -552,7 +551,7 @@ static void s_read_end_on_zero_byte_read_completion(
     /* Note that the user callback might have invoked aws_pipe_clean_up_read_end().
      * If so, clean up the operation's memory.
      * Otherwise, relaunch the monitoring operation if there's a reason to do so */
-    assert(async_op->is_active);
+    AWS_ASSERT(async_op->is_active);
     async_op->is_active = false;
 
     if (async_op->is_read_end_cleaned_up) {
@@ -578,7 +577,7 @@ int aws_pipe_subscribe_to_readable_events(
             return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
         }
 
-        assert(0); /* Unexpected state */
+        AWS_ASSERT(0); /* Unexpected state */
         return aws_raise_error(AWS_ERROR_UNKNOWN);
     }
 
@@ -627,7 +626,7 @@ int aws_pipe_unsubscribe_from_readable_events(struct aws_pipe_read_end *read_end
 }
 
 int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_buffer, size_t *amount_read) {
-    assert(dst_buffer && dst_buffer->buffer);
+    AWS_ASSERT(dst_buffer && dst_buffer->buffer);
 
     struct read_end_impl *read_impl = read_end->impl_data;
     if (!read_impl) {
@@ -793,7 +792,7 @@ void s_write_end_on_write_completion(
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
 
-    assert((num_bytes_transferred == write_request->original_cursor.len) || status_code);
+    AWS_ASSERT((num_bytes_transferred == write_request->original_cursor.len) || status_code);
 
     struct aws_byte_cursor original_cursor = write_request->original_cursor;
     aws_pipe_on_write_completed_fn *user_callback = write_request->user_callback;

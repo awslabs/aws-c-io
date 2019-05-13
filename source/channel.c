@@ -22,8 +22,6 @@
 #include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
 
-#include <assert.h>
-
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
@@ -262,7 +260,7 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
         channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
     }
 
-    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
+    AWS_ASSERT(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
 
     while (current) {
         struct aws_channel_slot *tmp = current->adj_right;
@@ -275,13 +273,13 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 
 void aws_channel_acquire_hold(struct aws_channel *channel) {
     size_t prev_refcount = aws_atomic_fetch_add(&channel->refcount, 1);
-    assert(prev_refcount != 0);
+    AWS_ASSERT(prev_refcount != 0);
     (void)prev_refcount;
 }
 
 void aws_channel_release_hold(struct aws_channel *channel) {
     size_t prev_refcount = aws_atomic_fetch_sub(&channel->refcount, 1);
-    assert(prev_refcount != 0);
+    AWS_ASSERT(prev_refcount != 0);
 
     if (prev_refcount == 1) {
         /* Refcount is now 0, finish cleaning up channel memory. */
@@ -677,7 +675,7 @@ int aws_channel_slot_insert_end(struct aws_channel *channel, struct aws_channel_
         return aws_channel_slot_insert_right(cur, to_add);
     }
 
-    assert(0);
+    AWS_ASSERT(0);
     return AWS_OP_ERR;
 }
 
@@ -704,8 +702,8 @@ int aws_channel_slot_send_message(
     enum aws_channel_direction dir) {
 
     if (dir == AWS_CHANNEL_DIR_READ) {
-        assert(slot->adj_right);
-        assert(slot->adj_right->handler);
+        AWS_ASSERT(slot->adj_right);
+        AWS_ASSERT(slot->adj_right->handler);
 
         if (slot->adj_right->window_size >= message->message_data.len) {
             AWS_LOGF_TRACE(
@@ -733,8 +731,8 @@ int aws_channel_slot_send_message(
         return aws_raise_error(AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW);
     }
 
-    assert(slot->adj_left);
-    assert(slot->adj_left->handler);
+    AWS_ASSERT(slot->adj_left);
+    AWS_ASSERT(slot->adj_left->handler);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: sending write message of size %llu, "
@@ -779,7 +777,7 @@ int aws_channel_slot_shutdown(
     enum aws_channel_direction dir,
     int err_code,
     bool free_scarce_resources_immediately) {
-    assert(slot->handler);
+    AWS_ASSERT(slot->handler);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
@@ -797,7 +795,7 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 
     struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
     struct aws_channel *channel = arg;
-    assert(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
+    AWS_ASSERT(channel->channel_state == AWS_CHANNEL_SHUT_DOWN);
 
     /* Cancel tasks that have been scheduled with the event loop */
     while (!aws_linked_list_empty(&channel->channel_thread_tasks.list)) {
@@ -821,8 +819,8 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
         aws_event_loop_cancel_task(channel->loop, &channel->cross_thread_tasks.scheduling_task);
     }
 
-    assert(aws_linked_list_empty(&channel->channel_thread_tasks.list));
-    assert(aws_linked_list_empty(&channel->cross_thread_tasks.list));
+    AWS_ASSERT(aws_linked_list_empty(&channel->channel_thread_tasks.list));
+    AWS_ASSERT(aws_linked_list_empty(&channel->cross_thread_tasks.list));
 
     channel->on_shutdown_completed(channel, shutdown_notify->error_code, channel->shutdown_user_data);
 }
@@ -897,7 +895,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 }
 
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
-    assert(slot->adj_right);
+    AWS_ASSERT(slot->adj_right);
     return slot->adj_right->window_size;
 }
 
@@ -906,7 +904,7 @@ size_t aws_channel_slot_upstream_message_overhead(struct aws_channel_slot *slot)
 }
 
 void aws_channel_handler_destroy(struct aws_channel_handler *handler) {
-    assert(handler->vtable && handler->vtable->destroy);
+    AWS_ASSERT(handler->vtable && handler->vtable->destroy);
     handler->vtable->destroy(handler);
 }
 
@@ -915,7 +913,7 @@ int aws_channel_handler_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    assert(handler->vtable && handler->vtable->process_read_message);
+    AWS_ASSERT(handler->vtable && handler->vtable->process_read_message);
     return handler->vtable->process_read_message(handler, slot, message);
 }
 
@@ -924,7 +922,7 @@ int aws_channel_handler_process_write_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    assert(handler->vtable && handler->vtable->process_write_message);
+    AWS_ASSERT(handler->vtable && handler->vtable->process_write_message);
     return handler->vtable->process_write_message(handler, slot, message);
 }
 
@@ -933,7 +931,7 @@ int aws_channel_handler_increment_read_window(
     struct aws_channel_slot *slot,
     size_t size) {
 
-    assert(handler->vtable && handler->vtable->increment_read_window);
+    AWS_ASSERT(handler->vtable && handler->vtable->increment_read_window);
     return handler->vtable->increment_read_window(handler, slot, size);
 }
 
@@ -944,11 +942,11 @@ int aws_channel_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    assert(handler->vtable && handler->vtable->shutdown);
+    AWS_ASSERT(handler->vtable && handler->vtable->shutdown);
     return handler->vtable->shutdown(handler, slot, dir, error_code, free_scarce_resources_immediately);
 }
 
 size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
-    assert(handler->vtable && handler->vtable->initial_window_size);
+    AWS_ASSERT(handler->vtable && handler->vtable->initial_window_size);
     return handler->vtable->initial_window_size(handler);
 }

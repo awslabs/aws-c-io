@@ -21,8 +21,6 @@
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
-#include <assert.h>
-
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
@@ -53,7 +51,7 @@ static int s_socket_process_read_message(
 
     /*since a socket handler will ALWAYS be the first handler in a channel,
      * this should NEVER happen, if it does it's a programmer error.*/
-    assert(0);
+    AWS_ASSERT(0);
     return aws_raise_error(AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT);
 }
 
@@ -348,7 +346,7 @@ struct aws_channel_handler *aws_socket_handler_new(
 
     /* make sure something has assigned this socket to an event loop, in client mode this will already have occurred.
        In server mode, someone should have assigned it before calling us.*/
-    assert(aws_socket_get_event_loop(socket));
+    AWS_ASSERT(aws_socket_get_event_loop(socket));
 
     struct aws_channel_handler *handler = NULL;
 

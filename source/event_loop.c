@@ -18,8 +18,6 @@
 #include <aws/common/clock.h>
 #include <aws/common/system_info.h>
 
-#include <assert.h>
-
 int aws_event_loop_group_init(
     struct aws_event_loop_group *el_group,
     struct aws_allocator *alloc,
@@ -28,7 +26,7 @@ int aws_event_loop_group_init(
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data) {
 
-    assert(new_loop_fn);
+    AWS_ASSERT(new_loop_fn);
 
     el_group->allocator = alloc;
     aws_atomic_init_int(&el_group->current_index, 0);
@@ -108,7 +106,7 @@ struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_gr
 
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group) {
     size_t loop_count = aws_array_list_length(&el_group->event_loops);
-    assert(loop_count > 0);
+    AWS_ASSERT(loop_count > 0);
     if (loop_count == 0) {
         return NULL;
     }
@@ -161,8 +159,8 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
 }
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
-    assert(event_loop->vtable && event_loop->vtable->destroy);
-    assert(!aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     event_loop->vtable->destroy(event_loop);
 }
@@ -172,7 +170,7 @@ int aws_event_loop_fetch_local_object(
     void *key,
     struct aws_event_loop_local_object *obj) {
 
-    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
 
     struct aws_hash_element *object = NULL;
     if (!aws_hash_table_find(&event_loop->local_data, key, &object) && object) {
@@ -184,7 +182,7 @@ int aws_event_loop_fetch_local_object(
 }
 
 int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj) {
-    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
 
     struct aws_hash_element *object = NULL;
     int was_created = 0;
@@ -203,7 +201,7 @@ int aws_event_loop_remove_local_object(
     void *key,
     struct aws_event_loop_local_object *removed_obj) {
 
-    assert(aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
 
     struct aws_hash_element existing_object;
     AWS_ZERO_STRUCT(existing_object);
@@ -224,24 +222,24 @@ int aws_event_loop_remove_local_object(
 }
 
 int aws_event_loop_run(struct aws_event_loop *event_loop) {
-    assert(event_loop->vtable && event_loop->vtable->run);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->run);
     return event_loop->vtable->run(event_loop);
 }
 
 int aws_event_loop_stop(struct aws_event_loop *event_loop) {
-    assert(event_loop->vtable && event_loop->vtable->stop);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->stop);
     return event_loop->vtable->stop(event_loop);
 }
 
 int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
-    assert(!aws_event_loop_thread_is_callers_thread(event_loop));
-    assert(event_loop->vtable && event_loop->vtable->wait_for_stop_completion);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->wait_for_stop_completion);
     return event_loop->vtable->wait_for_stop_completion(event_loop);
 }
 
 void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    assert(event_loop->vtable && event_loop->vtable->schedule_task_now);
-    assert(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
+    AWS_ASSERT(task);
     event_loop->vtable->schedule_task_now(event_loop, task);
 }
 
@@ -250,15 +248,15 @@ void aws_event_loop_schedule_task_future(
     struct aws_task *task,
     uint64_t run_at_nanos) {
 
-    assert(event_loop->vtable && event_loop->vtable->schedule_task_future);
-    assert(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
+    AWS_ASSERT(task);
     event_loop->vtable->schedule_task_future(event_loop, task, run_at_nanos);
 }
 
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    assert(event_loop->vtable && event_loop->vtable->cancel_task);
-    assert(aws_event_loop_thread_is_callers_thread(event_loop));
-    assert(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
+    AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(task);
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
@@ -268,7 +266,7 @@ int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
 
-    assert(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
     return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
 }
 
@@ -281,28 +279,28 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    assert(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
     return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    assert(aws_event_loop_thread_is_callers_thread(event_loop));
-    assert(event_loop->vtable && event_loop->vtable->unsubscribe_from_io_events);
+    AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->unsubscribe_from_io_events);
     return event_loop->vtable->unsubscribe_from_io_events(event_loop, handle);
 }
 
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    assert(event_loop && event_loop->vtable->free_io_event_resources);
+    AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     event_loop->vtable->free_io_event_resources(handle->additional_data);
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
-    assert(event_loop->vtable && event_loop->vtable->is_on_callers_thread);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->is_on_callers_thread);
     return event_loop->vtable->is_on_callers_thread(event_loop);
 }
 
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {
-    assert(event_loop->clock);
+    AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
 }

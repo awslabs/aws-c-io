@@ -104,7 +104,7 @@ static int s_testing_channel_handler_process_read_message(
     (void)slot;
     (void)message;
     /*this should never happen, this is a mocked out handler for testing out the next downstream handler*/
-    assert(0);
+    AWS_ASSERT(0);
     return AWS_OP_ERR;
 }
 
@@ -234,7 +234,7 @@ AWS_STATIC_IMPL size_t testing_channel_last_window_update(struct testing_channel
  * Use testing_channel_drain_queued_tasks() to repeatedly run tasks until only future-tasks remain.
  */
 AWS_STATIC_IMPL void testing_channel_run_currently_queued_tasks(struct testing_channel *testing) {
-    assert(aws_channel_thread_is_callers_thread(testing->channel));
+    AWS_ASSERT(aws_channel_thread_is_callers_thread(testing->channel));
 
     uint64_t now = 0;
     aws_event_loop_current_clock_time(testing->loop, &now);
@@ -245,7 +245,7 @@ AWS_STATIC_IMPL void testing_channel_run_currently_queued_tasks(struct testing_c
  * This covers the common case where there's a chain reaction of now-tasks scheduling further now-tasks.
  */
 AWS_STATIC_IMPL void testing_channel_drain_queued_tasks(struct testing_channel *testing) {
-    assert(aws_channel_thread_is_callers_thread(testing->channel));
+    AWS_ASSERT(aws_channel_thread_is_callers_thread(testing->channel));
 
     uint64_t now = 0;
     uint64_t next_task_time = 0;

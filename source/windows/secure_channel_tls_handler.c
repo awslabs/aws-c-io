@@ -29,7 +29,6 @@
 #include <schannel.h>
 #include <security.h>
 
-#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -349,7 +348,7 @@ static int s_fillin_alpn_data(
     for (size_t i = 0; i < protocols_count; ++i) {
         struct aws_byte_cursor *protocol_ptr = NULL;
         aws_array_list_get_at_ptr(&alpn_buffers, (void **)&protocol_ptr, i);
-        assert(protocol_ptr);
+        AWS_ASSERT(protocol_ptr);
         *extension_length += (uint32_t)protocol_ptr->len + 1;
         *protocols_byte_length += (uint16_t)protocol_ptr->len + 1;
         CHECK_ALPN_BUFFER_SIZE(buffer_size, index + 1, alpn_buffers)
@@ -471,7 +470,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         return AWS_OP_ERR;
     }
 
-    assert(outgoing_message->message_data.capacity >= data_to_write_len);
+    AWS_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
     memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
     outgoing_message->message_data.len = output_buffer.cbBuffer;
     FreeContextBuffer(output_buffer.pvBuffer);
@@ -704,7 +703,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     char server_name_cstr[256];
     AWS_ZERO_ARRAY(server_name_cstr);
-    assert(sc_handler->server_name.len < 256);
+    AWS_ASSERT(sc_handler->server_name.len < 256);
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
     SECURITY_STATUS status = InitializeSecurityContextA(
@@ -745,7 +744,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
         return AWS_OP_ERR;
     }
 
-    assert(outgoing_message->message_data.capacity >= data_to_write_len);
+    AWS_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
     memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
     outgoing_message->message_data.len = output_buffer.cbBuffer;
     FreeContextBuffer(output_buffer.pvBuffer);
@@ -808,7 +807,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     char server_name_cstr[256];
     AWS_ZERO_ARRAY(server_name_cstr);
-    assert(sc_handler->server_name.len < 256);
+    AWS_ASSERT(sc_handler->server_name.len < 256);
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
     status = InitializeSecurityContextA(
@@ -973,7 +972,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 struct aws_byte_cursor to_append =
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
-                assert(!append_failed);
+                AWS_ASSERT(!append_failed);
                 (void)append_failed;
 
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
@@ -1212,7 +1211,7 @@ static int s_process_write_message(
     struct aws_io_message *message) {
 
     struct secure_channel_handler *sc_handler = (struct secure_channel_handler *)handler->impl;
-    assert(sc_handler->negotiation_finished);
+    AWS_ASSERT(sc_handler->negotiation_finished);
     SECURITY_STATUS status = SEC_E_OK;
 
     if (message) {
@@ -1547,7 +1546,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     bool is_client_mode) {
-    assert(options->ctx);
+    AWS_ASSERT(options->ctx);
 
     struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
 

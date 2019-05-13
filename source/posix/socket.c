@@ -71,7 +71,7 @@ static int s_convert_domain(enum aws_socket_domain domain) {
         case AWS_SOCKET_LOCAL:
             return AF_UNIX;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             return AF_INET;
     }
 }
@@ -83,7 +83,7 @@ static int s_convert_type(enum aws_socket_type type) {
         case AWS_SOCKET_DGRAM:
             return SOCK_DGRAM;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             return SOCK_STREAM;
     }
 }
@@ -171,7 +171,7 @@ static int s_socket_init(
     struct aws_allocator *alloc,
     const struct aws_socket_options *options,
     int existing_socket_fd) {
-    assert(options);
+    AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 
     struct posix_socket *posix_socket = aws_mem_acquire(alloc, sizeof(struct posix_socket));
@@ -211,7 +211,7 @@ static int s_socket_init(
 }
 
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
-    assert(options);
+    AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
 
@@ -507,8 +507,8 @@ int aws_socket_connect(
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    assert(event_loop);
-    assert(!socket->event_loop);
+    AWS_ASSERT(event_loop);
+    AWS_ASSERT(!socket->event_loop);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: beginning connect.", (void *)socket, socket->io_handle.data.fd);
 
@@ -521,7 +521,7 @@ int aws_socket_connect(
     }
 
     if (socket->options.type != AWS_SOCKET_DGRAM) {
-        assert(on_connection_result);
+        AWS_ASSERT(on_connection_result);
     }
 
     struct socket_address address;
@@ -540,14 +540,14 @@ int aws_socket_connect(
         sock_size = sizeof(address.sock_addr_types.addr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-        assert(sizeof(remote_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
+        AWS_ASSERT(sizeof(remote_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
         strncpy(
             address.sock_addr_types.un_addr.sun_path,
             remote_endpoint->address,
             sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
         sock_size = sizeof(address.sock_addr_types.un_addr);
     } else {
-        assert(0);
+        AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
     }
 
@@ -707,14 +707,14 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         sock_size = sizeof(address.sock_addr_types.addr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-        assert(sizeof(local_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
+        AWS_ASSERT(sizeof(local_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
         strncpy(
             address.sock_addr_types.un_addr.sun_path,
             local_endpoint->address,
             sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
         sock_size = sizeof(address.sock_addr_types.un_addr);
     } else {
-        assert(0);
+        AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
     }
 
@@ -925,8 +925,8 @@ int aws_socket_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    assert(on_accept_result);
-    assert(accept_loop);
+    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(accept_loop);
 
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
@@ -1566,7 +1566,7 @@ int aws_socket_subscribe_to_readable_events(
         return aws_raise_error(AWS_ERROR_IO_ALREADY_SUBSCRIBED);
     }
 
-    assert(on_readable);
+    AWS_ASSERT(on_readable);
     socket->readable_user_data = user_data;
     socket->readable_fn = on_readable;
 
@@ -1574,7 +1574,7 @@ int aws_socket_subscribe_to_readable_events(
 }
 
 int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
-    assert(amount_read);
+    AWS_ASSERT(amount_read);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         AWS_LOGF_ERROR(
@@ -1656,7 +1656,7 @@ int aws_socket_write(
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    assert(written_fn);
+    AWS_ASSERT(written_fn);
     struct posix_socket *socket_impl = socket->impl;
     struct write_request *write_request = aws_mem_acquire(socket->allocator, sizeof(struct write_request));
 

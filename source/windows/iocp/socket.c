@@ -36,7 +36,6 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
 
-#include <assert.h>
 #include <aws/io/io.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -270,7 +269,7 @@ static int s_convert_domain(enum aws_socket_domain domain) {
         case AWS_SOCKET_LOCAL:
             return AF_UNIX;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             return AF_INET;
     }
 }
@@ -282,7 +281,7 @@ static int s_convert_type(enum aws_socket_type type) {
         case AWS_SOCKET_DGRAM:
             return SOCK_DGRAM;
         default:
-            assert(0);
+            AWS_ASSERT(0);
             return SOCK_STREAM;
     }
 }
@@ -345,8 +344,8 @@ static int s_socket_init(
     struct aws_allocator *alloc,
     const struct aws_socket_options *options,
     bool create_underlying_socket) {
-    assert(options->domain <= AWS_SOCKET_LOCAL);
-    assert(options->type <= AWS_SOCKET_DGRAM);
+    AWS_ASSERT(options->domain <= AWS_SOCKET_LOCAL);
+    AWS_ASSERT(options->type <= AWS_SOCKET_DGRAM);
     AWS_ZERO_STRUCT(*socket);
 
     struct iocp_socket *impl = aws_mem_acquire(alloc, sizeof(struct iocp_socket));
@@ -390,7 +389,7 @@ static int s_socket_init(
 }
 
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
-    assert(options);
+    AWS_ASSERT(options);
 
     aws_check_and_init_winsock();
 
@@ -488,7 +487,7 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
 
 int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
     struct iocp_socket *socket_impl = socket->impl;
-    assert(socket->readable_fn);
+    AWS_ASSERT(socket->readable_fn);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         AWS_LOGF_ERROR(
@@ -516,8 +515,8 @@ int aws_socket_subscribe_to_readable_events(
     aws_socket_on_readable_fn *on_readable,
     void *user_data) {
     struct iocp_socket *socket_impl = socket->impl;
-    assert(socket->event_loop);
-    assert(!socket->readable_fn);
+    AWS_ASSERT(socket->event_loop);
+    AWS_ASSERT(!socket->readable_fn);
 
     if (!(socket->state & CONNECTED_READ)) {
         AWS_LOGF_ERROR(
@@ -982,8 +981,8 @@ static int s_ipv4_stream_connect(
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    assert(connect_loop);
-    assert(on_connection_result);
+    AWS_ASSERT(connect_loop);
+    AWS_ASSERT(on_connection_result);
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
@@ -1038,8 +1037,8 @@ static int s_ipv6_stream_connect(
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    assert(connect_loop);
-    assert(on_connection_result);
+    AWS_ASSERT(connect_loop);
+    AWS_ASSERT(on_connection_result);
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
@@ -1117,8 +1116,8 @@ static int s_local_connect(
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    assert(connect_loop);
-    assert(on_connection_result);
+    AWS_ASSERT(connect_loop);
+    AWS_ASSERT(on_connection_result);
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, (void *)socket->io_handle.data.handle);
@@ -1893,8 +1892,8 @@ static int s_tcp_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    assert(accept_loop);
-    assert(on_accept_result);
+    AWS_ASSERT(accept_loop);
+    AWS_ASSERT(on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
@@ -1982,7 +1981,7 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
         "id=%p handle=%p: shutting down accept.",
         (void *)socket,
         (void *)socket->io_handle.data.handle);
-    assert(socket->event_loop);
+    AWS_ASSERT(socket->event_loop);
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         struct stop_accept_args args = {
             .mutex = AWS_MUTEX_INIT,
@@ -2055,8 +2054,8 @@ static int s_local_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    assert(accept_loop);
-    assert(on_accept_result);
+    AWS_ASSERT(accept_loop);
+    AWS_ASSERT(on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
@@ -2293,7 +2292,7 @@ static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status 
 }
 
 static int s_wait_on_close(struct aws_socket *socket) {
-    assert(socket->event_loop);
+    AWS_ASSERT(socket->event_loop);
 
     /* don't freak out on me, this almost never happens, and never occurs inside a channel
     * it only gets hit from a listening socket shutting down or from a unit test.
@@ -3042,7 +3041,7 @@ static void s_socket_written_event(
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             (unsigned long long)num_bytes_transferred);
-        assert(num_bytes_transferred == write_cb_args->original_buffer_len);
+        AWS_ASSERT(num_bytes_transferred == write_cb_args->original_buffer_len);
     }
 
     aws_linked_list_remove(&operation_data->node);
