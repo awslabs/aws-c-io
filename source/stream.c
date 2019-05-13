@@ -24,32 +24,32 @@
 #endif
 
 int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis) {
-    assert(stream && stream->vtable && stream->vtable->seek);
+    AWS_ASSERT(stream && stream->vtable && stream->vtable->seek);
 
     return stream->vtable->seek(stream, offset, basis);
 }
 
 int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read) {
-    assert(stream && stream->vtable && stream->vtable->read);
+    AWS_ASSERT(stream && stream->vtable && stream->vtable->read);
 
     return stream->vtable->read(stream, dest, amount_read);
 }
 
 int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
-    assert(stream && stream->vtable && stream->vtable->get_status);
+    AWS_ASSERT(stream && stream->vtable && stream->vtable->get_status);
 
     return stream->vtable->get_status(stream, status);
 }
 
 int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length) {
-    assert(stream && stream->vtable && stream->vtable->get_length);
+    AWS_ASSERT(stream && stream->vtable && stream->vtable->get_length);
 
     return stream->vtable->get_length(stream, out_length);
 }
 
 void aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
-        assert(stream->vtable && stream->vtable->clean_up);
+        AWS_ASSERT(stream->vtable && stream->vtable->clean_up);
 
         stream->vtable->clean_up(stream);
 
@@ -121,13 +121,13 @@ static int s_aws_input_stream_byte_cursor_seek(
     }
 
     /* true because we already validated against (impl->original_cursor.len) which is <= SIZE_MAX */
-    assert(final_offset <= SIZE_MAX);
+    AWS_ASSERT(final_offset <= SIZE_MAX);
 
     /* safe via previous assert */
     size_t final_offset_sz = (size_t)final_offset;
 
     /* sanity */
-    assert(final_offset_sz <= impl->current_cursor.len);
+    AWS_ASSERT(final_offset_sz <= impl->current_cursor.len);
 
     impl->current_cursor = impl->original_cursor;
 

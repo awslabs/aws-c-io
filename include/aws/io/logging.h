@@ -18,8 +18,6 @@
 
 #include <aws/io/io.h>
 
-#include <assert.h>
-
 struct aws_log_channel;
 struct aws_log_formatter;
 struct aws_log_writer;
@@ -165,7 +163,7 @@ struct aws_logger_standard_options {
  */
 #define AWS_LOGF(log_level, subject, ...)                                                                              \
     {                                                                                                                  \
-        assert(log_level > 0);                                                                                         \
+        AWS_ASSERT(log_level > 0);                                                                                         \
         struct aws_logger *logger = aws_logger_get();                                                                  \
         if (logger != NULL && logger->vtable->get_log_level(logger, (subject)) >= (log_level)) {                       \
             logger->vtable->log(logger, log_level, subject, __VA_ARGS__);                                              \

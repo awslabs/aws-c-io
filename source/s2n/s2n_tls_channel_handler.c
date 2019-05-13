@@ -21,7 +21,6 @@
 
 #include <aws/common/task_scheduler.h>
 
-#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -708,7 +707,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     struct aws_channel_slot *slot,
     s2n_mode mode) {
 
-    assert(options->ctx);
+    AWS_ASSERT(options->ctx);
     struct s2n_handler *s2n_handler = aws_mem_acquire(allocator, sizeof(struct s2n_handler));
 
     if (!s2n_handler) {

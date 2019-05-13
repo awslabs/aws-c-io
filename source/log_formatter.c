@@ -224,6 +224,6 @@ int aws_log_formatter_init_default(
 }
 
 void aws_log_formatter_clean_up(struct aws_log_formatter *formatter) {
-    assert(formatter->vtable->clean_up);
+    AWS_ASSERT(formatter->vtable->clean_up);
     (formatter->vtable->clean_up)(formatter);
 }

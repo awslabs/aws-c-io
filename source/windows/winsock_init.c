@@ -41,12 +41,12 @@ void aws_check_and_init_winsock(void) {
         if (WSAStartup(requested_version, &wsa_data)) {
             AWS_LOGF_FATAL(
                 AWS_LS_IO_SOCKET, "static: WinSock initialization failed with error %d", (int)GetLastError());
-            assert(0);
+            AWS_ASSERT(0);
             exit(-1);
         }
 
         SOCKET dummy_socket = socket(AF_INET, SOCK_STREAM, 0);
-        assert(dummy_socket != INVALID_SOCKET);
+        AWS_ASSERT(dummy_socket != INVALID_SOCKET);
 
         AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "static: loading WSAID_CONNECTEX function");
         GUID connect_ex_guid = WSAID_CONNECTEX;
@@ -65,7 +65,7 @@ void aws_check_and_init_winsock(void) {
         if (rc) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET, "static: failed to load WSAID_CONNECTEX function with error %d", (int)GetLastError());
-            assert(0);
+            AWS_ASSERT(0);
             exit(-1);
         }
 
@@ -86,7 +86,7 @@ void aws_check_and_init_winsock(void) {
         if (rc) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET, "static: failed to load WSAID_ACCEPTEX function with error %d", (int)GetLastError());
-            assert(0);
+            AWS_ASSERT(0);
             exit(-1);
         }
 

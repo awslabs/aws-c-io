@@ -35,7 +35,7 @@ static int s_foreground_channel_send(struct aws_log_channel *channel, struct aws
 
     struct aws_log_foreground_channel *impl = (struct aws_log_foreground_channel *)channel->impl;
 
-    assert(channel->writer->vtable->write);
+    AWS_ASSERT(channel->writer->vtable->write);
 
     aws_mutex_lock(&impl->sync);
     (channel->writer->vtable->write)(channel->writer, log_line);
@@ -138,7 +138,7 @@ static void s_background_thread_writer(void *thread_data) {
     (void)thread_data;
 
     struct aws_log_channel *channel = (struct aws_log_channel *)thread_data;
-    assert(channel->writer->vtable->write);
+    AWS_ASSERT(channel->writer->vtable->write);
 
     struct aws_log_background_channel *impl = (struct aws_log_background_channel *)channel->impl;
 
@@ -252,6 +252,6 @@ clean_up_sync_init_fail:
 }
 
 void aws_log_channel_clean_up(struct aws_log_channel *channel) {
-    assert(channel->vtable->clean_up);
+    AWS_ASSERT(channel->vtable->clean_up);
     (channel->vtable->clean_up)(channel);
 }

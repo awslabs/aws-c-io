@@ -202,7 +202,7 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
     };
 
     int err = aws_socket_init(&socket, alloc, &options);
-    assert(!err);
+    AWS_ASSERT(!err);
 
     err = aws_socket_bind(&socket, &endpoint);
     err |= aws_socket_listen(&socket, 1024);

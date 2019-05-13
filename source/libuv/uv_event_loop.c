@@ -111,7 +111,7 @@ struct libuv_owned {
     enum event_thread_state state;
 };
 static struct libuv_owned *s_owned(struct libuv_loop *loop) {
-    assert(loop->owns_uv_loop);
+    AWS_ASSERT(loop->owns_uv_loop);
     return loop->ownership_specific.uv_owned;
 }
 
@@ -121,7 +121,7 @@ struct libuv_unowned {
     uv_async_t get_thread_id_async;
 };
 static struct libuv_unowned *s_unowned(struct libuv_loop *loop) {
-    assert(!loop->owns_uv_loop);
+    AWS_ASSERT(!loop->owns_uv_loop);
     return loop->ownership_specific.uv_unowned;
 }
 
@@ -337,7 +337,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 #if UV_VERSION_MAJOR == 0
         uv_loop_delete(impl->uv_loop);
 #else
-        assert(!uv_loop_alive(impl->uv_loop));
+        AWS_ASSERT(!uv_loop_alive(impl->uv_loop));
         int result = uv_loop_close(impl->uv_loop);
         AWS_FATAL_ASSERT(result == 0);
 #endif
@@ -384,7 +384,7 @@ static void s_uv_task_timer_cb(uv_timer_t *handle UV_STATUS_PARAM) {
     /* Remove handle from hash table to prevent future collsions when rescheduling */
     int was_present = 0;
     aws_hash_table_remove(&impl->active_thread_data.running_tasks, task->task, NULL, &was_present);
-    assert(was_present);
+    AWS_ASSERT(was_present);
 
     /* Run the task */
     aws_task_run(task->task, AWS_TASK_STATUS_RUN_READY);
@@ -397,7 +397,7 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
 
     struct aws_event_loop *event_loop = s_loop_from_impl(impl);
     /* This function should only be called from the uv thread or an async */
-    assert(s_is_on_callers_thread(event_loop));
+    AWS_ASSERT(s_is_on_callers_thread(event_loop));
 
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
@@ -413,7 +413,7 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
 
     int was_created = 0;
     aws_hash_table_put(&impl->active_thread_data.running_tasks, task, task_data, &was_created);
-    assert(was_created == 1);
+    AWS_ASSERT(was_created == 1);
 }
 
 /* Wakes up the event loop and passes pending tasks to the real task scheduler */
@@ -421,7 +421,7 @@ static void s_uv_async_schedule_tasks(uv_async_t *request UV_STATUS_PARAM) {
     UV_STATUS_PARAM_UNUSED;
 
     struct libuv_loop *impl = request->data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     uv_unref((uv_handle_t *)&impl->pending_tasks.schedule_async);
 
@@ -462,7 +462,7 @@ static void s_uv_async_stop_loop(uv_async_t *request UV_STATUS_PARAM) {
     UV_STATUS_PARAM_UNUSED;
 
     struct libuv_loop *impl = request->data;
-    assert(impl);
+    AWS_ASSERT(impl);
 
     s_owned(impl)->state = EVENT_THREAD_STATE_STOPPING;
 
@@ -546,7 +546,7 @@ static int s_run(struct aws_event_loop *event_loop) {
     cleanup_timers = true;
 
     if (impl->owns_uv_loop) {
-        assert(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
+        AWS_ASSERT(s_owned(impl)->state == EVENT_THREAD_STATE_READY_TO_RUN);
 
         if (aws_thread_launch(&s_owned(impl)->thread, &s_thread_loop, impl, NULL)) {
             goto clean_up;
@@ -649,7 +649,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     struct libuv_loop *impl = event_loop->impl_data;
 
-    assert(s_is_on_callers_thread(event_loop));
+    AWS_ASSERT(s_is_on_callers_thread(event_loop));
 
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&impl->active_thread_data.running_tasks, task, &elem);
@@ -659,7 +659,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
         /* Remove handle from hash table to prevent future collsions when rescheduling */
         int was_present = 0;
         aws_hash_table_remove(&impl->active_thread_data.running_tasks, task_data->task, NULL, &was_present);
-        assert(was_present);
+        AWS_ASSERT(was_present);
 
         aws_task_run(task_data->task, AWS_TASK_STATUS_CANCELED);
 
@@ -697,12 +697,12 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    assert(event_loop);
-    assert(handle->data.fd != -1);
-    assert(handle->additional_data == NULL);
-    assert(on_event);
+    AWS_ASSERT(event_loop);
+    AWS_ASSERT(handle->data.fd != -1);
+    AWS_ASSERT(handle->additional_data == NULL);
+    AWS_ASSERT(on_event);
     /* Must subscribe for read, write, or both */
-    assert(events & (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE));
+    AWS_ASSERT(events & (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE));
 
     struct libuv_loop *impl = event_loop->impl_data;
 
@@ -758,7 +758,7 @@ static int s_subscribe_to_io_events(
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
 
     (void)event_loop;
-    assert(handle->additional_data);
+    AWS_ASSERT(handle->additional_data);
 
     struct handle_data *handle_data = handle->additional_data;
     handle->additional_data = NULL;
@@ -854,8 +854,8 @@ clean_up:
 }
 
 struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
-    assert(alloc);
-    assert(clock);
+    AWS_ASSERT(alloc);
+    AWS_ASSERT(clock);
 
     struct aws_event_loop *event_loop = NULL;
     struct libuv_loop *impl = NULL;
@@ -945,8 +945,8 @@ struct aws_event_loop *aws_event_loop_existing_libuv(
     struct aws_allocator *alloc,
     struct uv_loop_s *uv_loop,
     aws_io_clock_fn *clock) {
-    assert(alloc);
-    assert(clock);
+    AWS_ASSERT(alloc);
+    AWS_ASSERT(clock);
 
     struct aws_event_loop *event_loop = NULL;
     struct libuv_loop *impl = NULL;

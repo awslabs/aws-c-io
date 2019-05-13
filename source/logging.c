@@ -75,7 +75,7 @@ struct aws_logger *aws_logger_get(void) {
 }
 
 void aws_logger_clean_up(struct aws_logger *logger) {
-    assert(logger->vtable->clean_up != NULL);
+    AWS_ASSERT(logger->vtable->clean_up != NULL);
 
     logger->vtable->clean_up(logger);
 }
@@ -97,13 +97,13 @@ int aws_log_level_to_string(enum aws_log_level log_level, const char **level_str
 static void s_aws_logger_pipeline_owned_clean_up(struct aws_logger *logger) {
     struct aws_logger_pipeline *impl = logger->p_impl;
 
-    assert(impl->channel->vtable->clean_up != NULL);
+    AWS_ASSERT(impl->channel->vtable->clean_up != NULL);
     (impl->channel->vtable->clean_up)(impl->channel);
 
-    assert(impl->formatter->vtable->clean_up != NULL);
+    AWS_ASSERT(impl->formatter->vtable->clean_up != NULL);
     (impl->formatter->vtable->clean_up)(impl->formatter);
 
-    assert(impl->writer->vtable->clean_up != NULL);
+    AWS_ASSERT(impl->writer->vtable->clean_up != NULL);
     (impl->writer->vtable->clean_up)(impl->writer);
 
     aws_mem_release(impl->allocator, impl->channel);
@@ -128,7 +128,7 @@ static int s_aws_logger_pipeline_log(
     struct aws_logger_pipeline *impl = logger->p_impl;
     struct aws_string *output = NULL;
 
-    assert(impl->formatter->vtable->format != NULL);
+    AWS_ASSERT(impl->formatter->vtable->format != NULL);
     int result = (impl->formatter->vtable->format)(impl->formatter, &output, log_level, subject, format, format_args);
 
     va_end(format_args);
@@ -137,7 +137,7 @@ static int s_aws_logger_pipeline_log(
         return AWS_OP_ERR;
     }
 
-    assert(impl->channel->vtable->send != NULL);
+    AWS_ASSERT(impl->channel->vtable->send != NULL);
     if ((impl->channel->vtable->send)(impl->channel, output)) {
         /*
          * failure to send implies failure to transfer ownership
@@ -327,15 +327,15 @@ void aws_register_log_subject_info_list(struct aws_log_subject_info_list *log_su
      * - we'll either segfault immediately (for the first two) or for the count
      * assert, the registration will be ineffective.
      */
-    assert(log_subject_list);
-    assert(log_subject_list->subject_list);
-    assert(log_subject_list->count);
+    AWS_ASSERT(log_subject_list);
+    AWS_ASSERT(log_subject_list->subject_list);
+    AWS_ASSERT(log_subject_list->count);
 
     uint32_t min_range = log_subject_list->subject_list[0].subject_id;
 
     uint32_t slot_index = min_range >> AWS_LOG_SUBJECT_BIT_SPACE;
 
-    assert(slot_index < AWS_MAX_LOG_SUBJECT_SLOTS);
+    AWS_ASSERT(slot_index < AWS_MAX_LOG_SUBJECT_SLOTS);
 
     if (slot_index >= AWS_MAX_LOG_SUBJECT_SLOTS) {
         /* This is an NDEBUG build apparently. Kill the process rather than

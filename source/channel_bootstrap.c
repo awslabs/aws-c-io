@@ -24,8 +24,6 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
 
-#include <assert.h>
-
 #if _MSC_VER
 /* non-constant aggregate initializer */
 #    pragma warning(disable : 4204)
@@ -90,7 +88,7 @@ static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_grou
 }
 
 void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
-    assert(bootstrap);
+    AWS_ASSERT(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
@@ -110,9 +108,9 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_event_loop_group *el_group,
     struct aws_host_resolver *host_resolver,
     struct aws_host_resolution_config *host_resolution_config) {
-    assert(allocator);
-    assert(el_group);
-    assert(host_resolver);
+    AWS_ASSERT(allocator);
+    AWS_ASSERT(el_group);
+    AWS_ASSERT(host_resolver);
 
     struct aws_client_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_client_bootstrap));
 
@@ -149,7 +147,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
 int aws_client_bootstrap_set_alpn_callback(
     struct aws_client_bootstrap *bootstrap,
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
-    assert(on_protocol_negotiated);
+    AWS_ASSERT(on_protocol_negotiated);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", (void *)bootstrap);
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
@@ -195,15 +193,15 @@ struct client_connection_args {
 };
 
 void s_connection_args_acquire(struct client_connection_args *args) {
-    assert(args);
+    AWS_ASSERT(args);
     if (args->ref_count++ == 0) {
         s_client_bootstrap_acquire(args->bootstrap);
     }
 }
 
 void s_connection_args_release(struct client_connection_args *args) {
-    assert(args);
-    assert(args->ref_count > 0);
+    AWS_ASSERT(args);
+    AWS_ASSERT(args->ref_count > 0);
 
     if (--args->ref_count == 0) {
         struct aws_allocator *allocator = args->bootstrap->allocator;
@@ -577,7 +575,7 @@ static void s_on_host_resolved(
             struct aws_socket_endpoint connection_endpoint;
             connection_endpoint.port = client_connection_args->outgoing_port;
 
-            assert(sizeof(connection_endpoint.address) >= host_address_ptr->address->len + 1);
+            AWS_ASSERT(sizeof(connection_endpoint.address) >= host_address_ptr->address->len + 1);
             memcpy(
                 connection_endpoint.address,
                 aws_string_bytes(host_address_ptr->address),
@@ -651,8 +649,8 @@ static inline int s_new_client_channel(
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    assert(setup_callback);
-    assert(shutdown_callback);
+    AWS_ASSERT(setup_callback);
+    AWS_ASSERT(shutdown_callback);
 
     struct client_connection_args *client_connection_args =
         aws_mem_acquire(bootstrap->allocator, sizeof(struct client_connection_args));
@@ -775,8 +773,8 @@ int aws_client_bootstrap_new_tls_socket_channel(
     aws_client_bootstrap_on_channel_setup_fn *setup_callback,
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    assert(connection_options);
-    assert(options->type == AWS_SOCKET_STREAM);
+    AWS_ASSERT(connection_options);
+    AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -799,7 +797,7 @@ int aws_client_bootstrap_new_socket_channel(
 }
 
 void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
-    assert(bootstrap);
+    AWS_ASSERT(bootstrap);
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
 
@@ -816,8 +814,8 @@ void s_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
 struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_allocator *allocator,
     struct aws_event_loop_group *el_group) {
-    assert(allocator);
-    assert(el_group);
+    AWS_ASSERT(allocator);
+    AWS_ASSERT(el_group);
 
     struct aws_server_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_server_bootstrap));
 
@@ -1177,8 +1175,8 @@ static inline struct aws_socket *s_server_new_socket_listener(
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
     aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    assert(incoming_callback);
-    assert(shutdown_callback);
+    AWS_ASSERT(incoming_callback);
+    AWS_ASSERT(shutdown_callback);
 
     struct server_connection_args *server_connection_args =
         aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
@@ -1289,8 +1287,8 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
     aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
     void *user_data) {
-    assert(connection_options);
-    assert(options->type == AWS_SOCKET_STREAM);
+    AWS_ASSERT(connection_options);
+    AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -1316,7 +1314,7 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
 int aws_server_bootstrap_set_alpn_callback(
     struct aws_server_bootstrap *bootstrap,
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated) {
-    assert(on_protocol_negotiated);
+    AWS_ASSERT(on_protocol_negotiated);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: Setting ALPN callback", (void *)bootstrap);
     bootstrap->on_protocol_negotiated = on_protocol_negotiated;
     return AWS_OP_SUCCESS;

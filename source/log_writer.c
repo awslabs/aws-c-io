@@ -121,6 +121,6 @@ int aws_log_writer_init_file(
 }
 
 void aws_log_writer_clean_up(struct aws_log_writer *writer) {
-    assert(writer->vtable->clean_up);
+    AWS_ASSERT(writer->vtable->clean_up);
     (writer->vtable->clean_up)(writer);
 }

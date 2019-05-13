@@ -30,7 +30,6 @@
 
 #include <sys/event.h>
 
-#include <assert.h>
 #include <aws/io/io.h>
 #include <limits.h>
 #include <unistd.h>
@@ -133,8 +132,8 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
 };
 
 struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
-    assert(alloc);
-    assert(clock);
+    AWS_ASSERT(alloc);
+    AWS_ASSERT(clock);
 
     bool clean_up_event_loop_mem = false;
     bool clean_up_event_loop_base = false;
@@ -295,7 +294,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: failed to destroy event-thread, resources have been leaked",
             (void *)event_loop);
-        assert("Failed to destroy event-thread, resources have been leaked." == NULL);
+        AWS_ASSERT("Failed to destroy event-thread, resources have been leaked." == NULL);
         return;
     }
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
@@ -313,7 +312,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     }
 
     /* Warn user if aws_io_handle was subscribed, but never unsubscribed. This would cause memory leaks. */
-    assert(impl->thread_data.connected_handle_count == 0);
+    AWS_ASSERT(impl->thread_data.connected_handle_count == 0);
 
     /* Clean up everything else */
     aws_mutex_clean_up(&impl->cross_thread_data.mutex);
@@ -350,8 +349,8 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: starting event-loop thread.", (void *)event_loop);
     /* to re-run, call stop() and wait_for_stop_completion() */
-    assert(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
-    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    AWS_ASSERT(impl->cross_thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
 
     /* Since thread isn't running it's ok to touch thread_data,
      * and it's ok to touch cross_thread_data without locking the mutex */
@@ -413,7 +412,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 #ifdef DEBUG_BUILD
     aws_mutex_lock(&impl->cross_thread_data.mutex);
     /* call stop() before wait_for_stop_completion() or you'll wait forever */
-    assert(impl->cross_thread_data.state != EVENT_THREAD_STATE_RUNNING);
+    AWS_ASSERT(impl->cross_thread_data.state != EVENT_THREAD_STATE_RUNNING);
     aws_mutex_unlock(&impl->cross_thread_data.mutex);
 #endif
 
@@ -433,7 +432,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 /* Common functionality for "now" and "future" task scheduling.
  * If `run_at_nanos` is zero then the task is scheduled as a "now" task. */
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
-    assert(task);
+    AWS_ASSERT(task);
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* If we're on the event-thread, just schedule it directly */
@@ -515,7 +514,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         return;
     }
 
-    assert(handle_data->state == HANDLE_STATE_SUBSCRIBING);
+    AWS_ASSERT(handle_data->state == HANDLE_STATE_SUBSCRIBING);
 
     /* In order to monitor both reads and writes, kqueue requires you to add two separate kevents.
      * If we're adding two separate kevents, but one of those fails, we need to remove the other kevent.
@@ -561,7 +560,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     /* Look through results to see if any failed */
     for (int i = 0; i < num_events; ++i) {
         /* Every result should be flagged as error, that's just how EV_RECEIPT works */
-        assert(changelist[i].flags & EV_ERROR);
+        AWS_ASSERT(changelist[i].flags & EV_ERROR);
 
         /* If a real error occurred, .data contains the error code */
         if (changelist[i].data != 0) {
@@ -605,12 +604,12 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    assert(event_loop);
-    assert(handle->data.fd != -1);
-    assert(handle->additional_data == NULL);
-    assert(on_event);
+    AWS_ASSERT(event_loop);
+    AWS_ASSERT(handle->data.fd != -1);
+    AWS_ASSERT(handle->additional_data == NULL);
+    AWS_ASSERT(on_event);
     /* Must subscribe for read, write, or both */
-    assert(events & (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE));
+    AWS_ASSERT(events & (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE));
 
     struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
     if (!handle_data) {
@@ -661,11 +660,11 @@ static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
-    assert(handle->additional_data);
+    AWS_ASSERT(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    assert(event_loop == handle_data->event_loop);
+    AWS_ASSERT(event_loop == handle_data->event_loop);
 
     /* If the handle was successfully subscribed to kqueue, then remove it. */
     if (handle_data->state == HANDLE_STATE_SUBSCRIBED) {
@@ -802,7 +801,7 @@ static void s_event_thread_main(void *user_data) {
     /* set thread id to the event-loop's thread. */
     aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
 
-    assert(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
+    AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
     struct kevent kevents[MAX_EVENTS];

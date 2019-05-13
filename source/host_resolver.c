@@ -74,7 +74,7 @@ void aws_host_address_clean_up(struct aws_host_address *address) {
 }
 
 void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable && resolver->vtable->destroy);
+    AWS_ASSERT(resolver->vtable && resolver->vtable->destroy);
     resolver->vtable->destroy(resolver);
 }
 
@@ -84,17 +84,17 @@ int aws_host_resolver_resolve_host(
     aws_on_host_resolved_result_fn *res,
     struct aws_host_resolution_config *config,
     void *user_data) {
-    assert(resolver->vtable && resolver->vtable->resolve_host);
+    AWS_ASSERT(resolver->vtable && resolver->vtable->resolve_host);
     return resolver->vtable->resolve_host(resolver, host_name, res, config, user_data);
 }
 
 int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
-    assert(resolver->vtable && resolver->vtable->purge_cache);
+    AWS_ASSERT(resolver->vtable && resolver->vtable->purge_cache);
     return resolver->vtable->purge_cache(resolver);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
-    assert(resolver->vtable && resolver->vtable->record_connection_failure);
+    AWS_ASSERT(resolver->vtable && resolver->vtable->record_connection_failure);
     return resolver->vtable->record_connection_failure(resolver, address);
 }
 
@@ -839,7 +839,7 @@ int aws_host_resolver_init_default(
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */
     (void)el_group;
-    assert(el_group);
+    AWS_ASSERT(el_group);
     struct default_host_resolver *default_host_resolver =
         aws_mem_acquire(allocator, sizeof(struct default_host_resolver));
 
