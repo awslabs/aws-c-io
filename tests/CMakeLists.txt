@@ -166,6 +166,8 @@ add_test_case(uri_invalid_port_parse)
 add_test_case(uri_port_too_large_parse)
 add_test_case(uri_builder)
 add_test_case(uri_builder_from_string)
+add_test_case(test_uri_encode_path_rfc3986)
+add_test_case(test_uri_encode_query)
 
 add_test_case(test_home_directory_not_null)
 

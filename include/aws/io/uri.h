@@ -127,6 +127,19 @@ AWS_IO_API const struct aws_byte_cursor *aws_uri_path_and_query(const struct aws
  */
 AWS_IO_API int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list *out_params);
 
+/**
+ * Writes the uri path encoding of a cursor to a buffer.  This is the modified version of rfc3986 used by
+ * sigv4 signing.
+ */
+AWS_IO_API int aws_byte_buf_append_encoding_uri_path(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor);
+
+/**
+ * Writes the uri query param encoding (passthrough alnum + '-' '_' '~' '.') of a cursor to a buffer
+ */
+AWS_IO_API int aws_byte_buf_append_encoding_uri_param(
+    struct aws_byte_buf *buffer,
+    const struct aws_byte_cursor *cursor);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_URI_H */
