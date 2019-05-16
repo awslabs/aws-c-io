@@ -424,3 +424,133 @@ static void s_parse_query_string(struct uri_parser *parser, struct aws_byte_curs
     aws_byte_cursor_advance(str, parser->uri->query_string.len + 1);
     parser->state = FINISHED;
 }
+
+static uint8_t s_to_uppercase_hex(uint8_t value) {
+    AWS_ASSERT(value < 16);
+
+    if (value < 10) {
+        return (uint8_t)('0' + value);
+    }
+
+    return (uint8_t)('A' + value - 10);
+}
+
+typedef void(unchecked_append_canonicalized_character_fn)(struct aws_byte_buf *buffer, uint8_t value);
+
+/*
+ * Appends a character or its hex encoding to the buffer.  We reserve enough space up front so that
+ * we can do this with raw pointers rather than multiple function calls/cursors/etc...
+ *
+ * This function is for the uri path
+ */
+static void s_unchecked_append_canonicalized_path_character(struct aws_byte_buf *buffer, uint8_t value) {
+    AWS_ASSERT(buffer->len + 3 <= buffer->capacity);
+
+    uint8_t *dest_ptr = buffer->buffer + buffer->len;
+
+    if (isalnum(value)) {
+        ++buffer->len;
+        *dest_ptr = value;
+        return;
+    }
+
+    switch (value) {
+        case '-':
+        case '_':
+        case '.':
+        case '~':
+        case '$':
+        case '&':
+        case ',':
+        case '/':
+        case ':':
+        case ';':
+        case '=':
+        case '@': {
+            ++buffer->len;
+            *dest_ptr = value;
+            return;
+        }
+
+        default:
+            buffer->len += 3;
+            *dest_ptr++ = '%';
+            *dest_ptr++ = s_to_uppercase_hex(value >> 4);
+            *dest_ptr = s_to_uppercase_hex(value & 0x0F);
+            return;
+    }
+}
+
+/*
+ * Appends a character or its hex encoding to the buffer.  We reserve enough space up front so that
+ * we can do this with raw pointers rather than multiple function calls/cursors/etc...
+ *
+ * This function is for query params
+ */
+static void s_raw_append_canonicalized_param_character(struct aws_byte_buf *buffer, uint8_t value) {
+    AWS_ASSERT(buffer->len + 3 <= buffer->capacity);
+
+    uint8_t *dest_ptr = buffer->buffer + buffer->len;
+
+    if (isalnum(value)) {
+        ++buffer->len;
+        *dest_ptr = value;
+        return;
+    }
+
+    switch (value) {
+        case '-':
+        case '_':
+        case '.':
+        case '~': {
+            ++buffer->len;
+            *dest_ptr = value;
+            return;
+        }
+
+        default:
+            buffer->len += 3;
+            *dest_ptr++ = '%';
+            *dest_ptr++ = s_to_uppercase_hex(value >> 4);
+            *dest_ptr = s_to_uppercase_hex(value & 0x0F);
+            return;
+    }
+}
+
+/*
+ * Writes a cursor to a buffer using the supplied encoding function.
+ */
+static int s_encode_cursor_to_buffer(
+    struct aws_byte_buf *buffer,
+    const struct aws_byte_cursor *cursor,
+    unchecked_append_canonicalized_character_fn *append_canonicalized_character) {
+    uint8_t *current_ptr = cursor->ptr;
+    uint8_t *end_ptr = cursor->ptr + cursor->len;
+
+    /*
+     * reserve room up front for the worst possible case: everything gets % encoded
+     */
+    size_t capacity_needed = 0;
+    if (AWS_UNLIKELY(aws_mul_size_checked(3, cursor->len, &capacity_needed))) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_byte_buf_reserve_relative(buffer, capacity_needed)) {
+        return AWS_OP_ERR;
+    }
+
+    while (current_ptr < end_ptr) {
+        append_canonicalized_character(buffer, *current_ptr);
+        ++current_ptr;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_byte_buf_append_encoding_uri_path(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor) {
+    return s_encode_cursor_to_buffer(buffer, cursor, s_unchecked_append_canonicalized_path_character);
+}
+
+int aws_byte_buf_append_encoding_uri_param(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor) {
+    return s_encode_cursor_to_buffer(buffer, cursor, s_raw_append_canonicalized_param_character);
+}

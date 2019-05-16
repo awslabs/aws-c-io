@@ -503,3 +503,80 @@ static int s_test_uri_builder_from_string(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(uri_builder_from_string, s_test_uri_builder_from_string);
+
+static int s_test_uri_encode_path_case(
+    struct aws_allocator *allocator,
+    const char *input,
+    const char *expected_output) {
+    struct aws_byte_buf encoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&encoding, allocator, 100));
+
+    struct aws_byte_cursor path_cursor = aws_byte_cursor_from_c_str(input);
+    ASSERT_SUCCESS(aws_byte_buf_append_encoding_uri_path(&encoding, &path_cursor));
+
+    struct aws_byte_cursor expected_path = aws_byte_cursor_from_c_str(expected_output);
+    ASSERT_BIN_ARRAYS_EQUALS(encoding.buffer, encoding.len, expected_path.ptr, expected_path.len);
+
+    aws_byte_buf_clean_up(&encoding);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_uri_encode_path_rfc3986(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/1234/", "/path/1234/"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(
+        allocator, "/abcdefghijklmnopqrstuvwxyz/1234567890/", "/abcdefghijklmnopqrstuvwxyz/1234567890/"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(
+        allocator, "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/1234567890/", "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/1234567890/"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(
+        allocator, "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_~./$@-&,:;/=/", "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_~./$@-&,:;/=/"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/%^#! /", "/path/%25%5E%23%21%20/"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/ሴ", "/path/%E1%88%B4"));
+    ASSERT_SUCCESS(s_test_uri_encode_path_case(
+        allocator, "/path/\"'()*+<>[\\]`{|}/", "/path/%22%27%28%29%2A%2B%3C%3E%5B%5C%5D%60%7B%7C%7D/"));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_uri_encode_path_rfc3986, s_test_uri_encode_path_rfc3986);
+
+static int s_test_uri_encode_param_case(
+    struct aws_allocator *allocator,
+    const char *input,
+    const char *expected_output) {
+    struct aws_byte_buf encoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&encoding, allocator, 100));
+
+    struct aws_byte_cursor path_cursor = aws_byte_cursor_from_c_str(input);
+    ASSERT_SUCCESS(aws_byte_buf_append_encoding_uri_param(&encoding, &path_cursor));
+
+    struct aws_byte_cursor expected_path = aws_byte_cursor_from_c_str(expected_output);
+    ASSERT_BIN_ARRAYS_EQUALS(encoding.buffer, encoding.len, expected_path.ptr, expected_path.len);
+
+    aws_byte_buf_clean_up(&encoding);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_uri_encode_query(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(
+        allocator,
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"));
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(allocator, "1234567890", "1234567890"));
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(allocator, "_~.-", "_~.-"));
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(allocator, "%^#! ", "%25%5E%23%21%20"));
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(allocator, "/$@&,:;=", "%2F%24%40%26%2C%3A%3B%3D"));
+    ASSERT_SUCCESS(s_test_uri_encode_param_case(allocator, "ሴ", "%E1%88%B4"));
+    ASSERT_SUCCESS(
+        s_test_uri_encode_param_case(allocator, "\"'()*+<>[\\]`{|}", "%22%27%28%29%2A%2B%3C%3E%5B%5C%5D%60%7B%7C%7D"));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_uri_encode_query, s_test_uri_encode_query);
