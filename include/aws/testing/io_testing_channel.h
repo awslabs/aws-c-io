@@ -94,6 +94,7 @@ static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator
 struct testing_channel_handler {
     struct aws_linked_list messages;
     size_t latest_window_update;
+    size_t initial_window;
 };
 
 static int s_testing_channel_handler_process_read_message(
@@ -103,9 +104,10 @@ static int s_testing_channel_handler_process_read_message(
     (void)handler;
     (void)slot;
     (void)message;
-    /*this should never happen, this is a mocked out handler for testing out the next downstream handler*/
-    AWS_ASSERT(0);
-    return AWS_OP_ERR;
+
+    struct testing_channel_handler *testing_handler = handler->impl;
+    aws_linked_list_push_back(&testing_handler->messages, &message->queueing_handle);
+    return AWS_OP_SUCCESS;
 }
 
 static int s_testing_channel_handler_process_write_message(
@@ -142,8 +144,8 @@ static int s_testing_channel_handler_shutdown(
 }
 
 static size_t s_testing_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
-    return 16 * 1024;
+    struct testing_channel_handler *testing_handler = handler->impl;
+    return testing_handler->initial_window;
 }
 
 static size_t s_testing_channel_handler_message_overhead(struct aws_channel_handler *handler) {
@@ -174,11 +176,14 @@ static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
     .destroy = s_testing_channel_handler_destroy,
 };
 
-static struct aws_channel_handler *s_new_testing_channel_handler(struct aws_allocator *allocator) {
+static struct aws_channel_handler *s_new_testing_channel_handler(
+    struct aws_allocator *allocator,
+    size_t initial_window) {
     struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
     struct testing_channel_handler *testing_handler =
         aws_mem_acquire(allocator, sizeof(struct testing_channel_handler));
     aws_linked_list_init(&testing_handler->messages);
+    testing_handler->initial_window = initial_window;
     testing_handler->latest_window_update = 0;
     handler->impl = testing_handler;
     handler->vtable = &s_testing_channel_handler_vtable;
@@ -191,8 +196,10 @@ struct testing_channel {
     struct aws_event_loop *loop;
     struct testing_loop *loop_impl;
     struct aws_channel *channel;
-    struct testing_channel_handler *handler_impl;
-    struct aws_channel_slot *handler_slot;
+    struct testing_channel_handler *left_handler_impl;
+    struct testing_channel_handler *right_handler_impl;
+    struct aws_channel_slot *left_handler_slot;
+    struct aws_channel_slot *right_handler_slot;
 
     bool channel_setup_completed;
     bool channel_shutdown_completed;
@@ -217,17 +224,39 @@ static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel,
 
 /** when you want to test the read path of your handler, call this with the message you want it to read. */
 AWS_STATIC_IMPL int testing_channel_push_read_message(struct testing_channel *testing, struct aws_io_message *message) {
-    return aws_channel_slot_send_message(testing->handler_slot, message, AWS_CHANNEL_DIR_READ);
+    return aws_channel_slot_send_message(testing->left_handler_slot, message, AWS_CHANNEL_DIR_READ);
+}
+
+/** when you want to test the write path of your handler, call this with the message you want it to write.
+ * A downstream handler must have been installed */
+AWS_STATIC_IMPL int testing_channel_push_write_message(
+    struct testing_channel *testing,
+    struct aws_io_message *message) {
+    ASSERT_NOT_NULL(testing->right_handler_slot);
+    return aws_channel_slot_send_message(testing->right_handler_slot, message, AWS_CHANNEL_DIR_WRITE);
 }
 
 /** when you want to test the write output of your handler, call this, get the queue and iterate the messages. */
 AWS_STATIC_IMPL struct aws_linked_list *testing_channel_get_written_message_queue(struct testing_channel *testing) {
-    return &testing->handler_impl->messages;
+    return &testing->left_handler_impl->messages;
+}
+
+/** when you want to test the read output of your handler, call this, get the queue and iterate the messages.
+ * A downstream handler must have been installed */
+AWS_STATIC_IMPL struct aws_linked_list *testing_channel_get_read_message_queue(struct testing_channel *testing) {
+    AWS_ASSERT(testing->right_handler_impl);
+    return &testing->right_handler_impl->messages;
 }
 
 /** When you want to see what the latest window update issues from your channel handler was, call this. */
 AWS_STATIC_IMPL size_t testing_channel_last_window_update(struct testing_channel *testing) {
-    return testing->handler_impl->latest_window_update;
+    return testing->left_handler_impl->latest_window_update;
+}
+
+/** When you want the downstream handler to issue a window update */
+AWS_STATIC_IMPL int testing_channel_increment_read_window(struct testing_channel *testing, size_t size) {
+    ASSERT_NOT_NULL(testing->right_handler_slot);
+    return aws_channel_slot_increment_read_window(testing->right_handler_slot, size);
 }
 
 /** Executes all currently scheduled tasks whose time has come.
@@ -296,10 +325,10 @@ AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct
     testing_channel_drain_queued_tasks(testing);
     ASSERT_TRUE(testing->channel_setup_completed);
 
-    testing->handler_slot = aws_channel_slot_new(testing->channel);
-    struct aws_channel_handler *handler = s_new_testing_channel_handler(allocator);
-    testing->handler_impl = handler->impl;
-    ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->handler_slot, handler));
+    testing->left_handler_slot = aws_channel_slot_new(testing->channel);
+    struct aws_channel_handler *handler = s_new_testing_channel_handler(allocator, 16 * 1024);
+    testing->left_handler_impl = handler->impl;
+    ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->left_handler_slot, handler));
 
     return AWS_OP_SUCCESS;
 }
@@ -318,6 +347,23 @@ AWS_STATIC_IMPL int testing_channel_clean_up(struct testing_channel *testing) {
     aws_event_loop_destroy(testing->loop);
 
     ASSERT_TRUE(testing->channel_shutdown_completed);
+
+    return AWS_OP_SUCCESS;
+}
+
+/** When you want to test your handler with a downstream handler installed to the right. */
+AWS_STATIC_IMPL int testing_channel_install_downstream_handler(struct testing_channel *testing, size_t initial_window) {
+    ASSERT_NULL(testing->right_handler_slot);
+
+    testing->right_handler_slot = aws_channel_slot_new(testing->channel);
+    ASSERT_NOT_NULL(testing->right_handler_slot);
+    ASSERT_SUCCESS(aws_channel_slot_insert_end(testing->channel, testing->right_handler_slot));
+
+    struct aws_channel_handler *handler =
+        s_new_testing_channel_handler(testing->left_handler_slot->alloc, initial_window);
+    ASSERT_NOT_NULL(handler);
+    testing->right_handler_impl = handler->impl;
+    ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->right_handler_slot, handler));
 
     return AWS_OP_SUCCESS;
 }
