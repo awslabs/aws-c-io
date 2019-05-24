@@ -172,7 +172,7 @@ static uint64_t s_timestamp_to_uv_millis(struct aws_event_loop *event_loop, cons
 
 static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
 
-    (void)loop;
+    AWS_UNUSED_PARAM(loop);
 
     uv_poll_t *handle = AWS_CONTAINER_OF(w, uv_poll_t, io_watcher);
     struct handle_data *handle_data = handle->data;
@@ -200,9 +200,9 @@ static void s_uv_poll_cb(uv_loop_t *loop, uv__io_t *w, unsigned int events) {
 }
 
 static void s_uv_poll_assert_cb(uv_poll_t *handle, int status, int events) {
-    (void)handle;
-    (void)status;
-    (void)events;
+    AWS_UNUSED_PARAM(handle);
+    AWS_UNUSED_PARAM(status);
+    AWS_UNUSED_PARAM(events);
 
     /* If this triggers, s_uv_poll_cb wasn't properly installed */
     AWS_FATAL_ASSERT(false);
@@ -304,7 +304,7 @@ static void s_uv_close_timer_no_free(uv_handle_t *handle) {
 
 static int s_running_tasks_destroy(void *context, struct aws_hash_element *element) {
 
-    (void)context;
+    AWS_UNUSED_PARAM(context);
 
     struct task_data *task = element->value;
     aws_task_run(task->task, AWS_TASK_STATUS_CANCELED);
@@ -446,7 +446,7 @@ static void s_uv_async_schedule_tasks(uv_async_t *request UV_STATUS_PARAM) {
 
 static int s_running_tasks_stop(void *context, struct aws_hash_element *element) {
 
-    (void)context;
+    AWS_UNUSED_PARAM(context);
 
     struct task_data *task = element->value;
 
@@ -757,7 +757,7 @@ static int s_subscribe_to_io_events(
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
 
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     AWS_ASSERT(handle->additional_data);
 
     struct handle_data *handle_data = handle->additional_data;

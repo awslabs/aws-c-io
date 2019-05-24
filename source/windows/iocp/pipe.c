@@ -508,8 +508,8 @@ static void s_read_end_on_zero_byte_read_completion(
     int status_code,
     size_t num_bytes_transferred) {
 
-    (void)event_loop;
-    (void)num_bytes_transferred;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(num_bytes_transferred);
 
     struct async_operation *async_op = AWS_CONTAINER_OF(overlapped, struct async_operation, op);
 
@@ -786,8 +786,8 @@ void s_write_end_on_write_completion(
     int status_code,
     size_t num_bytes_transferred) {
 
-    (void)event_loop;
-    (void)num_bytes_transferred;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(num_bytes_transferred);
 
     struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;

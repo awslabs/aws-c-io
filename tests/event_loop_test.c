@@ -33,7 +33,7 @@ struct task_args {
 };
 
 static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct task_args *args = user_data;
 
     aws_mutex_lock(&args->mutex);
@@ -54,7 +54,7 @@ static bool s_task_ran_predicate(void *args) {
  */
 static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -112,7 +112,7 @@ static bool s_test_cancel_thread_task_predicate(void *args) {
  */
 static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -257,7 +257,7 @@ static bool s_overlapped_completion_predicate(void *args) {
 }
 
 static int s_test_event_loop_completion_events(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     /* Start event-loop */
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
@@ -386,7 +386,7 @@ void s_unsubrace_on_writable_event(
     int events,
     void *user_data) {
 
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     struct unsubrace_data *data = user_data;
 
     /* There should be no events after unsubscribe */
@@ -432,7 +432,7 @@ void s_unsubrace_on_writable_event(
 }
 
 void s_unsubrace_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct unsubrace_data *data = arg;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -452,7 +452,7 @@ void s_unsubrace_on_readable_event(
     int events,
     void *user_data) {
 
-    (void)handle;
+    AWS_UNUSED_PARAM(handle);
     struct unsubrace_data *data = user_data;
     int err;
 
@@ -501,7 +501,7 @@ void s_unsubrace_on_readable_event(
 }
 
 static void s_unsubrace_setup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct unsubrace_data *data = arg;
     int err;
 
@@ -543,7 +543,7 @@ static bool s_unsubrace_predicate(void *arg) {
  * and the first handle to receive its event unsubscribed the other handle.
  * Shortname: unsubrace */
 static int s_test_event_loop_no_events_after_unsubscribe(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
     ASSERT_NOT_NULL(event_loop);
 
@@ -661,7 +661,7 @@ static void s_thread_tester_update(struct thread_tester *tester) {
 }
 
 static void s_thread_tester_update_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct thread_tester *tester = arg;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -677,7 +677,7 @@ static bool s_thread_tester_pred(void *arg) {
 }
 
 static void s_timer_done_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct thread_tester *tester = arg;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
@@ -732,8 +732,8 @@ static void s_io_event_counter(
     int events,
     void *user_data) {
 
-    (void)event_loop;
-    (void)handle;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(handle);
     struct thread_tester *tester = user_data;
 
     int *event_counts;
@@ -863,7 +863,7 @@ static int s_state_wait_1sec(struct thread_tester *tester) {
 
 /* Test that subscribe/unubscribe work at all */
 static int s_test_event_loop_subscribe_unsubscribe(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
@@ -878,7 +878,7 @@ static int s_test_event_loop_subscribe_unsubscribe(struct aws_allocator *allocat
 AWS_TEST_CASE(event_loop_subscribe_unsubscribe, s_test_event_loop_subscribe_unsubscribe)
 
 static int s_test_event_loop_writable_event_on_subscribe(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
@@ -896,7 +896,7 @@ static int s_test_event_loop_writable_event_on_subscribe(struct aws_allocator *a
 AWS_TEST_CASE(event_loop_writable_event_on_subscribe, s_test_event_loop_writable_event_on_subscribe)
 
 static int s_test_event_loop_no_readable_event_before_write(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
@@ -912,7 +912,7 @@ static int s_test_event_loop_no_readable_event_before_write(struct aws_allocator
 AWS_TEST_CASE(event_loop_no_readable_event_before_write, s_test_event_loop_no_readable_event_before_write);
 
 static int s_test_event_loop_readable_event_on_subscribe_if_data_present(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_write_data,
@@ -932,7 +932,7 @@ AWS_TEST_CASE(
     s_test_event_loop_readable_event_on_subscribe_if_data_present);
 
 static int s_test_event_loop_readable_event_after_write(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
@@ -951,7 +951,7 @@ static int s_test_event_loop_readable_event_after_write(struct aws_allocator *al
 AWS_TEST_CASE(event_loop_readable_event_after_write, s_test_event_loop_readable_event_after_write);
 
 static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     thread_tester_state_fn *state_functions[] = {
         s_state_subscribe,
@@ -973,7 +973,7 @@ AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -1018,7 +1018,7 @@ AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop_group event_loop_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 

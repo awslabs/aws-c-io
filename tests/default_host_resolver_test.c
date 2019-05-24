@@ -49,9 +49,9 @@ static void s_default_host_resolved_test_callback(
     const struct aws_array_list *host_addresses,
     void *user_data) {
 
-    (void)resolver;
-    (void)host_name;
-    (void)err_code;
+    AWS_UNUSED_PARAM(resolver);
+    AWS_UNUSED_PARAM(host_name);
+    AWS_UNUSED_PARAM(err_code);
 
     struct default_host_callback_data *callback_data = user_data;
 
@@ -86,7 +86,7 @@ static void s_default_host_resolved_test_callback(
 }
 
 static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -148,7 +148,7 @@ AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 
 /* just FYI, this test assumes that "s3.us-east-1.amazonaws.com" does not return IPv6 addresses. */
 static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -211,7 +211,7 @@ AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_
  * If any of these assumptions ever change, this test will likely be broken, but I don't know of a better way to test
  * this end-to-end. */
 static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -308,7 +308,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_lookups_fn)
 
 static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -469,7 +469,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 AWS_TEST_CASE(test_resolver_ttls, s_test_resolver_ttls_fn)
 
 static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -653,7 +653,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 AWS_TEST_CASE(test_resolver_connect_failure_recording, s_test_resolver_connect_failure_recording_fn)
 
 static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -824,7 +824,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 AWS_TEST_CASE(test_resolver_ttl_refreshes_on_resolve, s_test_resolver_ttl_refreshes_on_resolve_fn)
 
 static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;
@@ -877,7 +877,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
 AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lookup_fn)
 
 static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_host_resolver resolver;
 
     struct aws_event_loop_group el_group;

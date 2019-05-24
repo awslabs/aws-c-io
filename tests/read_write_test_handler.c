@@ -112,7 +112,7 @@ static int s_rw_handler_shutdown(
 }
 
 static size_t s_rw_handler_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return 0;
 }
 
@@ -202,8 +202,8 @@ struct rw_handler_write_task_args {
 };
 
 static void s_rw_handler_write_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
-    (void)task;
-    (void)task_status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(task_status);
     struct rw_handler_write_task_args *write_task_args = arg;
 
     struct aws_io_message *msg = aws_channel_acquire_message_from_pool(
@@ -249,8 +249,8 @@ struct increment_read_window_task_args {
 };
 
 static void s_increment_read_window_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
-    (void)task;
-    (void)task_status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(task_status);
     struct increment_read_window_task_args *increment_read_window_task_args = arg;
     struct rw_test_handler_impl *handler_impl = increment_read_window_task_args->handler->impl;
 

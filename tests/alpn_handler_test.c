@@ -29,7 +29,7 @@ struct alpn_channel_setup_test_args {
 };
 
 static void s_alpn_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
-    (void)channel;
+    AWS_UNUSED_PARAM(channel);
 
     struct alpn_channel_setup_test_args *setup_test_args = (struct alpn_channel_setup_test_args *)ctx;
 
@@ -50,19 +50,19 @@ static int s_alpn_test_shutdown(
     enum aws_channel_direction dir,
     int error_code,
     bool abort_immediately) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 static size_t s_alpn_test_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
 
     return 0;
 }
 
 static size_t s_alpn_test_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
 
     return SIZE_MAX;
 }
@@ -104,8 +104,8 @@ static bool s_alpn_test_shutdown_predicate(void *arg) {
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
 
-    (void)channel;
-    (void)error_code;
+    AWS_UNUSED_PARAM(channel);
+    AWS_UNUSED_PARAM(error_code);
 
     struct alpn_channel_setup_test_args *test_args = (struct alpn_channel_setup_test_args *)user_data;
 
@@ -118,7 +118,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
 
 static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -190,7 +190,7 @@ AWS_TEST_CASE(alpn_successfully_negotiates, s_test_alpn_successfully_negotiates)
 
 static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -259,16 +259,16 @@ static struct aws_channel_handler *s_alpn_tls_failed_negotiation(
     struct aws_byte_buf *protocol,
     void *ctx) {
 
-    (void)new_slot;
-    (void)protocol;
-    (void)ctx;
+    AWS_UNUSED_PARAM(new_slot);
+    AWS_UNUSED_PARAM(protocol);
+    AWS_UNUSED_PARAM(ctx);
 
     return NULL;
 }
 
 static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, void *ctx) {
 
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 

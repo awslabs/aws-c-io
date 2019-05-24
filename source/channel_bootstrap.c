@@ -48,8 +48,8 @@ static bool s_tl_cleanup_predicate(void *arg) {
 }
 
 static void s_handle_thread_local_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct thread_local_shutdown_task_data *shutdown_task_data = arg;
 
     aws_mutex_lock(shutdown_task_data->mutex);
@@ -548,8 +548,8 @@ static void s_on_host_resolved(
     int err_code,
     const struct aws_array_list *host_addresses,
     void *user_data) {
-    (void)resolver;
-    (void)host_name;
+    AWS_UNUSED_PARAM(resolver);
+    AWS_UNUSED_PARAM(host_name);
 
     struct client_connection_args *client_connection_args = user_data;
 
@@ -1105,7 +1105,7 @@ void s_on_server_connection_result(
     int error_code,
     struct aws_socket *new_socket,
     void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct server_connection_args *connection_args = user_data;
 
     AWS_LOGF_DEBUG(

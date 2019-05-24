@@ -15,7 +15,7 @@
 #include <aws/testing/io_testing_channel.h>
 
 static int s_test_io_testing_channel(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct testing_channel testing_channel;
     ASSERT_SUCCESS(testing_channel_init(&testing_channel, allocator));

@@ -54,8 +54,8 @@ static struct aws_mutex *s_libcrypto_locks = NULL;
 static struct aws_allocator *s_libcrypto_allocator = NULL;
 
 static void s_locking_fn(int mode, int n, const char *unused0, int unused1) {
-    (void)unused0;
-    (void)unused1;
+    AWS_UNUSED_PARAM(unused0);
+    AWS_UNUSED_PARAM(unused1);
 
     if (mode & CRYPTO_LOCK) {
         aws_mutex_lock(&s_libcrypto_locks[n]);
@@ -152,7 +152,7 @@ static const char *s_determine_default_pki_ca_file(void) {
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
-    (void)alloc;
+    AWS_UNUSED_PARAM(alloc);
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
@@ -388,7 +388,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             const char *err_str = s2n_strerror_debug(s2n_error, NULL);
-            (void)err_str;
+    AWS_UNUSED_PARAM(err_str);
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -525,7 +525,7 @@ static int s_s2n_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
@@ -593,7 +593,7 @@ static int s_s2n_handler_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-    (void)size;
+    AWS_UNUSED_PARAM(size);
     struct s2n_handler *s2n_handler = handler->impl;
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
@@ -631,12 +631,12 @@ static int s_s2n_handler_increment_read_window(
 }
 
 static size_t s_s2n_handler_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return EST_TLS_RECORD_OVERHEAD;
 }
 
 static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
 
     return EST_HANDSHAKE_SIZE;
 }

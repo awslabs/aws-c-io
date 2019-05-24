@@ -135,7 +135,7 @@ static bool s_background_wait(void *context) {
 }
 
 static void s_background_thread_writer(void *thread_data) {
-    (void)thread_data;
+    AWS_UNUSED_PARAM(thread_data);
 
     struct aws_log_channel *channel = (struct aws_log_channel *)thread_data;
     AWS_ASSERT(channel->writer->vtable->write);

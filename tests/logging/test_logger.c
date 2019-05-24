@@ -31,8 +31,8 @@ int s_test_logger_log(
     aws_log_subject_t subject,
     const char *format,
     ...) {
-    (void)subject;
-    (void)log_level;
+    AWS_UNUSED_PARAM(subject);
+    AWS_UNUSED_PARAM(log_level);
 
     va_list format_args;
     va_start(format_args, format);
@@ -61,7 +61,7 @@ int s_test_logger_log(
 }
 
 enum aws_log_level s_test_logger_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
-    (void)subject;
+    AWS_UNUSED_PARAM(subject);
 
     struct test_logger_impl *impl = (struct test_logger_impl *)logger->p_impl;
 

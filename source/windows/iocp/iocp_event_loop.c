@@ -307,7 +307,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     /* Clean up everything else */
     bool close_iocp_success = CloseHandle(impl->iocp_handle);
     AWS_ASSERT(close_iocp_success);
-    (void)close_iocp_success;
+    AWS_UNUSED_PARAM(close_iocp_success);
 
     aws_mutex_clean_up(&impl->synced_data.mutex);
     aws_thread_clean_up(&impl->thread);
@@ -571,7 +571,7 @@ static void s_process_synced_data(struct aws_event_loop *event_loop) {
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: un-subscribing from events on handle %p",
@@ -606,7 +606,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
 static void s_free_io_event_resources(void *user_data) {
     /* iocp has no additional data stored to handle I/O events */
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
 }
 
 /* Called from event-thread */

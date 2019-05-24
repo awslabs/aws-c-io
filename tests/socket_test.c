@@ -53,7 +53,7 @@ static void s_local_listener_incoming(
     int error_code,
     struct aws_socket *new_socket,
     void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct local_listener_args *listener_args = (struct local_listener_args *)user_data;
     aws_mutex_lock(listener_args->mutex);
 
@@ -82,7 +82,7 @@ static bool s_connection_completed_predicate(void *arg) {
 }
 
 static void s_local_outgoing_connection(struct aws_socket *socket, int error_code, void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
 
     aws_mutex_lock(outgoing_args->mutex);
@@ -113,7 +113,7 @@ struct socket_io_args {
 };
 
 static void s_on_written(struct aws_socket *socket, int error_code, size_t amount_written, void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct socket_io_args *write_args = user_data;
     aws_mutex_lock(write_args->mutex);
     write_args->error_code = error_code;
@@ -129,16 +129,16 @@ static bool s_write_completed_predicate(void *arg) {
 }
 
 static void s_write_task(struct aws_task *task, void *args, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct socket_io_args *io_args = args;
     aws_socket_write(io_args->socket, io_args->to_write, s_on_written, io_args);
 }
 
 static void s_read_task(struct aws_task *task, void *args, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct socket_io_args *io_args = args;
     aws_mutex_lock(io_args->mutex);
@@ -161,9 +161,9 @@ static void s_read_task(struct aws_task *task, void *args, enum aws_task_status 
 }
 
 static void s_on_readable(struct aws_socket *socket, int error_code, void *user_data) {
-    (void)socket;
-    (void)user_data;
-    (void)error_code;
+    AWS_UNUSED_PARAM(socket);
+    AWS_UNUSED_PARAM(user_data);
+    AWS_UNUSED_PARAM(error_code);
 }
 
 static bool s_close_completed_predicate(void *arg) {
@@ -173,8 +173,8 @@ static bool s_close_completed_predicate(void *arg) {
 }
 
 static void s_socket_close_task(struct aws_task *task, void *args, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct socket_io_args *io_args = args;
     aws_mutex_lock(io_args->mutex);
     aws_socket_close(io_args->socket);
@@ -370,7 +370,7 @@ static int s_test_socket(
 }
 
 static int s_test_local_socket_communication(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -390,7 +390,7 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(local_socket_communication, s_test_local_socket_communication)
 
 static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -409,7 +409,7 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
 static int s_test_udp_socket_communication(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -445,9 +445,9 @@ static void s_test_host_resolved_test_callback(
     const struct aws_array_list *host_addresses,
     void *user_data) {
 
-    (void)resolver;
-    (void)host_name;
-    (void)err_code;
+    AWS_UNUSED_PARAM(resolver);
+    AWS_UNUSED_PARAM(host_name);
+    AWS_UNUSED_PARAM(err_code);
 
     struct test_host_callback_data *callback_data = user_data;
 
@@ -467,7 +467,7 @@ static void s_test_host_resolved_test_callback(
 }
 
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
@@ -544,7 +544,7 @@ struct error_test_args {
 };
 
 static void s_null_sock_connection(struct aws_socket *socket, int error_code, void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct error_test_args *error_args = (struct error_test_args *)user_data;
 
     aws_mutex_lock(&error_args->mutex);
@@ -557,7 +557,7 @@ static void s_null_sock_connection(struct aws_socket *socket, int error_code, vo
 }
 
 static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -599,7 +599,7 @@ static bool s_outgoing_tcp_error_predicate(void *args) {
 }
 
 static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -640,7 +640,7 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
 static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     if (!s_test_running_as_root(allocator)) {
         struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -671,7 +671,7 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 AWS_TEST_CASE(incoming_tcp_sock_errors, s_test_incoming_tcp_sock_errors)
 
 static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     if (!s_test_running_as_root(allocator)) {
 
         struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
@@ -706,13 +706,13 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 AWS_TEST_CASE(incoming_udp_sock_errors, s_test_incoming_udp_sock_errors)
 
 static void s_on_null_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
-    (void)socket;
-    (void)error_code;
-    (void)user_data;
+    AWS_UNUSED_PARAM(socket);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(user_data);
 }
 
 static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -764,15 +764,15 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
 AWS_TEST_CASE(wrong_thread_read_write_fails, s_test_wrong_thread_read_write_fails)
 
 static void s_test_destroy_socket_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct aws_socket *socket = arg;
     aws_socket_clean_up(socket);
 }
 
 static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
@@ -859,7 +859,7 @@ static void s_local_listener_incoming_destroy_listener(
     int error_code,
     struct aws_socket *new_socket,
     void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct local_listener_args *listener_args = (struct local_listener_args *)user_data;
     aws_mutex_lock(listener_args->mutex);
 
@@ -875,7 +875,7 @@ static void s_local_listener_incoming_destroy_listener(
 }
 
 static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -974,7 +974,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 AWS_TEST_CASE(cleanup_in_accept_doesnt_explode, s_cleanup_in_accept_doesnt_explode)
 
 static void s_on_written_destroy(struct aws_socket *socket, int error_code, size_t amount_written, void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     struct socket_io_args *write_args = user_data;
     aws_mutex_lock(write_args->mutex);
     write_args->error_code = error_code;
@@ -991,15 +991,15 @@ static bool s_write_completed_predicate_destroy(void *arg) {
 }
 
 static void s_write_task_destroy(struct aws_task *task, void *args, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct socket_io_args *io_args = args;
     aws_socket_write(io_args->socket, io_args->to_write, s_on_written_destroy, io_args);
 }
 
 static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
@@ -1113,7 +1113,7 @@ AWS_TEST_CASE(cleanup_in_write_cb_doesnt_explode, s_cleanup_in_write_cb_doesnt_e
 
 #ifdef _WIN32
 static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 

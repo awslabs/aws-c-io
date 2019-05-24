@@ -60,12 +60,12 @@ static int s_alpn_shutdown(
     enum aws_channel_direction dir,
     int error_code,
     bool abort_immediately) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
 static size_t s_alpn_get_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return sizeof(struct aws_tls_negotiated_protocol_message);
 }
 
@@ -76,7 +76,7 @@ static void s_alpn_destroy(struct aws_channel_handler *handler) {
 }
 
 static size_t s_alpn_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return 0;
 }
 

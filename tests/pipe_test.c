@@ -79,7 +79,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
     state->read_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
     AWS_ASSERT(state->read_loop);
     err = aws_event_loop_run(state->read_loop);
-    (void)err;
+    AWS_UNUSED_PARAM(err);
     AWS_ASSERT(!err);
 
     if (state->loop_setup == DIFFERENT_EVENT_LOOPS) {
@@ -121,7 +121,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
 
 /* Assumes the pipe's read-end and write-end are already cleaned up */
 static void s_fixture_after(struct aws_allocator *allocator, void *ctx) {
-    (void)allocator;
+    AWS_UNUSED_PARAM(allocator);
     struct pipe_state *state = ctx;
 
     aws_condition_variable_clean_up(&state->results.condvar);
@@ -232,7 +232,7 @@ struct pipe_state_task_wrapper {
 };
 
 static void s_pipe_state_task_wrapper_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct pipe_state_task_wrapper *wrapper = arg;
     struct pipe_state *state = wrapper->state;
     pipe_state_task_fn *wrapped_fn = wrapper->wrapped_fn;
@@ -887,7 +887,7 @@ static void s_cancelled_on_write_completed(
     struct aws_byte_cursor src_buffer,
     void *user_data) {
 
-    (void)write_end;
+    AWS_UNUSED_PARAM(write_end);
     struct pipe_state *state = user_data;
 
     int *write_status_code = state->test_data;

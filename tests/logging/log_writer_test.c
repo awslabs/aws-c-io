@@ -113,7 +113,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_simple_file_content, SIMPLE_FILE_CONTENT);
  * Simple file test
  */
 static int s_log_writer_simple_file_test(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     remove(s_test_file_name);
 
@@ -130,7 +130,7 @@ AWS_TEST_CASE(test_log_writer_simple_file_test, s_log_writer_simple_file_test);
  * Existing file test (verifies append is being used)
  */
 static int s_log_writer_existing_file_test(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     remove(s_test_file_name);
     FILE *fp = fopen(s_test_file_name, "w+");
@@ -150,7 +150,7 @@ AWS_TEST_CASE(test_log_writer_existing_file_test, s_log_writer_existing_file_tes
  * (Error case) Bad filename test
  */
 static int s_log_writer_bad_file_test(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_log_writer_file_options options = {.filename = "."};
 

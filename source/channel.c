@@ -100,7 +100,7 @@ static void s_on_msg_pool_removed(struct aws_event_loop_local_object *object) {
 
 static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum aws_task_status task_status) {
 
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct channel_setup_args *setup_args = arg;
     struct aws_message_pool *message_pool = NULL;
     struct aws_event_loop_local_object *local_object = NULL;
@@ -249,8 +249,8 @@ void aws_channel_destroy(struct aws_channel *channel) {
 }
 
 static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct aws_channel *channel = arg;
 
     struct aws_channel_slot *current = channel->first;
@@ -274,7 +274,7 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 void aws_channel_acquire_hold(struct aws_channel *channel) {
     size_t prev_refcount = aws_atomic_fetch_add(&channel->refcount, 1);
     AWS_ASSERT(prev_refcount != 0);
-    (void)prev_refcount;
+    AWS_UNUSED_PARAM(prev_refcount);
 }
 
 void aws_channel_release_hold(struct aws_channel *channel) {
@@ -301,7 +301,7 @@ struct channel_shutdown_task_args {
 
 static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     struct shutdown_task *shutdown_task = arg;
 
@@ -440,7 +440,7 @@ int aws_channel_put_local_object(
     const void *key,
     const struct aws_event_loop_local_object *obj) {
 
-    (void)key;
+    AWS_UNUSED_PARAM(key);
     return aws_event_loop_put_local_object(channel->loop, (struct aws_event_loop_local_object *)obj);
 }
 
@@ -466,7 +466,7 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
 }
 
 static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct aws_channel *channel = arg;
 
     struct aws_linked_list cross_thread_task_list;
@@ -791,7 +791,7 @@ int aws_channel_slot_shutdown(
 }
 
 static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)status;
+    AWS_UNUSED_PARAM(status);
 
     struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
     struct aws_channel *channel = arg;
@@ -826,8 +826,8 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 }
 
 static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)arg;
-    (void)status;
+    AWS_UNUSED_PARAM(arg);
+    AWS_UNUSED_PARAM(status);
 
     struct aws_shutdown_notification_task *shutdown_notify = (struct aws_shutdown_notification_task *)task;
     task->fn = NULL;

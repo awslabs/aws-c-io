@@ -36,7 +36,7 @@ struct channel_setup_test_args {
 };
 
 static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
+    AWS_UNUSED_PARAM(channel);
     struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)user_data;
 
     aws_mutex_lock(&setup_test_args->mutex);
@@ -46,7 +46,7 @@ static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel,
 }
 
 static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -89,7 +89,7 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
 AWS_TEST_CASE(channel_setup, s_test_channel_setup)
 
 static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -128,7 +128,7 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
 AWS_TEST_CASE(channel_single_slot_cleans_up, s_test_channel_single_slot_cleans_up)
 
 static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -200,8 +200,8 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
 AWS_TEST_CASE(channel_slots_clean_up, s_test_channel_slots_clean_up)
 
 static void s_wait_a_bit_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct aws_condition_variable *cv = arg;
     aws_condition_variable_notify_one(cv);
 }
@@ -223,7 +223,7 @@ static int s_wait_a_bit(struct aws_event_loop *loop) {
 }
 
 static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
     ASSERT_NOT_NULL(event_loop);
@@ -305,8 +305,8 @@ static bool s_rw_test_shutdown_predicate(void *arg) {
 }
 
 static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
-    (void)error_code;
+    AWS_UNUSED_PARAM(channel);
+    AWS_UNUSED_PARAM(error_code);
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     rw_test_args->shutdown_completed = true;
@@ -356,8 +356,8 @@ static struct aws_byte_buf s_channel_rw_test_on_write(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
-    (void)handler;
-    (void)slot;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
     memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
@@ -371,7 +371,7 @@ static struct aws_byte_buf s_channel_rw_test_on_write(
 }
 
 static int s_test_channel_message_passing(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -485,15 +485,15 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
 AWS_TEST_CASE(channel_message_passing, s_test_channel_message_passing)
 
 static void s_channel_post_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     struct channel_setup_test_args *test_args = arg;
     test_args->task_status = status;
 }
 
 static void s_channel_test_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
-    (void)error_code;
+    AWS_UNUSED_PARAM(channel);
+    AWS_UNUSED_PARAM(error_code);
 
     struct channel_setup_test_args *test_args = user_data;
     aws_mutex_lock(&test_args->mutex);
@@ -526,7 +526,7 @@ struct tasks_run_data {
 static struct tasks_run_data s_tasks_run_data;
 
 static void s_tasks_run_fn(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     intptr_t id = (intptr_t)arg;
 
     aws_mutex_lock(&s_tasks_run_data.mutex);
@@ -537,15 +537,15 @@ static void s_tasks_run_fn(struct aws_channel_task *task, void *arg, enum aws_ta
 }
 
 static void s_schedule_on_thread_tasks_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct aws_channel *channel = arg;
     aws_channel_schedule_task_now(channel, &s_tasks_run_data.tasks[TASK_NOW_ON_THREAD]);
     aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_ON_THREAD], 1);
 }
 
 static bool s_tasks_run_done_pred(void *user_data) {
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
     for (int i = 0; i < TASK_COUNT; ++i) {
         if (!s_tasks_run_data.did_task_run[i]) {
             return false;
@@ -555,7 +555,7 @@ static bool s_tasks_run_done_pred(void *user_data) {
 }
 
 static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop);
@@ -625,7 +625,7 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(channel_tasks_run, s_test_channel_tasks_run);
 
 static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -672,7 +672,7 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
 AWS_TEST_CASE(channel_rejects_post_shutdown_tasks, s_test_channel_rejects_post_shutdown_tasks)
 
 static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -723,7 +723,7 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
 AWS_TEST_CASE(channel_cancels_pending_tasks, s_test_channel_cancels_pending_tasks)
 
 static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -779,7 +779,7 @@ static void s_test_channel_connect_some_hosts_timeout_setup(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
-    (void)bootstrap;
+    AWS_UNUSED_PARAM(bootstrap);
 
     struct channel_connect_test_args *test_args = user_data;
     aws_mutex_lock(test_args->mutex);
@@ -795,8 +795,8 @@ static void s_test_channel_connect_some_hosts_timeout_shutdown(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
-    (void)bootstrap;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(channel);
 
     struct channel_connect_test_args *test_args = user_data;
     aws_mutex_lock(test_args->mutex);
@@ -818,7 +818,7 @@ static bool s_shutdown_complete_pred(void *user_data) {
 }
 
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     aws_load_error_strings();
     aws_io_load_error_strings();

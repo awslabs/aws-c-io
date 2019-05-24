@@ -28,8 +28,8 @@
 #endif
 
 static enum aws_log_level s_null_logger_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
-    (void)logger;
-    (void)subject;
+    AWS_UNUSED_PARAM(logger);
+    AWS_UNUSED_PARAM(subject);
 
     return AWS_LL_NONE;
 }
@@ -40,16 +40,16 @@ static int s_null_logger_log(
     aws_log_subject_t subject,
     const char *format,
     ...) {
-    (void)logger;
-    (void)log_level;
-    (void)subject;
-    (void)format;
+    AWS_UNUSED_PARAM(logger);
+    AWS_UNUSED_PARAM(log_level);
+    AWS_UNUSED_PARAM(subject);
+    AWS_UNUSED_PARAM(format);
 
     return AWS_OP_SUCCESS;
 }
 
 static void s_null_logger_clean_up(struct aws_logger *logger) {
-    (void)logger;
+    AWS_UNUSED_PARAM(logger);
 }
 
 static struct aws_logger_vtable s_null_vtable = {
@@ -150,7 +150,7 @@ static int s_aws_logger_pipeline_log(
 }
 
 static enum aws_log_level s_aws_logger_pipeline_get_log_level(struct aws_logger *logger, aws_log_subject_t subject) {
-    (void)subject;
+    AWS_UNUSED_PARAM(subject);
 
     struct aws_logger_pipeline *impl = logger->p_impl;
 
@@ -320,7 +320,7 @@ const char *aws_log_subject_name(aws_log_subject_t subject) {
 }
 
 void aws_register_log_subject_info_list(struct aws_log_subject_info_list *log_subject_list) {
-    (void)log_subject_list;
+    AWS_UNUSED_PARAM(log_subject_list);
 
     /*
      * We're not so worried about these asserts being removed in an NDEBUG build

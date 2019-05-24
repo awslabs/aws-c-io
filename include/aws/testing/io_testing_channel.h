@@ -27,17 +27,17 @@ struct testing_loop {
 };
 
 static int s_testing_loop_run(struct aws_event_loop *event_loop) {
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     return AWS_OP_SUCCESS;
 }
 
 static int s_testing_loop_stop(struct aws_event_loop *event_loop) {
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     return AWS_OP_SUCCESS;
 }
 
 static int s_testing_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
     return AWS_OP_SUCCESS;
 }
 
@@ -101,9 +101,9 @@ static int s_testing_channel_handler_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)handler;
-    (void)slot;
-    (void)message;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
+    AWS_UNUSED_PARAM(message);
 
     struct testing_channel_handler *testing_handler = handler->impl;
     aws_linked_list_push_back(&testing_handler->messages, &message->queueing_handle);
@@ -114,7 +114,7 @@ static int s_testing_channel_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
 
     struct testing_channel_handler *testing_handler = handler->impl;
     aws_linked_list_push_back(&testing_handler->messages, &message->queueing_handle);
@@ -125,7 +125,7 @@ static int s_testing_channel_handler_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
 
     struct testing_channel_handler *testing_handler = handler->impl;
     testing_handler->latest_window_update = size;
@@ -139,7 +139,7 @@ static int s_testing_channel_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
@@ -149,7 +149,7 @@ static size_t s_testing_channel_handler_initial_window_size(struct aws_channel_h
 }
 
 static size_t s_testing_channel_handler_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return 0;
 }
 
@@ -206,15 +206,15 @@ struct testing_channel {
 };
 
 static void s_testing_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
-    (void)error_code;
+    AWS_UNUSED_PARAM(channel);
+    AWS_UNUSED_PARAM(error_code);
     struct testing_channel *testing = user_data;
     testing->channel_setup_completed = true;
 }
 
 static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
-    (void)error_code;
+    AWS_UNUSED_PARAM(channel);
+    AWS_UNUSED_PARAM(error_code);
     struct testing_channel *testing = user_data;
     testing->channel_shutdown_completed = true;
 }

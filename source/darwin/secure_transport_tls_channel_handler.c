@@ -64,7 +64,7 @@ bool aws_tls_is_alpn_available(void) {
 }
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
-    (void)alloc;
+    AWS_UNUSED_PARAM(alloc);
     /* keep from breaking users that built on later versions of the mac os sdk but deployed
      * to an older version. */
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
@@ -220,7 +220,7 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
         CFArrayRef protocols = NULL;
 
         OSStatus status = s_SSLCopyALPNProtocols(handler->ctx, &protocols);
-        (void)status;
+    AWS_UNUSED_PARAM(status);
 
         if (!protocols) {
             return NULL;
@@ -241,7 +241,7 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
 
     return NULL;
 #else
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return NULL;
 #endif
 }
@@ -251,9 +251,9 @@ static void s_set_protocols(
     struct aws_allocator *alloc,
     struct aws_string *alpn_list) {
 
-    (void)handler;
-    (void)alloc;
-    (void)alpn_list;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(alloc);
+    AWS_UNUSED_PARAM(alpn_list);
 #if ALPN_AVAILABLE
     if (s_SSLSetALPNProtocols) {
         struct aws_byte_cursor alpn_data = aws_byte_cursor_from_string(alpn_list);
@@ -291,7 +291,7 @@ static void s_set_protocols(
 
         if (alpn_array) {
             OSStatus status = s_SSLSetALPNProtocols(handler->ctx, alpn_array);
-            (void)status;
+    AWS_UNUSED_PARAM(status);
 
             CFRelease(alpn_array);
         }
@@ -479,7 +479,7 @@ static int s_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
@@ -631,7 +631,7 @@ static int s_process_read_message(
 }
 
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
         struct secure_transport_handler *secure_transport_handler = handler->impl;
@@ -680,12 +680,12 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 }
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return EST_TLS_RECORD_OVERHEAD;
 }
 
 static size_t s_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return EST_HANDSHAKE_SIZE;
 }
 
@@ -827,7 +827,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         }
     }
 
-    (void)status;
+    AWS_UNUSED_PARAM(status);
 
     aws_linked_list_init(&secure_transport_handler->input_queue);
     secure_transport_handler->parent_slot = slot;

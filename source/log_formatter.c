@@ -55,7 +55,7 @@ static int s_default_aws_log_formatter_format(
     const char *format,
     va_list args) {
 
-    (void)subject;
+    AWS_UNUSED_PARAM(subject);
 
     struct aws_default_log_formatter_impl *impl = formatter->impl;
 

@@ -478,7 +478,7 @@ static void resolver_thread_fn(void *arg) {
 }
 
 static void on_host_key_removed(void *key) {
-    (void)key;
+    AWS_UNUSED_PARAM(key);
 }
 
 static void on_host_value_removed(void *value) {
@@ -838,7 +838,7 @@ int aws_host_resolver_init_default(
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */
-    (void)el_group;
+    AWS_UNUSED_PARAM(el_group);
     AWS_ASSERT(el_group);
     struct default_host_resolver *default_host_resolver =
         aws_mem_acquire(allocator, sizeof(struct default_host_resolver));

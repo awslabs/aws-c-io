@@ -39,9 +39,9 @@ static int s_socket_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)handler;
-    (void)slot;
-    (void)message;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
+    AWS_UNUSED_PARAM(message);
 
     AWS_LOGF_FATAL(
         AWS_LS_IO_SOCKET_HANDLER,
@@ -61,8 +61,8 @@ static void s_on_socket_write_complete(
     int error_code,
     size_t amount_written,
     void *user_data) {
-    (void)amount_written;
-    (void)socket;
+    AWS_UNUSED_PARAM(amount_written);
+    AWS_UNUSED_PARAM(socket);
 
     if (user_data) {
         struct aws_io_message *message = user_data;
@@ -89,7 +89,7 @@ static int s_socket_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
     struct socket_handler *socket_handler = handler->impl;
 
     AWS_LOGF_TRACE(
@@ -207,7 +207,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
 /* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing.
  * If an error, start the channel shutdown process. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
 
     struct socket_handler *socket_handler = user_data;
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET_HANDLER, "id=%p: socket is now readable", (void *)socket_handler->slot->handler);
@@ -238,7 +238,7 @@ static int s_socket_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-    (void)size;
+    AWS_UNUSED_PARAM(size);
 
     struct socket_handler *socket_handler = handler->impl;
 
@@ -257,7 +257,7 @@ static int s_socket_increment_read_window(
 }
 
 static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     struct aws_channel_handler *handler = arg;
     struct socket_handler *socket_handler = handler->impl;
@@ -315,12 +315,12 @@ static int s_socket_shutdown(
 }
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return 0;
 }
 
 static size_t s_socket_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
+    AWS_UNUSED_PARAM(handler);
     return SIZE_MAX;
 }
 

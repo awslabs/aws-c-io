@@ -308,7 +308,7 @@ int aws_import_key_pair_to_cert_context(
     wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
     size_t converted_chars = 0;
     mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
-    (void)converted_chars;
+    AWS_UNUSED_PARAM(converted_chars);
 
     HCRYPTPROV crypto_prov = 0;
     BOOL success = CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET);

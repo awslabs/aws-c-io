@@ -28,7 +28,7 @@ int aws_default_dns_resolve(
     struct aws_array_list *output_addresses,
     void *user_data) {
 
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
     ADDRINFOA *result = NULL;
     const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
 

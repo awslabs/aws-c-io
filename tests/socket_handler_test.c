@@ -59,8 +59,8 @@ static void s_socket_handler_test_client_setup_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)error_code;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(error_code);
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
@@ -81,8 +81,8 @@ static void s_socket_handler_test_server_setup_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)error_code;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(error_code);
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
 
@@ -103,8 +103,8 @@ static void s_socket_handler_test_client_shutdown_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(channel);
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     aws_mutex_lock(setup_test_args->mutex);
@@ -121,9 +121,9 @@ static void s_socket_handler_test_server_shutdown_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(channel);
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     aws_mutex_lock(setup_test_args->mutex);
@@ -160,8 +160,8 @@ static struct aws_byte_buf s_socket_test_handle_read(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
-    (void)handler;
-    (void)slot;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
 
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
 
@@ -182,17 +182,17 @@ static struct aws_byte_buf s_socket_test_handle_write(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
-    (void)handler;
-    (void)slot;
-    (void)data_read;
-    (void)user_data;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
+    AWS_UNUSED_PARAM(data_read);
+    AWS_UNUSED_PARAM(user_data);
 
     /*do nothing*/
     return (struct aws_byte_buf){0};
 }
 
 static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
@@ -368,7 +368,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 AWS_TEST_CASE(socket_handler_echo_and_backpressure, s_socket_echo_and_backpressure_test)
 
 static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));

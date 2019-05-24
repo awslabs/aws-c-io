@@ -18,7 +18,7 @@
 #include <aws/io/pki_utils.h>
 
 static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     static const char *s_rsa_1024_sha224_client_crt_pem =
         "-----BEGIN CERTIFICATE-----\n"
         "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
@@ -95,7 +95,7 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
 AWS_TEST_CASE(test_pem_single_cert_parse, s_test_pem_single_cert_parse)
 
 static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     static const char *s_rsa_2048_pkcs1_crt_pem = "-----BEGIN CERTIFICATE-----\n"
                                                   "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"
@@ -314,7 +314,7 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
 AWS_TEST_CASE(test_pem_cert_chain_parse, s_test_pem_cert_chain_parse)
 
 static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     static const char *s_private_key_pem = "-----BEGIN RSA PRIVATE KEY-----\n"
                                            "MIIEpAIBAAKCAQEA12pXSPgORAMlQtYRbxuz/Ocaoran3C2Fjyjhu0vucSEZSwxD\n"
                                            "Jp75TBQEMafSpSEKAQLeDt7xuDRDYn52V4UE6cF+xTWhtzsf7mhN/lHaDPcvR2AS\n"
@@ -433,7 +433,7 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
 AWS_TEST_CASE(test_pem_private_key_parse, s_test_pem_private_key_parse)
 
 static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     static const uint8_t s_expected[] = {
         0x30, 0x82, 0x03, 0xce, 0x30, 0x82, 0x02, 0xb6, 0x02, 0x09, 0x00, 0xa8, 0xce, 0xd3, 0x84, 0x47, 0x8a, 0x4e,
@@ -512,7 +512,7 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
 AWS_TEST_CASE(test_pem_cert_parse_from_file, s_test_pem_cert_parse_from_file)
 
 static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     static const uint8_t s_expected[] = {
         0x30, 0x82, 0x04, 0xa4, 0x02, 0x01, 0x00, 0x02, 0x82, 0x01, 0x01, 0x00, 0xd7, 0x6a, 0x57, 0x48, 0xf8, 0x0e,
@@ -603,7 +603,7 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
 AWS_TEST_CASE(test_pem_private_key_parse_from_file, s_test_pem_private_key_parse_from_file)
 
 static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     static const char *s_pem_data_str = "# -----Comment\n"
                                         "// Style\n"
@@ -838,7 +838,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
 AWS_TEST_CASE(test_pem_cert_chain_comments_and_whitespace, s_test_pem_cert_chain_comments_and_whitespace)
 
 static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     /* Maintainers note: I removed a '-' from the beginning */
     static const char *s_invalid_pem = "----BEGIN CERTIFICATE-----\n"
                                        "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
@@ -872,7 +872,7 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(test_pem_invalid_parse, s_test_pem_invalid_parse)
 
 static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     /* Maintainers note: I added a character (the 'q') to the end to make the base64 invalid */
     static const char *s_invalid_data = "-----BEGIN CERTIFICATE-----\n"
                                         "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
@@ -906,7 +906,7 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
 AWS_TEST_CASE(test_pem_valid_data_invalid_parse, s_test_pem_valid_data_invalid_parse)
 
 static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     /* Maintainers note: I added a character (the 'f') to the end of the 3rd cert to make the base64 invalid */
     static const char *s_invalid_data = "-----BEGIN CERTIFICATE-----\n"
                                         "MIICrTCCAZUCAn3VMA0GCSqGSIb3DQEBBQUAMB4xHDAaBgNVBAMME3MyblRlc3RJ\n"

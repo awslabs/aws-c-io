@@ -139,7 +139,7 @@ static int s_create_socket(struct aws_socket *sock, const struct aws_socket_opti
         int flags = fcntl(fd, F_GETFL, 0);
         flags |= O_NONBLOCK | O_CLOEXEC;
         int success = fcntl(fd, F_SETFL, flags);
-        (void)success;
+    AWS_UNUSED_PARAM(success);
         sock->io_handle.data.fd = fd;
         sock->io_handle.additional_data = NULL;
         return aws_socket_set_options(sock, options);
@@ -386,8 +386,8 @@ static void s_socket_connect_event(
     int events,
     void *user_data) {
 
-    (void)event_loop;
-    (void)handle;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(handle);
 
     struct posix_socket_connect_args *socket_args = (struct posix_socket_connect_args *)user_data;
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "fd=%d: connection activity handler triggered ", handle->data.fd);
@@ -429,8 +429,8 @@ static void s_socket_connect_event(
 }
 
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct posix_socket_connect_args *socket_args = args;
 
@@ -467,7 +467,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
  * (like for unix domain sockets) into the event loop's thread. Also note, in that case there was no
  * timeout task scheduled, so in this case the socket_args are cleaned up. */
 static void s_run_connect_success(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct posix_socket_connect_args *socket_args = arg;
 
     if (socket_args->socket) {
@@ -795,7 +795,7 @@ static void s_socket_accept_event(
     int events,
     void *user_data) {
 
-    (void)event_loop;
+    AWS_UNUSED_PARAM(event_loop);
 
     struct aws_socket *socket = user_data;
     struct posix_socket *socket_impl = socket->impl;
@@ -987,8 +987,8 @@ static bool s_stop_accept_pred(void *arg) {
 }
 
 static void s_stop_accept_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct stop_accept_args *stop_accept_args = arg;
     aws_mutex_lock(&stop_accept_args->mutex);
@@ -1176,8 +1176,8 @@ static bool s_close_predicate(void *arg) {
 }
 
 static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct posix_socket_close_args *close_args = arg;
     aws_mutex_lock(&close_args->mutex);
@@ -1449,8 +1449,8 @@ static void s_on_socket_io_event(
     struct aws_io_handle *handle,
     int events,
     void *user_data) {
-    (void)event_loop;
-    (void)handle;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(handle);
     /* this is to handle a race condition when an error kicks off a cleanup, or the user decides
      * to close the socket based on something they read (SSL validation failed for example).
      * if clean_up happens when currently_in_event is true, socket_impl is kept dangling but currently

@@ -49,8 +49,8 @@ int mock_dns_resolve(
     struct aws_array_list *output_addresses,
     void *user_data) {
 
-    (void)allocator;
-    (void)host_name;
+    AWS_UNUSED_PARAM(allocator);
+    AWS_UNUSED_PARAM(host_name);
     struct mock_dns_resolver *mock_resolver = user_data;
 
     if (mock_resolver->resolve_count == mock_resolver->max_resolves) {

@@ -796,8 +796,8 @@ void s_socket_connection_completion(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred) {
-    (void)num_bytes_transferred;
-    (void)event_loop;
+    AWS_UNUSED_PARAM(num_bytes_transferred);
+    AWS_UNUSED_PARAM(event_loop);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct socket_connect_args *socket_args = overlapped->user_data;
@@ -852,7 +852,7 @@ void s_socket_connection_completion(
 /* outgoing tcp connection. If this task runs before `s_socket_connection_completion()`, then the
    connection is considered timedout. */
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct socket_connect_args *socket_args = args;
 
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
@@ -1090,7 +1090,7 @@ static int s_ipv6_stream_connect(
 
 /* simply moves the connection_success notification into the event-loop's thread. */
 static void s_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct io_operation_data *io_data = arg;
 
     if (!io_data->socket) {
@@ -1283,7 +1283,7 @@ static int s_ipv4_dgram_connect(
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
 
     /* we don't actually care if it's null in this case. */
     socket->connection_result_fn = on_connection_result;
@@ -1307,7 +1307,7 @@ static int s_ipv6_dgram_connect(
     struct aws_event_loop *connect_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
 
     /* we don't actually care if it's null in this case. */
     socket->connection_result_fn = on_connection_result;
@@ -1513,14 +1513,14 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
 }
 
 static int s_udp_listen(struct aws_socket *socket, int backlog_size) {
-    (void)socket;
-    (void)backlog_size;
+    AWS_UNUSED_PARAM(socket);
+    AWS_UNUSED_PARAM(backlog_size);
     return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
 }
 
 static int s_local_listen(struct aws_socket *socket, int backlog_size) {
-    (void)socket;
-    (void)backlog_size;
+    AWS_UNUSED_PARAM(socket);
+    AWS_UNUSED_PARAM(backlog_size);
     if (AWS_UNLIKELY(socket->state != BOUND)) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
@@ -1535,8 +1535,8 @@ static void s_incoming_pipe_connection_event(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred) {
-    (void)event_loop;
-    (void)num_bytes_transferred;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(num_bytes_transferred);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct aws_socket *socket = overlapped->user_data;
@@ -1785,8 +1785,8 @@ static void s_tcp_accept_event(
     int status_code,
     size_t num_bytes_transferred) {
 
-    (void)event_loop;
-    (void)num_bytes_transferred;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(num_bytes_transferred);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct aws_socket *socket = overlapped->user_data;
@@ -1959,7 +1959,7 @@ static bool s_stop_accept_predicate(void *arg) {
 static int s_stream_stop_accept(struct aws_socket *socket);
 
 static void s_stop_accept_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct stop_accept_args *stop_accept_args = arg;
@@ -2032,7 +2032,7 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
 }
 
 static void s_named_pipe_is_ridiculus_task(struct aws_task *task, void *args, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct io_operation_data *io_data = args;
 
     if (!io_data->socket) {
@@ -2145,15 +2145,15 @@ static int s_dgram_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    (void)socket;
-    (void)accept_loop;
-    (void)on_accept_result;
-    (void)user_data;
+    AWS_UNUSED_PARAM(socket);
+    AWS_UNUSED_PARAM(accept_loop);
+    AWS_UNUSED_PARAM(on_accept_result);
+    AWS_UNUSED_PARAM(user_data);
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
 static int s_dgram_stop_accept(struct aws_socket *socket) {
-    (void)socket;
+    AWS_UNUSED_PARAM(socket);
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
@@ -2275,7 +2275,7 @@ static bool s_close_predicate(void *arg) {
 static int s_socket_close(struct aws_socket *socket);
 
 static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct close_args *close_args = arg;
@@ -2473,8 +2473,8 @@ static void s_stream_readable_event(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred) {
-    (void)num_bytes_transferred;
-    (void)event_loop;
+    AWS_UNUSED_PARAM(num_bytes_transferred);
+    AWS_UNUSED_PARAM(event_loop);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct aws_socket *socket = overlapped->user_data;
@@ -2535,8 +2535,8 @@ static void s_dgram_readable_event(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred) {
-    (void)num_bytes_transferred;
-    (void)event_loop;
+    AWS_UNUSED_PARAM(num_bytes_transferred);
+    AWS_UNUSED_PARAM(event_loop);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct aws_socket *socket = overlapped->user_data;
@@ -3002,8 +3002,8 @@ static void s_socket_written_event(
     struct aws_overlapped *overlapped,
     int status_code,
     size_t num_bytes_transferred) {
-    (void)event_loop;
-    (void)num_bytes_transferred;
+    AWS_UNUSED_PARAM(event_loop);
+    AWS_UNUSED_PARAM(num_bytes_transferred);
 
     struct io_operation_data *operation_data = AWS_CONTAINER_OF(overlapped, struct io_operation_data, signal);
     struct write_cb_args *write_cb_args = overlapped->user_data;

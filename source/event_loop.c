@@ -64,7 +64,7 @@ static struct aws_event_loop *default_new_event_loop(
     aws_io_clock_fn *clock,
     void *user_data) {
 
-    (void)user_data;
+    AWS_UNUSED_PARAM(user_data);
     return aws_event_loop_new_default(allocator, clock);
 }
 

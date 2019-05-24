@@ -16,7 +16,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 static int s_test_uri_full_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -55,7 +55,7 @@ static int s_test_uri_full_parse(struct aws_allocator *allocator, void *ctx) {
 AWS_TEST_CASE(uri_full_parse, s_test_uri_full_parse);
 
 static int s_test_uri_no_scheme_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -93,7 +93,7 @@ static int s_test_uri_no_scheme_parse(struct aws_allocator *allocator, void *ctx
 AWS_TEST_CASE(uri_no_scheme_parse, s_test_uri_no_scheme_parse);
 
 static int s_test_uri_no_port_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -132,7 +132,7 @@ static int s_test_uri_no_port_parse(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(uri_no_port_parse, s_test_uri_no_port_parse);
 
 static int s_test_uri_no_path_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com:8443/?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -170,7 +170,7 @@ static int s_test_uri_no_path_parse(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(uri_no_path_parse, s_test_uri_no_path_parse);
 
 static int s_test_uri_no_query_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "https://www.test.com:8443/path/to/resource";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
@@ -204,7 +204,7 @@ static int s_test_uri_no_query_parse(struct aws_allocator *allocator, void *ctx)
 AWS_TEST_CASE(uri_no_query_parse, s_test_uri_no_query_parse);
 
 static int s_test_uri_minimal_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "www.test.com/path/to/resource";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
@@ -237,7 +237,7 @@ static int s_test_uri_minimal_parse(struct aws_allocator *allocator, void *ctx) 
 AWS_TEST_CASE(uri_minimal_parse, s_test_uri_minimal_parse);
 
 static int s_test_uri_path_and_query_only_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
@@ -267,7 +267,7 @@ static int s_test_uri_path_and_query_only_parse(struct aws_allocator *allocator,
 AWS_TEST_CASE(uri_path_and_query_only_parse, s_test_uri_path_and_query_only_parse);
 
 static int s_test_uri_root_only_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "https://www.test.com";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
@@ -297,7 +297,7 @@ static int s_test_uri_root_only_parse(struct aws_allocator *allocator, void *ctx
 AWS_TEST_CASE(uri_root_only_parse, s_test_uri_root_only_parse);
 
 static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "https://www.test.com:8443/path/to/"
                           "resource?test1=value1&testkeyonly&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -350,7 +350,7 @@ static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
 AWS_TEST_CASE(uri_query_params, s_test_uri_query_params);
 
 static int s_test_uri_invalid_scheme_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https:/www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -363,7 +363,7 @@ static int s_test_uri_invalid_scheme_parse(struct aws_allocator *allocator, void
 AWS_TEST_CASE(uri_invalid_scheme_parse, s_test_uri_invalid_scheme_parse);
 
 static int s_test_uri_invalid_port_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com:s8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -376,7 +376,7 @@ static int s_test_uri_invalid_port_parse(struct aws_allocator *allocator, void *
 AWS_TEST_CASE(uri_invalid_port_parse, s_test_uri_invalid_port_parse);
 
 static int s_test_uri_port_too_large_parse(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri = "https://www.test.com:844356/path/to/"
                           "resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -389,7 +389,7 @@ static int s_test_uri_port_too_large_parse(struct aws_allocator *allocator, void
 AWS_TEST_CASE(uri_port_too_large_parse, s_test_uri_port_too_large_parse);
 
 static int s_test_uri_builder(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -449,7 +449,7 @@ static int s_test_uri_builder(struct aws_allocator *allocator, void *ctx) {
 AWS_TEST_CASE(uri_builder, s_test_uri_builder);
 
 static int s_test_uri_builder_from_string(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     const char *str_uri =
         "https://www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
@@ -523,7 +523,7 @@ static int s_test_uri_encode_path_case(
 }
 
 static int s_test_uri_encode_path_rfc3986(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/1234/", "/path/1234/"));
     ASSERT_SUCCESS(s_test_uri_encode_path_case(
@@ -561,8 +561,8 @@ static int s_test_uri_encode_param_case(
 }
 
 static int s_test_uri_encode_query(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    (void)allocator;
+    AWS_UNUSED_PARAM(ctx);
+    AWS_UNUSED_PARAM(allocator);
 
     ASSERT_SUCCESS(s_test_uri_encode_param_case(
         allocator,

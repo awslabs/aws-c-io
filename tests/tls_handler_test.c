@@ -69,7 +69,7 @@ static void s_tls_handler_test_client_setup_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
+    AWS_UNUSED_PARAM(bootstrap);
 
     struct tls_test_args *setup_test_args = user_data;
 
@@ -96,7 +96,7 @@ static void s_tls_handler_test_server_setup_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
+    AWS_UNUSED_PARAM(bootstrap);
 
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
@@ -125,9 +125,9 @@ static void s_tls_handler_test_client_shutdown_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(channel);
 
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
@@ -143,9 +143,9 @@ static void s_tls_handler_test_server_shutdown_callback(
     struct aws_channel *channel,
     void *user_data) {
 
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
+    AWS_UNUSED_PARAM(bootstrap);
+    AWS_UNUSED_PARAM(error_code);
+    AWS_UNUSED_PARAM(channel);
 
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
@@ -161,7 +161,7 @@ static void s_tls_on_negotiated(
     int err_code,
     void *user_data) {
 
-    (void)slot;
+    AWS_UNUSED_PARAM(slot);
 
     if (!err_code) {
         struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
@@ -193,8 +193,8 @@ static struct aws_byte_buf s_tls_test_handle_read(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
-    (void)handler;
-    (void)slot;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
 
     struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)user_data;
 
@@ -213,17 +213,17 @@ static struct aws_byte_buf s_tls_test_handle_write(
     struct aws_byte_buf *data_read,
     void *user_data) {
 
-    (void)handler;
-    (void)slot;
-    (void)data_read;
-    (void)user_data;
+    AWS_UNUSED_PARAM(handler);
+    AWS_UNUSED_PARAM(slot);
+    AWS_UNUSED_PARAM(data_read);
+    AWS_UNUSED_PARAM(user_data);
 
     /*do nothing*/
     return (struct aws_byte_buf){0};
 }
 
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
     aws_tls_init_static_state(allocator);
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
@@ -561,7 +561,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 }
 
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -573,7 +573,7 @@ static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocato
 AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel_negotiation_error_expired_fn)
 
 static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -585,7 +585,7 @@ static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_alloc
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
 
 static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -597,7 +597,7 @@ static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allo
 AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_channel_negotiation_error_self_signed_fn)
 
 static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -611,7 +611,7 @@ AWS_TEST_CASE(
     s_tls_client_channel_negotiation_error_untrusted_root_fn)
 
 static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -623,7 +623,7 @@ static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocato
 AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
 
 static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
     ASSERT_NOT_NULL(host_name);
@@ -730,7 +730,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 }
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "www.amazon.com");
     ASSERT_NOT_NULL(host_name);

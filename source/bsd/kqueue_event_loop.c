@@ -495,7 +495,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 
 /* Scheduled task that connects aws_io_handle with the kqueue */
 static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct handle_data *handle_data = user_data;
     struct aws_event_loop *event_loop = handle_data->event_loop;
     struct kqueue_loop *impl = handle_data->event_loop->impl_data;
@@ -650,8 +650,8 @@ static void s_free_io_event_resources(void *user_data) {
 }
 
 static void s_clean_up_handle_data_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
 
     struct handle_data *handle_data = user_data;
     s_free_io_event_resources(handle_data);

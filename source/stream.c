@@ -193,7 +193,7 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
 }
 
 static void s_aws_input_stream_byte_cursor_clean_up(struct aws_input_stream *stream) {
-    (void)stream;
+    AWS_UNUSED_PARAM(stream);
 }
 
 static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {

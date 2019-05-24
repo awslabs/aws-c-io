@@ -92,7 +92,7 @@ static int s_do_simple_input_stream_test(
 }
 
 static int s_test_input_stream_memory_simple(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -107,7 +107,7 @@ static int s_test_input_stream_memory_simple(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(test_input_stream_memory_simple, s_test_input_stream_memory_simple);
 
 static int s_test_input_stream_memory_iterate(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -122,7 +122,7 @@ static int s_test_input_stream_memory_iterate(struct aws_allocator *allocator, v
 AWS_TEST_CASE(test_input_stream_memory_iterate, s_test_input_stream_memory_iterate);
 
 static int s_test_input_stream_file_simple(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 
@@ -137,7 +137,7 @@ static int s_test_input_stream_file_simple(struct aws_allocator *allocator, void
 AWS_TEST_CASE(test_input_stream_file_simple, s_test_input_stream_file_simple);
 
 static int s_test_input_stream_file_iterate(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 
@@ -176,7 +176,7 @@ static int s_do_input_stream_seek_test(
 #define SEEK_BEGINNING_OFFSET 5
 
 static int s_test_input_stream_memory_seek_beginning(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -194,7 +194,7 @@ static int s_test_input_stream_memory_seek_beginning(struct aws_allocator *alloc
 AWS_TEST_CASE(test_input_stream_memory_seek_beginning, s_test_input_stream_memory_seek_beginning);
 
 static int s_test_input_stream_file_seek_beginning(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 
@@ -214,7 +214,7 @@ AWS_TEST_CASE(test_input_stream_file_seek_beginning, s_test_input_stream_file_se
 #define SEEK_END_OFFSET (-3)
 
 static int s_test_input_stream_memory_seek_end(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -231,7 +231,7 @@ static int s_test_input_stream_memory_seek_end(struct aws_allocator *allocator, 
 AWS_TEST_CASE(test_input_stream_memory_seek_end, s_test_input_stream_memory_seek_end);
 
 static int s_test_input_stream_file_seek_end(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 
@@ -248,7 +248,7 @@ static int s_test_input_stream_file_seek_end(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(test_input_stream_file_seek_end, s_test_input_stream_file_seek_end);
 
 static int s_test_input_stream_memory_seek_past_end(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -268,7 +268,7 @@ static int s_test_input_stream_memory_seek_past_end(struct aws_allocator *alloca
 AWS_TEST_CASE(test_input_stream_memory_seek_past_end, s_test_input_stream_memory_seek_past_end);
 
 static int s_test_input_stream_memory_seek_before_start(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -290,7 +290,7 @@ AWS_TEST_CASE(test_input_stream_memory_seek_before_start, s_test_input_stream_me
 #define LENGTH_SEEK_OFFSET 3
 
 static int s_test_input_stream_memory_length(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_memory_stream(allocator);
 
@@ -312,7 +312,7 @@ static int s_test_input_stream_memory_length(struct aws_allocator *allocator, vo
 AWS_TEST_CASE(test_input_stream_memory_length, s_test_input_stream_memory_length);
 
 static int s_test_input_stream_file_length(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+    AWS_UNUSED_PARAM(ctx);
 
     struct aws_input_stream *stream = s_create_file_stream(allocator);
 

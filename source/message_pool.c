@@ -94,8 +94,8 @@ struct message_pool_allocator {
 };
 
 void *s_message_pool_mem_acquire(struct aws_allocator *allocator, size_t size) {
-    (void)allocator;
-    (void)size;
+    AWS_UNUSED_PARAM(allocator);
+    AWS_UNUSED_PARAM(size);
 
     /* no one should ever call this ever. */
     AWS_ASSERT(0);

@@ -279,7 +279,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
 static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status status) {
 
-    (void)task;
+    AWS_UNUSED_PARAM(task);
     struct aws_event_loop *event_loop = args;
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
@@ -348,7 +348,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         /* If the write fails because the buffer is full, we don't actually care because that means there's a pending
          * read on the pipe/eventfd and thus the event loop will end up checking to see if something has been queued.*/
         ssize_t do_not_care = write(epoll_loop->write_task_handle.data.fd, (void *)&counter, sizeof(counter));
-        (void)do_not_care;
+    AWS_UNUSED_PARAM(do_not_care);
     }
 
     aws_mutex_unlock(&epoll_loop->task_pre_queue_mutex);
@@ -427,8 +427,8 @@ static void s_free_io_event_resources(void *user_data) {
 }
 
 static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
+    AWS_UNUSED_PARAM(task);
+    AWS_UNUSED_PARAM(status);
     struct epoll_event_data *event_data = (struct epoll_event_data *)arg;
     s_free_io_event_resources(event_data);
 }
@@ -478,8 +478,8 @@ static void s_on_tasks_to_schedule(
     int events,
     void *user_data) {
 
-    (void)handle;
-    (void)user_data;
+    AWS_UNUSED_PARAM(handle);
+    AWS_UNUSED_PARAM(user_data);
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: notified of cross-thread tasks to schedule", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
