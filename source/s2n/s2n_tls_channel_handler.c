@@ -388,7 +388,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             const char *err_str = s2n_strerror_debug(s2n_error, NULL);
-    AWS_UNUSED_PARAM(err_str);
+            AWS_UNUSED_PARAM(err_str);
             s2n_handler->negotiation_finished = false;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);

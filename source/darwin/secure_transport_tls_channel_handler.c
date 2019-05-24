@@ -220,7 +220,7 @@ static CFStringRef s_get_protocol(struct secure_transport_handler *handler) {
         CFArrayRef protocols = NULL;
 
         OSStatus status = s_SSLCopyALPNProtocols(handler->ctx, &protocols);
-    AWS_UNUSED_PARAM(status);
+        AWS_UNUSED_PARAM(status);
 
         if (!protocols) {
             return NULL;

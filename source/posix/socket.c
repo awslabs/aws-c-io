@@ -139,7 +139,7 @@ static int s_create_socket(struct aws_socket *sock, const struct aws_socket_opti
         int flags = fcntl(fd, F_GETFL, 0);
         flags |= O_NONBLOCK | O_CLOEXEC;
         int success = fcntl(fd, F_SETFL, flags);
-    AWS_UNUSED_PARAM(success);
+        AWS_UNUSED_PARAM(success);
         sock->io_handle.data.fd = fd;
         sock->io_handle.additional_data = NULL;
         return aws_socket_set_options(sock, options);
