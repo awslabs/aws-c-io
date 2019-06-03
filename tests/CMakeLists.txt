@@ -188,8 +188,8 @@ add_test_case(shared_library_open_failure)
 
 if (BUILD_SHARED_LIBS)
     add_test_case(shared_library_open_success)
-    add_test_case(shared_library_find_symbol_failure)
-    add_test_case(shared_library_find_symbol_success)
+    add_test_case(shared_library_find_function_failure)
+    add_test_case(shared_library_find_function_success)
 endif()
 
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)

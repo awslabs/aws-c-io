@@ -18,7 +18,7 @@
 #include <aws/testing/aws_test_harness.h>
 
 #ifdef _WIN32
-static const char *s_self_path = "..\\aws-c-io.dll";
+static const char *s_self_path = ".\\aws-c-io.dll";
 #else
 static const char *s_self_path = "../libaws-c-io.so";
 #endif
@@ -49,35 +49,37 @@ static int s_shared_library_open_success(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(shared_library_open_success, s_shared_library_open_success);
 
-static int s_shared_library_find_symbol_success(struct aws_allocator *allocator, void *ctx) {
+typedef int(*find_symbol_function)(struct aws_shared_library *, const char *, aws_generic_function *);
+
+static int s_shared_library_find_function_success(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
 
     struct aws_shared_library library;
     ASSERT_SUCCESS(aws_shared_library_init(&library, s_self_path));
 
-    void *find_symbol = NULL;
-    ASSERT_SUCCESS(aws_shared_library_get_symbol(&library, "aws_shared_library_get_symbol", &find_symbol));
+	aws_generic_function find_symbol = NULL;
+    ASSERT_SUCCESS(aws_shared_library_find_function(&library, "aws_shared_library_find_function", &find_symbol));
 
-    int (*find_symbol_fn)(struct aws_shared_library *, const char *, void **) = find_symbol;
-    ASSERT_TRUE(find_symbol_fn == aws_shared_library_get_symbol);
+	find_symbol_function find = (find_symbol_function) find_symbol;
+    ASSERT_TRUE(find == aws_shared_library_find_function);
 
     aws_shared_library_clean_up(&library);
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(shared_library_find_symbol_success, s_shared_library_find_symbol_success);
+AWS_TEST_CASE(shared_library_find_function_success, s_shared_library_find_function_success);
 
-static int s_shared_library_find_symbol_failure(struct aws_allocator *allocator, void *ctx) {
+static int s_shared_library_find_function_failure(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
 
     struct aws_shared_library library;
     ASSERT_SUCCESS(aws_shared_library_init(&library, s_self_path));
 
-    void *find_symbol = NULL;
-    ASSERT_FAILS(aws_shared_library_get_symbol(&library, "not_a_real_function", &find_symbol));
+	aws_generic_function find_symbol = NULL;
+    ASSERT_FAILS(aws_shared_library_find_function(&library, "not_a_real_function", &find_symbol));
     ASSERT_TRUE(find_symbol == NULL);
 
     aws_shared_library_clean_up(&library);
@@ -85,4 +87,4 @@ static int s_shared_library_find_symbol_failure(struct aws_allocator *allocator,
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(shared_library_find_symbol_failure, s_shared_library_find_symbol_failure);
+AWS_TEST_CASE(shared_library_find_function_failure, s_shared_library_find_function_failure);

@@ -24,6 +24,8 @@ struct aws_shared_library {
     void *library_handle;
 };
 
+typedef void(*aws_generic_function)(void);
+
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
@@ -33,7 +35,7 @@ AWS_IO_API
 void aws_shared_library_clean_up(struct aws_shared_library *library);
 
 AWS_IO_API
-int aws_shared_library_get_symbol(struct aws_shared_library *library, const char *symbol_name, void **symbol_address);
+int aws_shared_library_find_function(struct aws_shared_library *library, const char *symbol_name, aws_generic_function *function_address);
 
 AWS_EXTERN_C_END
 

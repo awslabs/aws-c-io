@@ -13,11 +13,16 @@
  * permissions and limitations under the License.
  */
 
+/* In theory clang-format doesn't get run on this, but someday maybe it will*/
+/* clang-format off */
+#include <Windows.h>
+#include <libloaderapi.h>
+/* clang-format on */
+
 #include <aws/io/shared_library.h>
 
 #include <aws/io/logging.h>
 
-#include <dlfcn.h>
 
 static const char *s_null = "<NULL>";
 static const char *s_unknown_error = "<Unknown>";
@@ -25,13 +30,14 @@ static const char *s_unknown_error = "<Unknown>";
 int aws_shared_library_init(struct aws_shared_library *library, const char *library_path) {
     AWS_ZERO_STRUCT(*library);
 
-    library->library_handle = dlopen(library_path, RTLD_LAZY);
+    library->library_handle = LoadLibrary(library_path);
     if (library->library_handle == NULL) {
-        const char *error = dlerror();
-        AWS_LOGF_ERROR(AWS_LS_IO_SHARED_LIBRARY, "id=%p: Failed to load shared library at path \"%s\" with error: %s",
+		DWORD ec = GetLastError();
+
+        AWS_LOGF_ERROR(AWS_LS_IO_SHARED_LIBRARY, "id=%p: Failed to load shared library at path \"%s\" with Windows error code: %ul",
            (void *)library,
            library_path ? library_path : s_null,
-           error ? error : s_unknown_error);
+           ec);
         return aws_raise_error(AWS_IO_SHARED_LIBRARY_LOAD_FAILURE);
     }
 
@@ -40,7 +46,7 @@ int aws_shared_library_init(struct aws_shared_library *library, const char *libr
 
 void aws_shared_library_clean_up(struct aws_shared_library *library) {
     if (library && library->library_handle) {
-        dlclose(library->library_handle);
+        FreeLibrary((HMODULE)library->library_handle);
         library->library_handle = NULL;
     }
 }
@@ -50,13 +56,13 @@ int aws_shared_library_find_function(struct aws_shared_library *library, const c
         return aws_raise_error(AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE);
     }
 
-    *function_address = (aws_generic_function) dlsym(library->library_handle, symbol_name);
+	*function_address = (aws_generic_function) GetProcAddress((HMODULE)library->library_handle, symbol_name);
     if (*function_address == NULL) {
-        const char *error = dlerror();
-        AWS_LOGF_ERROR(AWS_LS_IO_SHARED_LIBRARY, "id=%p: Failed to find shared library symbol \"%s\" with error: %s",
-                       (void *)library,
-                       symbol_name ? symbol_name : s_null,
-                       error ? error : s_unknown_error);
+		DWORD ec = GetLastError();
+        AWS_LOGF_ERROR(AWS_LS_IO_SHARED_LIBRARY, "id=%p: Failed to find shared library symbol \"%s\" with error code: %ul",
+            (void *)library,
+            symbol_name ? symbol_name : s_null,
+            ec);
         return aws_raise_error(AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE);
     }
 
