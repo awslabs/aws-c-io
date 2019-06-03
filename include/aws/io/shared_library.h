@@ -16,7 +16,7 @@
  * permissions and limitations under the License.
  */
 
-#include <aws/common/common.h>
+#include <aws/io/io.h>
 
 struct aws_byte_cursor;
 
@@ -26,14 +26,14 @@ struct aws_shared_library {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_COMMON_API
+AWS_IO_API
 int aws_shared_library_init(struct aws_shared_library *library, const char *library_path);
 
-AWS_COMMON_API
-void aws_shared_library_cleanup(struct aws_shared_library *library);
+AWS_IO_API
+void aws_shared_library_clean_up(struct aws_shared_library *library);
 
-AWS_COMMON_API
-int aws_shared_library_get_symbol(struct aws_shared_library *library, const char *symbol_name);
+AWS_IO_API
+int aws_shared_library_get_symbol(struct aws_shared_library *library, const char *symbol_name, void **symbol_address);
 
 AWS_EXTERN_C_END
 
