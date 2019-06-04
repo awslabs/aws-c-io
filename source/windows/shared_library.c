@@ -34,7 +34,7 @@ int aws_shared_library_init(struct aws_shared_library *library, const char *libr
 
         AWS_LOGF_ERROR(
             AWS_LS_IO_SHARED_LIBRARY,
-            "id=%p: Failed to load shared library at path \"%s\" with Windows error code: %ul",
+            "id=%p: Failed to load shared library with path \"%s\" with Windows error code: %ul",
             (void *)library,
             library_path ? library_path : s_null,
             ec);
