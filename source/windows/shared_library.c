@@ -13,11 +13,10 @@
  * permissions and limitations under the License.
  */
 
-/* In theory clang-format doesn't get run on this, but someday maybe it will*/
-/* clang-format off */
+// clang-format off
 #include <Windows.h>
 #include <libloaderapi.h>
-/* clang-format on */
+// clang-format on
 
 #include <aws/io/shared_library.h>
 

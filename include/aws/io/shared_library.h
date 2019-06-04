@@ -55,4 +55,4 @@ int aws_shared_library_find_function(
 
 AWS_EXTERN_C_END
 
-#endif // AWS_COMMON_SHARED_LIBRARY_H
+#endif /* AWS_COMMON_SHARED_LIBRARY_H */

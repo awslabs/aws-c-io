@@ -17,11 +17,11 @@
 go around re-ordering windows header files. Also, sorry about the C++ style comments
 below, clang-format doesn't work (at least on my version) with the c-style comments. */
 
-/* clang-format off */
-#include <MSWSock.h>
-#include <WS2tcpip.h>
+// clang-format off
 #include <WinSock2.h>
-/* clang-format on */
+#include <WS2tcpip.h>
+#include <MSWSock.h>
+// clang-format on
 
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
