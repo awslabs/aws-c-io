@@ -184,6 +184,14 @@ add_test_case(test_input_stream_file_seek_end)
 add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
 
+add_test_case(shared_library_open_failure)
+
+if (BUILD_SHARED_LIBS)
+    add_test_case(shared_library_open_success)
+    add_test_case(shared_library_find_function_failure)
+    add_test_case(shared_library_find_function_success)
+endif()
+
 set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

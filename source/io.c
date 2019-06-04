@@ -151,6 +151,12 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_INVALID_FILE_HANDLE,
         "Operation failed because the file handle was invalid"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SHARED_LIBRARY_LOAD_FAILURE,
+        "System call error during attempt to load shared library"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
+        "System call error during attempt to find shared library symbol"),
 };
 /* clang-format on */
 
