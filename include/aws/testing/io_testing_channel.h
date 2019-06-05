@@ -203,6 +203,7 @@ struct testing_channel {
 
     bool channel_setup_completed;
     bool channel_shutdown_completed;
+    int channel_shutdown_error_code;
 };
 
 static void s_testing_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
@@ -217,6 +218,7 @@ static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel,
     (void)error_code;
     struct testing_channel *testing = user_data;
     testing->channel_shutdown_completed = true;
+    testing->channel_shutdown_error_code = error_code;
 }
 
 /** API for testing, use this for testing purely your channel handlers and nothing else. Because of that, the s_
@@ -346,8 +348,6 @@ AWS_STATIC_IMPL int testing_channel_clean_up(struct testing_channel *testing) {
     testing_channel_set_is_on_users_thread(testing, false);
     aws_event_loop_destroy(testing->loop);
 
-    ASSERT_TRUE(testing->channel_shutdown_completed);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -366,6 +366,17 @@ AWS_STATIC_IMPL int testing_channel_install_downstream_handler(struct testing_ch
     ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->right_handler_slot, handler));
 
     return AWS_OP_SUCCESS;
+}
+
+/** Return whether channel is completely shut down */
+AWS_STATIC_IMPL bool testing_channel_is_shutdown_completed(const struct testing_channel *testing) {
+    return testing->channel_shutdown_completed;
+}
+
+/** Return channel's shutdown error_code */
+AWS_STATIC_IMPL int testing_channel_get_shutdown_error_code(const struct testing_channel *testing) {
+    AWS_ASSERT(testing->channel_shutdown_completed);
+    return testing->channel_shutdown_error_code;
 }
 
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
