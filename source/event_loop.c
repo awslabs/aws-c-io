@@ -159,6 +159,10 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
 }
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
     AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
