@@ -1390,7 +1390,7 @@ static int s_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!error_code) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
 
             /* send a TLS alert. */
             SECURITY_STATUS status;
