@@ -515,9 +515,11 @@ static int s_handle_shutdown(
     bool abort_immediately) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
-        SSLClose(secure_transport_handler->ctx);
+    if (dir == AWS_CHANNEL_DIR_WRITE) {
+        if (!error_code) {
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
+            SSLClose(secure_transport_handler->ctx);
+        }
     } else {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
