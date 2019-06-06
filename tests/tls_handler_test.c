@@ -72,6 +72,7 @@ static void s_tls_handler_test_client_setup_callback(
     (void)bootstrap;
 
     struct tls_test_args *setup_test_args = user_data;
+    aws_mutex_lock(setup_test_args->mutex);
 
     if (!error_code) {
         setup_test_args->channel = channel;
@@ -88,6 +89,7 @@ static void s_tls_handler_test_client_setup_callback(
     }
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
 }
 
 static void s_tls_handler_test_server_setup_callback(
@@ -113,6 +115,7 @@ static void s_tls_handler_test_server_setup_callback(
         setup_test_args->tls_negotiated = true;
     } else {
         setup_test_args->error_invoked = true;
+        setup_test_args->last_error_code = error_code;
     }
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
@@ -197,12 +200,14 @@ static struct aws_byte_buf s_tls_test_handle_read(
     (void)slot;
 
     struct tls_test_rw_args *rw_args = (struct tls_test_rw_args *)user_data;
+    aws_mutex_lock(rw_args->mutex);
 
-    memcpy(rw_args->received_message.buffer + rw_args->received_message.len, data_read->buffer, data_read->len);
-    rw_args->received_message.len += data_read->len;
+    aws_byte_buf_write_from_whole_buffer(&rw_args->received_message, *data_read);
     rw_args->read_invocations += 1;
     rw_args->invocation_happened = true;
+
     aws_condition_variable_notify_one(rw_args->condition_variable);
+    aws_mutex_unlock(rw_args->mutex);
 
     return rw_args->received_message;
 }
@@ -633,6 +638,100 @@ static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocato
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_pinning, s_tls_client_channel_negotiation_error_pinning_fn)
+
+/* Test that, if the channel shuts down unexpectedly during tls negotiation, that the user code is still notified.
+ * We make this happen by connecting to port 80 on s3 or amazon.com and attempting TLS,
+ * which gets you hung up on after a few seconds */
+static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const char *host_name = "aws-crt-test-stuff.s3.amazonaws.com";
+    uint16_t port = 80; /* Note: intentionally wrong and not 443 */
+
+    aws_tls_init_static_state(allocator);
+
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
+
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
+
+    struct aws_mutex mutex;
+    ASSERT_SUCCESS(aws_mutex_init(&mutex));
+    struct aws_condition_variable condition_variable;
+    ASSERT_SUCCESS(aws_condition_variable_init(&condition_variable));
+
+    struct aws_tls_ctx_options client_ctx_options;
+    aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
+
+    struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
+    ASSERT_NOT_NULL(client_ctx);
+
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
+    struct aws_byte_cursor host_name_cursor = aws_byte_cursor_from_c_str(host_name);
+    aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cursor);
+
+    struct tls_test_args outgoing_args = {
+        .mutex = &mutex,
+        .allocator = allocator,
+        .condition_variable = &condition_variable,
+        .rw_handler = NULL,
+        .server = false,
+        .tls_negotiated = false,
+        .shutdown_finished = false,
+    };
+
+    struct aws_socket_options options = {
+        .connect_timeout_ms = 10000, .type = AWS_SOCKET_STREAM, .domain = AWS_SOCKET_IPV4};
+
+    aws_mutex_lock(&mutex);
+
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, &resolver, NULL);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
+        client_bootstrap,
+        host_name,
+        port,
+        &options,
+        &tls_client_conn_options,
+        s_tls_handler_test_client_setup_callback,
+        s_tls_handler_test_client_shutdown_callback,
+        &outgoing_args));
+
+    /* Wait for setup to complete */
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &outgoing_args));
+
+    /* Assert that setup failed, and that it failed for reasons unrelated to the tls-handler. */
+    ASSERT_FALSE(outgoing_args.tls_negotiated);
+    ASSERT_TRUE(outgoing_args.error_invoked);
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, outgoing_args.last_error_code);
+
+    aws_mutex_unlock(&mutex);
+
+    /* Clean up */
+    aws_client_bootstrap_release(client_bootstrap);
+
+    aws_tls_ctx_destroy(client_ctx);
+    aws_tls_ctx_options_clean_up(&client_ctx_options);
+    aws_tls_connection_options_clean_up(&tls_client_conn_options);
+    aws_host_resolver_clean_up(&resolver);
+
+    aws_mutex_clean_up(&mutex);
+    aws_condition_variable_clean_up(&condition_variable);
+
+    aws_event_loop_group_clean_up(&el_group);
+    aws_tls_clean_up_static_state();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_socket_closed,
+    s_tls_client_channel_negotiation_error_socket_closed_fn);
 
 static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name) {
     aws_tls_init_static_state(allocator);
