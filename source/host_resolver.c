@@ -117,7 +117,7 @@ struct host_entry {
     struct aws_condition_variable resolver_thread_semaphore;
     const struct aws_string *host_name;
     struct aws_host_resolution_config resolution_config;
-    struct aws_array_list pending_resolution_callbacks;
+    struct aws_linked_list pending_resolution_callbacks;
     int64_t resolve_frequency_ns;
     /* this member will be a monotonic increasing value and not protected by a memory barrier.
        Let it tear on 32-bit systems, we don't care, we just want to see a change. This at least assumes cache coherency
@@ -286,12 +286,60 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
     return AWS_OP_SUCCESS;
 }
 
-struct pending_callback {
-    aws_on_host_resolved_result_fn *callback;
-    void *user_data;
-    struct aws_linked_list_node node;
-    struct aws_array_list *addresses;
-};
+static struct aws_host_address *s_find_cached_address_aux(
+    struct aws_lru_cache *primary_records,
+    struct aws_lru_cache *fallback_records,
+    const struct aws_string *address) {
+    struct aws_host_address *found = NULL;
+
+    /* we only care if we found it, who cares if there was an error. */
+    aws_lru_cache_find(primary_records, address, (void **)&found);
+    if (found == NULL) {
+        aws_lru_cache_find(fallback_records, address, (void **)&found);
+    }
+
+    return found;
+}
+
+static struct aws_host_address *s_find_cached_address(
+    struct host_entry *entry,
+    const struct aws_string *address,
+    enum aws_address_record_type record_type) {
+    switch (record_type) {
+        case AWS_ADDRESS_RECORD_TYPE_AAAA:
+            return s_find_cached_address_aux(&entry->aaaa_records, &entry->failed_connection_aaaa_records, address);
+
+        case AWS_ADDRESS_RECORD_TYPE_A:
+            return s_find_cached_address_aux(&entry->a_records, &entry->failed_connection_a_records, address);
+
+        default:
+            return NULL;
+    }
+}
+
+static struct aws_host_address *s_get_lru_address_aux(
+    struct aws_lru_cache *primary_records,
+    struct aws_lru_cache *fallback_records) {
+    struct aws_host_address *address = aws_lru_cache_use_lru_element(primary_records);
+    if (address == NULL) {
+        aws_lru_cache_use_lru_element(fallback_records);
+    }
+
+    return address;
+}
+
+static struct aws_host_address *s_get_lru_address(struct host_entry *entry, enum aws_address_record_type record_type) {
+    switch (record_type) {
+        case AWS_ADDRESS_RECORD_TYPE_AAAA:
+            return s_get_lru_address_aux(&entry->aaaa_records, &entry->failed_connection_aaaa_records);
+
+        case AWS_ADDRESS_RECORD_TYPE_A:
+            return s_get_lru_address_aux(&entry->a_records, &entry->failed_connection_a_records);
+
+        default:
+            return NULL;
+    }
+}
 
 static void s_clear_address_list(struct aws_array_list *address_list) {
     for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
@@ -303,75 +351,69 @@ static void s_clear_address_list(struct aws_array_list *address_list) {
     aws_array_list_clear(address_list);
 }
 
-static void s_update_address_cache(struct host_entry *host_entry, struct aws_array_list *address_list, uint64_t new_expiration) {
+static void s_update_address_cache(
+    struct host_entry *host_entry,
+    struct aws_array_list *address_list,
+    uint64_t new_expiration) {
     for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
         struct aws_host_address *fresh_resolved_address = NULL;
         aws_array_list_get_at_ptr(address_list, (void **)&fresh_resolved_address, i);
 
-        struct aws_lru_cache *address_table =
-                fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? &host_entry->aaaa_records
-                                                                                    : &host_entry->a_records;
-
-        struct aws_host_address *address_to_cache = NULL;
-        /* we only care if we found it, who cares if there was an error. */
-        aws_lru_cache_find(address_table, fresh_resolved_address->address, (void **)&address_to_cache);
-
-        if (!address_to_cache) {
-            struct aws_lru_cache *failed_address_table =
-                    fresh_resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA
-                    ? &host_entry->failed_connection_aaaa_records
-                    : &host_entry->failed_connection_a_records;
-            /* we only care if we found it, who cares if there was an error. */
-            aws_lru_cache_find(
-                    failed_address_table, fresh_resolved_address->address, (void **)&address_to_cache);
-        }
+        struct aws_host_address *address_to_cache =
+            s_find_cached_address(host_entry, fresh_resolved_address->address, fresh_resolved_address->record_type);
 
         if (address_to_cache) {
             address_to_cache->expiry = new_expiration;
             AWS_LOGF_TRACE(
-                    AWS_LS_IO_DNS,
-                    "static: updating expiry for %s for host %s to %llu",
-                    address_to_cache->address->bytes,
-                    host_entry->host_name->bytes,
-                    (unsigned long long)new_expiration);
-        } else  {
+                AWS_LS_IO_DNS,
+                "static: updating expiry for %s for host %s to %llu",
+                address_to_cache->address->bytes,
+                host_entry->host_name->bytes,
+                (unsigned long long)new_expiration);
+        } else {
             address_to_cache = aws_mem_acquire(host_entry->allocator, sizeof(struct aws_host_address));
 
             if (address_to_cache) {
                 aws_host_address_move(fresh_resolved_address, address_to_cache);
                 address_to_cache->expiry = new_expiration;
+
+                struct aws_lru_cache *address_table = address_to_cache->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA
+                                                          ? &host_entry->aaaa_records
+                                                          : &host_entry->a_records;
+
                 aws_lru_cache_put(address_table, address_to_cache->address, address_to_cache);
 
                 AWS_LOGF_DEBUG(
-                        AWS_LS_IO_DNS,
-                        "static: new address resolved %s for host %s caching",
-                        address_to_cache->address->bytes,
-                        host_entry->host_name->bytes);
+                    AWS_LS_IO_DNS,
+                    "static: new address resolved %s for host %s caching",
+                    address_to_cache->address->bytes,
+                    host_entry->host_name->bytes);
             }
         }
     }
 }
 
-static int s_assign_address_sets_to_callbacks(struct host_entry *host_entry, struct aws_array_list *address_sets) {
-    size_t address_set_count = aws_array_list_length(address_sets);
-    size_t callback_count = aws_array_list_length(&host_entry->pending_resolution_callbacks);
-    for (size_t i = 0; i < callback_count; ++i) {
-        if (i >= address_set_count) {
-            ??
-        }
-
-        struct aws_array_list *address_set = NULL;
-        ??;
-
-        struct pending_callback *callback = NULL;
-        ??;
-
-        ??;
-        callback->addresses = address_set;
+static void s_try_use_address_in_callback(
+    struct aws_array_list *callback_addresses,
+    struct aws_host_address *address,
+    const struct aws_string *host_name) {
+    if (address) {
+        address->use_count += 1;
+        aws_array_list_push_back(callback_addresses, address);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_DNS,
+            "static: vending address %s for host %s to caller",
+            address->address->bytes,
+            host_name->bytes);
     }
-
-    return AWS_OP_SUCCESS;
 }
+
+struct pending_callback {
+    aws_on_host_resolved_result_fn *callback;
+    void *user_data;
+    struct aws_linked_list_node node;
+    struct aws_array_list *addresses;
+};
 
 static void resolver_thread_fn(void *arg) {
     struct host_entry *host_entry = arg;
@@ -381,11 +423,6 @@ static void resolver_thread_fn(void *arg) {
     size_t unsolicited_resolve_max = host_entry->resolution_config.max_ttl;
     struct aws_array_list address_list;
     if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
-        return;
-    }
-
-    struct aws_array_list callback_address_sets;
-    if (aws_array_list_init_dynamic(&callback_address_sets, host_entry->allocator, 10, sizeof(struct aws_array_list))) {
         return;
     }
 
@@ -413,6 +450,9 @@ static void resolver_thread_fn(void *arg) {
         aws_sys_clock_get_ticks(&timestamp);
         uint64_t new_expiry = timestamp + (host_entry->resolution_config.max_ttl * NS_PER_SEC);
 
+        struct aws_linked_list pending_resolve_copy;
+        aws_linked_list_init(&pending_resolve_copy);
+
         aws_rw_lock_wlock(&host_entry->entry_lock);
 
         if (!err_code) {
@@ -425,10 +465,12 @@ static void resolver_thread_fn(void *arg) {
         process_records(host_entry->allocator, &host_entry->aaaa_records, &host_entry->failed_connection_aaaa_records);
         process_records(host_entry->allocator, &host_entry->a_records, &host_entry->failed_connection_a_records);
 
-        /* build the list of subscriber notifications. */
-        s_assign_address_sets_to_callbacks(host_entry, &callback_address_sets);
+        aws_linked_list_swap_contents(&pending_resolve_copy, &host_entry->pending_resolution_callbacks);
 
         aws_rw_lock_wunlock(&host_entry->entry_lock);
+
+        struct aws_host_address address_array[2];
+        AWS_ZERO_ARRAY(address_array);
 
         /*
          * Perform the actual subscriber notifications
@@ -439,34 +481,18 @@ static void resolver_thread_fn(void *arg) {
                 AWS_CONTAINER_OF(resolution_callback_node, struct pending_callback, node);
 
             aws_rw_lock_wlock(&host_entry->entry_lock);
-            struct aws_host_address *aaaa_address = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
-            struct aws_host_address *a_address = aws_lru_cache_use_lru_element(&host_entry->a_records);
+            struct aws_host_address *aaaa_address = s_get_lru_address(host_entry, AWS_ADDRESS_RECORD_TYPE_AAAA);
+            struct aws_host_address *a_address = s_get_lru_address(host_entry, AWS_ADDRESS_RECORD_TYPE_A);
             aws_rw_lock_wunlock(&host_entry->entry_lock);
 
-            if ((aaaa_address || a_address) && host_entry->keep_active) {
-                struct aws_host_address address_array[2];
-                AWS_ZERO_ARRAY(address_array);
+            AWS_ASSERT(err_code != AWS_ERROR_SUCCESS || aaaa_address || a_address);
+
+            if (aaaa_address || a_address) {
                 struct aws_array_list callback_address_list;
                 aws_array_list_init_static(&callback_address_list, address_array, 2, sizeof(struct aws_host_address));
 
-                if (aaaa_address) {
-                    aaaa_address->use_count += 1;
-                    aws_array_list_push_back(&callback_address_list, aaaa_address);
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_DNS,
-                        "static: vending address %s for host %s to caller",
-                        aaaa_address->address->bytes,
-                        host_entry->host_name->bytes);
-                }
-                if (a_address) {
-                    a_address->use_count += 1;
-                    aws_array_list_push_back(&callback_address_list, a_address);
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_DNS,
-                        "static: vending address %s for host %s to caller",
-                        a_address->address->bytes,
-                        host_entry->host_name->bytes);
-                }
+                s_try_use_address_in_callback(&callback_address_list, aaaa_address, host_entry->host_name);
+                s_try_use_address_in_callback(&callback_address_list, a_address, host_entry->host_name);
 
                 pending_callback->callback(
                     host_entry->resolver,
@@ -474,14 +500,9 @@ static void resolver_thread_fn(void *arg) {
                     AWS_OP_SUCCESS,
                     &callback_address_list,
                     pending_callback->user_data);
+
                 aws_array_list_clean_up(&callback_address_list);
             } else {
-
-                if (!host_entry->keep_active && !err_code) {
-                    aws_raise_error(AWS_ERROR_IO_OPERATION_CANCELLED);
-                    err_code = AWS_ERROR_IO_OPERATION_CANCELLED;
-                }
-
                 pending_callback->callback(
                     host_entry->resolver, host_entry->host_name, err_code, NULL, pending_callback->user_data);
             }
