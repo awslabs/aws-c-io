@@ -88,8 +88,7 @@ static int s_default_aws_log_formatter_format(
     }
 
     int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE + subject_name_len;
-    struct aws_string *raw_string =
-        aws_mem_calloc(formatter->allocator, 1, sizeof(struct aws_string) + total_length);
+    struct aws_string *raw_string = aws_mem_calloc(formatter->allocator, 1, sizeof(struct aws_string) + total_length);
     if (raw_string == NULL) {
         goto error_clean_up;
     }
