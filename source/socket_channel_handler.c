@@ -98,6 +98,10 @@ static int s_socket_process_write_message(
         (void *)handler,
         (unsigned long long)message->message_data.len);
 
+    if (!aws_socket_is_open(socket_handler->socket)) {
+        return AWS_OP_ERR;
+    }
+
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
         return AWS_OP_ERR;

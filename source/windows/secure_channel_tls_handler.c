@@ -1388,73 +1388,75 @@ static int s_handler_shutdown(
     bool abort_immediately) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_WRITE && !error_code) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down both the read and write direction", (void *)handler)
+    if (dir == AWS_CHANNEL_DIR_WRITE) {
+        if (!error_code) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
 
-        /* send a TLS alert. */
-        SECURITY_STATUS status;
+            /* send a TLS alert. */
+            SECURITY_STATUS status;
 
-        DWORD shutdown_code = SCHANNEL_SHUTDOWN;
-        SecBuffer shutdown_buffer = {
-            .pvBuffer = &shutdown_code,
-            .cbBuffer = sizeof(shutdown_code),
-            .BufferType = SECBUFFER_TOKEN,
-        };
+            DWORD shutdown_code = SCHANNEL_SHUTDOWN;
+            SecBuffer shutdown_buffer = {
+                .pvBuffer = &shutdown_code,
+                .cbBuffer = sizeof(shutdown_code),
+                .BufferType = SECBUFFER_TOKEN,
+            };
 
-        SecBufferDesc shutdown_buffer_desc = {
-            .ulVersion = SECBUFFER_VERSION,
-            .cBuffers = 1,
-            .pBuffers = &shutdown_buffer,
-        };
+            SecBufferDesc shutdown_buffer_desc = {
+                .ulVersion = SECBUFFER_VERSION,
+                .cBuffers = 1,
+                .pBuffers = &shutdown_buffer,
+            };
 
-        /* this updates the SSPI internal state machine. */
-        status = ApplyControlToken(&sc_handler->sec_handle, &shutdown_buffer_desc);
+            /* this updates the SSPI internal state machine. */
+            status = ApplyControlToken(&sc_handler->sec_handle, &shutdown_buffer_desc);
 
-        if (status != SEC_E_OK) {
-            aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-            return aws_channel_slot_on_handler_shutdown_complete(slot, dir, AWS_IO_SYS_CALL_FAILURE, true);
-        }
-
-        SecBuffer output_buffer = {
-            .pvBuffer = NULL,
-            .cbBuffer = 0,
-            .BufferType = SECBUFFER_EMPTY,
-        };
-
-        SecBufferDesc output_buffer_desc = {
-            .ulVersion = SECBUFFER_VERSION,
-            .cBuffers = 1,
-            .pBuffers = &output_buffer,
-        };
-
-        struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
-        /* this acutally gives us an Alert record to send. */
-        status = InitializeSecurityContextA(
-            &sc_handler->creds,
-            &sc_handler->sec_handle,
-            (SEC_CHAR *)server_name.buffer,
-            sc_handler->ctx_req,
-            0,
-            0,
-            NULL,
-            0,
-            NULL,
-            &output_buffer_desc,
-            &sc_handler->ctx_ret_flags,
-            NULL);
-
-        if (status == SEC_E_OK || status == SEC_I_CONTEXT_EXPIRED) {
-            struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
-                slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
-
-            if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
-                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
+            if (status != SEC_E_OK) {
+                aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, AWS_IO_SYS_CALL_FAILURE, true);
             }
-            memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
 
-            /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
-            if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                aws_mem_release(outgoing_message->allocator, outgoing_message);
+            SecBuffer output_buffer = {
+                .pvBuffer = NULL,
+                .cbBuffer = 0,
+                .BufferType = SECBUFFER_EMPTY,
+            };
+
+            SecBufferDesc output_buffer_desc = {
+                .ulVersion = SECBUFFER_VERSION,
+                .cBuffers = 1,
+                .pBuffers = &output_buffer,
+            };
+
+            struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+            /* this acutally gives us an Alert record to send. */
+            status = InitializeSecurityContextA(
+                &sc_handler->creds,
+                &sc_handler->sec_handle,
+                (SEC_CHAR *)server_name.buffer,
+                sc_handler->ctx_req,
+                0,
+                0,
+                NULL,
+                0,
+                NULL,
+                &output_buffer_desc,
+                &sc_handler->ctx_ret_flags,
+                NULL);
+
+            if (status == SEC_E_OK || status == SEC_I_CONTEXT_EXPIRED) {
+                struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
+                    slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
+
+                if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
+                    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
+                }
+                memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
+
+                /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
+                if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
+                    aws_mem_release(outgoing_message->allocator, outgoing_message);
+                }
             }
         }
     }
