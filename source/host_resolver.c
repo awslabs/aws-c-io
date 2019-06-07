@@ -453,7 +453,6 @@ struct pending_callback {
     aws_on_host_resolved_result_fn *callback;
     void *user_data;
     struct aws_linked_list_node node;
-    struct aws_array_list *addresses;
 };
 
 static void resolver_thread_fn(void *arg) {
@@ -480,9 +479,6 @@ static void resolver_thread_fn(void *arg) {
 
         ++unsolicited_resolve_count;
         last_updated = host_entry->last_use;
-
-        struct aws_array_list pending_callbacks_copy;
-        AWS_ZERO_STRUCT(pending_callbacks_copy);
 
         /* resolve and then process each record */
         int err_code = host_entry->resolution_config.impl(
