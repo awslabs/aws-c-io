@@ -112,8 +112,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     AWS_ASSERT(el_group);
     AWS_ASSERT(host_resolver);
 
-    struct aws_client_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_client_bootstrap));
-
+    struct aws_client_bootstrap *bootstrap = aws_mem_calloc(allocator, 1, sizeof(struct aws_client_bootstrap));
     if (!bootstrap) {
         return NULL;
     }
@@ -124,7 +123,6 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
         (void *)bootstrap,
         (void *)el_group);
 
-    AWS_ZERO_STRUCT(*bootstrap);
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
@@ -653,7 +651,7 @@ static inline int s_new_client_channel(
     AWS_ASSERT(shutdown_callback);
 
     struct client_connection_args *client_connection_args =
-        aws_mem_acquire(bootstrap->allocator, sizeof(struct client_connection_args));
+        aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
 
     if (!client_connection_args) {
         return AWS_OP_ERR;
@@ -666,7 +664,6 @@ static inline int s_new_client_channel(
         host_name,
         (int)port);
 
-    AWS_ZERO_STRUCT(*client_connection_args);
     client_connection_args->user_data = user_data;
     client_connection_args->bootstrap = bootstrap;
     s_connection_args_acquire(client_connection_args);
@@ -817,8 +814,7 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
     AWS_ASSERT(allocator);
     AWS_ASSERT(el_group);
 
-    struct aws_server_bootstrap *bootstrap = aws_mem_acquire(allocator, sizeof(struct aws_server_bootstrap));
-
+    struct aws_server_bootstrap *bootstrap = aws_mem_calloc(allocator, 1, sizeof(struct aws_server_bootstrap));
     if (!bootstrap) {
         return NULL;
     }
@@ -1123,13 +1119,11 @@ void s_on_server_connection_result(
             (void *)connection_args->bootstrap,
             (void *)socket);
         struct server_channel_data *channel_data =
-            aws_mem_acquire(connection_args->bootstrap->allocator, sizeof(struct server_channel_data));
-
+            aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct server_channel_data));
         if (!channel_data) {
             goto error_cleanup;
         }
 
-        AWS_ZERO_STRUCT(*channel_data);
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
 
@@ -1179,8 +1173,7 @@ static inline struct aws_socket *s_server_new_socket_listener(
     AWS_ASSERT(shutdown_callback);
 
     struct server_connection_args *server_connection_args =
-        aws_mem_acquire(bootstrap->allocator, sizeof(struct server_connection_args));
-
+        aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct server_connection_args));
     if (!server_connection_args) {
         return NULL;
     }
@@ -1193,7 +1186,6 @@ static inline struct aws_socket *s_server_new_socket_listener(
         local_endpoint->address,
         (int)local_endpoint->port);
 
-    AWS_ZERO_STRUCT(*server_connection_args);
     server_connection_args->user_data = user_data;
     server_connection_args->bootstrap = bootstrap;
     s_server_bootstrap_acquire(server_connection_args->bootstrap);

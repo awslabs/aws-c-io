@@ -174,7 +174,7 @@ static int s_socket_init(
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 
-    struct posix_socket *posix_socket = aws_mem_acquire(alloc, sizeof(struct posix_socket));
+    struct posix_socket *posix_socket = aws_mem_calloc(alloc, 1, sizeof(struct posix_socket));
     if (!posix_socket) {
         return AWS_OP_ERR;
     }
@@ -577,8 +577,7 @@ int aws_socket_connect(
 
     struct posix_socket *socket_impl = socket->impl;
 
-    socket_impl->connect_args = aws_mem_acquire(socket->allocator, sizeof(struct posix_socket_connect_args));
-
+    socket_impl->connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct posix_socket_connect_args));
     if (!socket_impl->connect_args) {
         return AWS_OP_ERR;
     }
@@ -1658,7 +1657,7 @@ int aws_socket_write(
 
     AWS_ASSERT(written_fn);
     struct posix_socket *socket_impl = socket->impl;
-    struct write_request *write_request = aws_mem_acquire(socket->allocator, sizeof(struct write_request));
+    struct write_request *write_request = aws_mem_calloc(socket->allocator, 1, sizeof(struct write_request));
 
     if (!write_request) {
         return AWS_OP_ERR;

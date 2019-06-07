@@ -95,13 +95,13 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(
     aws_tls_on_protocol_negotiated on_protocol_negotiated,
     void *user_data) {
     struct aws_channel_handler *channel_handler =
-        (struct aws_channel_handler *)aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
+        (struct aws_channel_handler *)aws_mem_calloc(allocator, 1, sizeof(struct aws_channel_handler));
 
     if (!channel_handler) {
         return NULL;
     }
 
-    struct alpn_handler *alpn_handler = (struct alpn_handler *)aws_mem_acquire(allocator, sizeof(struct alpn_handler));
+    struct alpn_handler *alpn_handler = (struct alpn_handler *)aws_mem_calloc(allocator, 1, sizeof(struct alpn_handler));
 
     if (!alpn_handler) {
         aws_mem_release(allocator, (void *)channel_handler);

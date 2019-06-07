@@ -67,7 +67,7 @@ int aws_log_channel_init_foreground(
     struct aws_allocator *allocator,
     struct aws_log_writer *writer) {
     struct aws_log_foreground_channel *impl =
-        (struct aws_log_foreground_channel *)aws_mem_acquire(allocator, sizeof(struct aws_log_foreground_channel));
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_log_foreground_channel));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
@@ -195,8 +195,7 @@ int aws_log_channel_init_background(
     struct aws_log_channel *channel,
     struct aws_allocator *allocator,
     struct aws_log_writer *writer) {
-    struct aws_log_background_channel *impl = aws_mem_acquire(allocator, sizeof(struct aws_log_background_channel));
-
+    struct aws_log_background_channel *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_log_background_channel));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }

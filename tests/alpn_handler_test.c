@@ -85,7 +85,7 @@ static struct aws_channel_handler *s_alpn_tls_successful_negotiation(
     struct alpn_test_on_negotiation_args *negotiation_args = (struct alpn_test_on_negotiation_args *)ctx;
 
     struct aws_channel_handler *handler =
-        (struct aws_channel_handler *)aws_mem_acquire(negotiation_args->allocator, sizeof(struct aws_channel_handler));
+        aws_mem_calloc(negotiation_args->allocator, 1, sizeof(struct aws_channel_handler));
 
     negotiation_args->new_handler = handler;
     negotiation_args->protocol = *protocol;
