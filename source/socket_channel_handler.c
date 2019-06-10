@@ -268,9 +268,9 @@ static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_stat
     struct socket_handler *socket_handler = handler->impl;
 
     /*
-    * Run this unconditionally regardless of status, otherwise channel will not
-    * finish shutting down properly
-    */
+     * Run this unconditionally regardless of status, otherwise channel will not
+     * finish shutting down properly
+     */
 
     /* this only happens in write direction. */
     /* we also don't care about the free_scarce_resource_immediately
