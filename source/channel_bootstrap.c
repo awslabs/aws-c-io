@@ -218,7 +218,10 @@ void s_connection_args_release(struct client_connection_args *args) {
     }
 }
 
-void s_connection_args_setup_callback(struct client_connection_args *args, int error_code, struct aws_channel *channel) {
+void s_connection_args_setup_callback(
+    struct client_connection_args *args,
+    int error_code,
+    struct aws_channel *channel) {
     if (!args->setup_called) {
         aws_client_bootstrap_on_channel_setup_fn *setup_callback = args->setup_callback;
         setup_callback(args->bootstrap, error_code, channel, args->user_data);
@@ -226,7 +229,10 @@ void s_connection_args_setup_callback(struct client_connection_args *args, int e
     }
 }
 
-void s_connection_args_shutdown_callback(struct client_connection_args *args, int error_code, struct aws_channel *channel) {
+void s_connection_args_shutdown_callback(
+    struct client_connection_args *args,
+    int error_code,
+    struct aws_channel *channel) {
     if (!args->setup_called) {
         s_connection_args_setup_callback(args, error_code, channel);
         return;
