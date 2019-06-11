@@ -239,7 +239,6 @@ static void s_connection_args_shutdown_callback(
             error_code = AWS_ERROR_UNKNOWN;
         }
         s_connection_args_setup_callback(args, error_code, NULL);
-        return;
     }
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = args->shutdown_callback;
     shutdown_callback(args->bootstrap, error_code, channel, args->user_data);
@@ -264,7 +263,13 @@ static void s_tls_client_on_negotiation_result(
         err_code,
         (void *)slot->channel);
 
-    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? connection_args->channel_data.channel : NULL;
+    /* if an error occurred, the user callback will be delivered in shutdown */
+    if (err_code) {
+        aws_channel_shutdown(slot->channel, err_code);
+        return;
+    }
+
+    struct aws_channel *channel = connection_args->channel_data.channel;
     s_connection_args_setup_callback(connection_args, err_code, channel);
 }
 
@@ -433,8 +438,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         err_code);
 
 error:
-    s_connection_args_setup_callback(connection_args, err_code, NULL);
-
+    aws_channel_shutdown(channel, err_code);
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
