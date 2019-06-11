@@ -270,7 +270,7 @@ static void s_tls_client_on_negotiation_result(
     }
 
     struct aws_channel *channel = connection_args->channel_data.channel;
-    s_connection_args_setup_callback(connection_args, err_code, channel);
+    s_connection_args_setup_callback(connection_args, AWS_ERROR_SUCCESS, channel);
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
@@ -430,14 +430,13 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         return;
     }
 
+error:
     AWS_LOGF_ERROR(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: channel %p setup failed with error %d.",
         (void *)connection_args->bootstrap,
         (void *)channel,
         err_code);
-
-error:
     aws_channel_shutdown(channel, err_code);
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
