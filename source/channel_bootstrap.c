@@ -227,6 +227,10 @@ static void s_connection_args_setup_callback(
         aws_client_bootstrap_on_channel_setup_fn *setup_callback = args->setup_callback;
         setup_callback(args->bootstrap, error_code, channel, args->user_data);
         args->setup_called = true;
+        /* if setup_callback is called with an error, we will not call shutdown_callback */
+        if (error_code) {
+            args->shutdown_callback = NULL;
+        }
     }
 }
 
@@ -235,13 +239,14 @@ static void s_connection_args_shutdown_callback(
     int error_code,
     struct aws_channel *channel) {
     if (!args->setup_called) {
-        if (!error_code) {
-            error_code = AWS_ERROR_UNKNOWN;
-        }
+        /* if setup_callback was not called yet, an error occurred, ensure we tell the user *SOMETHING* */
+        error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_connection_args_setup_callback(args, error_code, NULL);
     }
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = args->shutdown_callback;
-    shutdown_callback(args->bootstrap, error_code, channel, args->user_data);
+    if (shutdown_callback) {
+        shutdown_callback(args->bootstrap, error_code, channel, args->user_data);
+    }
 }
 
 static void s_tls_client_on_negotiation_result(
