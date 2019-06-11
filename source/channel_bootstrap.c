@@ -188,7 +188,6 @@ struct client_connection_args {
     uint8_t addresses_count;
     uint8_t failed_count;
     bool connection_chosen;
-    bool negotiating_tls;
     bool setup_called;
     uint32_t ref_count;
 };
@@ -243,7 +242,6 @@ static void s_tls_client_on_negotiation_result(
     void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
-    connection_args->negotiating_tls = false;
     if (connection_args->channel_data.user_on_negotiation_result) {
         connection_args->channel_data.user_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);
@@ -406,7 +404,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         if (connection_args->channel_data.use_tls) {
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
-            connection_args->negotiating_tls = true;
             if (s_setup_client_tls(connection_args, channel)) {
                 err_code = aws_last_error();
                 goto error;
@@ -444,18 +441,9 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
         (void *)channel,
         error_code);
 
-    /* note it's not safe to reference the bootstrap after this scope. */
+    /* note it's not safe to reference the bootstrap after the callback. */
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
-    {
-        /* If the connection setup_callback has not been called for this connect attempt (because it
-         * was intercepted for TLS setup), call it instead. This usually means a connection failure
-         * occurred during TLS negotation */
-        if (connection_args->negotiating_tls) {
-            s_connection_args_setup_callback(connection_args, error_code, channel);
-        } else {
-            s_connection_args_shutdown_callback(connection_args, error_code, channel);
-        }
-    }
+    s_connection_args_shutdown_callback(connection_args, error_code, channel);
 
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
