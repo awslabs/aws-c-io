@@ -218,23 +218,27 @@ void s_connection_args_release(struct client_connection_args *args) {
     }
 }
 
-void s_connection_args_setup_callback(
+static void s_connection_args_setup_callback(
     struct client_connection_args *args,
     int error_code,
     struct aws_channel *channel) {
     if (!args->setup_called) {
+        AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
         aws_client_bootstrap_on_channel_setup_fn *setup_callback = args->setup_callback;
         setup_callback(args->bootstrap, error_code, channel, args->user_data);
         args->setup_called = true;
     }
 }
 
-void s_connection_args_shutdown_callback(
+static void s_connection_args_shutdown_callback(
     struct client_connection_args *args,
     int error_code,
     struct aws_channel *channel) {
     if (!args->setup_called) {
-        s_connection_args_setup_callback(args, error_code, channel);
+        if (!error_code) {
+            error_code = AWS_ERROR_UNKNOWN;
+        }
+        s_connection_args_setup_callback(args, error_code, NULL);
         return;
     }
     aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = args->shutdown_callback;
