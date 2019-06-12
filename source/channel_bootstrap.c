@@ -231,6 +231,7 @@ static void s_connection_args_setup_callback(
         if (error_code) {
             args->shutdown_callback = NULL;
         }
+        s_connection_args_release(args);
     }
 }
 
@@ -446,7 +447,6 @@ error:
     aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
-    s_connection_args_release(connection_args);
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -515,6 +515,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
 
+        /* if this is the last attempted connection and it failed, notify the user */
         if (connection_args->failed_count == connection_args->addresses_count) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -523,8 +524,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 error_code);
             s_connection_args_setup_callback(connection_args, error_code, NULL);
         }
-        /* release the ref from s_on_host_resolved */
-        s_connection_args_release(connection_args);
         return;
     }
 
@@ -551,12 +550,67 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
         connection_args->failed_count++;
 
+        /* if this is the last attempted connection and it failed, notify the user */
         if (connection_args->failed_count == connection_args->addresses_count) {
             s_connection_args_setup_callback(connection_args, error_code, NULL);
         }
-        /* release the ref from s_on_host_resolved */
-        s_connection_args_release(connection_args);
     }
+}
+
+struct connection_task_data {
+    struct aws_task task;
+    struct aws_socket_endpoint endpoint;
+    struct aws_socket_options options;
+    struct aws_host_address host_address;
+    struct client_connection_args *args;
+    struct aws_event_loop *connect_loop;
+};
+
+static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    struct connection_task_data *task_data = arg;
+    struct aws_allocator *allocator = task_data->args->bootstrap->allocator;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_connection_args_release(task_data->args);
+        goto cleanup_task;
+    }
+
+    struct aws_socket *outgoing_socket = aws_mem_acquire(allocator, sizeof(struct aws_socket));
+    if (!outgoing_socket) {
+        goto error;
+    }
+
+    if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
+        goto error;
+    }
+
+    if (aws_socket_connect(
+            outgoing_socket,
+            &task_data->endpoint,
+            task_data->connect_loop,
+            s_on_client_connection_established,
+            task_data->args)) {
+        aws_host_resolver_record_connection_failure(
+            task_data->args->bootstrap->host_resolver, &task_data->host_address);
+        aws_socket_clean_up(outgoing_socket);
+        goto error;
+    }
+
+    goto cleanup_task;
+
+error:
+    task_data->args->failed_count++;
+    int err_code = aws_last_error();
+    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: failed to create socket with error %d", (void*)task_data->args->bootstrap, err_code);
+    if (outgoing_socket) {
+        aws_mem_release(allocator, outgoing_socket);
+    }
+    s_connection_args_release(task_data->args);
+
+cleanup_task:
+    aws_host_address_clean_up(&task_data->host_address);
+    aws_mem_release(allocator, task_data);
 }
 
 static void s_on_host_resolved(
@@ -570,90 +624,55 @@ static void s_on_host_resolved(
 
     struct client_connection_args *client_connection_args = user_data;
 
-    if (!err_code) {
-        size_t host_addresses_len = aws_array_list_length(host_addresses);
-        AWS_LOGF_TRACE(
+    if (err_code) {
+        AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: dns resolution completed. Kicking off connections"
-            " on %llu addresses. First one back wins.",
-            (void *)client_connection_args->bootstrap,
-            (unsigned long long)host_addresses_len);
-        /* use this event loop for all outgoing connection attempts (only one will ultimately win). */
-        struct aws_event_loop *connect_loop =
-            aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
-        client_connection_args->addresses_count = (uint8_t)host_addresses_len;
-
-        for (size_t i = 0; i < host_addresses_len; ++i) {
-            s_connection_args_acquire(client_connection_args);
-
-            struct aws_host_address *host_address_ptr = NULL;
-            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address_ptr, i);
-
-            struct aws_socket_endpoint connection_endpoint;
-            connection_endpoint.port = client_connection_args->outgoing_port;
-
-            AWS_ASSERT(sizeof(connection_endpoint.address) >= host_address_ptr->address->len + 1);
-            memcpy(
-                connection_endpoint.address,
-                aws_string_bytes(host_address_ptr->address),
-                host_address_ptr->address->len);
-            connection_endpoint.address[host_address_ptr->address->len] = 0;
-
-            struct aws_socket_options options = client_connection_args->outgoing_options;
-            options.domain =
-                host_address_ptr->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? AWS_SOCKET_IPV6 : AWS_SOCKET_IPV4;
-
-            struct aws_socket *outgoing_socket =
-                aws_mem_acquire(client_connection_args->bootstrap->allocator, sizeof(struct aws_socket));
-
-            if (!outgoing_socket) {
-                client_connection_args->failed_count++;
-                err_code = aws_last_error();
-                s_connection_args_release(client_connection_args);
-                break;
-            }
-
-            if (aws_socket_init(outgoing_socket, client_connection_args->bootstrap->allocator, &options)) {
-                client_connection_args->failed_count++;
-                err_code = aws_last_error();
-                aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
-                s_connection_args_release(client_connection_args);
-                break;
-            }
-
-            if (aws_socket_connect(
-                    outgoing_socket,
-                    &connection_endpoint,
-                    connect_loop,
-                    s_on_client_connection_established,
-                    client_connection_args)) {
-                client_connection_args->failed_count++;
-                err_code = aws_last_error();
-                aws_host_resolver_record_connection_failure(
-                    client_connection_args->bootstrap->host_resolver, host_address_ptr);
-                aws_socket_clean_up(outgoing_socket);
-                aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
-                s_connection_args_release(client_connection_args);
-                continue;
-            }
-        }
-
-        if (client_connection_args->failed_count < client_connection_args->addresses_count) {
-            s_connection_args_release(client_connection_args);
-            return;
-        }
+            "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
+            (void *)client_connection_args->bootstrap);
+        s_connection_args_setup_callback(client_connection_args, err_code, NULL);
+        return;
     }
 
-    AWS_LOGF_ERROR(
+    size_t host_addresses_len = aws_array_list_length(host_addresses);
+    AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: dns resolution failed, or all socket connections to the endpoint failed.",
-        (void *)client_connection_args->bootstrap);
-    /* ensure that there is always an error to report to the setup_callback */
-    if (err_code == 0) {
-        err_code = AWS_IO_SOCKET_NOT_CONNECTED;
+        "id=%p: dns resolution completed. Kicking off connections"
+        " on %llu addresses. First one back wins.",
+        (void *)client_connection_args->bootstrap,
+        (unsigned long long)host_addresses_len);
+    /* use this event loop for all outgoing connection attempts (only one will ultimately win). */
+    struct aws_event_loop *connect_loop =
+        aws_event_loop_group_get_next_loop(client_connection_args->bootstrap->event_loop_group);
+    client_connection_args->addresses_count = (uint8_t)host_addresses_len;
+
+    for (size_t i = 0; i < host_addresses_len; ++i) {
+        s_connection_args_acquire(client_connection_args);
+
+        struct connection_task_data *task_data =
+            aws_mem_calloc(client_connection_args->bootstrap->allocator, 1, sizeof(struct connection_task_data));
+
+        struct aws_host_address *host_address_ptr = NULL;
+        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address_ptr, i);
+
+        task_data->endpoint.port = client_connection_args->outgoing_port;
+        AWS_ASSERT(sizeof(task_data->endpoint.address) >= host_address_ptr->address->len + 1);
+        memcpy(
+            task_data->endpoint.address,
+            aws_string_bytes(host_address_ptr->address),
+            host_address_ptr->address->len);
+        task_data->endpoint.address[host_address_ptr->address->len] = 0;
+
+        task_data->options = client_connection_args->outgoing_options;
+        task_data->options.domain =
+            host_address_ptr->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? AWS_SOCKET_IPV6 : AWS_SOCKET_IPV4;
+
+        aws_host_address_copy(host_address_ptr, &task_data->host_address);
+        task_data->args = client_connection_args;
+        task_data->connect_loop = connect_loop;
+
+        aws_task_init(&task_data->task, s_attempt_connection, task_data);
+        aws_event_loop_schedule_task_now(connect_loop, &task_data->task);            
     }
-    s_connection_args_setup_callback(client_connection_args, err_code, NULL);
-    s_connection_args_release(client_connection_args);
 }
 
 static inline int s_new_client_channel(
@@ -766,6 +785,8 @@ static inline int s_new_client_channel(
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
             goto error;
         }
+
+        s_connection_args_acquire(client_connection_args);
     }
 
     return AWS_OP_SUCCESS;
