@@ -49,13 +49,15 @@ struct tls_test_args {
     int last_error_code;
     bool tls_negotiated;
     bool error_invoked;
+    bool expects_error;
     bool server;
     bool shutdown_finished;
 };
 
 static bool s_tls_channel_shutdown_predicate(void *user_data) {
     struct tls_test_args *setup_test_args = user_data;
-    return setup_test_args->shutdown_finished || setup_test_args->last_error_code == AWS_IO_SOCKET_TIMEOUT;
+    return setup_test_args->shutdown_finished || setup_test_args->last_error_code == AWS_IO_SOCKET_TIMEOUT ||
+           (setup_test_args->expects_error && setup_test_args->error_invoked);
 }
 
 static bool s_tls_channel_setup_predicate(void *user_data) {
@@ -289,7 +291,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         .mutex = &mutex,
         .allocator = allocator,
         .condition_variable = &condition_variable,
-        .error_invoked = 0,
+        .error_invoked = false,
+        .expects_error = false,
         .rw_handler = incoming_rw_handler,
         .server = true,
         .tls_negotiated = false,
@@ -505,7 +508,8 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
         .mutex = &mutex,
         .allocator = allocator,
         .condition_variable = &condition_variable,
-        .error_invoked = 0,
+        .error_invoked = false,
+        .expects_error = true,
         .rw_handler = NULL,
         .server = false,
         .tls_negotiated = false,
