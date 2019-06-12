@@ -612,10 +612,10 @@ socket_init_failed:
 socket_alloc_failed:
     err_code = aws_last_error();
     AWS_LOGF_ERROR(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: failed to create socket with error %d",
-            (void *)task_data->args->bootstrap,
-            err_code);
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: failed to create socket with error %d",
+        (void *)task_data->args->bootstrap,
+        err_code);
 task_cancelled:
     task_data->args->failed_count++;
     /* if this is the last attempted connection and it failed, notify the user */
