@@ -649,6 +649,7 @@ static void s_on_host_resolved(
     }
 
     size_t host_addresses_len = aws_array_list_length(host_addresses);
+    AWS_FATAL_ASSERT(host_addresses_len > 0);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: dns resolution completed. Kicking off connections"
