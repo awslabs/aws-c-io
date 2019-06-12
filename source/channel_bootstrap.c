@@ -602,7 +602,11 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
 error:
     task_data->args->failed_count++;
     int err_code = aws_last_error();
-    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: failed to create socket with error %d", (void*)task_data->args->bootstrap, err_code);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: failed to create socket with error %d",
+        (void *)task_data->args->bootstrap,
+        err_code);
     if (outgoing_socket) {
         aws_mem_release(allocator, outgoing_socket);
     }
@@ -657,9 +661,7 @@ static void s_on_host_resolved(
         task_data->endpoint.port = client_connection_args->outgoing_port;
         AWS_ASSERT(sizeof(task_data->endpoint.address) >= host_address_ptr->address->len + 1);
         memcpy(
-            task_data->endpoint.address,
-            aws_string_bytes(host_address_ptr->address),
-            host_address_ptr->address->len);
+            task_data->endpoint.address, aws_string_bytes(host_address_ptr->address), host_address_ptr->address->len);
         task_data->endpoint.address[host_address_ptr->address->len] = 0;
 
         task_data->options = client_connection_args->outgoing_options;
@@ -671,7 +673,7 @@ static void s_on_host_resolved(
         task_data->connect_loop = connect_loop;
 
         aws_task_init(&task_data->task, s_attempt_connection, task_data);
-        aws_event_loop_schedule_task_now(connect_loop, &task_data->task);            
+        aws_event_loop_schedule_task_now(connect_loop, &task_data->task);
     }
 }
 
