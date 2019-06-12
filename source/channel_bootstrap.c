@@ -603,8 +603,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     goto cleanup_task;
 
 socket_connect_failed:
-    aws_host_resolver_record_connection_failure(
-            task_data->args->bootstrap->host_resolver, &task_data->host_address);
+    aws_host_resolver_record_connection_failure(task_data->args->bootstrap->host_resolver, &task_data->host_address);
     aws_socket_clean_up(outgoing_socket);
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);
@@ -613,10 +612,10 @@ task_cancelled:
     task_data->args->failed_count++;
     int err_code = aws_last_error();
     AWS_LOGF_ERROR(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: failed to create socket with error %d",
-            (void *)task_data->args->bootstrap,
-            err_code);
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: failed to create socket with error %d",
+        (void *)task_data->args->bootstrap,
+        err_code);
     /* if this is the last attempted connection and it failed, notify the user */
     if (task_data->args->failed_count == task_data->args->addresses_count) {
         s_connection_args_setup_callback(task_data->args, err_code, NULL);
@@ -662,9 +661,10 @@ static void s_on_host_resolved(
     client_connection_args->addresses_count = (uint8_t)host_addresses_len;
 
     /* allocate all the task data first, in case it fails... */
-    AWS_VARIABLE_LENGTH_ARRAY(struct connection_task_data*, tasks, host_addresses_len);
+    AWS_VARIABLE_LENGTH_ARRAY(struct connection_task_data *, tasks, host_addresses_len);
     for (size_t i = 0; i < host_addresses_len; ++i) {
-        struct connection_task_data *task_data = tasks[i] = aws_mem_calloc(allocator, 1, sizeof(struct connection_task_data));
+        struct connection_task_data *task_data = tasks[i] =
+            aws_mem_calloc(allocator, 1, sizeof(struct connection_task_data));
         bool failed = task_data == NULL;
         if (!failed) {
             struct aws_host_address *host_address_ptr = NULL;
@@ -673,12 +673,14 @@ static void s_on_host_resolved(
             task_data->endpoint.port = client_connection_args->outgoing_port;
             AWS_ASSERT(sizeof(task_data->endpoint.address) >= host_address_ptr->address->len + 1);
             memcpy(
-                    task_data->endpoint.address, aws_string_bytes(host_address_ptr->address), host_address_ptr->address->len);
+                task_data->endpoint.address,
+                aws_string_bytes(host_address_ptr->address),
+                host_address_ptr->address->len);
             task_data->endpoint.address[host_address_ptr->address->len] = 0;
 
             task_data->options = client_connection_args->outgoing_options;
             task_data->options.domain =
-                    host_address_ptr->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? AWS_SOCKET_IPV6 : AWS_SOCKET_IPV4;
+                host_address_ptr->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? AWS_SOCKET_IPV6 : AWS_SOCKET_IPV4;
 
             failed = aws_host_address_copy(host_address_ptr, &task_data->host_address) != AWS_OP_SUCCESS;
             task_data->args = client_connection_args;
@@ -691,7 +693,11 @@ static void s_on_host_resolved(
                     aws_mem_release(allocator, tasks[j]);
                 }
             }
-            AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: failed to allocate connection task data: err=%d", (void*)client_connection_args->bootstrap, aws_last_error());
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: failed to allocate connection task data: err=%d",
+                (void *)client_connection_args->bootstrap,
+                aws_last_error());
             return;
         }
     }
