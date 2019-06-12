@@ -262,17 +262,21 @@ static int s_socket_increment_read_window(
 
 static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
     (void)task;
+    (void)status;
 
     struct aws_channel_handler *handler = arg;
     struct socket_handler *socket_handler = handler->impl;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        /* this only happens in write direction. */
-        /* we also don't care about the free_scarce_resource_immediately
-         * code since we're always the last one in the shutdown sequence. */
-        aws_channel_slot_on_handler_shutdown_complete(
-            socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
-    }
+    /*
+     * Run this unconditionally regardless of status, otherwise channel will not
+     * finish shutting down properly
+     */
+
+    /* this only happens in write direction. */
+    /* we also don't care about the free_scarce_resource_immediately
+     * code since we're always the last one in the shutdown sequence. */
+    aws_channel_slot_on_handler_shutdown_complete(
+        socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
 }
 
 static int s_socket_shutdown(
