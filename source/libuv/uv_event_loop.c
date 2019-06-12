@@ -402,7 +402,7 @@ static void s_schedule_task_impl(struct libuv_loop *impl, struct aws_task *task)
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
     /* Allocate and initalize timer */
-    struct task_data *task_data = aws_mem_acquire(event_loop->alloc, sizeof(struct task_data));
+    struct task_data *task_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct task_data));
     uv_timer_init(impl->uv_loop, &task_data->timer);
     task_data->timer.data = task_data;
 
@@ -708,14 +708,13 @@ static int s_subscribe_to_io_events(
 
     aws_atomic_fetch_add(&impl->num_open_handles, 1);
 
-    struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
+    struct handle_data *handle_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct handle_data));
     if (!handle_data) {
         return AWS_OP_ERR;
     }
     handle->additional_data = handle_data;
 
     /* Set parameters */
-    AWS_ZERO_STRUCT(*handle_data);
     handle_data->owner = handle;
     handle_data->event_loop = event_loop;
     handle_data->on_event = on_event;

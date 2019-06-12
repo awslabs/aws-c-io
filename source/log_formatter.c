@@ -88,8 +88,7 @@ static int s_default_aws_log_formatter_format(
     }
 
     int total_length = required_length + MAX_LOG_LINE_PREFIX_SIZE + subject_name_len;
-    struct aws_string *raw_string =
-        (struct aws_string *)aws_mem_acquire(formatter->allocator, sizeof(struct aws_string) + total_length);
+    struct aws_string *raw_string = aws_mem_calloc(formatter->allocator, 1, sizeof(struct aws_string) + total_length);
     if (raw_string == NULL) {
         goto error_clean_up;
     }
@@ -213,7 +212,7 @@ int aws_log_formatter_init_default(
     struct aws_allocator *allocator,
     struct aws_log_formatter_standard_options *options) {
     struct aws_default_log_formatter_impl *impl =
-        aws_mem_acquire(allocator, sizeof(struct aws_default_log_formatter_impl));
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_default_log_formatter_impl));
     impl->date_format = options->date_format;
 
     formatter->vtable = &s_default_log_formatter_vtable;

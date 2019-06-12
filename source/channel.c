@@ -113,14 +113,12 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
 
         if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &s_message_pool_key, local_object)) {
 
-            local_object = aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
-
+            local_object = aws_mem_calloc(setup_args->alloc, 1, sizeof(struct aws_event_loop_local_object));
             if (!local_object) {
                 goto cleanup_setup_args;
             }
 
             message_pool = aws_mem_acquire(setup_args->alloc, sizeof(struct aws_message_pool));
-
             if (!message_pool) {
                 goto cleanup_local_obj;
             }
@@ -193,11 +191,10 @@ struct aws_channel *aws_channel_new(
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
 
-    struct aws_channel *channel = aws_mem_acquire(alloc, sizeof(struct aws_channel));
+    struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
         return NULL;
     }
-    AWS_ZERO_STRUCT(*channel);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: Beginning creation and setup of new channel.", (void *)channel);
     channel->alloc = alloc;
@@ -210,7 +207,7 @@ struct aws_channel *aws_channel_new(
      * 1 for the setup task, released when task executes */
     aws_atomic_init_int(&channel->refcount, 2);
 
-    struct channel_setup_args *setup_args = aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
+    struct channel_setup_args *setup_args = aws_mem_calloc(alloc, 1, sizeof(struct channel_setup_args));
     if (!setup_args) {
         aws_mem_release(alloc, channel);
         return NULL;
@@ -402,8 +399,7 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
 }
 
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
-    struct aws_channel_slot *new_slot = aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot));
-
+    struct aws_channel_slot *new_slot = aws_mem_calloc(channel->alloc, 1, sizeof(struct aws_channel_slot));
     if (!new_slot) {
         return NULL;
     }

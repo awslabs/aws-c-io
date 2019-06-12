@@ -170,23 +170,21 @@ int aws_pipe_init(
     }
 
     /* Init read-end */
-    read_impl = aws_mem_acquire(allocator, sizeof(struct read_end_impl));
+    read_impl = aws_mem_calloc(allocator, 1, sizeof(struct read_end_impl));
     if (!read_impl) {
         goto error;
     }
 
-    AWS_ZERO_STRUCT(*read_impl);
     read_impl->alloc = allocator;
     read_impl->handle.data.fd = pipe_fds[0];
     read_impl->event_loop = read_end_event_loop;
 
     /* Init write-end */
-    write_impl = aws_mem_acquire(allocator, sizeof(struct write_end_impl));
+    write_impl = aws_mem_calloc(allocator, 1, sizeof(struct write_end_impl));
     if (!write_impl) {
         goto error;
     }
 
-    AWS_ZERO_STRUCT(*write_impl);
     write_impl->alloc = allocator;
     write_impl->handle.data.fd = pipe_fds[1];
     write_impl->event_loop = write_end_event_loop;
@@ -534,12 +532,11 @@ int aws_pipe_write(
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    struct write_request *request = aws_mem_acquire(write_impl->alloc, sizeof(struct write_request));
+    struct write_request *request = aws_mem_calloc(write_impl->alloc, 1, sizeof(struct write_request));
     if (!request) {
         return AWS_OP_ERR;
     }
 
-    AWS_ZERO_STRUCT(*request);
     request->original_cursor = src_buffer;
     request->cursor = src_buffer;
     request->user_callback = on_completed;

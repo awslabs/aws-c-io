@@ -82,7 +82,7 @@ static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator
     struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
     aws_event_loop_init_base(event_loop, allocator, clock);
 
-    struct testing_loop *testing_loop = aws_mem_acquire(allocator, sizeof(struct testing_loop));
+    struct testing_loop *testing_loop = aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
     aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
     event_loop->impl_data = testing_loop;
@@ -179,9 +179,9 @@ static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
 static struct aws_channel_handler *s_new_testing_channel_handler(
     struct aws_allocator *allocator,
     size_t initial_window) {
-    struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
+    struct aws_channel_handler *handler = aws_mem_calloc(allocator, 1, sizeof(struct aws_channel_handler));
     struct testing_channel_handler *testing_handler =
-        aws_mem_acquire(allocator, sizeof(struct testing_channel_handler));
+        aws_mem_calloc(allocator, 1, sizeof(struct testing_channel_handler));
     aws_linked_list_init(&testing_handler->messages);
     testing_handler->initial_window = initial_window;
     testing_handler->latest_window_update = 0;

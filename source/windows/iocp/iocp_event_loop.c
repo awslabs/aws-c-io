@@ -187,11 +187,11 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     }
     clean_up_event_loop_base = true;
 
-    impl = aws_mem_acquire(alloc, sizeof(struct iocp_loop));
+    impl = aws_mem_calloc(alloc, 1, sizeof(struct iocp_loop));
     if (!impl) {
         goto clean_up;
     }
-    AWS_ZERO_STRUCT(*impl);
+
     /* initialize thread id to 0. This will be updated once the event loop thread starts. */
     aws_atomic_init_int(&impl->thread_id, 0);
 

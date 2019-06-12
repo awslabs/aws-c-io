@@ -348,20 +348,18 @@ static int s_socket_init(
     AWS_ASSERT(options->type <= AWS_SOCKET_DGRAM);
     AWS_ZERO_STRUCT(*socket);
 
-    struct iocp_socket *impl = aws_mem_acquire(alloc, sizeof(struct iocp_socket));
+    struct iocp_socket *impl = aws_mem_calloc(alloc, 1, sizeof(struct iocp_socket));
     if (!impl) {
         return AWS_OP_ERR;
     }
 
-    AWS_ZERO_STRUCT(*impl);
     impl->vtable = &vtables[options->domain][options->type];
     if (!impl->vtable || !impl->vtable->read) {
         aws_mem_release(alloc, impl);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
-    impl->read_io_data = aws_mem_acquire(alloc, sizeof(struct io_operation_data));
-
+    impl->read_io_data = aws_mem_calloc(alloc, 1, sizeof(struct io_operation_data));
     if (!impl->read_io_data) {
         aws_mem_release(alloc, impl);
         return AWS_OP_ERR;
@@ -887,8 +885,7 @@ static inline int s_tcp_connect(
     struct iocp_socket *socket_impl = socket->impl;
     socket->remote_endpoint = *remote_endpoint;
 
-    struct socket_connect_args *connect_args = aws_mem_acquire(socket->allocator, sizeof(struct socket_connect_args));
-
+    struct socket_connect_args *connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct socket_connect_args));
     if (!connect_args) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
@@ -1917,9 +1914,8 @@ static int s_tcp_start_accept(
     struct iocp_socket *socket_impl = socket->impl;
 
     if (!socket_impl->read_io_data) {
-        socket_impl->read_io_data = aws_mem_acquire(socket->allocator, sizeof(struct io_operation_data));
-
-        if (!socket_impl) {
+        socket_impl->read_io_data = aws_mem_calloc(socket->allocator, 1, sizeof(struct io_operation_data));
+        if (!socket_impl->read_io_data) {
             socket->state = ERRORED;
             return AWS_OP_ERR;
         }
@@ -2084,9 +2080,8 @@ static int s_local_start_accept(
     struct iocp_socket *socket_impl = socket->impl;
 
     if (!socket_impl->read_io_data) {
-        socket_impl->read_io_data = aws_mem_acquire(socket->allocator, sizeof(struct io_operation_data));
-
-        if (!socket_impl) {
+        socket_impl->read_io_data = aws_mem_calloc(socket->allocator, 1, sizeof(struct io_operation_data));
+        if (!socket_impl->read_io_data) {
             socket->state = ERRORED;
             return AWS_OP_ERR;
         }
@@ -3071,8 +3066,7 @@ int aws_socket_write(
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    struct write_cb_args *write_cb_data = aws_mem_acquire(socket->allocator, sizeof(struct write_cb_args));
-
+    struct write_cb_args *write_cb_data = aws_mem_calloc(socket->allocator, 1, sizeof(struct write_cb_args));
     if (!write_cb_data) {
         socket->state = ERRORED;
         return AWS_OP_ERR;

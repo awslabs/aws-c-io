@@ -26,8 +26,7 @@ int aws_memory_pool_init(
     mempool->alloc = alloc;
     mempool->ideal_segment_count = ideal_segment_count;
     mempool->segment_size = segment_size;
-    mempool->data_ptr = aws_mem_acquire(alloc, ideal_segment_count * sizeof(void *));
-
+    mempool->data_ptr = aws_mem_calloc(alloc, ideal_segment_count, sizeof(void *));
     if (!mempool->data_ptr) {
         return AWS_OP_ERR;
     }
