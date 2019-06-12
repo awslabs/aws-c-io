@@ -212,7 +212,7 @@ static int s_wait_a_bit(struct aws_event_loop *loop) {
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     struct aws_task task;
-    aws_task_init(&task, s_wait_a_bit_task, &cv);
+    aws_task_init(&task, s_wait_a_bit_task, &cv, "wait_a_bit");
 
     uint64_t run_at_ns;
     ASSERT_SUCCESS(aws_event_loop_current_clock_time(loop, &run_at_ns));
@@ -590,7 +590,7 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
     ASSERT_SUCCESS(aws_mutex_init(&s_tasks_run_data.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_tasks_run_data.condvar));
     for (int i = 0; i < TASK_COUNT; ++i) {
-        aws_channel_task_init(&s_tasks_run_data.tasks[i], s_tasks_run_fn, (void *)(intptr_t)i);
+        aws_channel_task_init(&s_tasks_run_data.tasks[i], s_tasks_run_fn, (void *)(intptr_t)i, "test_channel_task");
     }
 
     /* Schedule channel-tasks from outside the channel's thread */
@@ -600,7 +600,7 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
 
     /* Schedule task that schedules channel-tasks from on then channel's thread */
     struct aws_task scheduler_task;
-    aws_task_init(&scheduler_task, s_schedule_on_thread_tasks_fn, channel);
+    aws_task_init(&scheduler_task, s_schedule_on_thread_tasks_fn, channel, "schedule_on_thread_tasks");
     aws_event_loop_schedule_task_now(event_loop, &scheduler_task);
 
     /* Wait for all the tasks to finish */
@@ -659,7 +659,7 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
         &test_args.condition_variable, &test_args.mutex, s_channel_test_shutdown_predicate, &test_args));
 
     struct aws_channel_task task;
-    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
+    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args, "channel_post_shutdown");
     aws_channel_schedule_task_now(channel, &task);
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, test_args.task_status);
 
@@ -702,7 +702,7 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
     ASSERT_INT_EQUALS(0, test_args.error_code);
 
     struct aws_channel_task task;
-    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args);
+    aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args, "channel_post_shutdown_cancellation");
     /* schedule WAY in the future. */
     aws_channel_schedule_task_future(channel, &task, UINT64_MAX - 1);
     /* make sure it hasn't been invoked yet. */

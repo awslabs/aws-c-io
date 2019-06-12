@@ -295,7 +295,7 @@ static int s_stop(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
-    aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop);
+    aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop, "epoll_event_loop_stop");
     s_schedule_task_now(event_loop, &epoll_loop->stop_task);
 
     return AWS_OP_SUCCESS;
@@ -456,7 +456,11 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
      * mark it as unsubscribed and schedule a cleanup task. */
     additional_handle_data->is_subscribed = false;
 
-    aws_task_init(&additional_handle_data->cleanup_task, s_unsubscribe_cleanup_task, additional_handle_data);
+    aws_task_init(
+        &additional_handle_data->cleanup_task,
+        s_unsubscribe_cleanup_task,
+        additional_handle_data,
+        "epoll_event_loop_unsubscribe_cleanup");
     s_schedule_task_now(event_loop, &additional_handle_data->cleanup_task);
 
     handle->additional_data = NULL;

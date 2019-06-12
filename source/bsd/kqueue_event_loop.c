@@ -634,7 +634,7 @@ static int s_subscribe_to_io_events(
      * If this all happened outside the event-thread, the successful registration's events could begin processing
      * in the brief window of time before the registration is deleted. */
 
-    aws_task_init(&handle_data->subscribe_task, s_subscribe_task, handle_data);
+    aws_task_init(&handle_data->subscribe_task, s_subscribe_task, handle_data, "kqueue_event_loop_subscribe");
     s_schedule_task_now(event_loop, &handle_data->subscribe_task);
 
     return AWS_OP_SUCCESS;
@@ -700,7 +700,8 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
      * - One of the other events in this batch belongs to that other aws_io_handle.
      * - If the handle_data were already deleted, there would be an access invalid memory. */
 
-    aws_task_init(&handle_data->cleanup_task, s_clean_up_handle_data_task, handle_data);
+    aws_task_init(
+        &handle_data->cleanup_task, s_clean_up_handle_data_task, handle_data, "kqueue_event_loop_clean_up_handle_data");
     aws_event_loop_schedule_task_now(event_loop, &handle_data->cleanup_task);
 
     handle_data->state = HANDLE_STATE_UNSUBSCRIBED;

@@ -423,7 +423,8 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return s_drive_negotiation(handler);
     }
 
-    aws_channel_task_init(&s2n_handler->sequential_tasks, s_negotiation_task, handler);
+    aws_channel_task_init(
+        &s2n_handler->sequential_tasks, s_negotiation_task, handler, "s2n_channel_handler_negotiation");
     aws_channel_schedule_task_now(s2n_handler->slot->channel, &s2n_handler->sequential_tasks);
 
     return AWS_OP_SUCCESS;
@@ -625,7 +626,8 @@ static int s_s2n_handler_increment_read_window(
          * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
-        aws_channel_task_init(&s2n_handler->sequential_tasks, s_run_read, handler);
+        aws_channel_task_init(
+            &s2n_handler->sequential_tasks, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
         aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
     }
 
