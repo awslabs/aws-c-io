@@ -695,7 +695,7 @@ static int s_parse_protocol_preferences(
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             return AWS_OP_ERR;
         }
-
+        AWS_FATAL_ASSERT(cursor.ptr && cursor.len > 0);
         memcpy((void *)protocol_output[i], cursor.ptr, cursor.len);
         *protocol_count += 1;
     }
