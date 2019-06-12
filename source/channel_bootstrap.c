@@ -522,7 +522,12 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 "id=%p: Connection failed with error_code %d.",
                 (void *)connection_args->bootstrap,
                 error_code);
+            /* connection_args will be released after setup_callback */
             s_connection_args_setup_callback(connection_args, error_code, NULL);
+        } 
+        else {
+            /* this socket will die silently, free up the ref to the connection_args */
+            s_connection_args_release(connection_args);
         }
         return;
     }
