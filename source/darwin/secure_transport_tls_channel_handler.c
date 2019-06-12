@@ -730,7 +730,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct secure_transport_ctx *secure_transport_ctx = options->ctx->impl;
 
     struct secure_transport_handler *secure_transport_handler =
-        (struct secure_transport_handler*)aws_mem_calloc(allocator, sizeof(struct secure_transport_handler));
+        (struct secure_transport_handler *)aws_mem_calloc(allocator, sizeof(struct secure_transport_handler));
     if (!secure_transport_handler) {
         return NULL;
     }
