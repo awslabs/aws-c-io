@@ -222,6 +222,8 @@ static void s_connection_args_setup_callback(
     struct client_connection_args *args,
     int error_code,
     struct aws_channel *channel) {
+    /* setup_callback is always called exactly once */
+    AWS_ASSERT(!args->setup_called);
     if (!args->setup_called) {
         AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
         aws_client_bootstrap_on_channel_setup_fn *setup_callback = args->setup_callback;
@@ -575,9 +577,9 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     (void)task;
     struct connection_task_data *task_data = arg;
     struct aws_allocator *allocator = task_data->args->bootstrap->allocator;
+    int err_code = 0;
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
-        s_connection_args_release(task_data->args);
         goto task_cancelled;
     }
 
@@ -608,14 +610,14 @@ socket_connect_failed:
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);
 socket_alloc_failed:
+    err_code = aws_last_error();
+    AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: failed to create socket with error %d",
+            (void *)task_data->args->bootstrap,
+            err_code);
 task_cancelled:
     task_data->args->failed_count++;
-    int err_code = aws_last_error();
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: failed to create socket with error %d",
-        (void *)task_data->args->bootstrap,
-        err_code);
     /* if this is the last attempted connection and it failed, notify the user */
     if (task_data->args->failed_count == task_data->args->addresses_count) {
         s_connection_args_setup_callback(task_data->args, err_code, NULL);
@@ -691,14 +693,17 @@ static void s_on_host_resolved(
         if (failed) {
             for (size_t j = 0; j <= i; ++j) {
                 if (tasks[j]) {
+                    aws_host_address_clean_up(&tasks[j]->host_address);
                     aws_mem_release(allocator, tasks[j]);
                 }
             }
+            int alloc_err_code = aws_last_error();
             AWS_LOGF_ERROR(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: failed to allocate connection task data: err=%d",
                 (void *)client_connection_args->bootstrap,
-                aws_last_error());
+                alloc_err_code);
+            s_connection_args_setup_callback(client_connection_args, alloc_err_code, NULL);
             return;
         }
     }
@@ -803,6 +808,8 @@ static inline int s_new_client_channel(
         memcpy(endpoint.address, host_name, strlen(host_name));
         endpoint.port = 0;
 
+        s_connection_args_acquire(client_connection_args);
+
         struct aws_socket *outgoing_socket = aws_mem_acquire(bootstrap->allocator, sizeof(struct aws_socket));
 
         if (!outgoing_socket) {
@@ -824,8 +831,6 @@ static inline int s_new_client_channel(
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
             goto error;
         }
-
-        s_connection_args_acquire(client_connection_args);
     }
 
     return AWS_OP_SUCCESS;
