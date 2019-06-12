@@ -119,8 +119,7 @@ int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Setup edge triggered epoll with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
-    struct aws_event_loop *loop = aws_mem_acquire(alloc, sizeof(struct aws_event_loop));
-
+    struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
     if (!loop) {
         return NULL;
     }
@@ -130,13 +129,11 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
         goto clean_up_loop;
     }
 
-    struct epoll_loop *epoll_loop = aws_mem_acquire(alloc, sizeof(struct epoll_loop));
-
+    struct epoll_loop *epoll_loop = aws_mem_calloc(alloc, 1, sizeof(struct epoll_loop));
     if (!epoll_loop) {
         goto cleanup_base_loop;
     }
 
-    AWS_ZERO_STRUCT(*epoll_loop);
     /* initialize thread id to 0, it should be updated when the event loop thread starts. */
     aws_atomic_init_int(&epoll_loop->thread_id, 0);
 
@@ -376,16 +373,13 @@ static int s_subscribe_to_io_events(
     void *user_data) {
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
-    struct epoll_event_data *epoll_event_data = aws_mem_acquire(event_loop->alloc, sizeof(struct epoll_event_data));
+    struct epoll_event_data *epoll_event_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct epoll_event_data));
     handle->additional_data = NULL;
-
     if (!epoll_event_data) {
         return AWS_OP_ERR;
     }
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
-
-    AWS_ZERO_STRUCT(*epoll_event_data);
     epoll_event_data->alloc = event_loop->alloc;
     epoll_event_data->user_data = user_data;
     epoll_event_data->handle = handle;

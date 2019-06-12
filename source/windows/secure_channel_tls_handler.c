@@ -1550,13 +1550,11 @@ static struct aws_channel_handler *s_tls_handler_new(
     bool is_client_mode) {
     AWS_ASSERT(options->ctx);
 
-    struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
-
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
     if (!sc_handler) {
         return NULL;
     }
 
-    AWS_ZERO_STRUCT(*sc_handler);
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
@@ -1670,13 +1668,10 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
 }
 
 struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, bool is_client_mode) {
-    struct secure_channel_ctx *secure_channel_ctx = aws_mem_acquire(alloc, sizeof(struct secure_channel_ctx));
-
+    struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
     if (!secure_channel_ctx) {
         return NULL;
     }
-
-    AWS_ZERO_STRUCT(*secure_channel_ctx);
 
     if (options->alpn_list) {
         secure_channel_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);

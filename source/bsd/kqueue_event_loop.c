@@ -158,14 +158,13 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     }
     clean_up_event_loop_base = true;
 
-    struct kqueue_loop *impl = aws_mem_acquire(alloc, sizeof(struct kqueue_loop));
+    struct kqueue_loop *impl = aws_mem_calloc(alloc, 1, sizeof(struct kqueue_loop));
     if (!impl) {
         goto clean_up;
     }
     /* intialize thread id to 0. It will be set when the event loop thread starts. */
     aws_atomic_init_int(&impl->thread_id, (size_t)0);
     clean_up_impl_mem = true;
-    AWS_ZERO_STRUCT(*impl);
 
     err = aws_thread_init(&impl->thread, alloc);
     if (err) {
@@ -611,12 +610,11 @@ static int s_subscribe_to_io_events(
     /* Must subscribe for read, write, or both */
     AWS_ASSERT(events & (AWS_IO_EVENT_TYPE_READABLE | AWS_IO_EVENT_TYPE_WRITABLE));
 
-    struct handle_data *handle_data = aws_mem_acquire(event_loop->alloc, sizeof(struct handle_data));
+    struct handle_data *handle_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct handle_data));
     if (!handle_data) {
         return AWS_OP_ERR;
     }
 
-    AWS_ZERO_STRUCT(*handle_data);
     handle_data->owner = handle;
     handle_data->event_loop = event_loop;
     handle_data->on_event = on_event;
