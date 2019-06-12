@@ -808,8 +808,6 @@ static inline int s_new_client_channel(
         memcpy(endpoint.address, host_name, strlen(host_name));
         endpoint.port = 0;
 
-        s_connection_args_acquire(client_connection_args);
-
         struct aws_socket *outgoing_socket = aws_mem_acquire(bootstrap->allocator, sizeof(struct aws_socket));
 
         if (!outgoing_socket) {
@@ -825,10 +823,12 @@ static inline int s_new_client_channel(
 
         struct aws_event_loop *connect_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
 
+        s_connection_args_acquire(client_connection_args);
         if (aws_socket_connect(
                 outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
             aws_socket_clean_up(outgoing_socket);
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
+            s_connection_args_release(client_connection_args);
             goto error;
         }
     }
