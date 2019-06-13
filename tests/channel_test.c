@@ -846,6 +846,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
             break;
         }
     }
+    ASSERT_NOT_NULL(resolved_address);
+    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, resolved_address->record_type, "Did not find an A record");
 
     addr1_ipv4 = aws_string_new_from_string(allocator, resolved_address->address);
 
@@ -898,7 +900,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 3000;
+    options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
 
     struct channel_connect_test_args callback_data = {
