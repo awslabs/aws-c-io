@@ -60,6 +60,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #define IO_PIPE_BROKEN 0xC000014B
 #define SOME_ERROR_CODE_THAT_MEANS_INVALID_PATH 0x00000003
 #define IO_STATUS_BUFFER_OVERFLOW 0x80000005
+#define STATUS_INVALID_ADDRESS_COMPONENT 0xC0000207
 
 #define PIPE_BUFFER_SIZE 512
 
@@ -538,6 +539,7 @@ static int s_determine_socket_error(int error) {
             return AWS_IO_SOCKET_TIMEOUT;
         case IO_PIPE_BROKEN:
             return AWS_IO_SOCKET_CLOSED;
+        case STATUS_INVALID_ADDRESS_COMPONENT:
         case WSAEADDRNOTAVAIL:
             return AWS_IO_SOCKET_INVALID_ADDRESS;
         case WSAENETUNREACH:
