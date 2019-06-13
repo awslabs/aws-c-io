@@ -828,20 +828,25 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
-    /* resolve amazon.com and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
+    /* resolve our s3 test bucket and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;
     struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
-    struct aws_string *amazon_com = aws_string_new_from_c_str(allocator, "www.amazon.com");
+    struct aws_string *s3_host = aws_string_new_from_c_str(allocator, "aws-crt-test-stuff.s3.amazonaws.com");
     struct aws_array_list addresses;
-    struct aws_host_address address_storage[1];
     struct aws_host_address *resolved_address = NULL;
-    aws_array_list_init_static(
-        &addresses, address_storage, AWS_ARRAY_SIZE(address_storage), sizeof(struct aws_host_address));
-    aws_default_dns_resolve(allocator, amazon_com, &addresses, NULL);
-    ASSERT_INT_EQUALS(1, aws_array_list_length(&addresses));
-    aws_array_list_get_at_ptr(&addresses, (void *)&resolved_address, 0);
+    aws_array_list_init_dynamic(&addresses, allocator, 4, sizeof(struct aws_host_address));
+    aws_default_dns_resolve(allocator, s3_host, &addresses, NULL);
+    const size_t address_count = aws_array_list_length(&addresses);
+    ASSERT_TRUE(address_count >= 1);
+    /* find the first A record, ignore AAAA records */
+    for (size_t addr_idx = 0; addr_idx < address_count; ++addr_idx) {
+        aws_array_list_get_at_ptr(&addresses, (void *)&resolved_address, addr_idx);
+        if (resolved_address->record_type == AWS_ADDRESS_RECORD_TYPE_A) {
+            break;
+        }
+    }
+    
     addr1_ipv4 = aws_string_new_from_string(allocator, resolved_address->address);
-    aws_string_destroy(amazon_com);
 
     /* create a resolver with 2 addresses: 1 IPv4 which will always succeed, and 1 IPv6 which will always timeout */
     struct mock_dns_resolver mock_dns_resolver;
@@ -858,7 +863,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .allocator = allocator,
         .expiry = 0,
         /* connections should always succeed, if not, things are worse than this unit test failing */
-        .host = aws_string_new_from_c_str(allocator, "www.amazon.com"),
+        .host = s3_host,
         .connection_failure_count = 0,
         .record_type = AWS_ADDRESS_RECORD_TYPE_A,
         .use_count = 0,
@@ -906,7 +911,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
         bootstrap,
-        "www.amazon.com",
+        (const char*)aws_string_bytes(s3_host),
         80,
         &options,
         s_test_channel_connect_some_hosts_timeout_setup,
@@ -930,11 +935,15 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     /* clean up */
-    aws_host_address_clean_up(resolved_address);
     aws_client_bootstrap_release(bootstrap);
     aws_host_resolver_clean_up(&resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
     aws_event_loop_group_clean_up(&event_loop_group);
+    for (size_t addr_idx = 0; addr_idx < address_count; ++addr_idx) {
+        aws_array_list_get_at_ptr(&addresses, (void *)&resolved_address, addr_idx);
+        aws_host_address_clean_up(resolved_address);
+    }
+    aws_array_list_clean_up(&addresses);
 
     return 0;
 }
