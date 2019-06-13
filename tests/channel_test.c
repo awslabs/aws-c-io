@@ -828,7 +828,8 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
-    /* resolve our s3 test bucket and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the connection */
+    /* resolve our s3 test bucket and hard-code the ipv6 address to an EC2 host with an ACL that blackholes the
+     * connection */
     const struct aws_string *addr1_ipv4 = NULL;
     struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "2600:1f18:431a:5c42:79e:ece6:a117:6091");
     struct aws_string *s3_host = aws_string_new_from_c_str(allocator, "aws-crt-test-stuff.s3.amazonaws.com");
@@ -845,7 +846,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
             break;
         }
     }
-    
+
     addr1_ipv4 = aws_string_new_from_string(allocator, resolved_address->address);
 
     /* create a resolver with 2 addresses: 1 IPv4 which will always succeed, and 1 IPv6 which will always timeout */
@@ -911,7 +912,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
         bootstrap,
-        (const char*)aws_string_bytes(s3_host),
+        (const char *)aws_string_bytes(s3_host),
         80,
         &options,
         s_test_channel_connect_some_hosts_timeout_setup,
