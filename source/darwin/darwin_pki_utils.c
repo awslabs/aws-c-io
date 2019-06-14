@@ -34,7 +34,8 @@ int aws_import_public_and_private_keys_to_identity(
         return AWS_OP_ERR;
     }
 
-    aws_byte_buf_cat(&aggregate_buffer, 2, public_cert_chain, private_key);
+    aws_byte_buf_append(&aggregate_buffer, public_cert_chain);
+    aws_byte_buf_append(&aggregate_buffer, private_key);
     CFDataRef aggregate_certificate_data = CFDataCreate(cf_alloc, aggregate_buffer.buffer, aggregate_buffer.len);
 
     if (!aggregate_certificate_data) {
