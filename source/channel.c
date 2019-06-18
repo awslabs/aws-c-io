@@ -52,6 +52,7 @@ struct shutdown_task {
     struct aws_channel_task task;
     struct aws_channel *channel;
     int error_code;
+    bool shutdown_immediately;
 };
 
 struct aws_channel {
@@ -296,6 +297,8 @@ struct channel_shutdown_task_args {
     struct aws_task task;
 };
 
+static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately);
+
 static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     (void)task;
@@ -303,13 +306,13 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
     struct shutdown_task *shutdown_task = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        aws_channel_shutdown(shutdown_task->channel, shutdown_task->error_code);
+        s_channel_shutdown(shutdown_task->channel, shutdown_task->error_code, shutdown_task->shutdown_immediately);
     }
 }
 
 static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status);
 
-int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
+static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately) {
     if (aws_channel_thread_is_callers_thread(channel)) {
         if (channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
             AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: beginning shutdown process", (void *)channel);
@@ -324,7 +327,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
                     (void *)channel,
                     (void *)slot);
 
-                return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, error_code != AWS_OP_SUCCESS);
+                return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, shutdown_immediately);
             }
 
             channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
@@ -362,6 +365,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
                 &channel->cross_thread_tasks.shutdown_task.task,
                 s_shutdown_task,
                 &channel->cross_thread_tasks.shutdown_task);
+            channel->cross_thread_tasks.shutdown_task.shutdown_immediately = shutdown_immediately;
             channel->cross_thread_tasks.shutdown_task.channel = channel;
             channel->cross_thread_tasks.shutdown_task.error_code = error_code;
         }
@@ -374,6 +378,10 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
     }
 
     return AWS_OP_SUCCESS;
+}
+
+int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
+    return s_channel_shutdown(channel, error_code, false);
 }
 
 struct aws_io_message *aws_channel_acquire_message_from_pool(

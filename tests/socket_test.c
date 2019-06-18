@@ -537,6 +537,77 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(connect_timeout, s_test_connect_timeout)
 
+static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_event_loop_group el_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 1000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+
+    struct aws_host_resolver resolver;
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
+
+    struct aws_host_resolution_config resolution_config = {
+        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
+
+    struct test_host_callback_data host_callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_a_address = false,
+        .mutex = &mutex,
+    };
+
+    /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
+    struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
+    aws_mutex_lock(&mutex);
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        &resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
+
+    aws_condition_variable_wait_pred(
+        &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+
+    aws_host_resolver_clean_up(&resolver);
+
+    ASSERT_TRUE(host_callback_data.has_a_address);
+
+    struct aws_socket_endpoint endpoint = {.port = 81};
+    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+
+    aws_string_destroy((void *)host_name);
+    aws_host_address_clean_up(&host_callback_data.a_address);
+
+    struct local_outgoing_args outgoing_args = {
+        .mutex = &mutex,
+        .condition_variable = &condition_variable,
+        .connect_invoked = false,
+        .error_invoked = false,
+    };
+
+    aws_mutex_unlock(&mutex);
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    aws_event_loop_group_clean_up(&el_group);
+
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
+    aws_socket_clean_up(&outgoing);
+
+    return 0;
+}
+
+AWS_TEST_CASE(connect_timeout_cancelation, s_test_connect_timeout_cancelation)
+
 struct error_test_args {
     int error_code;
     struct aws_mutex mutex;

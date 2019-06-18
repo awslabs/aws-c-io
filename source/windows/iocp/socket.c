@@ -853,23 +853,30 @@ void s_socket_connection_completion(
    connection is considered timedout. */
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
     (void)task;
+    (void)status;
     struct socket_connect_args *socket_args = args;
 
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        if (socket_args->socket) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: timed out, shutting down.",
-                (void *)socket_args->socket,
-                (void *)socket_args->socket->io_handle.data.handle);
-            socket_args->socket->state = TIMEDOUT;
-            aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
-            struct aws_socket *socket = socket_args->socket;
-            /* socket close will set the connection args to NULL etc...*/
-            aws_socket_close(socket);
-            socket->connection_result_fn(socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
+    if (socket_args->socket) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: timed out, shutting down.",
+            (void *)socket_args->socket,
+            (void *)socket_args->socket->io_handle.data.handle);
+        socket_args->socket->state = TIMEDOUT;
+        aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
+        struct aws_socket *socket = socket_args->socket;
+
+        /* since the task is canceled the event-loop is gone and the iocp will not trigger, so go ahead
+           and tell the socket cleanup stuff that the iocp handle is no longer pending operations. */
+        if (status == AWS_TASK_STATUS_CANCELED) {
+            struct iocp_socket *iocp_socket = socket->impl;
+            iocp_socket->read_io_data->in_use = false;
         }
+
+        /* socket close will set the connection args to NULL etc...*/
+        aws_socket_close(socket);
+        socket->connection_result_fn(socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
     }
 
     struct aws_allocator *allocator = socket_args->allocator;
@@ -1090,6 +1097,8 @@ static int s_ipv6_stream_connect(
 /* simply moves the connection_success notification into the event-loop's thread. */
 static void s_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
+    (void)task_status;
+
     struct io_operation_data *io_data = arg;
 
     if (!io_data->socket) {
@@ -1101,11 +1110,9 @@ static void s_connection_success_task(struct aws_task *task, void *arg, enum aws
     io_data->sequential_task_storage.arg = NULL;
     io_data->in_use = false;
 
-    if (task_status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_socket *socket = io_data->socket;
-        struct iocp_socket *socket_impl = socket->impl;
-        socket_impl->vtable->connection_success(socket);
-    }
+    struct aws_socket *socket = io_data->socket;
+    struct iocp_socket *socket_impl = socket->impl;
+    socket_impl->vtable->connection_success(socket);
 }
 
 /* initiate the client end of a named pipe. */
@@ -1958,19 +1965,18 @@ static int s_stream_stop_accept(struct aws_socket *socket);
 
 static void s_stop_accept_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
+    (void)status;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct stop_accept_args *stop_accept_args = arg;
-        aws_mutex_lock(&stop_accept_args->mutex);
-        stop_accept_args->ret_code = AWS_OP_SUCCESS;
+    struct stop_accept_args *stop_accept_args = arg;
+    aws_mutex_lock(&stop_accept_args->mutex);
+    stop_accept_args->ret_code = AWS_OP_SUCCESS;
 
-        if (aws_socket_stop_accept(stop_accept_args->socket)) {
-            stop_accept_args->ret_code = aws_last_error();
-        }
-        stop_accept_args->invoked = true;
-        aws_condition_variable_notify_one(&stop_accept_args->condition_var);
-        aws_mutex_unlock(&stop_accept_args->mutex);
+    if (aws_socket_stop_accept(stop_accept_args->socket)) {
+        stop_accept_args->ret_code = aws_last_error();
     }
+    stop_accept_args->invoked = true;
+    aws_condition_variable_notify_one(&stop_accept_args->condition_var);
+    aws_mutex_unlock(&stop_accept_args->mutex);
 }
 
 static int s_stream_stop_accept(struct aws_socket *socket) {
@@ -2274,18 +2280,23 @@ static int s_socket_close(struct aws_socket *socket);
 static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct close_args *close_args = arg;
-        aws_mutex_lock(&close_args->mutex);
-        close_args->ret_code = AWS_OP_SUCCESS;
+    struct close_args *close_args = arg;
+    aws_mutex_lock(&close_args->mutex);
+    close_args->ret_code = AWS_OP_SUCCESS;
 
-        if (aws_socket_close(close_args->socket)) {
-            close_args->ret_code = aws_last_error();
-        }
-        close_args->invoked = true;
-        aws_condition_variable_notify_one(&close_args->condition_var);
-        aws_mutex_unlock(&close_args->mutex);
+    /* since the task is canceled the event-loop is gone and the iocp will not trigger, so go ahead
+       and tell the socket cleanup stuff that the iocp handle is no longer pending operations. */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        struct iocp_socket *iocp_socket = close_args->socket->impl;
+        iocp_socket->read_io_data->in_use = false;
     }
+
+    if (aws_socket_close(close_args->socket)) {
+        close_args->ret_code = aws_last_error();
+    }
+    close_args->invoked = true;
+    aws_condition_variable_notify_one(&close_args->condition_var);
+    aws_mutex_unlock(&close_args->mutex);
 }
 
 static int s_wait_on_close(struct aws_socket *socket) {
