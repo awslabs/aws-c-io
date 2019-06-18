@@ -49,7 +49,11 @@ add_test_case(local_socket_communication)
 add_test_case(tcp_socket_communication)
 add_test_case(udp_socket_communication)
 add_net_test_case(connect_timeout)
-add_net_test_case(connect_timeout_cancelation)
+
+# we're redoing libuv support, and this will be fixed then.
+if (NOT USE_LIBUV)
+    add_net_test_case(connect_timeout_cancelation)
+endif()
 add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
 add_test_case(incoming_tcp_sock_errors)

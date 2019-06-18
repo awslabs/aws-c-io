@@ -864,19 +864,22 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             (void *)socket_args->socket,
             (void *)socket_args->socket->io_handle.data.handle);
         socket_args->socket->state = TIMEDOUT;
-        aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
         struct aws_socket *socket = socket_args->socket;
+        int error_code = AWS_IO_SOCKET_TIMEOUT;
 
         /* since the task is canceled the event-loop is gone and the iocp will not trigger, so go ahead
            and tell the socket cleanup stuff that the iocp handle is no longer pending operations. */
         if (status == AWS_TASK_STATUS_CANCELED) {
             struct iocp_socket *iocp_socket = socket->impl;
             iocp_socket->read_io_data->in_use = false;
+            error_code = AWS_IO_EVENT_LOOP_SHUTDOWN;
         }
+
+        aws_raise_error(error_code);
 
         /* socket close will set the connection args to NULL etc...*/
         aws_socket_close(socket);
-        socket->connection_result_fn(socket, AWS_IO_SOCKET_TIMEOUT, socket->connect_accept_user_data);
+        socket->connection_result_fn(socket, error_code, socket->connect_accept_user_data);
     }
 
     struct aws_allocator *allocator = socket_args->allocator;

@@ -600,7 +600,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     aws_event_loop_group_clean_up(&el_group);
 
-    ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
+    ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
     aws_socket_clean_up(&outgoing);
 
     return 0;
