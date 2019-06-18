@@ -31,6 +31,9 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED,
         "An attempt was made to assign an io handle to an event loop, but the handle was already assigned."),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_EVENT_LOOP_SHUTDOWN,
+        "Event loop has shutdown and a resource was still using it, the resource has been removed from the loop."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SYS_CALL_FAILURE,
         "System call failure"),
     AWS_DEFINE_ERROR_INFO_IO(
