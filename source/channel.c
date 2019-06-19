@@ -785,11 +785,11 @@ int aws_channel_slot_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
-        "in %d direction with error code %d",
+        "in %s direction with error code %d",
         (void *)slot->channel,
         (void *)slot,
         (void *)slot->handler,
-        dir,
+        (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write",
         err_code);
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
@@ -849,10 +849,10 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL,
-        "id=%p: handler %p shutdown in dir %d completed.",
+        "id=%p: handler %p shutdown in %s dir completed.",
         (void *)slot->channel,
         (void *)slot->handler,
-        dir);
+        (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write");
 
     if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         return AWS_OP_SUCCESS;

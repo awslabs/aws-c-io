@@ -95,6 +95,8 @@ struct testing_channel_handler {
     struct aws_linked_list messages;
     size_t latest_window_update;
     size_t initial_window;
+    bool complete_write_immediately;
+    int complete_write_error_code;
 };
 
 static int s_testing_channel_handler_process_read_message(
@@ -118,6 +120,13 @@ static int s_testing_channel_handler_process_write_message(
 
     struct testing_channel_handler *testing_handler = handler->impl;
     aws_linked_list_push_back(&testing_handler->messages, &message->queueing_handle);
+
+    /* Invoke completion callback if this is the left-most handler */
+    if (message->on_completion && !slot->adj_left && testing_handler->complete_write_immediately) {
+        message->on_completion(slot->channel, message, testing_handler->complete_write_error_code, message->user_data);
+        message->on_completion = NULL;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -139,7 +148,25 @@ static int s_testing_channel_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    (void)handler;
+    struct testing_channel_handler *testing_handler = handler->impl;
+
+    if (dir == AWS_CHANNEL_DIR_WRITE) {
+        if (!slot->adj_left) {
+            /* Invoke the on_completion callbacks for any queued messages */
+            struct aws_linked_list_node *node = aws_linked_list_begin(&testing_handler->messages);
+            while (node != aws_linked_list_end(&testing_handler->messages)) {
+                struct aws_io_message *msg = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+
+                if (msg->on_completion) {
+                    msg->on_completion(slot->channel, msg, AWS_IO_SOCKET_CLOSED, msg->user_data);
+                    msg->on_completion = NULL;
+                }
+
+                node = aws_linked_list_next(node);
+            }
+        }
+    }
+
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
@@ -185,6 +212,8 @@ static struct aws_channel_handler *s_new_testing_channel_handler(
     aws_linked_list_init(&testing_handler->messages);
     testing_handler->initial_window = initial_window;
     testing_handler->latest_window_update = 0;
+    testing_handler->complete_write_immediately = true;
+    testing_handler->complete_write_error_code = AWS_ERROR_SUCCESS;
     handler->impl = testing_handler;
     handler->vtable = &s_testing_channel_handler_vtable;
     handler->alloc = allocator;
@@ -241,6 +270,17 @@ AWS_STATIC_IMPL int testing_channel_push_write_message(
 /** when you want to test the write output of your handler, call this, get the queue and iterate the messages. */
 AWS_STATIC_IMPL struct aws_linked_list *testing_channel_get_written_message_queue(struct testing_channel *testing) {
     return &testing->left_handler_impl->messages;
+}
+
+/** Set whether written messages have their on_complete callbacks invoked immediately.
+ * The on_complete callback will be cleared after it is invoked. */
+AWS_STATIC_IMPL void testing_channel_complete_written_messages_immediately(
+    struct testing_channel *testing,
+    bool complete_immediately,
+    int complete_error_code) {
+
+    testing->left_handler_impl->complete_write_immediately = complete_immediately;
+    testing->left_handler_impl->complete_write_error_code = complete_error_code;
 }
 
 /** when you want to test the read output of your handler, call this, get the queue and iterate the messages.
