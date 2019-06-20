@@ -560,7 +560,7 @@ static int s_s2n_handler_shutdown(
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!abort_immediately) {
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down write direction", (void *)handler)
             s2n_blocked_status blocked;
             /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */

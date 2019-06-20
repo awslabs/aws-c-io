@@ -1389,7 +1389,7 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!abort_immediately) {
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
 
             /* send a TLS alert. */
