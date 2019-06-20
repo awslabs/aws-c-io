@@ -1389,7 +1389,7 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!error_code) {
+        if (!abort_immediately) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
 
             /* send a TLS alert. */
@@ -1413,7 +1413,8 @@ static int s_handler_shutdown(
 
             if (status != SEC_E_OK) {
                 aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, AWS_IO_SYS_CALL_FAILURE, true);
+                return aws_channel_slot_on_handler_shutdown_complete(
+                    slot, dir, AWS_IO_SYS_CALL_FAILURE, abort_immediately);
             }
 
             SecBuffer output_buffer = {
