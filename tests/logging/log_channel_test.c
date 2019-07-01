@@ -179,6 +179,9 @@ static int s_do_channel_test(
     return result;
 }
 
+/*
+ * Test body helper macros
+ */
 #define DEFINE_FOREGROUND_LOG_CHANNEL_TEST(test_name, string_array_name)                                               \
     static int s_foreground_log_channel_##test_name(struct aws_allocator *allocator, void *ctx) {                      \
         (void)ctx;                                                                                                     \
