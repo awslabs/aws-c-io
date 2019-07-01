@@ -59,6 +59,7 @@ struct aws_channel_task {
     struct aws_task wrapper_task;
     aws_channel_task_fn *task_fn;
     void *arg;
+    const char *type_tag;
     struct aws_linked_list_node node;
 };
 
@@ -138,7 +139,11 @@ AWS_EXTERN_C_BEGIN
  * Initializes channel_task for use.
  */
 AWS_IO_API
-void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *arg);
+void aws_channel_task_init(
+    struct aws_channel_task *channel_task,
+    aws_channel_task_fn *task_fn,
+    void *arg,
+    const char *type_tag);
 
 /**
  * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when

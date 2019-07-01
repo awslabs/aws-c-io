@@ -712,7 +712,7 @@ static void s_on_host_resolved(
         /* each task needs to hold a ref to the args until completed */
         s_connection_args_acquire(task_data->args);
 
-        aws_task_init(&task_data->task, s_attempt_connection, task_data);
+        aws_task_init(&task_data->task, s_attempt_connection, task_data, "attempt_connection");
         aws_event_loop_schedule_task_now(connect_loop, &task_data->task);
     }
 }

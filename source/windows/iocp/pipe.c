@@ -312,7 +312,8 @@ int aws_pipe_init(
     }
 
     read_impl->async_error_report->alloc = allocator;
-    aws_task_init(&read_impl->async_error_report->op.task, s_read_end_report_error_task, read_end);
+    aws_task_init(
+        &read_impl->async_error_report->op.task, s_read_end_report_error_task, read_end, "pipe_read_end_report_error");
 
     /* Success */
     write_end->impl_data = write_impl;

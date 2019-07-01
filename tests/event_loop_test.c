@@ -69,7 +69,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
                                   .thread_id = 0};
 
     struct aws_task task;
-    aws_task_init(&task, s_test_task, &task_args);
+    aws_task_init(&task, s_test_task, &task_args, "xthread_scheduled_tasks_execute");
 
     /* Test "future" tasks */
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
@@ -134,9 +134,9 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
                                    .thread_id = 0};
 
     struct aws_task task1;
-    aws_task_init(&task1, s_test_task, &task1_args);
+    aws_task_init(&task1, s_test_task, &task1_args, "canceled_tasks_run_in_el_thread1");
     struct aws_task task2;
-    aws_task_init(&task2, s_test_task, &task2_args);
+    aws_task_init(&task2, s_test_task, &task2_args, "canceled_tasks_run_in_el_thread2");
 
     aws_event_loop_schedule_task_now(event_loop, &task1);
     uint64_t now;
@@ -496,7 +496,7 @@ void s_unsubrace_on_readable_event(
     }
     time_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-    aws_task_init(&data->task, s_unsubrace_done_task, data);
+    aws_task_init(&data->task, s_unsubrace_done_task, data, "unsubrace");
     aws_event_loop_schedule_task_future(data->event_loop, &data->task, time_ns);
 }
 
@@ -555,7 +555,7 @@ static int s_test_event_loop_no_events_after_unsubscribe(struct aws_allocator *a
         .event_loop = event_loop,
     };
 
-    aws_task_init(&data.task, s_unsubrace_setup_task, &data);
+    aws_task_init(&data.task, s_unsubrace_setup_task, &data, "no_events_after_unsubscribe");
     aws_event_loop_schedule_task_now(event_loop, &data.task);
 
     ASSERT_SUCCESS(aws_mutex_lock(&data.mutex));
@@ -705,12 +705,12 @@ static int s_thread_tester_run(struct aws_allocator *alloc, thread_tester_state_
 
     /* Set up data to test with */
     ASSERT_SUCCESS(simple_pipe_open(&tester.read_handle, &tester.write_handle));
-    aws_task_init(&tester.timer_task, s_timer_done_task, &tester);
+    aws_task_init(&tester.timer_task, s_timer_done_task, &tester, "timer_done");
 
     /* Wait for tester to finish running its state functions on the event-loop thread */
     aws_mutex_lock(&tester.mutex);
     struct aws_task task;
-    aws_task_init(&task, s_thread_tester_update_task, &tester);
+    aws_task_init(&task, s_thread_tester_update_task, &tester, "thread_tester_update");
     aws_event_loop_schedule_task_now(tester.event_loop, &task);
     aws_condition_variable_wait_pred(&tester.condition_variable, &tester.mutex, s_thread_tester_pred, &tester);
     aws_mutex_unlock(&tester.mutex);
@@ -988,7 +988,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
                                   .thread_id = 0};
 
     struct aws_task task;
-    aws_task_init(&task, s_test_task, &task_args);
+    aws_task_init(&task, s_test_task, &task_args, "stop_then_restart");
 
     ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 

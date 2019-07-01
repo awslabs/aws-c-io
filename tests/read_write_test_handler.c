@@ -235,7 +235,7 @@ void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_sl
         write_task_args->handler = handler;
         write_task_args->buffer = buffer;
         write_task_args->slot = slot;
-        aws_channel_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args);
+        aws_channel_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args, "rw_handler_write");
 
         aws_channel_schedule_task_now(slot->channel, &write_task_args->task);
     }
@@ -278,7 +278,10 @@ void rw_handler_trigger_increment_read_window(
         increment_read_window_task_args->window_update = window_update;
         increment_read_window_task_args->slot = slot;
         aws_channel_task_init(
-            &increment_read_window_task_args->task, s_increment_read_window_task, increment_read_window_task_args);
+            &increment_read_window_task_args->task,
+            s_increment_read_window_task,
+            increment_read_window_task_args,
+            "increment_read_window_task");
 
         aws_channel_schedule_task_now(slot->channel, &increment_read_window_task_args->task);
     }

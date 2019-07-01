@@ -470,7 +470,8 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return AWS_OP_ERR;
     }
 
-    aws_channel_task_init(negotiation_task, s_negotiation_task, handler);
+    aws_channel_task_init(
+        negotiation_task, s_negotiation_task, handler, "secure_transport_channel_handler_start_negotiation");
     aws_channel_schedule_task_now(secure_transport_handler->parent_slot->channel, negotiation_task);
     return AWS_OP_SUCCESS;
 }
@@ -674,7 +675,11 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
          * have no idea what's going on inside there. So we need to attempt another read.
          */
         secure_transport_handler->read_task_pending = true;
-        aws_channel_task_init(&secure_transport_handler->read_task, s_run_read, handler);
+        aws_channel_task_init(
+            &secure_transport_handler->read_task,
+            s_run_read,
+            handler,
+            "secure_transport_channel_handler_read_on_window_increment");
         aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
     }
 

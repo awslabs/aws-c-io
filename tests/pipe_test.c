@@ -258,7 +258,7 @@ static void s_schedule_task(
         goto error;
     }
 
-    aws_task_init(&wrapper->task, s_pipe_state_task_wrapper_fn, wrapper);
+    aws_task_init(&wrapper->task, s_pipe_state_task_wrapper_fn, wrapper, "pipe_state");
     wrapper->wrapped_fn = fn;
     wrapper->state = state;
 

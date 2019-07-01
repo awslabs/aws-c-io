@@ -203,7 +203,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
             "id=%p: more data is pending read, but we've exceeded "
             "the max read on this tick. Scheduling a task to read on next tick.",
             (void *)socket_handler->slot->handler);
-        aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
+        aws_channel_task_init(
+            &socket_handler->read_task_storage, s_read_task, socket_handler, "socket_handler_re_read");
         aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
     }
 }
@@ -253,7 +254,8 @@ static int s_socket_increment_read_window(
             " task for another read operation.",
             (void *)handler);
 
-        aws_channel_task_init(&socket_handler->read_task_storage, s_read_task, socket_handler);
+        aws_channel_task_init(
+            &socket_handler->read_task_storage, s_read_task, socket_handler, "socket_handler_read_on_window_increment");
         aws_channel_schedule_task_now(slot->channel, &socket_handler->read_task_storage);
     }
 
@@ -316,7 +318,7 @@ static int s_socket_shutdown(
      * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
      * because the socket has been closed: mitigating the risk that the socket is still being abused by
      * a hostile peer. */
-    aws_channel_task_init(&socket_handler->shutdown_task_storage, s_close_task, handler);
+    aws_channel_task_init(&socket_handler->shutdown_task_storage, s_close_task, handler, "socket_handler_close");
     socket_handler->shutdown_err_code = error_code;
     aws_channel_schedule_task_now(slot->channel, &socket_handler->shutdown_task_storage);
     return AWS_OP_SUCCESS;

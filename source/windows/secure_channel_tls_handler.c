@@ -1087,7 +1087,7 @@ static void s_process_pending_output_task(struct aws_channel_task *task, void *a
     (void)task;
     struct aws_channel_handler *handler = arg;
 
-    aws_channel_task_init(task, NULL, NULL);
+    aws_channel_task_init(task, NULL, NULL, "secure_channel_handler_process_pending_output");
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (s_process_pending_output_messages(handler)) {
             struct secure_channel_handler *sc_handler = arg;
@@ -1351,7 +1351,11 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     }
 
     if (sc_handler->negotiation_finished && !sc_handler->sequential_task_storage.task_fn) {
-        aws_channel_task_init(&sc_handler->sequential_task_storage, s_process_pending_output_task, handler);
+        aws_channel_task_init(
+            &sc_handler->sequential_task_storage,
+            s_process_pending_output_task,
+            handler,
+            "secure_channel_handler_process_pending_output_on_window_increment");
         aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
     }
     return AWS_OP_SUCCESS;
@@ -1519,7 +1523,11 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return err;
     }
 
-    aws_channel_task_init(&sc_handler->sequential_task_storage, s_do_negotiation_task, handler);
+    aws_channel_task_init(
+        &sc_handler->sequential_task_storage,
+        s_do_negotiation_task,
+        handler,
+        "secure_channel_handler_start_negotation");
     aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->sequential_task_storage);
     return AWS_OP_SUCCESS;
 }

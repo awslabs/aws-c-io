@@ -218,14 +218,18 @@ struct aws_channel *aws_channel_new(
     aws_linked_list_init(&channel->channel_thread_tasks.list);
     aws_linked_list_init(&channel->cross_thread_tasks.list);
     channel->cross_thread_tasks.lock = (struct aws_mutex)AWS_MUTEX_INIT;
-    aws_task_init(&channel->cross_thread_tasks.scheduling_task, s_schedule_cross_thread_tasks, channel);
+    aws_task_init(
+        &channel->cross_thread_tasks.scheduling_task,
+        s_schedule_cross_thread_tasks,
+        channel,
+        "schedule_cross_thread_tasks");
 
     setup_args->alloc = alloc;
     setup_args->channel = channel;
     setup_args->on_setup_completed = callbacks->on_setup_completed;
     setup_args->user_data = callbacks->setup_user_data;
 
-    aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args);
+    aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args, "on_channel_setup_complete");
     aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
 
     return channel;
@@ -284,7 +288,7 @@ void aws_channel_release_hold(struct aws_channel *channel) {
         if (aws_channel_thread_is_callers_thread(channel)) {
             s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
         } else {
-            aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel);
+            aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel, "final_channel_deletion");
             aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
         }
     }
@@ -364,7 +368,8 @@ static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool 
             aws_channel_task_init(
                 &channel->cross_thread_tasks.shutdown_task.task,
                 s_shutdown_task,
-                &channel->cross_thread_tasks.shutdown_task);
+                &channel->cross_thread_tasks.shutdown_task,
+                "channel_cross_thread_shutdown");
             channel->cross_thread_tasks.shutdown_task.shutdown_immediately = shutdown_immediately;
             channel->cross_thread_tasks.shutdown_task.channel = channel;
             channel->cross_thread_tasks.shutdown_task.error_code = error_code;
@@ -502,10 +507,15 @@ static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum
     }
 }
 
-void aws_channel_task_init(struct aws_channel_task *channel_task, aws_channel_task_fn *task_fn, void *arg) {
+void aws_channel_task_init(
+    struct aws_channel_task *channel_task,
+    aws_channel_task_fn *task_fn,
+    void *arg,
+    const char *type_tag) {
     AWS_ZERO_STRUCT(*channel_task);
     channel_task->task_fn = task_fn;
     channel_task->arg = arg;
+    channel_task->type_tag = type_tag;
 }
 
 /* Common functionality for scheduling "now" and "future" tasks.
@@ -516,7 +526,7 @@ static void s_register_pending_task(
     uint64_t run_at_nanos) {
 
     /* Reset every property on channel task other than user's fn & arg.*/
-    aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel);
+    aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
     channel_task->wrapper_task.timestamp = run_at_nanos;
     aws_linked_list_node_reset(&channel_task->node);
 
@@ -529,6 +539,11 @@ static void s_register_pending_task(
 
         /* If channel is shut down, run task immediately as canceled */
         if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: Running %s channel task immediately as canceled due to shut down channel",
+                (void *)channel,
+                channel_task->type_tag);
             channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
             return;
         }
