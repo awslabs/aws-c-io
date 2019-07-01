@@ -174,7 +174,7 @@ static int s_socket_init(
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 
-    struct posix_socket *posix_socket = aws_mem_acquire(alloc, sizeof(struct posix_socket));
+    struct posix_socket *posix_socket = aws_mem_calloc(alloc, 1, sizeof(struct posix_socket));
     if (!posix_socket) {
         return AWS_OP_ERR;
     }
@@ -444,20 +444,23 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             socket_args->socket->io_handle.data.fd);
 
         socket_args->socket->state = TIMEDOUT;
+        int error_code = AWS_IO_SOCKET_TIMEOUT;
+
         if (status == AWS_TASK_STATUS_RUN_READY) {
             aws_event_loop_unsubscribe_from_io_events(socket_args->socket->event_loop, &socket_args->socket->io_handle);
         } else {
+            error_code = AWS_IO_EVENT_LOOP_SHUTDOWN;
             aws_event_loop_free_io_event_resources(socket_args->socket->event_loop, &socket_args->socket->io_handle);
         }
         socket_args->socket->event_loop = NULL;
         struct posix_socket *socket_impl = socket_args->socket->impl;
         socket_impl->currently_subscribed = false;
-        aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
+        aws_raise_error(error_code);
         struct aws_socket *socket = socket_args->socket;
         /*socket close sets socket_args->socket to NULL and
          * socket_impl->connect_args to NULL. */
         aws_socket_close(socket);
-        s_on_connection_error(socket, AWS_IO_SOCKET_TIMEOUT);
+        s_on_connection_error(socket, error_code);
     }
 
     aws_mem_release(socket_args->allocator, socket_args);
@@ -577,8 +580,7 @@ int aws_socket_connect(
 
     struct posix_socket *socket_impl = socket->impl;
 
-    socket_impl->connect_args = aws_mem_acquire(socket->allocator, sizeof(struct posix_socket_connect_args));
-
+    socket_impl->connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct posix_socket_connect_args));
     if (!socket_impl->connect_args) {
         return AWS_OP_ERR;
     }
@@ -1658,7 +1660,7 @@ int aws_socket_write(
 
     AWS_ASSERT(written_fn);
     struct posix_socket *socket_impl = socket->impl;
-    struct write_request *write_request = aws_mem_acquire(socket->allocator, sizeof(struct write_request));
+    struct write_request *write_request = aws_mem_calloc(socket->allocator, 1, sizeof(struct write_request));
 
     if (!write_request) {
         return AWS_OP_ERR;

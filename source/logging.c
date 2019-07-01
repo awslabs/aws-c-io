@@ -101,14 +101,12 @@ int aws_logger_init_standard(
     struct aws_allocator *allocator,
     struct aws_logger_standard_options *options) {
 
-    struct aws_logger_pipeline *impl = aws_mem_acquire(allocator, sizeof(struct aws_logger_pipeline));
-
+    struct aws_logger_pipeline *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_logger_pipeline));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
 
     struct aws_log_writer *writer = aws_mem_acquire(allocator, sizeof(struct aws_log_writer));
-
     if (writer == NULL) {
         goto on_allocate_writer_failure;
     }
@@ -123,7 +121,6 @@ int aws_logger_init_standard(
     }
 
     struct aws_log_formatter *formatter = aws_mem_acquire(allocator, sizeof(struct aws_log_formatter));
-
     if (formatter == NULL) {
         goto on_allocate_formatter_failure;
     }
@@ -135,7 +132,6 @@ int aws_logger_init_standard(
     }
 
     struct aws_log_channel *channel = aws_mem_acquire(allocator, sizeof(struct aws_log_channel));
-
     if (channel == NULL) {
         goto on_allocate_channel_failure;
     }

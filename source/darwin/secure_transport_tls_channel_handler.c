@@ -517,7 +517,7 @@ static int s_handle_shutdown(
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!error_code) {
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
             SSLClose(secure_transport_handler->ctx);
         }
@@ -735,13 +735,11 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct secure_transport_ctx *secure_transport_ctx = options->ctx->impl;
 
     struct secure_transport_handler *secure_transport_handler =
-        (struct secure_transport_handler *)aws_mem_acquire(allocator, sizeof(struct secure_transport_handler));
-
+        (struct secure_transport_handler *)aws_mem_calloc(allocator, 1, sizeof(struct secure_transport_handler));
     if (!secure_transport_handler) {
         return NULL;
     }
 
-    AWS_ZERO_STRUCT(*secure_transport_handler);
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
@@ -891,13 +889,11 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
-    struct secure_transport_ctx *secure_transport_ctx = aws_mem_acquire(alloc, sizeof(struct secure_transport_ctx));
-
+    struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
         return NULL;
     }
 
-    AWS_ZERO_STRUCT(*secure_transport_ctx);
     secure_transport_ctx->wrapped_allocator = aws_wrapped_cf_allocator_new(alloc);
     secure_transport_ctx->minimum_version = options->minimum_tls_version;
 

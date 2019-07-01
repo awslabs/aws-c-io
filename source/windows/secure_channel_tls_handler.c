@@ -1393,7 +1393,7 @@ static int s_handler_shutdown(
     struct secure_channel_handler *sc_handler = handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!error_code) {
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
 
             /* send a TLS alert. */
@@ -1417,7 +1417,8 @@ static int s_handler_shutdown(
 
             if (status != SEC_E_OK) {
                 aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-                return aws_channel_slot_on_handler_shutdown_complete(slot, dir, AWS_IO_SYS_CALL_FAILURE, true);
+                return aws_channel_slot_on_handler_shutdown_complete(
+                    slot, dir, AWS_IO_SYS_CALL_FAILURE, abort_immediately);
             }
 
             SecBuffer output_buffer = {
@@ -1558,13 +1559,11 @@ static struct aws_channel_handler *s_tls_handler_new(
     bool is_client_mode) {
     AWS_ASSERT(options->ctx);
 
-    struct secure_channel_handler *sc_handler = aws_mem_acquire(alloc, sizeof(struct secure_channel_handler));
-
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
     if (!sc_handler) {
         return NULL;
     }
 
-    AWS_ZERO_STRUCT(*sc_handler);
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
@@ -1678,13 +1677,10 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
 }
 
 struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, bool is_client_mode) {
-    struct secure_channel_ctx *secure_channel_ctx = aws_mem_acquire(alloc, sizeof(struct secure_channel_ctx));
-
+    struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
     if (!secure_channel_ctx) {
         return NULL;
     }
-
-    AWS_ZERO_STRUCT(*secure_channel_ctx);
 
     if (options->alpn_list) {
         secure_channel_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);

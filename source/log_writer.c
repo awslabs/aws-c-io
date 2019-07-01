@@ -75,7 +75,7 @@ static int s_aws_file_writer_init_internal(
     }
 
     /* Allocate and initialize the file writer */
-    struct aws_file_writer *impl = (struct aws_file_writer *)aws_mem_acquire(allocator, sizeof(struct aws_file_writer));
+    struct aws_file_writer *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_file_writer));
     if (impl == NULL) {
         return AWS_OP_ERR;
     }
