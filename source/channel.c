@@ -52,6 +52,7 @@ struct shutdown_task {
     struct aws_channel_task task;
     struct aws_channel *channel;
     int error_code;
+    bool shutdown_immediately;
 };
 
 struct aws_channel {
@@ -113,14 +114,12 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
 
         if (aws_event_loop_fetch_local_object(setup_args->channel->loop, &s_message_pool_key, local_object)) {
 
-            local_object = aws_mem_acquire(setup_args->alloc, sizeof(struct aws_event_loop_local_object));
-
+            local_object = aws_mem_calloc(setup_args->alloc, 1, sizeof(struct aws_event_loop_local_object));
             if (!local_object) {
                 goto cleanup_setup_args;
             }
 
             message_pool = aws_mem_acquire(setup_args->alloc, sizeof(struct aws_message_pool));
-
             if (!message_pool) {
                 goto cleanup_local_obj;
             }
@@ -193,11 +192,10 @@ struct aws_channel *aws_channel_new(
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks) {
 
-    struct aws_channel *channel = aws_mem_acquire(alloc, sizeof(struct aws_channel));
+    struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
         return NULL;
     }
-    AWS_ZERO_STRUCT(*channel);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: Beginning creation and setup of new channel.", (void *)channel);
     channel->alloc = alloc;
@@ -210,7 +208,7 @@ struct aws_channel *aws_channel_new(
      * 1 for the setup task, released when task executes */
     aws_atomic_init_int(&channel->refcount, 2);
 
-    struct channel_setup_args *setup_args = aws_mem_acquire(alloc, sizeof(struct channel_setup_args));
+    struct channel_setup_args *setup_args = aws_mem_calloc(alloc, 1, sizeof(struct channel_setup_args));
     if (!setup_args) {
         aws_mem_release(alloc, channel);
         return NULL;
@@ -303,6 +301,8 @@ struct channel_shutdown_task_args {
     struct aws_task task;
 };
 
+static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately);
+
 static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     (void)task;
@@ -310,13 +310,13 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
     struct shutdown_task *shutdown_task = arg;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        aws_channel_shutdown(shutdown_task->channel, shutdown_task->error_code);
+        s_channel_shutdown(shutdown_task->channel, shutdown_task->error_code, shutdown_task->shutdown_immediately);
     }
 }
 
 static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum aws_task_status status);
 
-int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
+static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately) {
     if (aws_channel_thread_is_callers_thread(channel)) {
         if (channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
             AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: beginning shutdown process", (void *)channel);
@@ -331,7 +331,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
                     (void *)channel,
                     (void *)slot);
 
-                return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, error_code != AWS_OP_SUCCESS);
+                return aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, shutdown_immediately);
             }
 
             channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
@@ -370,6 +370,7 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
                 s_shutdown_task,
                 &channel->cross_thread_tasks.shutdown_task,
                 "channel_cross_thread_shutdown");
+            channel->cross_thread_tasks.shutdown_task.shutdown_immediately = shutdown_immediately;
             channel->cross_thread_tasks.shutdown_task.channel = channel;
             channel->cross_thread_tasks.shutdown_task.error_code = error_code;
         }
@@ -382,6 +383,10 @@ int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
     }
 
     return AWS_OP_SUCCESS;
+}
+
+int aws_channel_shutdown(struct aws_channel *channel, int error_code) {
+    return s_channel_shutdown(channel, error_code, false);
 }
 
 struct aws_io_message *aws_channel_acquire_message_from_pool(
@@ -407,8 +412,7 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
 }
 
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
-    struct aws_channel_slot *new_slot = aws_mem_acquire(channel->alloc, sizeof(struct aws_channel_slot));
-
+    struct aws_channel_slot *new_slot = aws_mem_calloc(channel->alloc, 1, sizeof(struct aws_channel_slot));
     if (!new_slot) {
         return NULL;
     }
@@ -796,11 +800,11 @@ int aws_channel_slot_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
-        "in %d direction with error code %d",
+        "in %s direction with error code %d",
         (void *)slot->channel,
         (void *)slot,
         (void *)slot->handler,
-        dir,
+        (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write",
         err_code);
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
@@ -860,10 +864,10 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL,
-        "id=%p: handler %p shutdown in dir %d completed.",
+        "id=%p: handler %p shutdown in %s dir completed.",
         (void *)slot->channel,
         (void *)slot->handler,
-        dir);
+        (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write");
 
     if (slot->channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
         return AWS_OP_SUCCESS;

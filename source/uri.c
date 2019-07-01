@@ -94,11 +94,12 @@ int aws_uri_init_from_builder_options(
     struct aws_allocator *allocator,
     struct aws_uri_builder_options *options) {
 
+    AWS_ZERO_STRUCT(*uri);
+
     if (options->query_string.len && options->query_params) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    AWS_ZERO_STRUCT(*uri);
     uri->self_size = sizeof(struct aws_uri);
     uri->allocator = allocator;
 

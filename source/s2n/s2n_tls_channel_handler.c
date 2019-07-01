@@ -561,7 +561,7 @@ static int s_s2n_handler_shutdown(
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!error_code) {
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down write direction", (void *)handler)
             s2n_blocked_status blocked;
             /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
@@ -697,7 +697,7 @@ static int s_parse_protocol_preferences(
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             return AWS_OP_ERR;
         }
-
+        AWS_FATAL_ASSERT(cursor.ptr && cursor.len > 0);
         memcpy((void *)protocol_output[i], cursor.ptr, cursor.len);
         *protocol_count += 1;
     }
@@ -712,13 +712,11 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_mode mode) {
 
     AWS_ASSERT(options->ctx);
-    struct s2n_handler *s2n_handler = aws_mem_acquire(allocator, sizeof(struct s2n_handler));
-
+    struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
     if (!s2n_handler) {
         return NULL;
     }
 
-    AWS_ZERO_STRUCT(*s2n_handler);
     struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)options->ctx->impl;
     s2n_handler->connection = s2n_connection_new(mode);
 
@@ -837,7 +835,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     struct aws_tls_ctx_options *options,
     s2n_mode mode) {
-    struct s2n_ctx *s2n_ctx = (struct s2n_ctx *)aws_mem_acquire(alloc, sizeof(struct s2n_ctx));
+    struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
 
     if (!s2n_ctx) {
         return NULL;

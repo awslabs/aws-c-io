@@ -214,12 +214,11 @@ int aws_pipe_init(
     struct read_end_impl *read_impl = NULL;
 
     /* Init write-end */
-    write_impl = aws_mem_acquire(allocator, sizeof(struct write_end_impl));
+    write_impl = aws_mem_calloc(allocator, 1, sizeof(struct write_end_impl));
     if (!write_impl) {
         goto clean_up;
     }
 
-    AWS_ZERO_STRUCT(*write_impl);
     write_impl->alloc = allocator;
     write_impl->state = WRITE_END_STATE_OPEN;
     write_impl->handle.data.handle = INVALID_HANDLE_VALUE;
@@ -268,12 +267,11 @@ int aws_pipe_init(
     write_impl->event_loop = write_end_event_loop;
 
     /* Init read-end */
-    read_impl = aws_mem_acquire(allocator, sizeof(struct read_end_impl));
+    read_impl = aws_mem_calloc(allocator, 1, sizeof(struct read_end_impl));
     if (!read_impl) {
         goto clean_up;
     }
 
-    AWS_ZERO_STRUCT(*read_impl);
     read_impl->alloc = allocator;
     read_impl->state = READ_END_STATE_OPEN;
     read_impl->handle.data.handle = INVALID_HANDLE_VALUE;
@@ -300,21 +298,19 @@ int aws_pipe_init(
     read_impl->event_loop = read_end_event_loop;
 
     /* Init the read-end's async operations */
-    read_impl->async_monitoring = aws_mem_acquire(allocator, sizeof(struct async_operation));
+    read_impl->async_monitoring = aws_mem_calloc(allocator, 1, sizeof(struct async_operation));
     if (!read_impl->async_monitoring) {
         goto clean_up;
     }
 
-    AWS_ZERO_STRUCT(*read_impl->async_monitoring);
     read_impl->async_monitoring->alloc = allocator;
     aws_overlapped_init(&read_impl->async_monitoring->op.overlapped, s_read_end_on_zero_byte_read_completion, read_end);
 
-    read_impl->async_error_report = aws_mem_acquire(allocator, sizeof(struct async_operation));
+    read_impl->async_error_report = aws_mem_calloc(allocator, 1, sizeof(struct async_operation));
     if (!read_impl->async_error_report) {
         goto clean_up;
     }
 
-    AWS_ZERO_STRUCT(*read_impl->async_error_report);
     read_impl->async_error_report->alloc = allocator;
     aws_task_init(
         &read_impl->async_error_report->op.task, s_read_end_report_error_task, read_end, "pipe_read_end_report_error");
