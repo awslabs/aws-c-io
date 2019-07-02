@@ -34,9 +34,6 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_EVENT_LOOP_SHUTDOWN,
         "Event loop has shutdown and a resource was still using it, the resource has been removed from the loop."),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_SYS_CALL_FAILURE,
-        "System call failure"),
-    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
         "TLS (SSL) negotiation failed"),
     AWS_DEFINE_ERROR_INFO_IO(
@@ -62,9 +59,6 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_UNHANDLED_ALPN_PROTOCOL_MESSAGE,
         "An ALPN message was received but a handler was not created by the user"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_FILE_INVALID_PATH,
-        "Invalid file path."),
-    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_FILE_VALIDATION_FAILURE,
         "A file was read and the input did not match the expected value"),
     AWS_DEFINE_ERROR_INFO_IO(
@@ -86,14 +80,8 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_BROKEN_PIPE,
         "Attempt to read or write to io handle that has already been closed."),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_MAX_FDS_EXCEEDED,
-        "The maximum number of fds has been exceeded."),
-    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY,
         "Socket, unsupported address family."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_NO_PERMISSION,
-        "User does not have permission to perform the requested action."),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE,
         "Invalid socket operation for socket type."),
@@ -145,9 +133,6 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_STREAM_INVALID_SEEK_POSITION,
         "The seek position was outside of a stream's bounds"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_STREAM_UNSEEKABLE,
-        "Stream does not support seek operations"),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_STREAM_READ_FAILED,
         "Stream failed to read from the underlying io source"),

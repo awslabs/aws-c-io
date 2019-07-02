@@ -1329,8 +1329,8 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
             QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
 
         if (status != SEC_E_OK) {
-            aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
-            aws_channel_shutdown(slot->channel, AWS_IO_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            aws_channel_shutdown(slot->channel, AWS_ERROR_SYS_CALL_FAILURE);
             return AWS_OP_ERR;
         }
     }
@@ -1416,9 +1416,9 @@ static int s_handler_shutdown(
             status = ApplyControlToken(&sc_handler->sec_handle, &shutdown_buffer_desc);
 
             if (status != SEC_E_OK) {
-                aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+                aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
                 return aws_channel_slot_on_handler_shutdown_complete(
-                    slot, dir, AWS_IO_SYS_CALL_FAILURE, abort_immediately);
+                    slot, dir, AWS_ERROR_SYS_CALL_FAILURE, abort_immediately);
             }
 
             SecBuffer output_buffer = {

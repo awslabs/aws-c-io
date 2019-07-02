@@ -162,7 +162,7 @@ int aws_import_trusted_certificates(
         CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
-        error_code = aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        error_code = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
 
@@ -251,7 +251,7 @@ int aws_import_key_pair_to_cert_context(
 
     if (!*store) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to load in-memory/ephemeral certificate store.");
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     CERT_CONTEXT *cert_context = NULL;

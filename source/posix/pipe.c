@@ -96,7 +96,7 @@ static int s_translate_posix_error(int err) {
         case EPIPE:
             return AWS_IO_BROKEN_PIPE;
         default:
-            return AWS_IO_SYS_CALL_FAILURE;
+            return AWS_ERROR_SYS_CALL_FAILURE;
     }
 }
 

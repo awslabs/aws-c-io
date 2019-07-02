@@ -143,7 +143,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open epoll handle.", (void *)loop);
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up_epoll;
     }
 
@@ -157,7 +157,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
 
     if (fd < 0) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open eventfd handle.", (void *)loop);
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up_thread;
     }
 
@@ -407,7 +407,7 @@ static int s_subscribe_to_io_events(
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", (void *)event_loop, handle->data.fd);
         aws_mem_release(event_loop->alloc, epoll_event_data);
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     handle->additional_data = epoll_event_data;
@@ -443,7 +443,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
             "id=%p: failed to un-subscribe from events on fd %d",
             (void *)event_loop,
             handle->data.fd);
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     /* We can't clean up yet, because we have schedule tasks and more events to process,

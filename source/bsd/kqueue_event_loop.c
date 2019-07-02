@@ -175,7 +175,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
     impl->kq_fd = kqueue();
     if (impl->kq_fd == -1) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to open kqueue handle.", (void *)event_loop);
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
     clean_up_kqueue = true;
@@ -214,7 +214,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
 
     if (res == -1) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: failed to create cross-thread signal kevent.", (void *)event_loop);
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
     clean_up_signal_kevent = true;
@@ -844,7 +844,7 @@ static void s_event_thread_main(void *user_data) {
             /* Raise an error, in case this is interesting to anyone monitoring,
              * and continue on with this loop. We can't process events,
              * but we can still process scheduled tasks */
-            aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 
             /* Force the cross_thread_data to be processed.
              * There might be valuable info in there, like the message to stop the thread.

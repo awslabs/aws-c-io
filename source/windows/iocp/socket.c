@@ -2892,7 +2892,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
@@ -2997,7 +2997,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 struct write_cb_args {

@@ -653,7 +653,8 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
     ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
-    ASSERT_TRUE(aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_IO_FILE_INVALID_PATH);
+    ASSERT_TRUE(
+        aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_ERROR_FILE_INVALID_PATH);
 
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
@@ -731,7 +732,7 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         struct aws_socket incoming;
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-        ASSERT_ERROR(AWS_IO_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+        ASSERT_ERROR(AWS_ERROR_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
 
         aws_socket_clean_up(&incoming);
         aws_event_loop_destroy(event_loop);
@@ -766,7 +767,7 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
         ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
         int error = aws_last_error();
-        ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_IO_NO_PERMISSION == error);
+        ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_ERROR_NO_PERMISSION == error);
 
         aws_socket_clean_up(&incoming);
         aws_event_loop_destroy(event_loop);

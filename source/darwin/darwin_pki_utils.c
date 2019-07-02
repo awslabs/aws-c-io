@@ -122,7 +122,7 @@ int aws_import_public_and_private_keys_to_identity(
         CFRelease(import_keychain);
     }
 
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 int aws_import_pkcs12_to_identity(

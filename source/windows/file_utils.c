@@ -92,7 +92,7 @@ bool aws_path_exists(const char *path) {
 
 int aws_fseek(FILE *file, aws_off_t offset, int whence) {
     if (_fseeki64(file, offset, whence)) {
-        return aws_io_translate_and_raise_io_error(errno);
+        return aws_translate_and_raise_io_error(errno);
     }
 
     return AWS_OP_SUCCESS;
@@ -106,17 +106,17 @@ int aws_file_get_length(FILE *file, int64_t *length) {
 
     HANDLE os_file = (HANDLE)_get_osfhandle(fd);
     if (os_file == INVALID_HANDLE_VALUE) {
-        return aws_io_translate_and_raise_io_error(errno);
+        return aws_translate_and_raise_io_error(errno);
     }
 
     LARGE_INTEGER os_size;
     if (!GetFileSizeEx(os_file, &os_size)) {
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     int64_t size = os_size.QuadPart;
     if (size < 0) {
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     *length = size;
