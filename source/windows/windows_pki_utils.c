@@ -38,7 +38,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     if (!location_of_next_segment) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     size_t store_name_len = location_of_next_segment - cert_path;
@@ -71,7 +71,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     if (!location_of_next_segment) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     /* The store_val value has to be only the path segment related to the physical store. Looking
@@ -89,7 +89,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             " 40 bytes of hex encoded data",
             cert_path,
             location_of_next_segment);
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     *cert_store = CertOpenStore(
@@ -97,7 +97,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     if (!*cert_store) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s. Failed to load cert store", cert_path);
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     BYTE cert_hash_data[CERT_HASH_LEN];
@@ -119,7 +119,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             "static: invalid certificate path %s. %s should have been a hex encoded string",
             cert_path,
             location_of_next_segment);
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     *certs = CertFindCertificateInStore(
@@ -133,7 +133,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             cert_path);
         aws_close_cert_store(*cert_store);
         *cert_store = NULL;
-        return aws_raise_error(AWS_IO_FILE_INVALID_PATH);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     return AWS_OP_SUCCESS;
