@@ -15,6 +15,9 @@
 
 #include <aws/io/logging.h>
 
+/*
+ * IO logging subjects
+ */
 static struct aws_log_subject_info s_io_log_subject_infos[] = {
     DEFINE_LOG_SUBJECT_INFO(
         AWS_LS_IO_GENERAL,
