@@ -54,7 +54,7 @@ int aws_fseek(FILE *file, aws_off_t offset, int whence) {
 #endif
 
     if (result != 0) {
-        return aws_io_translate_and_raise_io_error(errno);
+        return aws_translate_and_raise_io_error(errno);
     }
 
     return AWS_OP_SUCCESS;
@@ -70,7 +70,7 @@ int aws_file_get_length(FILE *file, int64_t *length) {
     }
 
     if (fstat(fd, &file_stats)) {
-        return aws_io_translate_and_raise_io_error(errno);
+        return aws_translate_and_raise_io_error(errno);
     }
 
     *length = file_stats.st_size;

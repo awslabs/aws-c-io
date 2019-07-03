@@ -40,68 +40,13 @@ enum aws_io_log_subject {
     AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
 };
 
-/*
- * Standard logger implementation composing three sub-components:
- *
- * The formatter takes var args input from the user and produces a formatted log line
- * The writer takes a formatted log line and outputs it somewhere
- * The channel is the transport between the two
- */
-struct aws_logger_pipeline {
-    struct aws_log_formatter *formatter;
-    struct aws_log_channel *channel;
-    struct aws_log_writer *writer;
-    struct aws_allocator *allocator;
-    enum aws_log_level level;
-};
-
-/**
- * Options for aws_logger_init_standard().
- * Set `filename` to open a file for logging and close it when the logger cleans up.
- * Set `file` to use a file that is already open, such as `stderr` or `stdout`.
- */
-struct aws_logger_standard_options {
-    enum aws_log_level level;
-    const char *filename;
-    FILE *file;
-};
-
 AWS_EXTERN_C_BEGIN
-
-/*
- * Initializes a pipeline logger that is built from the default formatter, a background thread-based channel, and
- * a file writer.  The default logger in almost all circumstances.
- */
-AWS_IO_API
-int aws_logger_init_standard(
-    struct aws_logger *logger,
-    struct aws_allocator *allocator,
-    struct aws_logger_standard_options *options);
-
-/*
- * Initializes a pipeline logger from components that have already been initialized.  This is not an ownership transfer.
- * After the pipeline logger is cleaned up, the components will have to manually be cleaned up by the user.
- */
-AWS_IO_API
-int aws_logger_init_from_external(
-    struct aws_logger *logger,
-    struct aws_allocator *allocator,
-    struct aws_log_formatter *formatter,
-    struct aws_log_channel *channel,
-    struct aws_log_writer *writer,
-    enum aws_log_level level);
 
 /**
  * Load aws-c-io's log subject strings.
  */
 AWS_IO_API
 void aws_io_load_log_subject_strings(void);
-
-/*
- * Pipeline logger vtable for custom configurations
- */
-AWS_IO_API
-extern struct aws_logger_vtable g_pipeline_logger_owned_vtable;
 
 AWS_EXTERN_C_END
 

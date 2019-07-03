@@ -112,14 +112,14 @@ static int s_determine_socket_error(int error) {
             return AWS_IO_READ_WOULD_BLOCK;
         case EMFILE:
         case ENFILE:
-            return AWS_IO_MAX_FDS_EXCEEDED;
+            return AWS_ERROR_MAX_FDS_EXCEEDED;
         case ENOENT:
         case EINVAL:
-            return AWS_IO_FILE_INVALID_PATH;
+            return AWS_ERROR_FILE_INVALID_PATH;
         case EAFNOSUPPORT:
             return AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY;
         case EACCES:
-            return AWS_IO_NO_PERMISSION;
+            return AWS_ERROR_NO_PERMISSION;
         default:
             return AWS_IO_SOCKET_NOT_CONNECTED;
     }
@@ -1637,7 +1637,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
     }
 
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 int aws_socket_write(

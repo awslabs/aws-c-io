@@ -2,10 +2,8 @@ include(AwsTestHarness)
 enable_testing()
 
 file(GLOB TEST_SRC "*.c")
-file(GLOB LOGGING_TEST_SRC "logging/*.c")
 file(GLOB TEST_HDRS "*.h")
-file(GLOB LOGGING_TEST_HDRS "logging/*.h")
-file(GLOB TESTS ${TEST_HDRS} ${LOGGING_TEST_HDRS} ${TEST_SRC} ${LOGGING_TEST_SRC})
+file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
 
 # Each pipe test runs in 2 different configurations
 macro(add_pipe_test_case name)
@@ -117,28 +115,6 @@ add_net_test_case(tls_client_channel_negotiation_success)
 add_test_case(alpn_successfully_negotiates)
 add_test_case(alpn_no_protocol_message)
 add_test_case(alpn_error_creating_handler)
-
-add_test_case(test_log_formatter_s_formatter_empty_case)
-add_test_case(test_log_formatter_s_formatter_simple_case)
-add_test_case(test_log_formatter_s_formatter_number_case)
-add_test_case(test_log_formatter_s_formatter_string_case)
-add_test_case(test_log_formatter_s_formatter_newline_case)
-
-add_test_case(test_log_writer_simple_file_test)
-add_test_case(test_log_writer_existing_file_test)
-add_test_case(test_log_writer_bad_file_test)
-
-add_test_case(test_foreground_log_channel_single_line)
-add_test_case(test_foreground_log_channel_numbers)
-add_test_case(test_foreground_log_channel_words)
-add_test_case(test_foreground_log_channel_all)
-add_test_case(test_background_log_channel_single_line)
-add_test_case(test_background_log_channel_numbers)
-add_test_case(test_background_log_channel_words)
-add_test_case(test_background_log_channel_all)
-
-add_test_case(test_pipeline_logger_unformatted_test)
-add_test_case(test_pipeline_logger_formatted_test)
 
 add_test_case(uri_full_parse)
 add_test_case(uri_no_scheme_parse)

@@ -32,12 +32,6 @@ AWS_IO_API int aws_byte_buf_init_from_file(
     const char *filename);
 
 /**
- * Convert a c library io error into an aws error.
- */
-AWS_IO_API
-int aws_io_translate_and_raise_io_error(int error_no);
-
-/**
  * Returns true iff the character is a directory separator on ANY supported platform.
  */
 AWS_IO_API

@@ -206,7 +206,7 @@ struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aw
             "id=%p: CreateIOCompletionPort failed with error %d",
             (void *)event_loop,
             (int)GetLastError());
-        aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
     clean_up_iocp_handle = true;
@@ -510,7 +510,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
             "id=%p: CreateIoCompletionPort() failed with error %d",
             (void *)event_loop,
             (int)GetLastError());
-        return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     /* As an optimization, tell Windows not to bother signaling the handle when async I/O completes.

@@ -115,7 +115,7 @@ clean_up:
             case WSATYPE_NOT_FOUND:
                 return aws_raise_error(AWS_IO_DNS_INVALID_NAME);
             default:
-                return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+                return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
     }
 

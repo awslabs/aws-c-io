@@ -554,15 +554,15 @@ static int s_determine_socket_error(int error) {
         case WSAENOBUFS:
             return AWS_ERROR_OOM;
         case WSAEMFILE:
-            return AWS_IO_MAX_FDS_EXCEEDED;
+            return AWS_ERROR_MAX_FDS_EXCEEDED;
         case WSAENAMETOOLONG:
         case WSA_INVALID_PARAMETER:
         case SOME_ERROR_CODE_THAT_MEANS_INVALID_PATH:
-            return AWS_IO_FILE_INVALID_PATH;
+            return AWS_ERROR_FILE_INVALID_PATH;
         case WSAEAFNOSUPPORT:
             return AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY;
         case WSAEACCES:
-            return AWS_IO_NO_PERMISSION;
+            return AWS_ERROR_NO_PERMISSION;
         default:
             return AWS_IO_SOCKET_NOT_CONNECTED;
     }
@@ -2892,7 +2892,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read) {
@@ -2997,7 +2997,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);
-    return aws_raise_error(AWS_IO_SYS_CALL_FAILURE);
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 struct write_cb_args {
