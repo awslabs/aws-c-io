@@ -10,6 +10,6 @@ CheckOptions:
   - key:             google-runtime-int.TypeSufix
     value:           '_t'
   - key:             fuchsia-restrict-system-includes.Includes
-    value:           '*,-stdint.h,-stdbool.h,-uv.h,-assert.h'
+    value:           '*,-stdint.h,-stdbool.h,-assert.h'
 
 ...

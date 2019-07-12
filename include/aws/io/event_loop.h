@@ -142,30 +142,6 @@ AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
 /**
- * Creates an instance of the system event loop implementation for the current architecture and operating system.
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock);
-
-#ifdef AWS_USE_LIBUV
-/**
- * Creates an instance of the libuv event loop implementation (also creates a new uv_loop).
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_libuv(struct aws_allocator *alloc, aws_io_clock_fn *clock);
-
-struct uv_loop_s;
-/**
- * Creates an instance of the libuv event loop implementation (from the provided uv_loop).
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_existing_libuv(
-    struct aws_allocator *alloc,
-    struct uv_loop_s *loop,
-    aws_io_clock_fn *clock);
-#endif /* AWS_USE_LIBUV */
-
-/**
  * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
  * If you do not want this function to block, call aws_event_loop_stop() manually first.

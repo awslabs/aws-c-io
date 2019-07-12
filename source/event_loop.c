@@ -133,14 +133,6 @@ static void s_object_removed(void *value) {
     }
 }
 
-struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
-#ifdef AWS_USE_LIBUV
-    return aws_event_loop_new_libuv(alloc, clock);
-#else
-    return aws_event_loop_new_system(alloc, clock);
-#endif
-}
-
 int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     AWS_ZERO_STRUCT(*event_loop);
 

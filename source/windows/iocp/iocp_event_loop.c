@@ -144,7 +144,7 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .free_io_event_resources = s_free_io_event_resources,
 };
 
-struct aws_event_loop *aws_event_loop_new_system(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     AWS_ASSERT(alloc);
     AWS_ASSERT(clock);
 
