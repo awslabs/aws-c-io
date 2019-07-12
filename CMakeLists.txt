@@ -134,23 +134,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 
 endif()
 
-if (NOT USE_IO_COMPLETION_PORTS)
-    # LIBUV event_loop not supported under IOCP
-    option(USE_LIBUV "Use libuv event loop instead of kqueue/epoll" OFF)
-    # Disable this if you'll be linking against an executable that includes UV, like Node.js
-    option(UV_LINK_LIBRARY "Link against the libuv.a library found by find_library (NOTE: if this is set to OFF, your executable will need to manually link against libuv)" ON)
-else ()
-    set(USE_LIBUV OFF)
-endif ()
-
-if (USE_LIBUV)
-    list(APPEND AWS_IO_OS_SRC "source/libuv/uv_event_loop.c")
-    if (UV_LINK_LIBRARY)
-        # Prefer static version if available
-        find_library(LIBUV_LIBRARY NAMES uv_a uv)
-    endif ()
-endif ()
-
 if (NOT CUSTOM_TLS)
     if (USE_S2N)
         set(TLS_STACK_DETERMINED ON)
@@ -194,20 +177,6 @@ set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
 target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
 
-if (USE_LIBUV)
-    target_compile_definitions(${CMAKE_PROJECT_NAME} PUBLIC AWS_USE_LIBUV)
-
-    if (UV_LINK_LIBRARY)
-        target_link_libraries(${CMAKE_PROJECT_NAME} PUBLIC ${LIBUV_LIBRARY})
-    endif ()
-
-    # Allow specific overriding of uv.h location
-    if (UV_HEADER_PATH)
-        message(STATUS "Using uv.h location: ${UV_HEADER_PATH}")
-        target_include_directories(${CMAKE_PROJECT_NAME} BEFORE PUBLIC ${UV_HEADER_PATH})
-    endif ()
-endif ()
-
 if (BUILD_JNI_BINDINGS)
     set(BUILD_RELOCATABLE_BINARIES ON)
     find_package(JNI)
@@ -231,9 +200,6 @@ aws_prepare_shared_lib_exports(${CMAKE_PROJECT_NAME})
 
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io" COMPONENT Development)
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing" COMPONENT Development)
-if (USE_LIBUV)
-    install(FILES ${AWS_IO_UV_HEADERS} DESTINATION "include/aws/io/uv" COMPONENT Development)
-endif ()
 
 install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
         DESTINATION "${LIBRARY_DIRECTORY}/${CMAKE_PROJECT_NAME}/cmake/"
