@@ -406,6 +406,8 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
 
         if (!socket_channel_handler) {
             err_code = aws_last_error();
+            aws_channel_slot_remove(socket_slot);
+            socket_slot = NULL;
             goto error;
         }
 
@@ -1170,9 +1172,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, channel_data->socket);
 
-    if (channel_data->server_connection_args->use_tls) {
-        aws_tls_connection_options_clean_up(&channel_data->server_connection_args->tls_options);
-    }
 
     aws_mem_release(allocator, channel_data);
 }
@@ -1377,6 +1376,10 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
+
+    if (server_connection_args->use_tls) {
+        aws_tls_connection_options_clean_up(&server_connection_args->tls_options);
+    }
     aws_socket_stop_accept(listener);
     aws_socket_clean_up(listener);
     aws_mem_release(bootstrap->allocator, server_connection_args);
