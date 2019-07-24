@@ -1030,17 +1030,17 @@ static void s_shutdown_listener_task(struct aws_task *task, void *arg, enum aws_
 
 static void s_tester_client_connection_established_fool(struct aws_socket *socket, int error_code, void *user_data) {
     /* connection is fooled~*/
-    (void) error_code;
+    (void)error_code;
     struct shutdown_listener_tester *tester = user_data;
     tester->socket = socket;
-    /* wait for server side setup the channel and shut down the listener */
+
     uint64_t run_at_ns;
     aws_event_loop_current_clock_time(socket->event_loop, &run_at_ns);
     run_at_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     struct aws_task *shutdown_listener_task =
         aws_mem_acquire(tester->outgoing_args->allocator, sizeof(struct aws_task));
     aws_task_init(shutdown_listener_task, s_shutdown_listener_task, tester, "wait_a_bit");
-
+    /* wait 1 sec for server side setup the channel then shut down the listener and close the socket */
     aws_event_loop_schedule_task_future(socket->event_loop, shutdown_listener_task, run_at_ns);
 }
 
@@ -1136,10 +1136,12 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
     shutdown_tester->server_bootstrap = server_bootstrap;
     shutdown_tester->listener = listener;
     shutdown_tester->outgoing_args = &outgoing_args;
+    /* we will schedule a task in the callback, which will close the lisenter socket
+     * Then we close the client socket */
     ASSERT_SUCCESS(aws_socket_connect(
         &outgoing_socket, &endpoint, connect_loop, s_tester_client_connection_established_fool, shutdown_tester));
 
-    /* close the client socket, the server side channel will shutdown */
+    /* The client socket is closed, the server side channel will shutdown */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &incoming_args));
 
