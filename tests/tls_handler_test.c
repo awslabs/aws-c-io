@@ -1030,6 +1030,7 @@ static void s_shutdown_listener_task(struct aws_task *task, void *arg, enum aws_
 
 static void s_tester_client_connection_established_fool(struct aws_socket *socket, int error_code, void *user_data) {
     /* connection is fooled~*/
+    (void) error_code;
     struct shutdown_listener_tester *tester = user_data;
     tester->socket = socket;
     /* wait for server side setup the channel and shut down the listener */
