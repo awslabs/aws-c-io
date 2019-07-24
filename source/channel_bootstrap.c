@@ -938,7 +938,7 @@ struct server_connection_args {
     void *tls_user_data;
     void *user_data;
     bool use_tls;
-    uint32_t ref_count;
+    struct aws_atomic_var ref_count;
 };
 
 struct server_channel_data {
@@ -949,22 +949,22 @@ struct server_channel_data {
 
 void s_server_connection_args_acquire(struct server_connection_args *args) {
     AWS_ASSERT(args);
-    if (args->ref_count++ == 0) {
+    if (aws_atomic_fetch_add(&args->ref_count, 1) == 0) {
         s_server_bootstrap_acquire(args->bootstrap);
     }
 }
 
 void s_server_connection_args_release(struct server_connection_args *args) {
     AWS_ASSERT(args);
-    AWS_ASSERT(args->ref_count > 0);
 
-    if (--args->ref_count == 0) {
+    if (aws_atomic_fetch_sub(&args->ref_count, 1) == 1) {
         struct aws_allocator *allocator = args->bootstrap->allocator;
+        aws_socket_clean_up(&args->listener);
         s_server_bootstrap_release(args->bootstrap);
-
         if (args->use_tls) {
             aws_tls_connection_options_clean_up(&args->tls_options);
         }
+
         aws_mem_release(allocator, args);
     }
 }
@@ -1168,8 +1168,8 @@ error:
         err_code,
         NULL,
         channel_data->server_connection_args->user_data);
-    s_server_connection_args_release(channel_data->server_connection_args);
     aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
+    s_server_connection_args_release(channel_data->server_connection_args);
 }
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -1188,10 +1188,10 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
 
     channel_data->server_connection_args->shutdown_callback(
         server_bootstrap, error_code, channel, server_shutdown_user_data);
-    s_server_connection_args_release(channel_data->server_connection_args);
     aws_channel_destroy(channel);
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, channel_data->socket);
+    s_server_connection_args_release(channel_data->server_connection_args);
 
     aws_mem_release(allocator, channel_data);
 }
@@ -1256,10 +1256,11 @@ void s_on_server_connection_result(
 
 error_cleanup:
     connection_args->incoming_callback(connection_args->bootstrap, aws_last_error(), NULL, connection_args->user_data);
-    s_server_connection_args_release(connection_args);
+
     struct aws_allocator *allocator = new_socket->allocator;
     aws_socket_clean_up(new_socket);
     aws_mem_release(allocator, (void *)new_socket);
+    s_server_connection_args_release(connection_args);
 }
 
 static inline struct aws_socket *s_server_new_socket_listener(
@@ -1289,6 +1290,7 @@ static inline struct aws_socket *s_server_new_socket_listener(
 
     server_connection_args->user_data = user_data;
     server_connection_args->bootstrap = bootstrap;
+    aws_atomic_init_int(&server_connection_args->ref_count, 0);
     s_server_connection_args_acquire(server_connection_args);
     server_connection_args->shutdown_callback = shutdown_callback;
     server_connection_args->incoming_callback = incoming_callback;
@@ -1399,7 +1401,6 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
 
     aws_socket_stop_accept(listener);
-    aws_socket_clean_up(listener);
     s_server_connection_args_release(server_connection_args);
     return AWS_OP_SUCCESS;
 }

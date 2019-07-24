@@ -959,7 +959,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &incoming_args));
 
-    /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
+    /* no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
@@ -978,9 +978,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
         s_tls_handler_test_client_setup_callback,
         s_tls_handler_test_client_shutdown_callback,
         &outgoing_args));
-    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
-     * done messed up. */
-    aws_tls_connection_options_clean_up(&tls_client_conn_options);
+
     /* wait for both ends to setup */
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &incoming_args));
@@ -1016,7 +1014,7 @@ struct shutdown_listener_tester {
     struct aws_socket *listener;
     struct aws_server_bootstrap *server_bootstrap;
     struct tls_test_args *outgoing_args;
-    struct aws_socket *socket;
+    struct aws_socket client_socket;
 };
 
 static void s_shutdown_listener_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1025,14 +1023,14 @@ static void s_shutdown_listener_task(struct aws_task *task, void *arg, enum aws_
     /* destroy the listener */
     aws_server_bootstrap_destroy_socket_listener(tester->server_bootstrap, tester->listener);
     aws_mem_release(tester->outgoing_args->allocator, task);
-    AWS_FATAL_ASSERT(aws_socket_close(tester->socket) == AWS_OP_SUCCESS);
+    AWS_FATAL_ASSERT(aws_socket_close(&tester->client_socket) == AWS_OP_SUCCESS);
 }
 
 static void s_tester_client_connection_established_fool(struct aws_socket *socket, int error_code, void *user_data) {
     /* connection is fooled~*/
     (void)error_code;
     struct shutdown_listener_tester *tester = user_data;
-    tester->socket = socket;
+    tester->client_socket = *socket;
 
     uint64_t run_at_ns;
     aws_event_loop_current_clock_time(socket->event_loop, &run_at_ns);
@@ -1127,25 +1125,29 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     /* new socket */
-    struct aws_socket outgoing_socket;
     struct aws_event_loop *connect_loop = aws_event_loop_group_get_next_loop(&el_group);
-    ASSERT_SUCCESS(aws_socket_init(&outgoing_socket, allocator, &options));
 
     struct shutdown_listener_tester *shutdown_tester =
         aws_mem_acquire(allocator, sizeof(struct shutdown_listener_tester));
     shutdown_tester->server_bootstrap = server_bootstrap;
     shutdown_tester->listener = listener;
     shutdown_tester->outgoing_args = &outgoing_args;
+    ASSERT_SUCCESS(aws_socket_init(&shutdown_tester->client_socket, allocator, &options));
     /* we will schedule a task in the callback, which will close the lisenter socket
      * Then we close the client socket */
     ASSERT_SUCCESS(aws_socket_connect(
-        &outgoing_socket, &endpoint, connect_loop, s_tester_client_connection_established_fool, shutdown_tester));
+        &shutdown_tester->client_socket,
+        &endpoint,
+        connect_loop,
+        s_tester_client_connection_established_fool,
+        shutdown_tester));
 
     /* The client socket is closed, the server side channel will shutdown */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &incoming_args));
 
     /* clean up */
+    aws_socket_clean_up(&shutdown_tester->client_socket);
     aws_mem_release(allocator, shutdown_tester);
     aws_server_bootstrap_release(server_bootstrap);
     aws_tls_ctx_options_clean_up(&server_ctx_options);
@@ -1154,7 +1156,6 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
     aws_host_resolver_clean_up(&resolver);
     aws_event_loop_group_clean_up(&el_group);
     aws_tls_clean_up_static_state();
-    aws_socket_clean_up(&outgoing_socket);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
