@@ -959,7 +959,6 @@ void s_server_connection_args_release(struct server_connection_args *args) {
 
     if (aws_atomic_fetch_sub(&args->ref_count, 1) == 1) {
         struct aws_allocator *allocator = args->bootstrap->allocator;
-        aws_socket_clean_up(&args->listener);
         s_server_bootstrap_release(args->bootstrap);
         if (args->use_tls) {
             aws_tls_connection_options_clean_up(&args->tls_options);
@@ -1401,6 +1400,7 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
 
     aws_socket_stop_accept(listener);
+    aws_socket_clean_up(listener);
     s_server_connection_args_release(server_connection_args);
     return AWS_OP_SUCCESS;
 }
