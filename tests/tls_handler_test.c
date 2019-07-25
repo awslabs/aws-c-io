@@ -229,6 +229,31 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
+struct tls_server_opt_tester
+{
+    struct aws_tls_ctx_options server_ctx_options;
+    struct aws_tls_ctx *server_ctx;
+    struct aws_tls_connection_options opt;
+};
+
+
+static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_server_opt_tester *tester){
+    
+#ifdef __APPLE__
+    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
+    aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", &pwd_cur);
+#else
+    aws_tls_ctx_options_init_default_server_from_path(
+        &tester->server_ctx_options, allocator, "./unittests.crt", "./unittests.key");
+#endif /* __APPLE__ */
+    aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
+    struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
+    ASSERT_NOT_NULL(server_ctx);
+
+    aws_tls_connection_options_init_from_ctx(opt, server_ctx);
+    return AWS_OP_SUCCESS;
+}
+
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_tls_init_static_state(allocator);
@@ -274,19 +299,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     g_aws_channel_max_fragment_size = 4096;
 
-    struct aws_tls_ctx_options server_ctx_options;
-#ifdef __APPLE__
-    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
-    aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", &pwd_cur);
-#else
-    aws_tls_ctx_options_init_default_server_from_path(
-        &server_ctx_options, allocator, "./unittests.crt", "./unittests.key");
-#endif /* __APPLE__ */
-    aws_tls_ctx_options_set_alpn_list(&server_ctx_options, "h2;http/1.1");
-
-    struct aws_tls_ctx *server_ctx = aws_tls_server_ctx_new(allocator, &server_ctx_options);
-    ASSERT_NOT_NULL(server_ctx);
-
     struct tls_test_args incoming_args = {
         .mutex = &mutex,
         .allocator = allocator,
@@ -318,7 +330,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     };
 
     struct aws_tls_connection_options tls_server_conn_options;
-    aws_tls_connection_options_init_from_ctx(&tls_server_conn_options, server_ctx);
+    ASSERT_SUCCESS(s_tester_init_tls_server_opt(&allocator, &tls_server_conn_options));
     aws_tls_connection_options_set_callbacks(&tls_server_conn_options, s_tls_on_negotiated, NULL, NULL, &incoming_args);
 
     struct aws_tls_connection_options tls_client_conn_options;
