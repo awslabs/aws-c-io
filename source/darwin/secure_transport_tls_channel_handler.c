@@ -63,6 +63,17 @@ bool aws_tls_is_alpn_available(void) {
     return false;
 }
 
+bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    switch (cipher_pref) {
+        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+            return true;
+
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
+        default:
+            return false;
+    }
+}
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
     /* keep from breaking users that built on later versions of the mac os sdk but deployed
@@ -891,6 +902,12 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
+        return NULL;
+    }
+
+    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+        aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
     }
 

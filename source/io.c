@@ -53,6 +53,11 @@ static struct aws_error_info s_errors[] = {
         "A TLS version was specified that is currently not supported. Consider using AWS_IO_TLS_VER_SYS_DEFAULTS, "
         " and when this lib or the operating system is updated, it will automatically be used."),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED,
+        "A TLS Cipher Preference was specified that is currently not supported by the current platform. Consider "
+        " using AWS_IO_TLS_CIPHER_SYSTEM_DEFAULT, and when this lib or the operating system is updated, it will "
+        "automatically be used."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_MISSING_ALPN_MESSAGE,
         "An ALPN message was expected but not received"),
     AWS_DEFINE_ERROR_INFO_IO(

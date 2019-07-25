@@ -22,6 +22,7 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     AWS_ZERO_STRUCT(*options);
     options->allocator = allocator;
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 }
@@ -90,6 +91,7 @@ int aws_tls_ctx_options_init_client_mtls(
     struct aws_byte_cursor *pkey) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
@@ -116,6 +118,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     const char *pkey_path) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
