@@ -14,7 +14,7 @@
  */
 #include <aws/io/io.h>
 
-#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
+#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 /* clang-format off */
 static struct aws_error_info s_errors[] = {
