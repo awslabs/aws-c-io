@@ -18,6 +18,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 
+#include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
@@ -309,6 +310,85 @@ static void s_tls_client_on_error(
         connection_args->channel_data.user_on_error(
             handler, slot, err, message, connection_args->channel_data.tls_user_data);
     }
+}
+
+int aws_setup_client_tls(
+    struct aws_client_bootstrap *bootstrap,
+    struct aws_tls_connection_options *tls_options,
+    struct aws_channel *channel) {
+    struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
+
+    /* as far as cleanup goes, since this stuff is being added to a channel, the caller will free this memory
+       when they clean up the channel. */
+    if (!tls_slot) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(bootstrap->allocator, tls_options, tls_slot);
+
+    if (!tls_handler) {
+        aws_mem_release(bootstrap->allocator, (void *)tls_slot);
+        return AWS_OP_ERR;
+    }
+
+    // aws_channel_slot_insert_end(channel, tls_slot);
+    struct aws_channel_slot *first = aws_channel_get_first_slot(channel);
+    if (first == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    aws_channel_slot_insert_right(first, tls_slot);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: Setting up client TLS on channel %p with handler %p on slot %p",
+        (void *)bootstrap,
+        (void *)channel,
+        (void *)tls_handler,
+        (void *)tls_slot);
+
+    if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
+        return AWS_OP_ERR;
+    }
+
+    /*
+    if (connection_args->channel_data.on_protocol_negotiated) {
+        struct aws_channel_slot *alpn_slot = aws_channel_slot_new(channel);
+
+        if (!alpn_slot) {
+            return AWS_OP_ERR;
+        }
+
+        struct aws_channel_handler *alpn_handler = aws_tls_alpn_handler_new(
+                bootstrap->allocator,
+                connection_args->channel_data.on_protocol_negotiated,
+                connection_args->user_data);
+
+        if (!alpn_handler) {
+            aws_mem_release(bootstrap->allocator, (void *)alpn_slot);
+            return AWS_OP_ERR;
+        }
+
+        AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Setting up ALPN handler on channel "
+                "%p with handler %p on slot %p",
+                (void *)bootstrap,
+                (void *)channel,
+                (void *)alpn_handler,
+                (void *)alpn_slot);
+
+        aws_channel_slot_insert_right(tls_slot, alpn_slot);
+        if (aws_channel_slot_set_handler(alpn_slot, alpn_handler) != AWS_OP_SUCCESS) {
+            return AWS_OP_ERR;
+        }
+    }
+     */
+
+    if (aws_tls_client_handler_start_negotiation(tls_handler) != AWS_OP_SUCCESS) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 static inline int s_setup_client_tls(struct client_connection_args *connection_args, struct aws_channel *channel) {
