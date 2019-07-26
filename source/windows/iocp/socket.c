@@ -1210,7 +1210,6 @@ static inline int s_dgram_connect(
         (int)remote_endpoint->port);
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
-
     if (connect_err) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
