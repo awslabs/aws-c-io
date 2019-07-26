@@ -969,3 +969,7 @@ size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handl
     AWS_ASSERT(handler->vtable && handler->vtable->initial_window_size);
     return handler->vtable->initial_window_size(handler);
 }
+
+struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel) {
+    return channel->first;
+}

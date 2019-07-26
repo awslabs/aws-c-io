@@ -15,6 +15,7 @@
 
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
+#include <aws/io/logging.h>
 #include <aws/io/tls_channel_handler.h>
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
@@ -379,6 +380,47 @@ int aws_tls_connection_options_set_alpn_list(
 
     conn_options->alpn_list = aws_string_new_from_c_str(allocator, alpn_list);
     if (!conn_options->alpn_list) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_channel_setup_client_tls(
+    struct aws_channel *channel,
+    struct aws_channel_slot *right_of_slot,
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *tls_options) {
+    struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
+
+    /* as far as cleanup goes, since this stuff is being added to a channel, the caller will free this memory
+       when they clean up the channel. */
+    if (!tls_slot) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(allocator, tls_options, tls_slot);
+    if (!tls_handler) {
+        aws_mem_release(allocator, tls_slot);
+        return AWS_OP_ERR;
+    }
+
+    /*
+     * From here on out, channel shutdown will handle slot/handler cleanup
+     */
+    aws_channel_slot_insert_right(right_of_slot, tls_slot);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: Setting up client TLS with handler %p on slot %p",
+        (void *)channel,
+        (void *)tls_handler,
+        (void *)tls_slot);
+
+    if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_tls_client_handler_start_negotiation(tls_handler) != AWS_OP_SUCCESS) {
         return AWS_OP_ERR;
     }
 
