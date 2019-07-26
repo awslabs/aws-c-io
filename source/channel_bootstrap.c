@@ -18,7 +18,6 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 
-#include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
