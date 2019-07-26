@@ -54,6 +54,104 @@ struct tls_test_args {
     bool shutdown_finished;
 };
 
+/* common structure for tls options */
+struct tls_opt_tester {
+    struct aws_tls_ctx_options ctx_options;
+    struct aws_tls_ctx *ctx;
+    struct aws_tls_connection_options opt;
+};
+
+static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
+
+#ifdef __APPLE__
+    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
+    aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "./unittests.p12", &pwd_cur);
+#else
+    aws_tls_ctx_options_init_default_server_from_path(
+        &tester->ctx_options, allocator, "./unittests.crt", "./unittests.key");
+#endif /* __APPLE__ */
+    aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
+    tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
+    ASSERT_NOT_NULL(tester->ctx);
+
+    aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_client_opt_tester_init(
+    struct aws_allocator *allocator,
+    struct tls_opt_tester *tester,
+    struct aws_byte_cursor server_name) {
+
+    aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
+    aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "./unittests.crt");
+
+    tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
+    aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
+    aws_tls_connection_options_set_alpn_list(&tester->opt, allocator, "h2;http/1.1");
+
+    aws_tls_connection_options_set_server_name(&tester->opt, allocator, &server_name);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_opt_tester_clean_up(struct tls_opt_tester *tester) {
+    aws_tls_connection_options_clean_up(&tester->opt);
+    aws_tls_ctx_options_clean_up(&tester->ctx_options);
+    aws_tls_ctx_destroy(tester->ctx);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_test_arg_init(
+    struct aws_allocator *allocator,
+    struct tls_test_args *test_arg,
+    bool server,
+    struct aws_mutex *mutex,
+    struct aws_condition_variable *condition_variable) {
+    AWS_ZERO_STRUCT(*test_arg);
+    test_arg->mutex = mutex;
+    test_arg->condition_variable = condition_variable;
+    test_arg->allocator = allocator;
+    test_arg->server = server;
+    return AWS_OP_SUCCESS;
+}
+
+/* common structure for test */
+struct tls_common_tester {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    struct aws_event_loop_group el_group;
+    struct aws_host_resolver resolver;
+};
+
+/* common structure for a tls local server */
+struct tls_local_server_tester {
+    struct aws_socket_options socket_options;
+    struct tls_opt_tester server_tls_opt_tester;
+    struct tls_test_args incoming_args;
+    struct aws_socket_endpoint endpoint;
+    struct aws_server_bootstrap *server_bootstrap;
+    struct aws_socket *listener;
+    uint64_t timestamp;
+};
+
+static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
+    AWS_ZERO_STRUCT(*tester);
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&tester->el_group, allocator, 0));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&tester->resolver, allocator, 1, &tester->el_group));
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+    tester->mutex = mutex;
+    tester->condition_variable = condition_variable;
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
+    aws_host_resolver_clean_up(&tester->resolver);
+    aws_event_loop_group_clean_up(&tester->el_group);
+    return AWS_OP_SUCCESS;
+}
+
 static bool s_tls_channel_shutdown_predicate(void *user_data) {
     struct tls_test_args *setup_test_args = user_data;
     return setup_test_args->shutdown_finished || setup_test_args->last_error_code == AWS_IO_SOCKET_TIMEOUT ||
@@ -178,6 +276,43 @@ static void s_tls_on_negotiated(
     }
 }
 
+static int s_tls_local_server_tester_init(
+    struct aws_allocator *allocator,
+    struct tls_local_server_tester *tester,
+    struct tls_common_tester *c_tester) {
+    AWS_ZERO_STRUCT(*tester);
+    ASSERT_SUCCESS(
+        s_tls_test_arg_init(allocator, &tester->incoming_args, true, &c_tester->mutex, &c_tester->condition_variable));
+    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
+    aws_tls_connection_options_set_callbacks(
+        &tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &tester->incoming_args);
+    tester->socket_options.connect_timeout_ms = 3000;
+    tester->socket_options.type = AWS_SOCKET_STREAM;
+    tester->socket_options.domain = AWS_SOCKET_LOCAL;
+    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
+    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
+    ASSERT_NOT_NULL(tester->server_bootstrap);
+    tester->listener = aws_server_bootstrap_new_tls_socket_listener(
+        tester->server_bootstrap,
+        &tester->endpoint,
+        &tester->socket_options,
+        &tester->server_tls_opt_tester.opt,
+        s_tls_handler_test_server_setup_callback,
+        s_tls_handler_test_server_shutdown_callback,
+        &tester->incoming_args);
+    ASSERT_NOT_NULL(tester->listener);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_local_server_tester_clean_up(struct tls_local_server_tester *tester) {
+    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&tester->server_tls_opt_tester));
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(tester->server_bootstrap, tester->listener));
+    aws_server_bootstrap_release(tester->server_bootstrap);
+    return AWS_OP_SUCCESS;
+}
+
 struct tls_test_rw_args {
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
@@ -229,137 +364,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
-struct tls_opt_tester {
-    struct aws_tls_ctx_options ctx_options;
-    struct aws_tls_ctx *ctx;
-    struct aws_tls_connection_options opt;
-};
-
-static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
-
-#ifdef __APPLE__
-    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
-    aws_tls_ctx_options_init_server_pkcs12_from_path(&server_ctx_options, allocator, "./unittests.p12", &pwd_cur);
-#else
-    aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "./unittests.crt", "./unittests.key");
-#endif /* __APPLE__ */
-    aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
-    tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
-    ASSERT_NOT_NULL(tester->ctx);
-
-    aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_client_opt_tester_init(
-    struct aws_allocator *allocator,
-    struct tls_opt_tester *tester,
-    struct aws_byte_cursor server_name) {
-
-    aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "./unittests.crt");
-
-    tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
-    aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
-    aws_tls_connection_options_set_alpn_list(&tester->opt, allocator, "h2;http/1.1");
-
-    aws_tls_connection_options_set_server_name(&tester->opt, allocator, &server_name);
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_opt_tester_clean_up(struct tls_opt_tester *tester) {
-    aws_tls_connection_options_clean_up(&tester->opt);
-    aws_tls_ctx_options_clean_up(&tester->ctx_options);
-    aws_tls_ctx_destroy(tester->ctx);
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_test_arg_init(
-    struct aws_allocator *allocator,
-    struct tls_test_args *test_arg,
-    bool server,
-    struct aws_mutex *mutex,
-    struct aws_condition_variable *condition_variable) {
-    AWS_ZERO_STRUCT(*test_arg);
-    test_arg->mutex = mutex;
-    test_arg->condition_variable = condition_variable;
-    test_arg->allocator = allocator;
-    test_arg->server = server;
-    return AWS_OP_SUCCESS;
-}
-
-struct tls_common_tester {
-    struct aws_mutex mutex;
-    struct aws_condition_variable condition_variable;
-    struct aws_event_loop_group el_group;
-    struct aws_host_resolver resolver;
-};
-
-struct tls_local_server_tester {
-    struct aws_socket_options socket_options;
-    struct tls_opt_tester server_tls_opt_tester;
-    struct tls_test_args incoming_args;
-    struct aws_socket_endpoint endpoint;
-    struct aws_server_bootstrap *server_bootstrap;
-    struct aws_socket *listener;
-    uint64_t timestamp;
-};
-
-static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
-    AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&tester->el_group, allocator, 0));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&tester->resolver, allocator, 1, &tester->el_group));
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
-    tester->mutex = mutex;
-    tester->condition_variable = condition_variable;
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_local_server_tester_init(
-    struct aws_allocator *allocator,
-    struct tls_local_server_tester *tester,
-    struct tls_common_tester *c_tester) {
-    AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(
-        s_tls_test_arg_init(allocator, &tester->incoming_args, true, &c_tester->mutex, &c_tester->condition_variable));
-    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
-    aws_tls_connection_options_set_callbacks(
-        &tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &tester->incoming_args);
-    tester->socket_options.connect_timeout_ms = 3000;
-    tester->socket_options.type = AWS_SOCKET_STREAM;
-    tester->socket_options.domain = AWS_SOCKET_LOCAL;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
-    ASSERT_NOT_NULL(tester->server_bootstrap);
-    tester->listener = aws_server_bootstrap_new_tls_socket_listener(
-        tester->server_bootstrap,
-        &tester->endpoint,
-        &tester->socket_options,
-        &tester->server_tls_opt_tester.opt,
-        s_tls_handler_test_server_setup_callback,
-        s_tls_handler_test_server_shutdown_callback,
-        &tester->incoming_args);
-    ASSERT_NOT_NULL(tester->listener);
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_local_server_tester_clean_up(struct tls_local_server_tester *tester) {
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&tester->server_tls_opt_tester));
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(tester->server_bootstrap, tester->listener));
-    aws_server_bootstrap_release(tester->server_bootstrap);
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
-    aws_host_resolver_clean_up(&tester->resolver);
-    aws_event_loop_group_clean_up(&tester->el_group);
-    return AWS_OP_SUCCESS;
-}
 
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
