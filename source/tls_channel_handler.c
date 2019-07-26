@@ -388,6 +388,7 @@ int aws_tls_connection_options_set_alpn_list(
 
 int aws_channel_setup_client_tls(
     struct aws_channel *channel,
+    struct aws_channel_slot *right_of_slot,
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *tls_options) {
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
@@ -398,20 +399,16 @@ int aws_channel_setup_client_tls(
         return AWS_OP_ERR;
     }
 
-    struct aws_channel_slot *first_slot = aws_channel_get_first_slot(channel);
-    if (first_slot == NULL) {
-        goto needs_cleanup;
-    }
-
     struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(allocator, tls_options, tls_slot);
     if (!tls_handler) {
-        goto needs_cleanup;
+        aws_mem_release(allocator, tls_slot);
+        return AWS_OP_ERR;
     }
 
     /*
      * From here on out, channel shutdown will handle slot/handler cleanup
      */
-    aws_channel_slot_insert_right(first_slot, tls_slot);
+    aws_channel_slot_insert_right(right_of_slot, tls_slot);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: Setting up client TLS with handler %p on slot %p",
@@ -428,12 +425,4 @@ int aws_channel_setup_client_tls(
     }
 
     return AWS_OP_SUCCESS;
-
-needs_cleanup:
-
-    if (tls_slot) {
-        aws_mem_release(allocator, tls_slot);
-    }
-
-    return AWS_OP_ERR;
 }
