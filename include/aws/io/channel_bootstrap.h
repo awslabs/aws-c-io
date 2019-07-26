@@ -276,11 +276,6 @@ AWS_IO_API int aws_server_bootstrap_destroy_socket_listener(
     struct aws_server_bootstrap *bootstrap,
     struct aws_socket *listener);
 
-AWS_IO_API int aws_setup_client_tls(
-    struct aws_client_bootstrap *bootstrap,
-    struct aws_tls_connection_options *tls_options,
-    struct aws_channel *channel);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CHANNEL_BOOTSTRAP_H */
