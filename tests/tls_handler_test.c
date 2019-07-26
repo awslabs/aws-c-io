@@ -364,7 +364,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
-
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_tls_init_static_state(allocator);
