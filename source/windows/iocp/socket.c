@@ -824,7 +824,7 @@ void s_socket_connection_completion(
     if (socket_args->socket) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connect completion triggered. Socket has not timed out yet: proceeeding with connection",
+            "id=%p handle=%p: connect completion triggered. Socket has not timed out yet: proceeding with connection",
             (void *)socket_args->socket,
             (void *)socket_args->socket->io_handle.data.handle);
         struct iocp_socket *socket_impl = socket_args->socket->impl;
@@ -944,7 +944,7 @@ static inline int s_tcp_connect(
         &socket_impl->read_io_data->signal.overlapped);
 
     uint64_t time_to_run = 0;
-    /* if the connect succedded immediately, let the timeout task still run, but it can run immediately. This is cleaner
+    /* if the connect succeeded immediately, let the timeout task still run, but it can run immediately. This is cleaner
        because it can just deallocate the memory we just allocated. */
     aws_event_loop_current_clock_time(connect_loop, &time_to_run);
 
@@ -1204,11 +1204,11 @@ static inline int s_dgram_connect(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to to %s:%d",
-        (void *)socket,
-        (void *)socket->io_handle.data.handle,
-        remote_endpoint->address,
-        (int)remote_endpoint->port);
-    int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
+        (void *)socket,https://github.com/awslabs/aws-c-io/pull/158
+        (void *)socket-https://github.com/awslabs/aws-c-io/pull/158
+        remote_endpointhttps://github.com/awslabs/aws-c-io/pull/158
+        (int)remote_endhttps://github.com/awslabs/aws-c-io/pull/158
+    int connect_err = chttps://github.com/awslabs/aws-c-io/pull/158nt)sock_size);
 
     if (connect_err) {
         AWS_LOGF_ERROR(
@@ -1545,7 +1545,7 @@ static int s_local_listen(struct aws_socket *socket, int backlog_size) {
     return AWS_OP_SUCCESS;
 }
 
-/* triggered by the event loop upon an incomming pipe connection. */
+/* triggered by the event loop upon an incoming pipe connection. */
 static void s_incoming_pipe_connection_event(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,
@@ -2127,7 +2127,7 @@ static int s_local_start_accept(
         if (error_code != ERROR_IO_PENDING && error_code != ERROR_PIPE_CONNECTED) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: ConnecteNamedPipe() failed with error %d.",
+                "id=%p handle=%p: ConnectNamedPipe() failed with error %d.",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
                 error_code);
