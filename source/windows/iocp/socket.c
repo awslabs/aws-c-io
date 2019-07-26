@@ -357,12 +357,14 @@ static int s_socket_init(
     impl->vtable = &vtables[options->domain][options->type];
     if (!impl->vtable || !impl->vtable->read) {
         aws_mem_release(alloc, impl);
+        socket->impl = NULL;
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
     impl->read_io_data = aws_mem_calloc(alloc, 1, sizeof(struct io_operation_data));
     if (!impl->read_io_data) {
         aws_mem_release(alloc, impl);
+        socket->impl = NULL;
         return AWS_OP_ERR;
     }
 
@@ -381,6 +383,7 @@ static int s_socket_init(
         if (s_create_socket(socket, options)) {
             aws_mem_release(alloc, impl->read_io_data);
             aws_mem_release(alloc, impl);
+            socket->impl = NULL;
             return AWS_OP_ERR;
         }
     }
@@ -398,6 +401,10 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
+    if(!socket->impl){
+        /* protect from double clean */
+        return;
+    }
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p, handle=%p: cleaning up socket.",

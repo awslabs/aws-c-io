@@ -176,6 +176,7 @@ static int s_socket_init(
 
     struct posix_socket *posix_socket = aws_mem_calloc(alloc, 1, sizeof(struct posix_socket));
     if (!posix_socket) {
+        socket->impl = NULL;
         return AWS_OP_ERR;
     }
 
@@ -188,6 +189,7 @@ static int s_socket_init(
         int err = s_create_socket(socket, options);
         if (err) {
             aws_mem_release(alloc, posix_socket);
+            socket->impl = NULL;
             return AWS_OP_ERR;
         }
     } else {
@@ -216,6 +218,10 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
+    if(!socket->impl){
+        /* protect from double clean */
+        return;
+    }
     if (aws_socket_is_open(socket)) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, socket->io_handle.data.fd);
