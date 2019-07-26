@@ -1093,6 +1093,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     struct server_channel_data *channel_data = user_data;
 
     int err_code = error_code;
+    s_server_connection_args_acquire(channel_data->server_connection_args);
     if (!err_code) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -1169,6 +1170,7 @@ error:
         NULL,
         channel_data->server_connection_args->user_data);
     aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
+    s_server_connection_args_release(channel_data->server_connection_args);
 }
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
