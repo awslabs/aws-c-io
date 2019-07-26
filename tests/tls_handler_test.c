@@ -799,7 +799,8 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_mutex_lock(&c_tester.mutex);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap *client_bootstrap =
+        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -815,8 +816,8 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
