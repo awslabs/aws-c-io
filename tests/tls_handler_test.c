@@ -763,19 +763,13 @@ AWS_TEST_CASE(
 static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name) {
     aws_tls_init_static_state(allocator);
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 0));
-
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 1, &el_group));
-
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+    struct tls_common_tester c_tester;
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args = {
-        .mutex = &mutex,
+        .mutex = &c_tester.mutex,
         .allocator = allocator,
-        .condition_variable = &condition_variable,
+        .condition_variable = &c_tester.condition_variable,
         .error_invoked = 0,
         .rw_handler = NULL,
         .server = false,
@@ -803,9 +797,9 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    aws_mutex_lock(&mutex);
+    aws_mutex_lock(&c_tester.mutex);
 
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &el_group, &resolver, NULL);
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -822,7 +816,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
     ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tls_channel_setup_predicate, &outgoing_args));
+        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
@@ -841,16 +835,13 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &condition_variable, &mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
 
     aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_destroy(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
-
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
-
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_tls_clean_up_static_state();
     return AWS_OP_SUCCESS;
 }
