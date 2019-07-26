@@ -218,7 +218,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
-    if(!socket->impl){
+    if (!socket->impl) {
         /* protect from double clean */
         return;
     }
