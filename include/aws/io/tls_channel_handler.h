@@ -492,12 +492,10 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_ha
  * Injects a tls handler/slot into a channel and begins tls negotiation.
  * If desired, ALPN must be handled separately
  *
- * right_of_slot must be an existing slot in the channel
+ * right_of_slot must be an existing slot in a channel
  */
 AWS_IO_API int aws_channel_setup_client_tls(
-    struct aws_channel *channel,
     struct aws_channel_slot *right_of_slot,
-    struct aws_allocator *allocator,
     struct aws_tls_connection_options *tls_options);
 
 AWS_EXTERN_C_END

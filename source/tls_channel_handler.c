@@ -387,10 +387,13 @@ int aws_tls_connection_options_set_alpn_list(
 }
 
 int aws_channel_setup_client_tls(
-    struct aws_channel *channel,
     struct aws_channel_slot *right_of_slot,
-    struct aws_allocator *allocator,
     struct aws_tls_connection_options *tls_options) {
+
+    AWS_FATAL_ASSERT(right_of_slot != NULL);
+    struct aws_channel *channel = right_of_slot->channel;
+    struct aws_allocator *allocator = right_of_slot->alloc;
+
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
 
     /* as far as cleanup goes, since this stuff is being added to a channel, the caller will free this memory
