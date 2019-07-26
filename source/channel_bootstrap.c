@@ -945,6 +945,7 @@ struct server_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
+    bool incmoning_called;
 };
 
 void s_server_connection_args_acquire(struct server_connection_args *args) {

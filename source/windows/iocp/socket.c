@@ -1204,11 +1204,11 @@ static inline int s_dgram_connect(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to to %s:%d",
-        (void *)socket,https://github.com/awslabs/aws-c-io/pull/158
-        (void *)socket-https://github.com/awslabs/aws-c-io/pull/158
-        remote_endpointhttps://github.com/awslabs/aws-c-io/pull/158
-        (int)remote_endhttps://github.com/awslabs/aws-c-io/pull/158
-    int connect_err = chttps://github.com/awslabs/aws-c-io/pull/158nt)sock_size);
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        remote_endpoint->address,
+        (int)remote_endpoint->port);
+    int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
         AWS_LOGF_ERROR(
