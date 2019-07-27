@@ -421,6 +421,9 @@ int aws_channel_handler_shutdown(
 AWS_IO_API
 size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler);
 
+AWS_IO_API
+struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CHANNEL_H */
