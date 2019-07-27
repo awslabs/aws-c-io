@@ -1093,82 +1093,90 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     struct server_channel_data *channel_data = user_data;
 
     int err_code = error_code;
-    s_server_connection_args_acquire(channel_data->server_connection_args);
-    if (!err_code) {
-        AWS_LOGF_DEBUG(
+    if (err_code) {
+        /* channel fail to set up no destroy callback will fire */
+        AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: channel %p setup succeeded: bootstrapping.",
-            (void *)channel_data->server_connection_args->bootstrap,
-            (void *)channel);
-
-        struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
-
-        if (!socket_slot) {
-            err_code = aws_last_error();
-            goto error;
-        }
-
-        struct aws_channel_handler *socket_channel_handler = aws_socket_handler_new(
-            channel_data->server_connection_args->bootstrap->allocator,
-            channel_data->socket,
-            socket_slot,
-            g_aws_channel_max_fragment_size);
-
-        if (!socket_channel_handler) {
-            err_code = aws_last_error();
-            goto error;
-        }
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: Setting up socket handler on channel "
-            "%p with handler %p on slot %p.",
+            "id=%p: channel %p setup failed with error %d.",
             (void *)channel_data->server_connection_args->bootstrap,
             (void *)channel,
-            (void *)socket_channel_handler,
-            (void *)socket_slot);
+            err_code);
 
-        if (aws_channel_slot_set_handler(socket_slot, socket_channel_handler)) {
-            err_code = aws_last_error();
-            goto error;
-        }
-
-        if (channel_data->server_connection_args->use_tls) {
-            /* incoming callback will be invoked upon the negotiation completion so don't do it
-             * here. */
-            if (s_setup_server_tls(channel_data->server_connection_args, channel)) {
-                err_code = aws_last_error();
-                goto error;
-            }
-        } else {
-            channel_data->server_connection_args->incoming_callback(
-                channel_data->server_connection_args->bootstrap,
-                AWS_OP_SUCCESS,
-                channel,
-                channel_data->server_connection_args->user_data);
-        }
+        aws_channel_destroy(channel);
+        struct aws_allocator *allocator = channel_data->socket->allocator;
+        aws_socket_clean_up(channel_data->socket);
+        aws_mem_release(allocator, (void *)channel_data->socket);
+        channel_data->server_connection_args->incoming_callback(
+            channel_data->server_connection_args->bootstrap,
+            err_code,
+            NULL,
+            channel_data->server_connection_args->user_data);
+        /* no shutdown call back will be fired, we release the ref_count of connection arg here */
+        s_server_connection_args_release(channel_data->server_connection_args);
+        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
         return;
     }
 
-    AWS_LOGF_ERROR(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: channel %p setup failed with error %d.",
+        "id=%p: channel %p setup succeeded: bootstrapping.",
+        (void *)channel_data->server_connection_args->bootstrap,
+        (void *)channel);
+
+    struct aws_channel_slot *socket_slot = aws_channel_slot_new(channel);
+
+    if (!socket_slot) {
+        err_code = aws_last_error();
+        goto error;
+    }
+
+    struct aws_channel_handler *socket_channel_handler = aws_socket_handler_new(
+        channel_data->server_connection_args->bootstrap->allocator,
+        channel_data->socket,
+        socket_slot,
+        g_aws_channel_max_fragment_size);
+
+    if (!socket_channel_handler) {
+        err_code = aws_last_error();
+        aws_channel_slot_remove(socket_slot);
+        socket_slot = NULL;
+        goto error;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: Setting up socket handler on channel "
+        "%p with handler %p on slot %p.",
         (void *)channel_data->server_connection_args->bootstrap,
         (void *)channel,
-        err_code);
+        (void *)socket_channel_handler,
+        (void *)socket_slot);
+
+    if (aws_channel_slot_set_handler(socket_slot, socket_channel_handler)) {
+        err_code = aws_last_error();
+        goto error;
+    }
+
+    if (channel_data->server_connection_args->use_tls) {
+        /* incoming callback will be invoked upon the negotiation completion so don't do it
+         * here. */
+        if (s_setup_server_tls(channel_data->server_connection_args, channel)) {
+            err_code = aws_last_error();
+            goto error;
+        }
+    } else {
+        channel_data->server_connection_args->incoming_callback(
+            channel_data->server_connection_args->bootstrap,
+            AWS_OP_SUCCESS,
+            channel,
+            channel_data->server_connection_args->user_data);
+    }
+    return;
 
 error:
-    aws_channel_destroy(channel);
-    struct aws_allocator *allocator = channel_data->socket->allocator;
-    aws_socket_clean_up(channel_data->socket);
-    aws_mem_release(allocator, (void *)channel_data->socket);
-    channel_data->server_connection_args->incoming_callback(
-        channel_data->server_connection_args->bootstrap,
-        err_code,
-        NULL,
-        channel_data->server_connection_args->user_data);
-    aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
-    s_server_connection_args_release(channel_data->server_connection_args);
+    /* shut down the channel */
+    /* TODO: the user incoming callback is not fired, and the shutdown callback should not be fired */
+    aws_channel_shutdown(channel, err_code);
 }
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -1203,6 +1211,7 @@ void s_on_server_connection_result(
     (void)socket;
     struct server_connection_args *connection_args = user_data;
 
+    s_server_connection_args_acquire(connection_args);
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: server connection on socket %p completed with error %d.",
@@ -1248,6 +1257,7 @@ void s_on_server_connection_result(
         }
     } else {
         connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
+        s_server_connection_args_release(connection_args);
         aws_server_bootstrap_destroy_socket_listener(connection_args->bootstrap, &connection_args->listener);
     }
 

@@ -357,12 +357,14 @@ static int s_socket_init(
     impl->vtable = &vtables[options->domain][options->type];
     if (!impl->vtable || !impl->vtable->read) {
         aws_mem_release(alloc, impl);
+        socket->impl = NULL;
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
     impl->read_io_data = aws_mem_calloc(alloc, 1, sizeof(struct io_operation_data));
     if (!impl->read_io_data) {
         aws_mem_release(alloc, impl);
+        socket->impl = NULL;
         return AWS_OP_ERR;
     }
 
@@ -381,6 +383,7 @@ static int s_socket_init(
         if (s_create_socket(socket, options)) {
             aws_mem_release(alloc, impl->read_io_data);
             aws_mem_release(alloc, impl);
+            socket->impl = NULL;
             return AWS_OP_ERR;
         }
     }
@@ -398,6 +401,10 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 }
 
 void aws_socket_clean_up(struct aws_socket *socket) {
+    if (!socket->impl) {
+        /* protect from double clean */
+        return;
+    }
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p, handle=%p: cleaning up socket.",
@@ -817,7 +824,7 @@ void s_socket_connection_completion(
     if (socket_args->socket) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connect completion triggered. Socket has not timed out yet: proceeeding with connection",
+            "id=%p handle=%p: connect completion triggered. Socket has not timed out yet: proceeding with connection",
             (void *)socket_args->socket,
             (void *)socket_args->socket->io_handle.data.handle);
         struct iocp_socket *socket_impl = socket_args->socket->impl;
@@ -937,7 +944,7 @@ static inline int s_tcp_connect(
         &socket_impl->read_io_data->signal.overlapped);
 
     uint64_t time_to_run = 0;
-    /* if the connect succedded immediately, let the timeout task still run, but it can run immediately. This is cleaner
+    /* if the connect succeeded immediately, let the timeout task still run, but it can run immediately. This is cleaner
        because it can just deallocate the memory we just allocated. */
     aws_event_loop_current_clock_time(connect_loop, &time_to_run);
 
@@ -1538,7 +1545,7 @@ static int s_local_listen(struct aws_socket *socket, int backlog_size) {
     return AWS_OP_SUCCESS;
 }
 
-/* triggered by the event loop upon an incomming pipe connection. */
+/* triggered by the event loop upon an incoming pipe connection. */
 static void s_incoming_pipe_connection_event(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,
@@ -2120,7 +2127,7 @@ static int s_local_start_accept(
         if (error_code != ERROR_IO_PENDING && error_code != ERROR_PIPE_CONNECTED) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: ConnecteNamedPipe() failed with error %d.",
+                "id=%p handle=%p: ConnectNamedPipe() failed with error %d.",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
                 error_code);
