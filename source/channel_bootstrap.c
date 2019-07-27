@@ -945,7 +945,7 @@ struct server_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
-    bool incmoning_called;
+    bool incoming_called;
     bool can_shutdown;
 };
 
@@ -975,10 +975,10 @@ static void s_server_incoming_callback(
     int error_code,
     struct aws_channel *channel) {
     /* incoming_callback is always called exactly once for each channel */
-    AWS_ASSERT(!channel_data->incmoning_called);
+    AWS_ASSERT(!channel_data->incoming_called);
     struct server_connection_args *args = channel_data->server_connection_args;
     args->incoming_callback(args->bootstrap, error_code, channel, args->user_data);
-    args->setup_called = true;
+    channel_data->incoming_called = true;
     /* if setup_callback is called with an error, we will not call shutdown_callback */
     if (error_code) {
         channel_data->can_shutdown = false;
@@ -1212,7 +1212,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
 
     if (!channel_data->incoming_called) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
-        s_connection_args_setup_callback(args, error_code, NULL);
+        s_server_incoming_callback(channel_data, error_code, NULL);
     } else if (channel_data->can_shutdown) {
         args->shutdown_callback(server_bootstrap, error_code, channel, server_shutdown_user_data);
     }
@@ -1254,7 +1254,7 @@ void s_on_server_connection_result(
             goto error_cleanup;
         }
         channel_data->can_shutdown = true;
-        channel_data->incmoning_called = false;
+        channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
 
