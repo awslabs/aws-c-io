@@ -1111,9 +1111,9 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
             err_code,
             NULL,
             channel_data->server_connection_args->user_data);
-        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
         /* no shutdown call back will be fired, we release the ref_count of connection arg here */
         s_server_connection_args_release(channel_data->server_connection_args);
+        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
         return;
     }
 
