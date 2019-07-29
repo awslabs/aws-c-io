@@ -121,6 +121,13 @@ typedef void(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
     void *user_data);
 
 /**
+ * Once the server listener socket is finished destroying, all the existing connection is closed, this fuction will be invoked.
+ */
+typedef void(aws_server_bootstrap_on_server_listener_destroy)(
+    struct aws_server_bootstrap *bootstrap,
+    void *user_data);
+
+/**
  * aws_server_bootstrap manages listening sockets, creating and setting up channels to handle each incoming connection.
  */
 struct aws_server_bootstrap {
