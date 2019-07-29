@@ -1061,7 +1061,7 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
         s_tester_client_connection_established_fool,
         shutdown_tester));
 
-    /* Wait for the client socket closed, the server side setup complete callback will be fired with error */
+    /* Wait for the listener socket to finish destroy process */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable,
         &c_tester.mutex,
