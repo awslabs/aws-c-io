@@ -945,6 +945,7 @@ struct server_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
+    bool incoming_called;
 };
 
 void s_server_connection_args_acquire(struct server_connection_args *args) {
@@ -968,12 +969,24 @@ void s_server_connection_args_release(struct server_connection_args *args) {
     }
 }
 
+static void s_server_incoming_callback(
+    struct server_channel_data *channel_data,
+    int error_code,
+    struct aws_channel *channel) {
+    /* incoming_callback is always called exactly once for each channel */
+    AWS_ASSERT(!channel_data->incoming_called);
+    struct server_connection_args *args = channel_data->server_connection_args;
+    args->incoming_callback(args->bootstrap, error_code, channel, args->user_data);
+    channel_data->incoming_called = true;
+}
+
 static void s_tls_server_on_negotiation_result(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int err_code,
     void *user_data) {
-    struct server_connection_args *connection_args = user_data;
+    struct server_channel_data *channel_data = user_data;
+    struct server_connection_args *connection_args = channel_data->server_connection_args;
 
     if (connection_args->user_on_negotiation_result) {
         connection_args->user_on_negotiation_result(handler, slot, err_code, connection_args->tls_user_data);
@@ -985,8 +998,14 @@ static void s_tls_server_on_negotiation_result(
         (void *)connection_args->bootstrap,
         err_code,
         (void *)slot->channel);
-    struct aws_channel *channel = (err_code == AWS_OP_SUCCESS) ? slot->channel : NULL;
-    connection_args->incoming_callback(connection_args->bootstrap, err_code, channel, connection_args->user_data);
+
+    struct aws_channel *channel = slot->channel;
+    if (err_code) {
+        /* shut down the channel */
+        aws_channel_shutdown(channel, err_code);
+    } else {
+        s_server_incoming_callback(channel_data, err_code, channel);
+    }
 }
 
 /* in the context of a channel bootstrap, we don't care about these, but since we're hooking into these APIs we have to
@@ -1018,9 +1037,10 @@ static void s_tls_server_on_error(
     }
 }
 
-static inline int s_setup_server_tls(struct server_connection_args *connection_args, struct aws_channel *channel) {
+static inline int s_setup_server_tls(struct server_channel_data *channel_data, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = NULL;
     struct aws_channel_handler *tls_handler = NULL;
+    struct server_connection_args *connection_args = channel_data->server_connection_args;
 
     /* as far as cleanup goes here, since we're adding things to a channel, if a slot is ever successfully
        added to the channel, we leave it there. The caller will clean up the channel and it will clean this memory
@@ -1031,8 +1051,10 @@ static inline int s_setup_server_tls(struct server_connection_args *connection_a
         return AWS_OP_ERR;
     }
 
-    tls_handler =
-        aws_tls_server_handler_new(connection_args->bootstrap->allocator, &connection_args->tls_options, tls_slot);
+    /* Shallow-copy tls_options so we can override the user_data, making it specific to this channel */
+    struct aws_tls_connection_options tls_options = connection_args->tls_options;
+    tls_options.user_data = channel_data;
+    tls_handler = aws_tls_server_handler_new(connection_args->bootstrap->allocator, &tls_options, tls_slot);
 
     if (!tls_handler) {
         aws_mem_release(connection_args->bootstrap->allocator, tls_slot);
@@ -1106,14 +1128,10 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         struct aws_allocator *allocator = channel_data->socket->allocator;
         aws_socket_clean_up(channel_data->socket);
         aws_mem_release(allocator, (void *)channel_data->socket);
-        channel_data->server_connection_args->incoming_callback(
-            channel_data->server_connection_args->bootstrap,
-            err_code,
-            NULL,
-            channel_data->server_connection_args->user_data);
+        s_server_incoming_callback(channel_data, err_code, NULL);
+        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
         /* no shutdown call back will be fired, we release the ref_count of connection arg here */
         s_server_connection_args_release(channel_data->server_connection_args);
-        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
         return;
     }
 
@@ -1160,41 +1178,41 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     if (channel_data->server_connection_args->use_tls) {
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
-        if (s_setup_server_tls(channel_data->server_connection_args, channel)) {
+        if (s_setup_server_tls(channel_data, channel)) {
             err_code = aws_last_error();
             goto error;
         }
     } else {
-        channel_data->server_connection_args->incoming_callback(
-            channel_data->server_connection_args->bootstrap,
-            AWS_OP_SUCCESS,
-            channel,
-            channel_data->server_connection_args->user_data);
+        s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
     }
     return;
 
 error:
     /* shut down the channel */
-    /* TODO: the user incoming callback is not fired, and the shutdown callback should not be fired */
     aws_channel_shutdown(channel, err_code);
 }
 
 static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct server_channel_data *channel_data = user_data;
-
+    struct server_connection_args *args = channel_data->server_connection_args;
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: channel %p shutdown with error %d.",
-        (void *)channel_data->server_connection_args->bootstrap,
+        (void *)args->bootstrap,
         (void *)channel,
         error_code);
 
-    void *server_shutdown_user_data = channel_data->server_connection_args->user_data;
-    struct aws_server_bootstrap *server_bootstrap = channel_data->server_connection_args->bootstrap;
+    void *server_shutdown_user_data = args->user_data;
+    struct aws_server_bootstrap *server_bootstrap = args->bootstrap;
     struct aws_allocator *allocator = server_bootstrap->allocator;
 
-    channel_data->server_connection_args->shutdown_callback(
-        server_bootstrap, error_code, channel, server_shutdown_user_data);
+    if (!channel_data->incoming_called) {
+        error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
+        s_server_incoming_callback(channel_data, error_code, NULL);
+    } else {
+        args->shutdown_callback(server_bootstrap, error_code, channel, server_shutdown_user_data);
+    }
+
     aws_channel_destroy(channel);
     aws_socket_clean_up(channel_data->socket);
     aws_mem_release(allocator, channel_data->socket);
@@ -1231,7 +1249,7 @@ void s_on_server_connection_result(
         if (!channel_data) {
             goto error_cleanup;
         }
-
+        channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
 
@@ -1256,6 +1274,7 @@ void s_on_server_connection_result(
             goto error_cleanup;
         }
     } else {
+        /* no channel is created */
         connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         s_server_connection_args_release(connection_args);
         aws_server_bootstrap_destroy_socket_listener(connection_args->bootstrap, &connection_args->listener);
@@ -1264,6 +1283,7 @@ void s_on_server_connection_result(
     return;
 
 error_cleanup:
+    /* no channel is created */
     connection_args->incoming_callback(connection_args->bootstrap, aws_last_error(), NULL, connection_args->user_data);
 
     struct aws_allocator *allocator = new_socket->allocator;
