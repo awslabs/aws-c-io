@@ -48,6 +48,7 @@ struct tls_test_args {
     struct aws_byte_buf server_name;
     int last_error_code;
     bool tls_negotiated;
+    bool listener_destroyed;
     bool error_invoked;
     bool expects_error;
     bool server;
@@ -158,6 +159,11 @@ static bool s_tls_channel_shutdown_predicate(void *user_data) {
            (setup_test_args->expects_error && setup_test_args->error_invoked);
 }
 
+static bool s_tls_listener_destroy_predicate(void *user_data) {
+    struct tls_test_args *setup_test_args = user_data;
+    return setup_test_args->listener_destroyed || setup_test_args->last_error_code == AWS_IO_SOCKET_TIMEOUT;
+}
+
 static bool s_tls_channel_setup_predicate(void *user_data) {
     struct tls_test_args *setup_test_args = user_data;
     return setup_test_args->tls_negotiated || setup_test_args->error_invoked;
@@ -258,6 +264,19 @@ static void s_tls_handler_test_server_shutdown_callback(
     aws_mutex_unlock(setup_test_args->mutex);
 }
 
+static void s_tls_handler_test_server_listener_destroy_callback(
+    struct aws_server_bootstrap *bootstrap,
+    void *user_data) {
+    (void)bootstrap;
+
+    struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
+
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->listener_destroyed = true;
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
+}
+
 static void s_tls_on_negotiated(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -300,7 +319,7 @@ static int s_tls_local_server_tester_init(
         &tester->server_tls_opt_tester.opt,
         s_tls_handler_test_server_setup_callback,
         s_tls_handler_test_server_shutdown_callback,
-        NULL,
+        s_tls_handler_test_server_listener_destroy_callback,
         &tester->incoming_args);
     ASSERT_NOT_NULL(tester->listener);
 
@@ -309,7 +328,6 @@ static int s_tls_local_server_tester_init(
 
 static int s_tls_local_server_tester_clean_up(struct tls_local_server_tester *tester) {
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&tester->server_tls_opt_tester));
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(tester->server_bootstrap, tester->listener));
     aws_server_bootstrap_release(tester->server_bootstrap);
     return AWS_OP_SUCCESS;
 }
@@ -522,10 +540,17 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
      * wait for the event to fire. */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
-
+    aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
+        local_server_tester.server_bootstrap, local_server_tester.listener));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable,
+        &c_tester.mutex,
+        s_tls_listener_destroy_predicate,
+        &local_server_tester.incoming_args));
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_tls_clean_up_static_state();
@@ -951,10 +976,17 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
      * wait for the event to fire. */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
-
+    aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
+        local_server_tester.server_bootstrap, local_server_tester.listener));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable,
+        &c_tester.mutex,
+        s_tls_listener_destroy_predicate,
+        &local_server_tester.incoming_args));
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_tls_clean_up_static_state();
@@ -1033,7 +1065,7 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable,
         &c_tester.mutex,
-        s_tls_channel_setup_predicate,
+        s_tls_listener_destroy_predicate,
         &local_server_tester.incoming_args));
 
     /* clean up */
