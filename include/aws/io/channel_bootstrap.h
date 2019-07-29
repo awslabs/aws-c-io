@@ -114,18 +114,18 @@ typedef void(aws_server_bootstrap_on_accept_channel_setup_fn)(
  * Note: this function is only invoked if the channel was successfully setup,
  * e.g. aws_server_bootstrap_on_accept_channel_setup_fn() was invoked without an error code.
  */
-typedef void(aws_server_bootsrap_on_accept_channel_shutdown_fn)(
+typedef void(aws_server_bootstrap_on_accept_channel_shutdown_fn)(
     struct aws_server_bootstrap *bootstrap,
     int error_code,
     struct aws_channel *channel,
     void *user_data);
 
 /**
- * Once the server listener socket is finished destroying, all the existing connection is closed, this fuction will be invoked.
+ * Once the server listener socket is finished destroying, all the existing connection is closed, this fuction will be
+ * invoked.
  */
-typedef void(aws_server_bootstrap_on_server_listener_destroy)(
-    struct aws_server_bootstrap *bootstrap,
-    void *user_data);
+typedef void(
+    aws_server_bootstrap_on_server_listener_destroy_fn)(struct aws_server_bootstrap *bootstrap, void *user_data);
 
 /**
  * aws_server_bootstrap manages listening sockets, creating and setting up channels to handle each incoming connection.
@@ -246,7 +246,8 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
     const struct aws_socket_endpoint *local_endpoint,
     const struct aws_socket_options *options,
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
     void *user_data);
 
 /**
@@ -268,7 +269,8 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     const struct aws_socket_options *options,
     const struct aws_tls_connection_options *connection_options,
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
     void *user_data);
 
 /**

@@ -929,7 +929,8 @@ struct server_connection_args {
     struct aws_server_bootstrap *bootstrap;
     struct aws_socket listener;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     aws_tls_on_data_read_fn *user_on_data_read;
@@ -960,6 +961,10 @@ void s_server_connection_args_release(struct server_connection_args *args) {
     AWS_ASSERT(args);
 
     if (aws_atomic_fetch_sub(&args->ref_count, 1) == 1) {
+        /* fire the destroy callback */
+        if (args->destroy_callback) {
+            args->destroy_callback(args->bootstrap, args->user_data);
+        }
         struct aws_allocator *allocator = args->bootstrap->allocator;
         s_server_bootstrap_release(args->bootstrap);
         if (args->use_tls) {
@@ -1303,7 +1308,8 @@ static inline struct aws_socket *s_server_new_socket_listener(
     const struct aws_socket_options *options,
     const struct aws_tls_connection_options *connection_options,
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
     void *user_data) {
     AWS_ASSERT(incoming_callback);
     AWS_ASSERT(shutdown_callback);
@@ -1328,6 +1334,7 @@ static inline struct aws_socket *s_server_new_socket_listener(
     s_server_connection_args_acquire(server_connection_args);
     server_connection_args->shutdown_callback = shutdown_callback;
     server_connection_args->incoming_callback = incoming_callback;
+    server_connection_args->destroy_callback = destroy_callback;
     server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
 
     if (connection_options) {
@@ -1402,10 +1409,11 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     const struct aws_socket_endpoint *local_endpoint,
     const struct aws_socket_options *options,
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
     void *user_data) {
     return s_server_new_socket_listener(
-        bootstrap, local_endpoint, options, NULL, incoming_callback, shutdown_callback, user_data);
+        bootstrap, local_endpoint, options, NULL, incoming_callback, shutdown_callback, destroy_callback, user_data);
 }
 
 struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
@@ -1414,7 +1422,8 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     const struct aws_socket_options *options,
     const struct aws_tls_connection_options *connection_options,
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootsrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
     void *user_data) {
     AWS_ASSERT(connection_options);
     AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
@@ -1425,7 +1434,14 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     }
 
     return s_server_new_socket_listener(
-        bootstrap, local_endpoint, options, connection_options, incoming_callback, shutdown_callback, user_data);
+        bootstrap,
+        local_endpoint,
+        options,
+        connection_options,
+        incoming_callback,
+        shutdown_callback,
+        destroy_callback,
+        user_data);
 }
 
 int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {

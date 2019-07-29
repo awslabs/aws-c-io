@@ -300,6 +300,7 @@ static int s_tls_local_server_tester_init(
         &tester->server_tls_opt_tester.opt,
         s_tls_handler_test_server_setup_callback,
         s_tls_handler_test_server_shutdown_callback,
+        NULL,
         &tester->incoming_args);
     ASSERT_NOT_NULL(tester->listener);
 

@@ -288,6 +288,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &options,
         s_socket_handler_test_server_setup_callback,
         s_socket_handler_test_server_shutdown_callback,
+        NULL,
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
@@ -438,6 +439,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         &options,
         s_socket_handler_test_server_setup_callback,
         s_socket_handler_test_server_shutdown_callback,
+        NULL,
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
