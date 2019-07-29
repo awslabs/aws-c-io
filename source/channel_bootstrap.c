@@ -946,7 +946,6 @@ struct server_channel_data {
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
     bool incoming_called;
-    bool can_shutdown;
 };
 
 void s_server_connection_args_acquire(struct server_connection_args *args) {
@@ -979,10 +978,6 @@ static void s_server_incoming_callback(
     struct server_connection_args *args = channel_data->server_connection_args;
     args->incoming_callback(args->bootstrap, error_code, channel, args->user_data);
     channel_data->incoming_called = true;
-    /* if setup_callback is called with an error, we will not call shutdown_callback */
-    if (error_code) {
-        channel_data->can_shutdown = false;
-    }
 }
 
 static void s_tls_server_on_negotiation_result(
@@ -1056,6 +1051,7 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
         return AWS_OP_ERR;
     }
 
+    /* Shallow-copy tls_options so we can override the user_data, making it specific to this channel */
     struct aws_tls_connection_options tls_options = connection_args->tls_options;
     tls_options.user_data = channel_data;
     tls_handler = aws_tls_server_handler_new(connection_args->bootstrap->allocator, &tls_options, tls_slot);
@@ -1213,7 +1209,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     if (!channel_data->incoming_called) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_server_incoming_callback(channel_data, error_code, NULL);
-    } else if (channel_data->can_shutdown) {
+    } else {
         args->shutdown_callback(server_bootstrap, error_code, channel, server_shutdown_user_data);
     }
 
@@ -1253,7 +1249,6 @@ void s_on_server_connection_result(
         if (!channel_data) {
             goto error_cleanup;
         }
-        channel_data->can_shutdown = true;
         channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
