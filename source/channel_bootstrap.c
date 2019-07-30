@@ -447,6 +447,7 @@ error:
         (void *)channel,
         err_code);
     aws_channel_shutdown(channel, err_code);
+    /* the channel shutdown callback will clean the channel up */
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
