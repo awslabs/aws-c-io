@@ -40,6 +40,7 @@ struct socket_test_args {
     int error_code;
     bool shutdown_invoked;
     bool error_invoked;
+    bool listener_destroyed;
 };
 
 static bool s_channel_setup_predicate(void *user_data) {
@@ -50,6 +51,12 @@ static bool s_channel_setup_predicate(void *user_data) {
 static bool s_channel_shutdown_predicate(void *user_data) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     bool finished = setup_test_args->shutdown_invoked;
+    return finished;
+}
+
+static bool s_listener_destroy_predicate(void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    bool finished = setup_test_args->listener_destroyed;
     return finished;
 }
 
@@ -191,6 +198,20 @@ static struct aws_byte_buf s_socket_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
+static void s_socket_handler_test_server_listener_destroy_callback(
+    struct aws_server_bootstrap *bootstrap,
+    void *user_data) {
+
+    (void)bootstrap;
+
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->listener_destroyed = true;
+    aws_mutex_unlock(setup_test_args->mutex);
+
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+}
+
 static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -253,6 +274,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         .condition_variable = &condition_variable,
         .error_invoked = false,
         .shutdown_invoked = false,
+        .listener_destroyed = false,
         .error_code = 0,
         .rw_handler = incoming_rw_handler,
     };
@@ -288,6 +310,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &options,
         s_socket_handler_test_server_setup_callback,
         s_socket_handler_test_server_shutdown_callback,
+        s_socket_handler_test_server_listener_destroy_callback,
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
@@ -358,6 +381,8 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
 
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_listener_destroy_predicate, &incoming_args));
     aws_client_bootstrap_release(client_bootstrap);
     aws_server_bootstrap_release(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
@@ -404,6 +429,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
                                              .condition_variable = &condition_variable,
                                              .error_invoked = false,
                                              .shutdown_invoked = false,
+                                             .listener_destroyed = false,
                                              .rw_handler = incoming_rw_handler,
                                              .error_code = 0,
                                              .rw_slot = NULL};
@@ -438,6 +464,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         &options,
         s_socket_handler_test_server_setup_callback,
         s_socket_handler_test_server_shutdown_callback,
+        s_socket_handler_test_server_listener_destroy_callback,
         &incoming_args);
     ASSERT_NOT_NULL(listener);
 
@@ -474,8 +501,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
     ASSERT_TRUE(
         AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
-
+    aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener));
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_listener_destroy_predicate, &incoming_args));
+
     aws_client_bootstrap_release(client_bootstrap);
     aws_server_bootstrap_release(server_bootstrap);
     aws_event_loop_group_clean_up(&el_group);
