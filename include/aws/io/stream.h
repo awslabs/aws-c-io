@@ -34,11 +34,11 @@ struct aws_stream_status {
 };
 
 struct aws_input_stream_vtable {
-    int(*seek)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
-    int(*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
-    int(*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
-    int(*get_length)(struct aws_input_stream *stream, int64_t *out_length);
-    void(*clean_up)(struct aws_input_stream *stream);
+    int (*seek)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
+    int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
+    int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
+    int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
+    void (*clean_up)(struct aws_input_stream *stream);
 };
 
 struct aws_input_stream {

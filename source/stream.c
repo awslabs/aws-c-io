@@ -138,9 +138,7 @@ static int s_aws_input_stream_byte_cursor_seek(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_byte_cursor_read(
-    struct aws_input_stream *stream,
-    struct aws_byte_buf *dest) {
+static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
     size_t actually_read = dest->capacity - dest->len;
@@ -248,9 +246,7 @@ static int s_aws_input_stream_file_seek(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_file_read(
-    struct aws_input_stream *stream,
-    struct aws_byte_buf *dest) {
+static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
     size_t max_read = dest->capacity - dest->len;
