@@ -29,10 +29,10 @@ int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enu
     return stream->vtable->seek(stream, offset, basis);
 }
 
-int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read) {
+int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->read);
 
-    return stream->vtable->read(stream, dest, amount_read);
+    return stream->vtable->read(stream, dest);
 }
 
 int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
@@ -140,13 +140,8 @@ static int s_aws_input_stream_byte_cursor_seek(
 
 static int s_aws_input_stream_byte_cursor_read(
     struct aws_input_stream *stream,
-    struct aws_byte_buf *dest,
-    size_t *amount_read) {
+    struct aws_byte_buf *dest) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
-
-    if (amount_read != NULL) {
-        *amount_read = 0;
-    }
 
     size_t actually_read = dest->capacity - dest->len;
     if (actually_read > impl->current_cursor.len) {
@@ -158,10 +153,6 @@ static int s_aws_input_stream_byte_cursor_read(
     }
 
     aws_byte_cursor_advance(&impl->current_cursor, actually_read);
-
-    if (amount_read != NULL) {
-        *amount_read = actually_read;
-    }
 
     return AWS_OP_SUCCESS;
 }
@@ -259,11 +250,8 @@ static int s_aws_input_stream_file_seek(
 
 static int s_aws_input_stream_file_read(
     struct aws_input_stream *stream,
-    struct aws_byte_buf *dest,
-    size_t *amount_read) {
+    struct aws_byte_buf *dest) {
     struct aws_input_stream_file_impl *impl = stream->impl;
-
-    *amount_read = 0;
 
     size_t max_read = dest->capacity - dest->len;
     size_t actually_read = fread(dest->buffer + dest->len, 1, max_read, impl->file);
@@ -274,8 +262,6 @@ static int s_aws_input_stream_file_read(
     }
 
     dest->len += actually_read;
-
-    *amount_read = actually_read;
 
     return AWS_OP_SUCCESS;
 }

@@ -33,19 +33,12 @@ struct aws_stream_status {
     bool is_valid;
 };
 
-typedef int(
-    aws_input_stream_seek_fn)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
-typedef int(aws_input_stream_read_fn)(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
-typedef int(aws_input_stream_get_status_fn)(struct aws_input_stream *stream, struct aws_stream_status *status);
-typedef int(aws_input_stream_get_length_fn)(struct aws_input_stream *stream, int64_t *out_length);
-typedef void(aws_input_stream_clean_up_fn)(struct aws_input_stream *stream);
-
 struct aws_input_stream_vtable {
-    aws_input_stream_seek_fn *seek;
-    aws_input_stream_read_fn *read;
-    aws_input_stream_get_status_fn *get_status;
-    aws_input_stream_get_length_fn *get_length;
-    aws_input_stream_clean_up_fn *clean_up;
+    int(*seek)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
+    int(*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
+    int(*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
+    int(*get_length)(struct aws_input_stream *stream, int64_t *out_length);
+    void(*clean_up)(struct aws_input_stream *stream);
 };
 
 struct aws_input_stream {
@@ -68,7 +61,7 @@ AWS_IO_API int aws_input_stream_seek(
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes
  * in the destination buffer.
  */
-AWS_IO_API int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t *amount_read);
+AWS_IO_API int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest);
 
 /*
  * Queries miscellaneous properties of the stream

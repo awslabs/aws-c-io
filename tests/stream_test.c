@@ -69,10 +69,10 @@ static int s_do_simple_input_stream_test(
     ASSERT_TRUE(status.is_end_of_stream == false);
 
     while (!status.is_end_of_stream) {
-        size_t amount_read = 0;
-        ASSERT_TRUE(aws_input_stream_read(stream, &read_buf, &amount_read) == 0);
+        const size_t starting_len = read_buf.len;
+        ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
 
-        if (amount_read > 0) {
+        if (starting_len - read_buf.len > 0) {
             struct aws_byte_cursor dest_cursor = aws_byte_cursor_from_buf(&read_buf);
             aws_byte_buf_append_dynamic(&result_buf, &dest_cursor);
         }
@@ -160,10 +160,9 @@ static int s_do_input_stream_seek_test(
     struct aws_byte_buf read_buf;
     aws_byte_buf_init(&read_buf, allocator, 1024);
 
-    ASSERT_TRUE(aws_input_stream_seek(stream, offset, basis) == AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, offset, basis));
 
-    size_t amount_read = 0;
-    ASSERT_TRUE(aws_input_stream_read(stream, &read_buf, &amount_read) == AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
 
     struct aws_byte_cursor read_buf_cursor = aws_byte_cursor_from_buf(&read_buf);
     ASSERT_TRUE(aws_byte_cursor_eq(expected_contents, &read_buf_cursor));
