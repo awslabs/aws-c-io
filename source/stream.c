@@ -31,8 +31,33 @@ int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enu
 
 int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->read);
+    AWS_ASSERT(dest);
+    AWS_ASSERT(dest->len <= dest->capacity);
 
-    return stream->vtable->read(stream, dest);
+    /* Deal with this edge case here, instead of relying on every implementation to do it right. */
+    if (dest->capacity == dest->len) {
+        return AWS_OP_SUCCESS;
+    }
+
+    /* Prevent implementations from accidentally overwriting existing data in the buffer.
+     * Hand them a "safe" buffer that starts where the existing data ends. */
+    const void *safe_buf_start = dest->buffer + dest->len;
+    const size_t safe_buf_capacity = dest->capacity - dest->len;
+    struct aws_byte_buf safe_buf = aws_byte_buf_from_empty_array(safe_buf_start, safe_buf_capacity);
+
+    int read_result = stream->vtable->read(stream, &safe_buf);
+
+    /* Ensure the implementation did not commit forbidden acts upon the buffer */
+    AWS_FATAL_ASSERT(
+        (safe_buf.buffer == safe_buf_start) && (safe_buf.capacity == safe_buf_capacity) &&
+        (safe_buf.len <= safe_buf_capacity));
+
+    if (read_result == AWS_OP_SUCCESS) {
+        /* Update the actual buffer */
+        dest->len += safe_buf.len;
+    }
+
+    return read_result;
 }
 
 int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
