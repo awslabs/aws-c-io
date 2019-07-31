@@ -419,4 +419,97 @@ AWS_STATIC_IMPL int testing_channel_get_shutdown_error_code(const struct testing
     return testing->channel_shutdown_error_code;
 }
 
+/* Pop first message from queue and compare its contents to expected string. */
+AWS_STATIC_IMPL int testing_channel_check_written_message(struct testing_channel *channel, const char *expected) {
+    struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
+    ASSERT_TRUE(!aws_linked_list_empty(msgs));
+    struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
+    struct aws_io_message *msg = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+
+    ASSERT_TRUE(aws_byte_buf_eq_c_str(&msg->message_data, expected));
+
+    aws_mem_release(msg->allocator, msg);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_STATIC_IMPL int testing_channel_append_written_messages(
+    struct testing_channel *channel,
+    struct aws_byte_buf *buffer) {
+    struct aws_linked_list *msgs = testing_channel_get_read_message_queue(channel);
+
+    while (!aws_linked_list_empty(msgs)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
+        struct aws_io_message *msg = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+
+        struct aws_byte_cursor msg_cursor = aws_byte_cursor_from_buf(&msg->message_data);
+        aws_byte_buf_append_dynamic(buffer, &msg_cursor);
+
+        aws_mem_release(msg->allocator, msg);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+/* Pop all messages from queue and compare their contents to expected string */
+AWS_STATIC_IMPL int testing_channel_check_messages_ex(
+    struct testing_channel *channel,
+    struct aws_allocator *allocator,
+    const char *expected,
+    struct aws_linked_list *msgs) {
+    struct aws_byte_buf all_msgs;
+    ASSERT_SUCCESS(aws_byte_buf_init(&all_msgs, allocator, 1024));
+
+    ASSERT_SUCCESS(testing_channel_append_written_messages(channel, &all_msgs));
+
+    ASSERT_TRUE(aws_byte_buf_eq_c_str(&all_msgs, expected));
+    aws_byte_buf_clean_up(&all_msgs);
+    return AWS_OP_SUCCESS;
+}
+
+/* Check contents of all messages sent in the write direction. */
+AWS_STATIC_IMPL int testing_channel_check_written_messages(
+    struct testing_channel *channel,
+    struct aws_allocator *allocator,
+    const char *expected) {
+    struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
+    return testing_channel_check_messages_ex(channel, allocator, expected, msgs);
+}
+
+/* Check contents of all read-messages sent in the read direction by a midchannel http-handler */
+AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages(
+    struct testing_channel *channel,
+    struct aws_allocator *allocator,
+    const char *expected) {
+    struct aws_linked_list *msgs = testing_channel_get_read_message_queue(channel);
+    return testing_channel_check_messages_ex(channel, allocator, expected, msgs);
+}
+
+/* For sending an aws_io_message into the channel, in the write or read direction */
+AWS_STATIC_IMPL int testing_channel_send_message_ex(
+    struct testing_channel *channel,
+    struct aws_byte_cursor data,
+    enum aws_channel_direction dir,
+    bool ignore_send_message_errors) {
+
+    struct aws_io_message *msg =
+        aws_channel_acquire_message_from_pool(channel->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data.len);
+    ASSERT_NOT_NULL(msg);
+
+    ASSERT_TRUE(aws_byte_buf_write_from_whole_cursor(&msg->message_data, data));
+
+    int err;
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        err = testing_channel_push_read_message(channel, msg);
+    } else {
+        err = testing_channel_push_write_message(channel, msg);
+    }
+
+    if (!ignore_send_message_errors) {
+        ASSERT_SUCCESS(err);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
