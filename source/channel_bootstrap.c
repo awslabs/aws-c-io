@@ -834,9 +834,7 @@ static inline int s_new_client_channel(
 
 error:
     if (client_connection_args) {
-        if (client_connection_args->channel_data.use_tls) {
-            aws_tls_connection_options_clean_up(&client_connection_args->channel_data.tls_options);
-        }
+        /* tls opt will also be freed when we clean up the connection arg */
         s_client_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;
