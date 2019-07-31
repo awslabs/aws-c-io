@@ -35,6 +35,16 @@ struct aws_stream_status {
 
 struct aws_input_stream_vtable {
     int (*seek)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
+    /**
+     * Stream as much data as will fit into the destination buffer and update its length.
+     * The destination buffer's capacity MUST NOT be changed.
+     *
+     * Return AWS_OP_SUCCESS if the read is successful.
+     * If AWS_OP_ERR is returned, the stream is assumed to be invalid and any data written to the buffer is ignored.
+     *
+     * If no more data is currently available, or the end of the stream has been reached, simply return AWS_OP_SUCCESS
+     * without touching the destination buffer.
+     */
     int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
     int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
     int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
@@ -59,7 +69,7 @@ AWS_IO_API int aws_input_stream_seek(
 
 /*
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes
- * in the destination buffer.
+ * in the destination buffer. If AWS_OP_ERR is returned, the destination buffer will be unchanged.
  */
 AWS_IO_API int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest);
 

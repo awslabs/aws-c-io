@@ -447,9 +447,7 @@ error:
         (void *)channel,
         err_code);
     aws_channel_shutdown(channel, err_code);
-    aws_channel_destroy(channel);
-    aws_socket_clean_up(connection_args->channel_data.socket);
-    aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
+    /* the channel shutdown callback will clean the channel up */
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -836,9 +834,7 @@ static inline int s_new_client_channel(
 
 error:
     if (client_connection_args) {
-        if (client_connection_args->channel_data.use_tls) {
-            aws_tls_connection_options_clean_up(&client_connection_args->channel_data.tls_options);
-        }
+        /* the tls opt will be freed in connection args */
         s_client_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;

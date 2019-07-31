@@ -91,12 +91,20 @@ static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator
     return event_loop;
 }
 
+typedef void(testing_channel_handler_on_shutdown_fn)(
+    enum aws_channel_direction dir,
+    int error_code,
+    bool free_scarce_resources_immediately,
+    void *user_data);
+
 struct testing_channel_handler {
     struct aws_linked_list messages;
     size_t latest_window_update;
     size_t initial_window;
     bool complete_write_immediately;
     int complete_write_error_code;
+    testing_channel_handler_on_shutdown_fn *on_shutdown;
+    void *on_shutdown_user_data;
 };
 
 static int s_testing_channel_handler_process_read_message(
@@ -149,6 +157,12 @@ static int s_testing_channel_handler_shutdown(
     bool free_scarce_resources_immediately) {
 
     struct testing_channel_handler *testing_handler = handler->impl;
+
+    /* If user has registered a callback, invoke it */
+    if (testing_handler->on_shutdown) {
+        testing_handler->on_shutdown(
+            dir, error_code, free_scarce_resources_immediately, testing_handler->on_shutdown_user_data);
+    }
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!slot->adj_left) {
@@ -417,6 +431,21 @@ AWS_STATIC_IMPL bool testing_channel_is_shutdown_completed(const struct testing_
 AWS_STATIC_IMPL int testing_channel_get_shutdown_error_code(const struct testing_channel *testing) {
     AWS_ASSERT(testing->channel_shutdown_completed);
     return testing->channel_shutdown_error_code;
+}
+
+/**
+ * Set a callback which is invoked during the handler's shutdown,
+ * once in the read direction and again in the write direction.
+ * Use this to inject actions that might occur in the middle of channel shutdown.
+ */
+AWS_STATIC_IMPL void testing_channel_set_downstream_handler_shutdown_callback(
+    struct testing_channel *testing,
+    testing_channel_handler_on_shutdown_fn *on_shutdown,
+    void *user_data) {
+
+    AWS_ASSERT(testing->right_handler_impl);
+    testing->right_handler_impl->on_shutdown = on_shutdown;
+    testing->right_handler_impl->on_shutdown_user_data = user_data;
 }
 
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
