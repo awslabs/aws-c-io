@@ -469,6 +469,7 @@ AWS_STATIC_IMPL int testing_channel_check_written_message(struct testing_channel
     return AWS_OP_SUCCESS;
 }
 
+/* copies all messages in a list into a buffer, cleans up messages*/
 AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs, struct aws_byte_buf *buffer) {
 
     while (!aws_linked_list_empty(msgs)) {
