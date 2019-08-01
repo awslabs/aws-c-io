@@ -244,6 +244,9 @@ struct testing_channel {
     struct aws_channel_slot *left_handler_slot;
     struct aws_channel_slot *right_handler_slot;
 
+    void (*channel_shutdown)(int error_code, void *user_data);
+    void *channel_shutdown_user_data;
+
     bool channel_setup_completed;
     bool channel_shutdown_completed;
     int channel_shutdown_error_code;
@@ -262,6 +265,10 @@ static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel,
     struct testing_channel *testing = user_data;
     testing->channel_shutdown_completed = true;
     testing->channel_shutdown_error_code = error_code;
+
+    if (testing->channel_shutdown) {
+        testing->channel_shutdown(error_code, testing->channel_shutdown_user_data);
+    }
 }
 
 /** API for testing, use this for testing purely your channel handlers and nothing else. Because of that, the s_
@@ -462,10 +469,7 @@ AWS_STATIC_IMPL int testing_channel_check_written_message(struct testing_channel
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL int testing_channel_drain_written_messages(
-    struct testing_channel *channel,
-    struct aws_byte_buf *buffer) {
-    struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
+AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs, struct aws_byte_buf *buffer) {
 
     while (!aws_linked_list_empty(msgs)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
@@ -489,7 +493,7 @@ AWS_STATIC_IMPL int testing_channel_check_messages_ex(
     struct aws_byte_buf all_msgs;
     ASSERT_SUCCESS(aws_byte_buf_init(&all_msgs, allocator, 1024));
 
-    ASSERT_SUCCESS(testing_channel_drain_written_messages(channel, &all_msgs));
+    ASSERT_SUCCESS(testing_channel_drain_messages(msgs, &all_msgs));
 
     ASSERT_TRUE(aws_byte_buf_eq_c_str(&all_msgs, expected));
     aws_byte_buf_clean_up(&all_msgs);
@@ -503,6 +507,16 @@ AWS_STATIC_IMPL int testing_channel_check_written_messages(
     const char *expected) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
     return testing_channel_check_messages_ex(channel, allocator, expected, msgs);
+}
+
+/* Extract contents of all messages sent in the write direction. */
+AWS_STATIC_IMPL int testing_channel_drain_written_messages(
+    struct testing_channel *channel,
+    struct aws_byte_buf *output) {
+    struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
+    ASSERT_SUCCESS(testing_channel_drain_messages(msgs, output));
+
+    return AWS_OP_SUCCESS;
 }
 
 /* Check contents of all read-messages sent in the read direction by a midchannel http-handler */
@@ -564,4 +578,5 @@ AWS_STATIC_IMPL int testing_channel_readpush_ignore_errors(struct testing_channe
 AWS_STATIC_IMPL int testing_channel_writepush(struct testing_channel *channel, const char *str) {
     return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_WRITE, false);
 }
+
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
