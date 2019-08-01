@@ -462,10 +462,10 @@ AWS_STATIC_IMPL int testing_channel_check_written_message(struct testing_channel
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL int testing_channel_append_written_messages(
+AWS_STATIC_IMPL int testing_channel_drain_written_messages(
     struct testing_channel *channel,
     struct aws_byte_buf *buffer) {
-    struct aws_linked_list *msgs = testing_channel_get_read_message_queue(channel);
+    struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
 
     while (!aws_linked_list_empty(msgs)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
@@ -489,7 +489,7 @@ AWS_STATIC_IMPL int testing_channel_check_messages_ex(
     struct aws_byte_buf all_msgs;
     ASSERT_SUCCESS(aws_byte_buf_init(&all_msgs, allocator, 1024));
 
-    ASSERT_SUCCESS(testing_channel_append_written_messages(channel, &all_msgs));
+    ASSERT_SUCCESS(testing_channel_drain_written_messages(channel, &all_msgs));
 
     ASSERT_TRUE(aws_byte_buf_eq_c_str(&all_msgs, expected));
     aws_byte_buf_clean_up(&all_msgs);
@@ -541,4 +541,27 @@ AWS_STATIC_IMPL int testing_channel_send_message_ex(
     return AWS_OP_SUCCESS;
 }
 
+AWS_STATIC_IMPL int testing_channel_send_response(struct testing_channel *channel, struct aws_byte_cursor data) {
+    return testing_channel_send_message_ex(channel, data, AWS_CHANNEL_DIR_READ, false);
+}
+
+AWS_STATIC_IMPL int testing_channel_send_response_str(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
+}
+
+AWS_STATIC_IMPL int testing_channel_send_response_str_ignore_errors(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
+}
+
+AWS_STATIC_IMPL int testing_channel_readpush(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
+}
+
+AWS_STATIC_IMPL int testing_channel_readpush_ignore_errors(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
+}
+
+AWS_STATIC_IMPL int testing_channel_writepush(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_WRITE, false);
+}
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
