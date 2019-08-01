@@ -487,10 +487,9 @@ AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs,
 
 /* Pop all messages from queue and compare their contents to expected string */
 AWS_STATIC_IMPL int testing_channel_check_messages_ex(
-    struct testing_channel *channel,
+    struct aws_linked_list *msgs,
     struct aws_allocator *allocator,
-    const char *expected,
-    struct aws_linked_list *msgs) {
+    const char *expected) {
     struct aws_byte_buf all_msgs;
     ASSERT_SUCCESS(aws_byte_buf_init(&all_msgs, allocator, 1024));
 
@@ -507,7 +506,7 @@ AWS_STATIC_IMPL int testing_channel_check_written_messages(
     struct aws_allocator *allocator,
     const char *expected) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
-    return testing_channel_check_messages_ex(channel, allocator, expected, msgs);
+    return testing_channel_check_messages_ex(msgs, allocator, expected);
 }
 
 /* Extract contents of all messages sent in the write direction. */
@@ -526,7 +525,7 @@ AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages(
     struct aws_allocator *allocator,
     const char *expected) {
     struct aws_linked_list *msgs = testing_channel_get_read_message_queue(channel);
-    return testing_channel_check_messages_ex(channel, allocator, expected, msgs);
+    return testing_channel_check_messages_ex(msgs, allocator, expected);
 }
 
 /* For sending an aws_io_message into the channel, in the write or read direction */
