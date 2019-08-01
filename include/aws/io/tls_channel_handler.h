@@ -31,6 +31,12 @@ enum aws_tls_versions {
     AWS_IO_TLS_VER_SYS_DEFAULTS = 128,
 };
 
+enum aws_tls_cipher_pref {
+    AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT = 0,
+    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06 = 1,
+    AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
+};
+
 struct aws_tls_ctx {
     struct aws_allocator *alloc;
     void *impl;
@@ -99,6 +105,12 @@ struct aws_tls_ctx_options {
      *  as your OS or distribution adds support.
      */
     enum aws_tls_versions minimum_tls_version;
+
+    /**
+     * The Cipher Preference List to use
+     */
+    enum aws_tls_cipher_pref cipher_pref;
+
     /**
      * A PEM armored PKCS#7 collection of CAs you want to trust. Only
      * use this if it's a CA not currently installed on your system.
@@ -408,6 +420,12 @@ AWS_IO_API void aws_tls_clean_up_thread_local_state(void);
  * This function should always be called before setting an alpn list.
  */
 AWS_IO_API bool aws_tls_is_alpn_available(void);
+
+/**
+ * Returns true if this Cipher Preference is available in the underlying TLS implementation.
+ * This function should always be called before setting a Cipher Preference
+ */
+AWS_IO_API bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref);
 
 /**
  * Creates a new tls channel handler in client mode. Options will be copied.

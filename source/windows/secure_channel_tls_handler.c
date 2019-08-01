@@ -152,6 +152,17 @@ bool aws_tls_is_alpn_available(void) {
     return false;
 }
 
+bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    switch (cipher_pref) {
+        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+            return true;
+
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
+        default:
+            return false;
+    }
+}
+
 /* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(
@@ -1679,6 +1690,12 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
 struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, bool is_client_mode) {
     struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
     if (!secure_channel_ctx) {
+        return NULL;
+    }
+
+    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+        aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
     }
 
