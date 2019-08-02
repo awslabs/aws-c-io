@@ -148,6 +148,7 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
 }
 
 static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
+    aws_mutex_clean_up(&tester->mutex);
     aws_host_resolver_clean_up(&tester->resolver);
     aws_event_loop_group_clean_up(&tester->el_group);
     return AWS_OP_SUCCESS;
