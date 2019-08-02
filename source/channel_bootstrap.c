@@ -1337,7 +1337,11 @@ static inline struct aws_socket *s_server_new_socket_listener(
     server_connection_args->incoming_callback = incoming_callback;
     server_connection_args->destroy_callback = destroy_callback;
     server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
-    aws_task_init(&server_connection_args->listener_destroy_task, s_listener_destroy_task, server_connection_args, "listener socket destroy");
+    aws_task_init(
+        &server_connection_args->listener_destroy_task,
+        s_listener_destroy_task,
+        server_connection_args,
+        "listener socket destroy");
 
     if (connection_options) {
         AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap);
