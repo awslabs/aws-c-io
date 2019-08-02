@@ -279,10 +279,6 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still
  * be active. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
  * connections and channels have finished shutting down.
- *
- * Note: this function should be called by either a user thread (like the main entry point, or from the event-loop the
- * listener is assigned to. Otherwise a deadlock is possible. If you call this function from outside the assigned
- * event-loop, this function will block waiting on the assigned event-loop runs the close sequence in its thread.
  */
 AWS_IO_API int aws_server_bootstrap_destroy_socket_listener(
     struct aws_server_bootstrap *bootstrap,
