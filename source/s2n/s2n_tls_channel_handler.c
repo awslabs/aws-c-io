@@ -215,6 +215,17 @@ bool aws_tls_is_alpn_available(void) {
     return true;
 }
 
+bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    switch (cipher_pref) {
+        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
 static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
     size_t written = 0;
@@ -841,6 +852,12 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         return NULL;
     }
 
+    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+        aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
+        return NULL;
+    }
+
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
     s2n_ctx->s2n_config = s2n_config_new();
@@ -872,6 +889,19 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
     }
 
+    switch (options->cipher_pref) {
+        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+            /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set */
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2019-06");
+            break;
+        default:
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
+            aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
+            goto cleanup_s2n_ctx;
+    }
+
     if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
@@ -894,7 +924,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->verify_peer) {
-
         if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) ||
             s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
