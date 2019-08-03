@@ -280,10 +280,7 @@ static int s_local_server_tester_init(
 
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
 
-    sprintf(
-        tester->endpoint.address,
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)tester->timestamp);
+    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
     tester->listener = aws_server_bootstrap_new_socket_listener(
@@ -448,7 +445,6 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     uint8_t outgoing_received_message[128];
     uint8_t incoming_received_message[128];
 
-
     struct socket_test_rw_args incoming_rw_args;
     ASSERT_SUCCESS(s_rw_args_init(
         &incoming_rw_args,
@@ -498,17 +494,17 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         &outgoing_args));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &incoming_args));
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &outgoing_args));
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
 
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &incoming_args));
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &outgoing_args));
 
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
     ASSERT_TRUE(
@@ -516,10 +512,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener));
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
-    
+    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
+        local_server_tester.server_bootstrap, local_server_tester.listener));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
+
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
