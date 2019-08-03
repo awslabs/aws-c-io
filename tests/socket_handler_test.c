@@ -237,9 +237,7 @@ static void s_socket_handler_test_server_listener_destroy_callback(
     (void)bootstrap;
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->listener_destroyed = true;
-    aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
@@ -423,14 +421,14 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &outgoing_args));
-
-    aws_mutex_unlock(&c_tester.mutex);
-
-    /* clean up */
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
         local_server_tester.server_bootstrap, local_server_tester.listener));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
+    
+    aws_mutex_unlock(&c_tester.mutex);
+
+    /* clean up */
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
@@ -512,14 +510,14 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
     ASSERT_TRUE(
         AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
-    aws_mutex_unlock(&c_tester.mutex);
-
-    /* clean up */
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
         local_server_tester.server_bootstrap, local_server_tester.listener));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
 
+    aws_mutex_unlock(&c_tester.mutex);
+
+    /* clean up */
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
