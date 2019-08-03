@@ -279,8 +279,11 @@ static int s_local_server_tester_init(
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
 
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-
-    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
+    snprintf(
+        tester->endpoint.address,
+        sizeof(tester->endpoint.address),
+        LOCAL_SOCK_TEST_PATTERN,
+        (long long unsigned)tester->timestamp);
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
     tester->listener = aws_server_bootstrap_new_socket_listener(
