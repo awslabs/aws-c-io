@@ -301,8 +301,7 @@ static int s_tls_local_server_tester_init(
     struct tls_common_tester *c_tester) {
     AWS_ZERO_STRUCT(*tester);
     ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
-    aws_tls_connection_options_set_callbacks(
-        &tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
+    aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
