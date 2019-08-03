@@ -425,7 +425,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         local_server_tester.server_bootstrap, local_server_tester.listener));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
-    
+
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */

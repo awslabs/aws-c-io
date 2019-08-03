@@ -963,7 +963,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
         local_server_tester.server_bootstrap, local_server_tester.listener));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));    
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
     aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
@@ -1047,7 +1047,7 @@ static int s_tls_server_destroy_by_user_when_connection_is_in_processing_fn(
     /* Wait for the listener socket to finish destroy process */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
-     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
     /* clean up */
     aws_socket_clean_up(&shutdown_tester->client_socket);
     aws_mem_release(allocator, shutdown_tester);
