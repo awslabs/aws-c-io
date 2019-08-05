@@ -269,8 +269,10 @@ static void s_tls_handler_test_server_listener_destroy_callback(
     (void)bootstrap;
 
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
-
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->listener_destroyed = true;
+    aws_mutex_unlock(setup_test_args->mutex);
+
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 

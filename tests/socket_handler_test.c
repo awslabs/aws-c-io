@@ -237,8 +237,9 @@ static void s_socket_handler_test_server_listener_destroy_callback(
     (void)bootstrap;
 
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->listener_destroyed = true;
-
+    aws_mutex_unlock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
