@@ -908,11 +908,11 @@ static void s_socket_accept_event(
             flags |= O_NONBLOCK | O_CLOEXEC;
             fcntl(in_fd, F_SETFL, flags);
 
-            bool close_occured = false;
-            socket_impl->close_happened = &close_occured;
+            bool close_occurred = false;
+            socket_impl->close_happened = &close_occurred;
             socket->accept_result_fn(socket, AWS_ERROR_SUCCESS, new_sock, socket->connect_accept_user_data);
 
-            if (close_occured) {
+            if (close_occurred) {
                 return;
             }
 

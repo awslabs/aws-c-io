@@ -28,7 +28,7 @@
 /* non-constant aggregate initializer */
 #    pragma warning(disable : 4204)
 /* allow automatic variable to escape scope
-   (it's intenional and we make sure it doesn't actually return
+   (it's intentional and we make sure it doesn't actually return
     before the task is finished).*/
 #    pragma warning(disable : 4221)
 #endif
@@ -834,7 +834,7 @@ static inline int s_new_client_channel(
 
 error:
     if (client_connection_args) {
-        /* the tls opt will be freed in connection args */
+        /* tls opt will also be freed when we clean up the connection arg */
         s_client_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;
@@ -932,6 +932,7 @@ struct server_connection_args {
     aws_tls_on_data_read_fn *user_on_data_read;
     aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
     aws_tls_on_error_fn *user_on_error;
+    struct aws_task listener_destroy_task;
     void *tls_user_data;
     void *user_data;
     bool use_tls;
@@ -1278,7 +1279,6 @@ void s_on_server_connection_result(
         /* no channel is created */
         connection_args->incoming_callback(connection_args->bootstrap, error_code, NULL, connection_args->user_data);
         s_server_connection_args_release(connection_args);
-        aws_server_bootstrap_destroy_socket_listener(connection_args->bootstrap, &connection_args->listener);
     }
 
     return;
@@ -1291,6 +1291,16 @@ error_cleanup:
     aws_socket_clean_up(new_socket);
     aws_mem_release(allocator, (void *)new_socket);
     s_server_connection_args_release(connection_args);
+}
+
+static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)status;
+    (void)task;
+    struct server_connection_args *server_connection_args = arg;
+
+    aws_socket_stop_accept(&server_connection_args->listener);
+    aws_socket_clean_up(&server_connection_args->listener);
+    s_server_connection_args_release(server_connection_args);
 }
 
 static inline struct aws_socket *s_server_new_socket_listener(
@@ -1327,6 +1337,11 @@ static inline struct aws_socket *s_server_new_socket_listener(
     server_connection_args->incoming_callback = incoming_callback;
     server_connection_args->destroy_callback = destroy_callback;
     server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
+    aws_task_init(
+        &server_connection_args->listener_destroy_task,
+        s_listener_destroy_task,
+        server_connection_args,
+        "listener socket destroy");
 
     if (connection_options) {
         AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap);
@@ -1440,10 +1455,7 @@ int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bo
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-
-    aws_socket_stop_accept(listener);
-    aws_socket_clean_up(listener);
-    s_server_connection_args_release(server_connection_args);
+    aws_event_loop_schedule_task_now(listener->event_loop, &server_connection_args->listener_destroy_task);
     return AWS_OP_SUCCESS;
 }
 

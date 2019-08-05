@@ -2045,7 +2045,7 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_named_pipe_is_ridiculus_task(struct aws_task *task, void *args, enum aws_task_status status) {
+static void s_named_pipe_is_ridiculous_task(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)task;
     struct io_operation_data *io_data = args;
 
@@ -2144,7 +2144,7 @@ static int s_local_start_accept(
                 error_code);
             /* There will be no IO-completion event in the case of ERROR_PIPE_CONNECTED,
             so schedule a task to finish the connection */
-            socket_impl->read_io_data->sequential_task_storage.fn = s_named_pipe_is_ridiculus_task;
+            socket_impl->read_io_data->sequential_task_storage.fn = s_named_pipe_is_ridiculous_task;
             socket_impl->read_io_data->sequential_task_storage.arg = socket_impl->read_io_data;
             aws_event_loop_schedule_task_now(socket->event_loop, &socket_impl->read_io_data->sequential_task_storage);
         }
