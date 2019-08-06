@@ -328,7 +328,7 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
                     (void *)slot);
 
                 aws_channel_slot_shutdown(slot, AWS_CHANNEL_DIR_READ, error_code, shutdown_immediately);
-                return ;
+                return;
             }
 
             channel->channel_state = AWS_CHANNEL_SHUT_DOWN;
