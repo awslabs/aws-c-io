@@ -308,7 +308,7 @@ static void s_on_shutdown_completion_task(struct aws_task *task, void *arg, enum
 static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
 
     (void)task;
-
+    (void)status;
     struct shutdown_task *shutdown_task = arg;
     struct aws_channel *channel = shutdown_task->channel;
     int error_code = shutdown_task->error_code;
