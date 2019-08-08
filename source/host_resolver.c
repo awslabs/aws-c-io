@@ -19,7 +19,6 @@
 #include <aws/common/hash_table.h>
 #include <aws/common/lru_cache.h>
 #include <aws/common/mutex.h>
-#include <aws/common/rw_lock.h>
 #include <aws/common/string.h>
 #include <aws/common/thread.h>
 
@@ -101,14 +100,15 @@ int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolv
 struct default_host_resolver {
     struct aws_allocator *allocator;
     struct aws_lru_cache host_table;
-    struct aws_rw_lock host_lock;
+    /* Note: This can't be an RWLock as even an LRU cache read is a modifying operation */
+    struct aws_mutex host_lock;
 };
 
 struct host_entry {
     struct aws_allocator *allocator;
     struct aws_host_resolver *resolver;
     struct aws_thread resolver_thread;
-    struct aws_rw_lock entry_lock;
+    struct aws_mutex entry_lock;
     struct aws_lru_cache aaaa_records;
     struct aws_lru_cache a_records;
     struct aws_lru_cache failed_connection_aaaa_records;
@@ -129,9 +129,9 @@ struct host_entry {
 
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
-    aws_rw_lock_wlock(&default_host_resolver->host_lock);
+    aws_mutex_lock(&default_host_resolver->host_lock);
     aws_lru_cache_clear(&default_host_resolver->host_table);
-    aws_rw_lock_wunlock(&default_host_resolver->host_lock);
+    aws_mutex_unlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -219,21 +219,21 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
         address->address->bytes,
         address->host->bytes);
 
-    aws_rw_lock_rlock(&default_host_resolver->host_lock);
+    aws_mutex_lock(&default_host_resolver->host_lock);
 
     struct host_entry *host_entry = NULL;
     int host_lookup_err = aws_lru_cache_find(&default_host_resolver->host_table, address->host, (void **)&host_entry);
 
     if (host_lookup_err) {
-        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+        aws_mutex_unlock(&default_host_resolver->host_lock);
         return AWS_OP_ERR;
     }
 
     if (host_entry) {
         struct aws_host_address *cached_address = NULL;
 
-        aws_rw_lock_wlock(&host_entry->entry_lock);
-        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+        aws_mutex_lock(&host_entry->entry_lock);
+        aws_mutex_unlock(&default_host_resolver->host_lock);
         struct aws_lru_cache *address_table =
             address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA ? &host_entry->aaaa_records : &host_entry->a_records;
 
@@ -269,7 +269,7 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
                 cached_address->connection_failure_count += 1;
             }
         }
-        aws_rw_lock_wunlock(&host_entry->entry_lock);
+        aws_mutex_unlock(&host_entry->entry_lock);
         return AWS_OP_SUCCESS;
 
     error_host_entry_cleanup:
@@ -277,11 +277,11 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
             aws_host_address_clean_up(address_copy);
             aws_mem_release(resolver->allocator, address_copy);
         }
-        aws_rw_lock_wunlock(&host_entry->entry_lock);
+        aws_mutex_unlock(&host_entry->entry_lock);
         return AWS_OP_ERR;
     }
 
-    aws_rw_lock_runlock(&default_host_resolver->host_lock);
+    aws_mutex_unlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -496,7 +496,7 @@ static void resolver_thread_fn(void *arg) {
          *  (2) Process all held addresses looking for expired or promotable ones
          *  (3) Prep for callback invocations
          */
-        aws_rw_lock_wlock(&host_entry->entry_lock);
+        aws_mutex_lock(&host_entry->entry_lock);
 
         if (!err_code) {
             s_update_address_cache(host_entry, &address_list, new_expiry);
@@ -511,7 +511,7 @@ static void resolver_thread_fn(void *arg) {
 
         aws_linked_list_swap_contents(&pending_resolve_copy, &host_entry->pending_resolution_callbacks);
 
-        aws_rw_lock_wunlock(&host_entry->entry_lock);
+        aws_mutex_unlock(&host_entry->entry_lock);
 
         /*
          * Clean up resolved addressed outside of the lock
@@ -532,7 +532,7 @@ static void resolver_thread_fn(void *arg) {
             struct aws_array_list callback_address_list;
             aws_array_list_init_static(&callback_address_list, address_array, 2, sizeof(struct aws_host_address));
 
-            aws_rw_lock_wlock(&host_entry->entry_lock);
+            aws_mutex_lock(&host_entry->entry_lock);
             s_copy_address_into_callback_set(
                 s_get_lru_address(host_entry, AWS_ADDRESS_RECORD_TYPE_AAAA),
                 &callback_address_list,
@@ -541,7 +541,7 @@ static void resolver_thread_fn(void *arg) {
                 s_get_lru_address(host_entry, AWS_ADDRESS_RECORD_TYPE_A),
                 &callback_address_list,
                 host_entry->host_name);
-            aws_rw_lock_wunlock(&host_entry->entry_lock);
+            aws_mutex_unlock(&host_entry->entry_lock);
 
             AWS_ASSERT(err_code != AWS_ERROR_SUCCESS || aws_array_list_length(&callback_address_list) > 0);
 
@@ -733,7 +733,7 @@ static inline int create_and_init_host_entry(
     aws_linked_list_push_back(&new_host_entry->pending_resolution_callbacks, &pending_callback->node);
 
     /*add the current callback here */
-    aws_rw_lock_init(&new_host_entry->entry_lock);
+    aws_mutex_init(&new_host_entry->entry_lock);
     new_host_entry->keep_active = false;
     new_host_entry->resolution_config = *config;
     aws_mutex_init(&new_host_entry->semaphore_mutex);
@@ -742,14 +742,14 @@ static inline int create_and_init_host_entry(
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_thread_init(&new_host_entry->resolver_thread, default_host_resolver->allocator);
     thread_init = true;
-    aws_rw_lock_wlock(&default_host_resolver->host_lock);
+    aws_mutex_lock(&default_host_resolver->host_lock);
 
     struct host_entry *race_condition_entry = NULL;
     /* we don't care the reason host_entry wasn't found, only that it wasn't. */
     aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&race_condition_entry);
 
     if (race_condition_entry) {
-        aws_rw_lock_wlock(&race_condition_entry->entry_lock);
+        aws_mutex_lock(&race_condition_entry->entry_lock);
         aws_linked_list_push_back(&race_condition_entry->pending_resolution_callbacks, &pending_callback->node);
 
         if (!race_condition_entry->keep_active) {
@@ -761,11 +761,11 @@ static inline int create_and_init_host_entry(
 
         race_condition_entry->last_use = timestamp;
 
-        aws_rw_lock_wunlock(&race_condition_entry->entry_lock);
+        aws_mutex_unlock(&race_condition_entry->entry_lock);
 
         aws_linked_list_remove(&pending_callback->node);
         on_host_value_removed(new_host_entry);
-        aws_rw_lock_wunlock(&default_host_resolver->host_lock);
+        aws_mutex_unlock(&default_host_resolver->host_lock);
         return AWS_OP_SUCCESS;
     }
 
@@ -777,7 +777,7 @@ static inline int create_and_init_host_entry(
     }
 
     aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
-    aws_rw_lock_wunlock(&default_host_resolver->host_lock);
+    aws_mutex_unlock(&default_host_resolver->host_lock);
     return AWS_OP_SUCCESS;
 
 setup_host_entry_error:
@@ -826,7 +826,7 @@ static int default_resolve_host(
     aws_sys_clock_get_ticks(&timestamp);
 
     struct default_host_resolver *default_host_resolver = resolver->impl;
-    aws_rw_lock_rlock(&default_host_resolver->host_lock);
+    aws_mutex_lock(&default_host_resolver->host_lock);
 
     struct host_entry *host_entry = NULL;
     /* we don't care about the error code here, only that the host_entry was found or not. */
@@ -839,12 +839,12 @@ static int default_resolve_host(
             (void *)resolver,
             host_name->bytes);
 
-        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+        aws_mutex_unlock(&default_host_resolver->host_lock);
         return create_and_init_host_entry(resolver, host_name, res, config, timestamp, host_entry, user_data);
     }
 
     host_entry->last_use = timestamp;
-    aws_rw_lock_wlock(&host_entry->entry_lock);
+    aws_mutex_lock(&host_entry->entry_lock);
 
     struct aws_host_address *aaaa_record = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
     struct aws_host_address *a_record = aws_lru_cache_use_lru_element(&host_entry->a_records);
@@ -885,8 +885,8 @@ static int default_resolve_host(
                     host_entry->host_name->bytes);
             }
         }
-        aws_rw_lock_wunlock(&host_entry->entry_lock);
-        aws_rw_lock_runlock(&default_host_resolver->host_lock);
+        aws_mutex_unlock(&host_entry->entry_lock);
+        aws_mutex_unlock(&default_host_resolver->host_lock);
 
         int error_code = AWS_OP_SUCCESS;
         /* we don't want to do the callback WHILE we hold the lock someone may reentrantly call us. */
@@ -921,8 +921,8 @@ static int default_resolve_host(
         aws_thread_launch(&host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
     }
 
-    aws_rw_lock_wunlock(&host_entry->entry_lock);
-    aws_rw_lock_runlock(&default_host_resolver->host_lock);
+    aws_mutex_unlock(&host_entry->entry_lock);
+    aws_mutex_unlock(&default_host_resolver->host_lock);
 
     return AWS_OP_SUCCESS;
 }
@@ -959,7 +959,7 @@ int aws_host_resolver_init_default(
         (unsigned long long)max_entries);
 
     default_host_resolver->allocator = allocator;
-    aws_rw_lock_init(&default_host_resolver->host_lock);
+    aws_mutex_init(&default_host_resolver->host_lock);
     if (aws_lru_cache_init(
             &default_host_resolver->host_table,
             allocator,
