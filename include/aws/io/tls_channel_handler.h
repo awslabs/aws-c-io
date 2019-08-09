@@ -223,8 +223,8 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *cert,
-    struct aws_byte_cursor *pkey);
+    const struct aws_byte_cursor *cert,
+    const struct aws_byte_cursor *pkey);
 
 /**
  * Initializes options for use with in server mode.
