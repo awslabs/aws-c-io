@@ -64,7 +64,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 static int s_load_null_terminated_buffer_from_cursor(
     struct aws_byte_buf *load_into,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *from) {
+    const struct aws_byte_cursor *from) {
     if (from->ptr[from->len - 1] == 0) {
         if (aws_byte_buf_init_copy_from_cursor(load_into, allocator, *from)) {
             return AWS_OP_ERR;
@@ -87,8 +87,8 @@ static int s_load_null_terminated_buffer_from_cursor(
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *cert,
-    struct aws_byte_cursor *pkey) {
+    const struct aws_byte_cursor *cert,
+    const struct aws_byte_cursor *pkey) {
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
@@ -294,7 +294,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
 
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
-    struct aws_byte_cursor *ca_file) {
+    const struct aws_byte_cursor *ca_file) {
 
     /* s2n relies on null terminated c_strings, so we need to make sure we're properly
      * terminated, but we don't want length to reflect the terminator because
