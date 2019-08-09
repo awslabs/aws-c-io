@@ -337,7 +337,7 @@ AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *
  */
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
-    struct aws_byte_cursor *ca_file);
+    const struct aws_byte_cursor *ca_file);
 
 /**
  * Override the default trust store. ca_path is a path to a directory on disk containing trusted certificates. This is

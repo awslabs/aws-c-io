@@ -294,7 +294,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
 
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
-    struct aws_byte_cursor *ca_file) {
+    const struct aws_byte_cursor *ca_file) {
 
     /* s2n relies on null terminated c_strings, so we need to make sure we're properly
      * terminated, but we don't want length to reflect the terminator because
