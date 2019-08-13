@@ -956,13 +956,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (!options->ca_path && !options->ca_file.len) {
-            const char *ca_dir = s_default_ca_dir;
-            const char *ca_file = NULL;
-            if (!ca_dir) {
-                ca_file = s_default_ca_file;
-            }
-
-            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, ca_file, ca_dir)) {
+            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "ctx: configuration error %s (%s)",
