@@ -554,11 +554,12 @@ static int s_s2n_handler_process_write_message(
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Bytes written: %llu", (void *)handler, (unsigned long long)write_code);
 
     ssize_t message_len = (ssize_t)message->message_data.len;
-    aws_mem_release(message->allocator, message);
 
     if (write_code < message_len) {
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
+
+    aws_mem_release(message->allocator, message);
 
     return AWS_OP_SUCCESS;
 }
