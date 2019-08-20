@@ -157,6 +157,9 @@ void aws_io_library_init(struct aws_allocator *allocator);
 AWS_IO_API
 void aws_io_library_clean_up(void);
 
+AWS_IO_API
+void aws_io_fatal_assert_library_initialized(void);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_IO_H */

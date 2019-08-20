@@ -210,3 +210,13 @@ void aws_io_library_clean_up(void) {
         aws_common_library_clean_up();
     }
 }
+
+void aws_io_fatal_assert_library_initialized(void) {
+    if (!s_io_library_initialized) {
+        AWS_LOGF_FATAL(
+            AWS_LS_IO_GENERAL,
+            "aws_io_library_init() must be called before using any functionality in aws-c-io.");
+
+        AWS_FATAL_ASSERT(s_io_library_initialized);
+    }
+}
