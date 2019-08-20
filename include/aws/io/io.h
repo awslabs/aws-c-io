@@ -145,10 +145,17 @@ enum aws_io_errors {
 AWS_EXTERN_C_BEGIN
 
 /**
- * Loads error strings for this API so that aws_last_error_str etc... will return useful debug strings.
+ * Initializes internal datastructures used by aws-c-io.
+ * Must be called before using any functionality in aws-c-io.
  */
 AWS_IO_API
-void aws_io_load_error_strings(void);
+void aws_io_library_init(void);
+
+/**
+ * Shuts down the internal datastructures used by aws-c-io.
+ */
+AWS_IO_API
+void aws_io_library_clean_up(void);
 
 AWS_EXTERN_C_END
 

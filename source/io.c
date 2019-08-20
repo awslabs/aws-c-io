@@ -158,11 +158,18 @@ static struct aws_error_info_list s_list = {
     .count = sizeof(s_errors) / sizeof(struct aws_error_info),
 };
 
-static bool s_error_strings_loaded = false;
+static bool s_io_library_initialized = false;
 
-void aws_io_load_error_strings(void) {
-    if (!s_error_strings_loaded) {
-        s_error_strings_loaded = true;
+void aws_io_library_init(void) {
+    if (!s_io_library_initialized) {
+        s_io_library_initialized = true;
         aws_register_error_info(&s_list);
+    }
+}
+
+void aws_io_library_clean_up(void) {
+    if (s_io_library_initialized) {
+        s_io_library_initialized = false;
+        aws_unregister_error_info(&s_list);
     }
 }
