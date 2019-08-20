@@ -149,7 +149,7 @@ AWS_EXTERN_C_BEGIN
  * Must be called before using any functionality in aws-c-io.
  */
 AWS_IO_API
-void aws_io_library_init(void);
+void aws_io_library_init(struct aws_allocator *allocator);
 
 /**
  * Shuts down the internal datastructures used by aws-c-io.

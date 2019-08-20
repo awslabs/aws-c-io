@@ -399,16 +399,6 @@ AWS_IO_API int aws_tls_connection_options_set_alpn_list(
     const char *alpn_list);
 
 /********************************* TLS context and state management *********************************/
-/**
- * Initializes static state for the tls implementation. This must be called before any attempts
- * to create an aws_tls_ctx or tls handler.
- */
-AWS_IO_API void aws_tls_init_static_state(struct aws_allocator *alloc);
-
-/**
- * Cleans up static state for the tls implementation.
- */
-AWS_IO_API void aws_tls_clean_up_static_state(void);
 
 /**
  * Cleans up any lazily initialized thread local state for the tls implementation.

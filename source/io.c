@@ -188,9 +188,14 @@ static struct aws_log_subject_info_list s_io_log_subject_list = {
 
 static bool s_io_library_initialized = false;
 
-void aws_io_library_init(void) {
+void aws_tls_init_static_state(struct aws_allocator *alloc);
+void aws_tls_clean_up_static_state(void);
+
+void aws_io_library_init(struct aws_allocator *allocator) {
     if (!s_io_library_initialized) {
         s_io_library_initialized = true;
+        aws_common_library_init(allocator);
+        aws_tls_init_static_state(allocator);
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
     }
@@ -199,7 +204,9 @@ void aws_io_library_init(void) {
 void aws_io_library_clean_up(void) {
     if (s_io_library_initialized) {
         s_io_library_initialized = false;
+        aws_tls_clean_up_static_state();
         aws_unregister_error_info(&s_list);
         aws_unregister_log_subject_info_list(&s_io_log_subject_list);
+        aws_common_library_clean_up();
     }
 }

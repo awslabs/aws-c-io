@@ -23,7 +23,7 @@ static int s_io_load_error_strings_test(struct aws_allocator *allocator, void *c
 
     /* Load aws-c-io's actual error info.
      * This will fail if the error info list is out of sync with the error enums. */
-    aws_io_library_init();
+    aws_io_library_init(allocator);
     aws_io_library_clean_up();
     return AWS_OP_SUCCESS;
 }

@@ -820,8 +820,7 @@ static bool s_shutdown_complete_pred(void *user_data) {
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    aws_common_library_init();
-    aws_io_library_init();
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group event_loop_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 1));
@@ -975,7 +974,6 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     aws_array_list_clean_up(&bh_addresses);
 
     aws_io_library_clean_up();
-    aws_common_library_clean_up();
 
     return 0;
 }
