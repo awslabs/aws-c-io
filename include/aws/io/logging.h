@@ -40,14 +40,4 @@ enum aws_io_log_subject {
     AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
 };
 
-AWS_EXTERN_C_BEGIN
-
-/**
- * Load aws-c-io's log subject strings.
- */
-AWS_IO_API
-void aws_io_load_log_subject_strings(void);
-
-AWS_EXTERN_C_END
-
 #endif /* AWS_IO_LOGGING_H */
