@@ -22,7 +22,7 @@ you simply need to use the `aws_event_loop_group` and `aws_channel_bootstrap` AP
 Typical Client API Usage Pattern:
 
         /* setup */
-        aws_tls_init_static_state();
+        aws_io_library_init(allocator);
 
         struct aws_event_loop_group el_group;
 
@@ -57,12 +57,12 @@ Typical Client API Usage Pattern:
         aws_client_bootstrap_clean_up(&client_bootstrap);
         aws_tls_client_ctx_destroy(tls_ctx);
         aws_event_loop_group_clean_up(&el_group);
-        aws_tls_clean_up_static_state();
+        aws_io_library_clean_up();
 
 Typical Server API Usage Pattern:
 
         /* setup */
-        aws_tls_init_static_state();
+        aws_io_library_init(allocator);
 
         struct aws_event_loop_group el_group;
 
@@ -100,7 +100,7 @@ Typical Server API Usage Pattern:
         aws_server_bootstrap_clean_up(&server_bootstrap);
         aws_tls_server_ctx_destroy(tls_ctx);
         awS_event_loop_group_clean_up(&el_group);
-        aws_tls_clean_up_static_state();
+        aws_io_library_clean_up();
 
 If you are building a protocol on top of sockets without the use of TLS, you can still use this pattern as your starting point.
 Simply call the `aws_client_bootstrap_new_socket_channel` `aws_server_bootstrap_add_socket_listener` respectively: instead of the TLS variants.

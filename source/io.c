@@ -14,6 +14,8 @@
  */
 #include <aws/io/io.h>
 
+#include <aws/io/logging.h>
+
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 /* clang-format off */
@@ -158,11 +160,62 @@ static struct aws_error_info_list s_list = {
     .count = sizeof(s_errors) / sizeof(struct aws_error_info),
 };
 
-static bool s_error_strings_loaded = false;
+static struct aws_log_subject_info s_io_log_subject_infos[] = {
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_GENERAL,
+        "aws-c-io",
+        "Subject for IO logging that doesn't belong to any particular category"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_EVENT_LOOP, "event-loop", "Subject for Event-loop specific logging."),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKET, "socket", "Subject for Socket specific logging."),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKET_HANDLER, "socket-handler", "Subject for a socket channel handler."),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_TLS, "tls-handler", "Subject for TLS-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_ALPN, "alpn", "Subject for ALPN-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_DNS, "dns", "Subject for DNS-related logging"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKI, "pki-utils", "Subject for Pki utilities."),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_CHANNEL, "channel", "Subject for Channels"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "channel-bootstrap",
+        "Subject for channel bootstrap (client and server modes)"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_FILE_UTILS, "file-utils", "Subject for file operations"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SHARED_LIBRARY, "shared-library", "Subject for shared library operations"),
+};
 
-void aws_io_load_error_strings(void) {
-    if (!s_error_strings_loaded) {
-        s_error_strings_loaded = true;
+static struct aws_log_subject_info_list s_io_log_subject_list = {
+    .subject_list = s_io_log_subject_infos,
+    .count = AWS_ARRAY_SIZE(s_io_log_subject_infos),
+};
+
+static bool s_io_library_initialized = false;
+
+void aws_tls_init_static_state(struct aws_allocator *alloc);
+void aws_tls_clean_up_static_state(void);
+
+void aws_io_library_init(struct aws_allocator *allocator) {
+    if (!s_io_library_initialized) {
+        s_io_library_initialized = true;
+        aws_common_library_init(allocator);
+        aws_tls_init_static_state(allocator);
         aws_register_error_info(&s_list);
+        aws_register_log_subject_info_list(&s_io_log_subject_list);
+    }
+}
+
+void aws_io_library_clean_up(void) {
+    if (s_io_library_initialized) {
+        s_io_library_initialized = false;
+        aws_tls_clean_up_static_state();
+        aws_unregister_error_info(&s_list);
+        aws_unregister_log_subject_info_list(&s_io_log_subject_list);
+        aws_common_library_clean_up();
+    }
+}
+
+void aws_io_fatal_assert_library_initialized(void) {
+    if (!s_io_library_initialized) {
+        AWS_LOGF_FATAL(
+            AWS_LS_IO_GENERAL, "aws_io_library_init() must be called before using any functionality in aws-c-io.");
+
+        AWS_FATAL_ASSERT(s_io_library_initialized);
     }
 }

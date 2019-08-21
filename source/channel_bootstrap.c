@@ -851,6 +851,7 @@ int aws_client_bootstrap_new_tls_socket_channel(
     void *user_data) {
     AWS_ASSERT(connection_options);
     AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
+    aws_io_fatal_assert_library_initialized();
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -1433,6 +1434,7 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
     void *user_data) {
     AWS_ASSERT(connection_options);
     AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
+    aws_io_fatal_assert_library_initialized();
 
     if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
