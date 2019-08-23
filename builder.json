@@ -1,0 +1,13 @@
+{
+    "upstream": [
+        { "name": "aws-c-common" },
+        {
+            "name": "s2n",
+            "hosts": ["linux"]
+        }
+    ],
+    "downstream": [
+        { "name": "aws-c-mqtt" },
+        { "name": "aws-c-http" }
+    ]
+}
