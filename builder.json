@@ -3,7 +3,7 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "hosts": ["linux", "manylinux", "ancientlinux"]
+            "targets": ["linux"]
         }
     ],
     "downstream": [
