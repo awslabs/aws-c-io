@@ -77,34 +77,33 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
     state->alloc = allocator;
 
     state->read_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-    AWS_ASSERT(state->read_loop);
+    AWS_FATAL_ASSERT(state->read_loop);
     err = aws_event_loop_run(state->read_loop);
-    (void)err;
-    AWS_ASSERT(!err);
+    AWS_FATAL_ASSERT(!err);
 
     if (state->loop_setup == DIFFERENT_EVENT_LOOPS) {
         state->write_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-        AWS_ASSERT(state->write_loop);
+        AWS_FATAL_ASSERT(state->write_loop);
 
         err = aws_event_loop_run(state->write_loop);
-        AWS_ASSERT(!err);
+        AWS_FATAL_ASSERT(!err);
     } else {
         state->write_loop = state->read_loop;
     }
 
     err = aws_pipe_init(&state->read_end, state->read_loop, &state->write_end, state->write_loop, allocator);
-    AWS_ASSERT(!err);
+    AWS_FATAL_ASSERT(!err);
 
     err = aws_mutex_init(&state->results.mutex);
-    AWS_ASSERT(!err);
+    AWS_FATAL_ASSERT(!err);
 
     err = aws_condition_variable_init(&state->results.condvar);
-    AWS_ASSERT(!err);
+    AWS_FATAL_ASSERT(!err);
 
     if (state->buffer_size > 0) {
         /* Create full src buffer, containing random content */
         err = aws_byte_buf_init(&state->buffers.src, allocator, state->buffer_size);
-        AWS_ASSERT(!err);
+        AWS_FATAL_ASSERT(!err);
 
         state->buffers.src.len = state->buffer_size;
         for (size_t i = 0; i < state->buffer_size; ++i) {
@@ -113,7 +112,7 @@ static void s_fixture_before(struct aws_allocator *allocator, void *ctx) {
 
         /* Create empty dst buffer, with zeroed out content */
         err = aws_byte_buf_init(&state->buffers.dst, allocator, state->buffer_size);
-        AWS_ASSERT(!err);
+        AWS_FATAL_ASSERT(!err);
 
         memset(state->buffers.dst.buffer, 0, state->buffers.dst.capacity);
     }
