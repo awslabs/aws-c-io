@@ -1,4 +1,5 @@
 {
+    "name": "aws-c-io",
     "upstream": [
         { "name": "aws-c-common" },
         {
