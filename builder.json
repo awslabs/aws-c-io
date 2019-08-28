@@ -1,0 +1,14 @@
+{
+    "name": "aws-c-io",
+    "upstream": [
+        { "name": "aws-c-common" },
+        {
+            "name": "s2n",
+            "targets": ["linux", "android"]
+        }
+    ],
+    "downstream": [
+        { "name": "aws-c-mqtt" },
+        { "name": "aws-c-http" }
+    ]
+}
