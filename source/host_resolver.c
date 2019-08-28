@@ -749,6 +749,9 @@ static inline int create_and_init_host_entry(
     aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&race_condition_entry);
 
     if (race_condition_entry) {
+        aws_linked_list_remove(&pending_callback->node);
+        on_host_value_removed(new_host_entry);
+
         aws_mutex_lock(&race_condition_entry->entry_lock);
         aws_linked_list_push_back(&race_condition_entry->pending_resolution_callbacks, &pending_callback->node);
 
@@ -762,9 +765,6 @@ static inline int create_and_init_host_entry(
         race_condition_entry->last_use = timestamp;
 
         aws_mutex_unlock(&race_condition_entry->entry_lock);
-
-        aws_linked_list_remove(&pending_callback->node);
-        on_host_value_removed(new_host_entry);
         aws_mutex_unlock(&default_host_resolver->host_lock);
         return AWS_OP_SUCCESS;
     }
@@ -773,6 +773,7 @@ static inline int create_and_init_host_entry(
     host_entry->keep_active = true;
 
     if (AWS_UNLIKELY(aws_lru_cache_put(&default_host_resolver->host_table, host_string_copy, host_entry))) {
+        aws_mutex_unlock(&default_host_resolver->host_lock);
         goto setup_host_entry_error;
     }
 
