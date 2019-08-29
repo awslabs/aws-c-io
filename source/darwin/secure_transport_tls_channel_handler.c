@@ -899,7 +899,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
-static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
         return NULL;
@@ -989,11 +989,11 @@ cleanup_secure_transport_ctx:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options);
 }
 

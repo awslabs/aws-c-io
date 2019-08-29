@@ -1687,7 +1687,10 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
     aws_mem_release(ctx->alloc, secure_channel_ctx);
 }
 
-struct aws_tls_ctx *s_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options, bool is_client_mode) {
+struct aws_tls_ctx *s_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options,
+    bool is_client_mode) {
     struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
     if (!secure_channel_ctx) {
         return NULL;
@@ -1830,10 +1833,10 @@ clean_up:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_ctx_new(alloc, options, false);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_ctx_new(alloc, options, true);
 }
