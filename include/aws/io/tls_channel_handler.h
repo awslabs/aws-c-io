@@ -458,13 +458,17 @@ AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handl
  * Creates a new server ctx. This ctx can be used for the lifetime of the application assuming you want the same
  * options for every incoming connection. Options will be copied.
  */
-AWS_IO_API struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options);
+AWS_IO_API struct aws_tls_ctx *aws_tls_server_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options);
 
 /**
  * Creates a new client ctx. This ctx can be used for the lifetime of the application assuming you want the same
  * options for every outgoing connection. Options will be copied.
  */
-AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options);
+AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options);
 
 /**
  * Destroys the output from aws_tls_server_ctx_new and aws_tls_client_ctx_new.
