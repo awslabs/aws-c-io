@@ -845,7 +845,7 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
 
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
-    struct aws_tls_ctx_options *options,
+    const struct aws_tls_ctx_options *options,
     s2n_mode mode) {
     struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
 
@@ -1031,10 +1031,10 @@ cleanup_s2n_ctx:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, struct aws_tls_ctx_options *options) {
+struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }
