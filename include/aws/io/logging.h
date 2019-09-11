@@ -25,7 +25,7 @@ struct aws_log_formatter;
 struct aws_log_writer;
 
 enum aws_io_log_subject {
-    AWS_LS_IO_GENERAL = 0,
+    AWS_LS_IO_GENERAL = 0x0400,
     AWS_LS_IO_EVENT_LOOP,
     AWS_LS_IO_SOCKET,
     AWS_LS_IO_SOCKET_HANDLER,
