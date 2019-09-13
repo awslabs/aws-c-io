@@ -27,6 +27,7 @@ struct task_args {
     bool was_in_thread;
     uint64_t thread_id;
     struct aws_event_loop *loop;
+    struct aws_event_loop_group *el_group;
     enum aws_task_status status;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
@@ -1048,3 +1049,61 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
+
+#define TEST_CPU_COUNT 8
+
+static void s_async_shutdown_complete_callback(void *user_data) {
+
+    struct task_args *args = user_data;
+
+    aws_mutex_lock(&args->mutex);
+    args->thread_id = aws_thread_current_thread_id();
+    args->invoked = true;
+    aws_mutex_unlock((&args->mutex));
+    aws_condition_variable_notify_one(&args->condition_variable);
+}
+
+static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+
+    struct task_args *args = user_data;
+
+    aws_event_loop_group_cleanup_async(args->el_group, s_async_shutdown_complete_callback, user_data);
+}
+
+static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *allocator, void *ctx) {
+
+    (void)ctx;
+    struct aws_event_loop_group event_loop_group;
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, TEST_CPU_COUNT));
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
+
+    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                  .mutex = AWS_MUTEX_INIT,
+                                  .invoked = false,
+                                  .was_in_thread = false,
+                                  .status = -1,
+                                  .loop = event_loop,
+                                  .el_group = &event_loop_group,
+                                  .thread_id = 0};
+
+    struct aws_task task;
+    aws_task_init(&task, s_async_shutdown_task, &task_args, "async elg shutdown invoked from an event loop thread");
+
+    /* Test "future" tasks */
+    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+
+    uint64_t now;
+    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+    aws_event_loop_schedule_task_future(event_loop, &task, now);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+    ASSERT_TRUE(task_args.invoked);
+    aws_mutex_unlock(&task_args.mutex);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_setup_and_shutdown_async, test_event_loop_group_setup_and_shutdown_async)
