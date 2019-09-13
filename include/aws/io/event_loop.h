@@ -359,7 +359,7 @@ void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
  */
 AWS_IO_API
 void aws_event_loop_group_cleanup_async(
-    struct aws_event_loop_group *event_loop,
+    struct aws_event_loop_group *el_group,
     aws_event_loop_group_cleanup_complete_fn completion_callback,
     void *user_data);
 

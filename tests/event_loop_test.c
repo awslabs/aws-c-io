@@ -1063,6 +1063,7 @@ static void s_async_shutdown_complete_callback(void *user_data) {
 
 static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     (void)task;
+    (void)status;
 
     struct task_args *args = user_data;
 
