@@ -1050,8 +1050,6 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
-#define TEST_CPU_COUNT 8
-
 static void s_async_shutdown_complete_callback(void *user_data) {
 
     struct task_args *args = user_data;
@@ -1075,7 +1073,7 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
 
     (void)ctx;
     struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, TEST_CPU_COUNT));
+    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
 
