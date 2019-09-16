@@ -720,17 +720,12 @@ static int s_parse_protocol_preferences(
 }
 
 static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash table */
+static struct aws_event_loop_local_object s_tl_cleanup_object;
 
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;
 
     aws_tls_clean_up_thread_local_state();
-}
-
-static void s_on_tl_cleanup_marker_removed(struct aws_event_loop_local_object *cleanup_marker) {
-    struct aws_allocator *allocator = cleanup_marker->object;
-
-    aws_mem_release(allocator, cleanup_marker);
 }
 
 static int s_s2n_tls_channel_handler_schedule_tl_cleanup(struct aws_channel_slot *slot) {
@@ -741,14 +736,12 @@ static int s_s2n_tls_channel_handler_schedule_tl_cleanup(struct aws_channel_slot
 
     if (aws_channel_fetch_local_object(channel, &s_tl_cleanup_key, &existing_marker)) {
         /* Doesn't exist in event loop table: add it and add the at-exit cleanup callback */
-        struct aws_event_loop_local_object *cleanup_marker =
-            aws_mem_calloc(slot->alloc, 1, sizeof(struct aws_event_loop_local_object));
-        cleanup_marker->key = &s_tl_cleanup_key;
-        cleanup_marker->object = slot->alloc;
-        cleanup_marker->on_object_removed = s_on_tl_cleanup_marker_removed;
+        AWS_ZERO_STRUCT(s_tl_cleanup_object);
+        s_tl_cleanup_object.key = &s_tl_cleanup_key;
+        s_tl_cleanup_object.object = NULL;
+        s_tl_cleanup_object.on_object_removed = NULL;
 
-        if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, cleanup_marker)) {
-            aws_mem_release(slot->alloc, cleanup_marker);
+        if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, &s_tl_cleanup_object)) {
             return AWS_OP_ERR;
         }
 
