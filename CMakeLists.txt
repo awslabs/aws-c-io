@@ -205,8 +205,14 @@ aws_prepare_shared_lib_exports(${CMAKE_PROJECT_NAME})
 install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io" COMPONENT Development)
 install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing" COMPONENT Development)
 
+if (BUILD_SHARED_LIBS)
+   set (TARGET_DIR "shared")
+else()
+   set (TARGET_DIR "static")
+endif()
+
 install(EXPORT "${CMAKE_PROJECT_NAME}-targets"
-        DESTINATION "${LIBRARY_DIRECTORY}/${CMAKE_PROJECT_NAME}/cmake/"
+        DESTINATION "${LIBRARY_DIRECTORY}/${CMAKE_PROJECT_NAME}/cmake/${TARGET_DIR}"
         NAMESPACE AWS::
         COMPONENT Development)
 
