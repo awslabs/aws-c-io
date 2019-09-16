@@ -21,7 +21,6 @@
 #include <aws/common/thread.h>
 
 #include <aws/io/logging.h>
-#include <aws/io/tls_channel_handler.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
@@ -724,6 +723,4 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* set back to 0. This should be updated again in destroy, right before task cancelation happens. */
     aws_atomic_store_int(&impl->thread_id, (size_t)0);
-
-    aws_tls_clean_up_thread_local_state();
 }

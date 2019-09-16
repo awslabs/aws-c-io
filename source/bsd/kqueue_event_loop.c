@@ -16,7 +16,6 @@
 #include <aws/io/event_loop.h>
 
 #include <aws/io/logging.h>
-#include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
@@ -960,6 +959,4 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* reset to 0. This should be updated again during destroy before tasks are canceled. */
     aws_atomic_store_int(&impl->thread_id, 0);
-
-    aws_tls_clean_up_thread_local_state();
 }

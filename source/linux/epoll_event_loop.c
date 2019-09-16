@@ -22,7 +22,6 @@
 #include <aws/common/thread.h>
 
 #include <aws/io/logging.h>
-#include <aws/io/tls_channel_handler.h>
 
 #include <sys/epoll.h>
 
@@ -651,6 +650,4 @@ static void s_main_loop(void *args) {
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
     /* set thread id back to 0. This should be updated again in destroy, before tasks are canceled. */
     aws_atomic_store_int(&epoll_loop->thread_id, (size_t)0);
-
-    aws_tls_clean_up_thread_local_state();
 }

@@ -15,11 +15,13 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/task_scheduler.h>
+#include <aws/common/thread.h>
 
 #include <errno.h>
 #include <inttypes.h>
@@ -717,6 +719,45 @@ static int s_parse_protocol_preferences(
     return AWS_OP_SUCCESS;
 }
 
+static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash table */
+
+static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
+    (void)user_data;
+
+    aws_tls_clean_up_thread_local_state();
+}
+
+static void s_on_tl_cleanup_marker_removed(struct aws_event_loop_local_object *cleanup_marker) {
+    struct aws_allocator *allocator = cleanup_marker->object;
+
+    aws_mem_release(allocator, cleanup_marker);
+}
+
+static int s_s2n_tls_channel_handler_schedule_tl_cleanup(struct aws_channel_slot *slot) {
+    struct aws_channel *channel = slot->channel;
+
+    struct aws_event_loop_local_object existing_marker;
+    AWS_ZERO_STRUCT(existing_marker);
+
+    if (aws_channel_fetch_local_object(channel, &s_tl_cleanup_key, &existing_marker)) {
+        /* Doesn't exist in event loop table: add it and add the at-exit cleanup callback */
+        struct aws_event_loop_local_object *cleanup_marker =
+            aws_mem_calloc(slot->alloc, 1, sizeof(struct aws_event_loop_local_object));
+        cleanup_marker->key = &s_tl_cleanup_key;
+        cleanup_marker->object = slot->alloc;
+        cleanup_marker->on_object_removed = s_on_tl_cleanup_marker_removed;
+
+        if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, cleanup_marker)) {
+            aws_mem_release(slot->alloc, cleanup_marker);
+            return AWS_OP_ERR;
+        }
+
+        aws_thread_current_at_exit(s_aws_cleanup_s2n_thread_local_state, NULL);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static struct aws_channel_handler *s_new_tls_handler(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
@@ -804,6 +845,10 @@ static struct aws_channel_handler *s_new_tls_handler(
             s2n_strerror(s2n_errno, "EN"),
             s2n_strerror_debug(s2n_errno, "EN"));
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+        goto cleanup_conn;
+    }
+
+    if (s_s2n_tls_channel_handler_schedule_tl_cleanup(slot)) {
         goto cleanup_conn;
     }
 
