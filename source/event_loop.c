@@ -104,10 +104,11 @@ struct aws_event_loop_group_destroy_async_data {
 
 static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
     struct aws_event_loop_group_destroy_async_data *completion_data = thread_data;
+    void *user_data = completion_data->user_data;
+
+    aws_thread_current_at_exit(completion_data->completion_callback, user_data);
 
     aws_event_loop_group_clean_up(completion_data->el_group);
-
-    completion_data->completion_callback(completion_data->user_data);
 
     aws_mem_release(completion_data->allocator, thread_data);
 }
