@@ -280,7 +280,7 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
  * be active. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
  * connections and channels have finished shutting down.
  */
-AWS_IO_API int aws_server_bootstrap_destroy_socket_listener(
+AWS_IO_API void aws_server_bootstrap_destroy_socket_listener(
     struct aws_server_bootstrap *bootstrap,
     struct aws_socket *listener);
 

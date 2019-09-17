@@ -422,8 +422,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &outgoing_args));
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
-        local_server_tester.server_bootstrap, local_server_tester.listener));
+    aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
 
@@ -511,8 +510,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, incoming_args.error_code);
     ASSERT_TRUE(
         AWS_IO_SOCKET_CLOSED == outgoing_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == outgoing_args.error_code);
-    ASSERT_SUCCESS(aws_server_bootstrap_destroy_socket_listener(
-        local_server_tester.server_bootstrap, local_server_tester.listener));
+    aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
 

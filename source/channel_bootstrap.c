@@ -1395,13 +1395,12 @@ struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
         user_data);
 }
 
-int aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
+void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
     struct server_connection_args *server_connection_args =
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     aws_event_loop_schedule_task_now(listener->event_loop, &server_connection_args->listener_destroy_task);
-    return AWS_OP_SUCCESS;
 }
 
 int aws_server_bootstrap_set_alpn_callback(
