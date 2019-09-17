@@ -188,12 +188,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         s_default_ca_file);
 }
 
-void aws_tls_clean_up_thread_local_state(void) {
-    /* if you're wondering why this function exists, this is why.... s2n_cleanup() cleans up some allocated
-     * memory in thread local state (sigh.....). */
-    s2n_cleanup();
-}
-
 void aws_tls_clean_up_static_state(void) {
     s2n_cleanup();
 
@@ -720,27 +714,33 @@ static int s_parse_protocol_preferences(
 }
 
 static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash table */
-static struct aws_event_loop_local_object s_tl_cleanup_object;
+
+/*
+ * This local object is added to the table of every event loop that has a (s2n) tls connection
+ * added to it at some point in time
+ */
+static struct aws_event_loop_local_object s_tl_cleanup_object = {.key = &s_tl_cleanup_key,
+                                                                 .object = NULL,
+                                                                 .on_object_removed = NULL};
 
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;
 
-    aws_tls_clean_up_thread_local_state();
+    s2n_cleanup();
 }
 
-static int s_s2n_tls_channel_handler_schedule_tl_cleanup(struct aws_channel_slot *slot) {
+/* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
+static int s_s2n_tls_channel_handler_schedule_thread_local_cleanup(struct aws_channel_slot *slot) {
     struct aws_channel *channel = slot->channel;
 
     struct aws_event_loop_local_object existing_marker;
     AWS_ZERO_STRUCT(existing_marker);
 
+    /*
+     * Check whether another s2n_tls_channel_handler has already scheduled the cleanup task.
+     */
     if (aws_channel_fetch_local_object(channel, &s_tl_cleanup_key, &existing_marker)) {
         /* Doesn't exist in event loop table: add it and add the at-exit cleanup callback */
-        AWS_ZERO_STRUCT(s_tl_cleanup_object);
-        s_tl_cleanup_object.key = &s_tl_cleanup_key;
-        s_tl_cleanup_object.object = NULL;
-        s_tl_cleanup_object.on_object_removed = NULL;
-
         if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, &s_tl_cleanup_object)) {
             return AWS_OP_ERR;
         }
@@ -841,7 +841,7 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_conn;
     }
 
-    if (s_s2n_tls_channel_handler_schedule_tl_cleanup(slot)) {
+    if (s_s2n_tls_channel_handler_schedule_thread_local_cleanup(slot)) {
         goto cleanup_conn;
     }
 
