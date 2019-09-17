@@ -115,6 +115,8 @@ struct aws_event_loop_group {
     struct aws_atomic_var current_index;
 };
 
+typedef void(aws_event_loop_group_cleanup_complete_fn)(void *user_data);
+
 AWS_EXTERN_C_BEGIN
 
 #ifdef AWS_USE_IO_COMPLETION_PORTS
@@ -348,6 +350,18 @@ int aws_event_loop_group_default_init(
  */
 AWS_IO_API
 void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
+
+/**
+ * Asynchronously invokes the cleanup() fn for the event loop group.
+ * Spawns a background thread to run aws_event_loop_group_cleanup().
+ * When the cleanup function completes, the completion callback is invoked with the supplied user data
+ * Used in complex cases where the cleanup call can happen on one of the event loop group's threads.
+ */
+AWS_IO_API
+void aws_event_loop_group_cleanup_async(
+    struct aws_event_loop_group *el_group,
+    aws_event_loop_group_cleanup_complete_fn completion_callback,
+    void *user_data);
 
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);

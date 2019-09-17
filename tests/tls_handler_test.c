@@ -987,10 +987,10 @@ struct shutdown_listener_tester {
 static void s_shutdown_listener_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)status;
     struct shutdown_listener_tester *tester = arg;
+    AWS_FATAL_ASSERT(aws_socket_close(&tester->client_socket) == AWS_OP_SUCCESS);
     /* destroy the listener */
     aws_server_bootstrap_destroy_socket_listener(tester->server_bootstrap, tester->listener);
     aws_mem_release(tester->outgoing_args->allocator, task);
-    AWS_FATAL_ASSERT(aws_socket_close(&tester->client_socket) == AWS_OP_SUCCESS);
 }
 
 static void s_tester_client_connection_established_fool(struct aws_socket *socket, int error_code, void *user_data) {
