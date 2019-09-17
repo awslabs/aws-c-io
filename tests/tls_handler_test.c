@@ -1044,7 +1044,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     shutdown_tester->outgoing_args = &outgoing_args;
 
     /* Use a raw aws_socket for the client, instead of a full-blown TLS channel.
-     * This lets us disconnect before the client can respond to the TLS handshake. */
+     * This lets us hang up on the server, instead of automatically going through with proper TLS negotiation */
     ASSERT_SUCCESS(aws_socket_init(&shutdown_tester->client_socket, allocator, &local_server_tester.socket_options));
 
     /* Upon connecting, immediately close the socket */
