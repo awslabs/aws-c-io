@@ -36,57 +36,6 @@
 #define MAX_HOST_RESOLVER_ENTRIES 64
 #define DEFAULT_DNS_TTL 30
 
-struct thread_local_shutdown_task_data {
-    struct aws_condition_variable *condition_variable;
-    struct aws_mutex *mutex;
-    bool invoked;
-};
-
-static bool s_tl_cleanup_predicate(void *arg) {
-    struct thread_local_shutdown_task_data *shutdown_task_data = arg;
-    return shutdown_task_data->invoked;
-}
-
-static void s_handle_thread_local_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
-    struct thread_local_shutdown_task_data *shutdown_task_data = arg;
-
-    aws_mutex_lock(shutdown_task_data->mutex);
-    aws_tls_clean_up_thread_local_state();
-    shutdown_task_data->invoked = true;
-    aws_mutex_unlock(shutdown_task_data->mutex);
-    AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "static: cleaned up thread local state.");
-    aws_condition_variable_notify_one(shutdown_task_data->condition_variable);
-}
-
-static void s_ensure_thread_local_state_is_cleaned_up(struct aws_event_loop_group *el_group) {
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
-
-    aws_mutex_lock(&mutex);
-    size_t len = aws_event_loop_group_get_loop_count(el_group);
-    for (size_t i = 0; i < len; ++i) {
-        struct aws_event_loop *el = aws_event_loop_group_get_loop_at(el_group, i);
-
-        struct thread_local_shutdown_task_data thread_local_shutdown = {
-            .mutex = &mutex,
-            .condition_variable = &condition_variable,
-            .invoked = false,
-        };
-
-        struct aws_task task = {
-            .fn = s_handle_thread_local_cleanup_task,
-            .arg = &thread_local_shutdown,
-        };
-
-        AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "static: scheduling thread local cleanup.");
-        aws_event_loop_schedule_task_now(el, &task);
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_tl_cleanup_predicate, &thread_local_shutdown);
-    }
-    aws_mutex_unlock(&mutex);
-}
-
 void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
@@ -154,11 +103,6 @@ int aws_client_bootstrap_set_alpn_callback(
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-
-    /* if destroy is being called, the user intends to not use the bootstrap anymore
-     * so we clean up the thread local state while the event loop thread is
-     * still alive */
-    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     s_client_bootstrap_release(bootstrap);
 }
 
@@ -918,7 +862,6 @@ void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
      * so we clean up the thread local state while the event loop thread is
      * still alive */
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-    s_ensure_thread_local_state_is_cleaned_up(bootstrap->event_loop_group);
     s_server_bootstrap_release(bootstrap);
 }
 

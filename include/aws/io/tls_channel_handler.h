@@ -401,11 +401,6 @@ AWS_IO_API int aws_tls_connection_options_set_alpn_list(
 /********************************* TLS context and state management *********************************/
 
 /**
- * Cleans up any lazily initialized thread local state for the tls implementation.
- */
-AWS_IO_API void aws_tls_clean_up_thread_local_state(void);
-
-/**
  * Returns true if alpn is available in the underlying tls implementation.
  * This function should always be called before setting an alpn list.
  */
