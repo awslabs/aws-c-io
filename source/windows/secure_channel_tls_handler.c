@@ -53,8 +53,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
 }
 
-void aws_tls_clean_up_thread_local_state(void) {}
-
 void aws_tls_clean_up_static_state(void) {}
 
 struct secure_channel_ctx {
