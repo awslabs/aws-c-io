@@ -939,6 +939,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS, "Failed to set ca_path %s\n", (const char *)aws_string_bytes(options->ca_path));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
@@ -951,6 +953,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
@@ -963,6 +966,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
