@@ -1067,7 +1067,7 @@ static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum a
 
     struct task_args *args = user_data;
 
-    aws_event_loop_group_cleanup_async(args->el_group, s_async_shutdown_complete_callback, user_data);
+    aws_event_loop_group_clean_up_async(args->el_group, s_async_shutdown_complete_callback, user_data);
 }
 
 static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *allocator, void *ctx) {
