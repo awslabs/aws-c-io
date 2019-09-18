@@ -113,7 +113,7 @@ static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
     aws_mem_release(completion_data->allocator, thread_data);
 }
 
-void aws_event_loop_group_cleanup_async(
+void aws_event_loop_group_clean_up_async(
     struct aws_event_loop_group *el_group,
     aws_event_loop_group_cleanup_complete_fn completion_callback,
     void *user_data) {
