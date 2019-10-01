@@ -744,9 +744,16 @@ static inline int s_new_client_channel(
             goto error;
         }
     } else {
+        /* ensure that the pipe/domain socket name will fit in the endpoint address */
+        const size_t host_name_len = strlen(host_name);
+        if (host_name_len >= AWS_ADDRESS_MAX_LEN) {
+            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+            goto error;
+        }
+
         struct aws_socket_endpoint endpoint;
         AWS_ZERO_STRUCT(endpoint);
-        memcpy(endpoint.address, host_name, strlen(host_name));
+        memcpy(endpoint.address, host_name, host_name_len);
         endpoint.port = 0;
 
         struct aws_socket *outgoing_socket = aws_mem_acquire(bootstrap->allocator, sizeof(struct aws_socket));
