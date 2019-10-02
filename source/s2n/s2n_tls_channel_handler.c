@@ -491,13 +491,12 @@ static int s_s2n_handler_process_read_message(
          * SUCCESS.
          */
         if (read == 0) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS,
-                "id=%p: Alert code %d",
-                (void *)handler,
-                s2n_connection_get_alert(s2n_handler->connection));
+            int alert_code = s2n_connection_get_alert(s2n_handler->connection);
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Alert code %d", (void *)handler, alert_code);
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+
+            int error_code = alert_code == 0 ? AWS_IO_SOCKET_CLOSED : AWS_ERROR_SUCCESS;
+            aws_channel_shutdown(slot->channel, error_code);
             return AWS_OP_SUCCESS;
         }
 
