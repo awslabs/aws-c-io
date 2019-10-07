@@ -23,7 +23,6 @@ static int s_test_home_directory_not_null(struct aws_allocator *allocator, void 
     (void)ctx;
 
     struct aws_string *home_directory = aws_get_home_directory(allocator);
-
     ASSERT_TRUE(home_directory != NULL);
 
     aws_string_destroy(home_directory);
