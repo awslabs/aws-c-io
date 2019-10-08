@@ -481,8 +481,12 @@ static void resolver_thread_fn(void *arg) {
         last_updated = host_entry->last_use;
 
         /* resolve and then process each record */
-        int err_code = host_entry->resolution_config.impl(
-            host_entry->allocator, host_entry->host_name, &address_list, host_entry->resolution_config.impl_data);
+        int err_code = AWS_ERROR_SUCCESS;
+        if (host_entry->resolution_config.impl(
+                host_entry->allocator, host_entry->host_name, &address_list, host_entry->resolution_config.impl_data)) {
+
+            err_code = aws_last_error();
+        }
         uint64_t timestamp = 0;
         aws_sys_clock_get_ticks(&timestamp);
         uint64_t new_expiry = timestamp + (host_entry->resolution_config.max_ttl * NS_PER_SEC);
