@@ -20,6 +20,8 @@
 #include <aws/common/linked_list.h>
 #include <aws/io/exports.h>
 
+#define AWS_C_IO_PACKAGE_ID 1
+
 struct aws_io_handle {
     union {
         int fd;
@@ -95,7 +97,7 @@ struct aws_io_message {
 typedef int(aws_io_clock_fn)(uint64_t *timestamp);
 
 enum aws_io_errors {
-    AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = 0x0400,
+    AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT = AWS_C_IO_PACKAGE_ID * AWS_ERROR_ENUM_STRIDE,
     AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE,
     AWS_IO_CHANNEL_READ_WOULD_EXCEED_WINDOW,
     AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED,
@@ -139,7 +141,7 @@ enum aws_io_errors {
     AWS_IO_SHARED_LIBRARY_LOAD_FAILURE,
     AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
 
-    AWS_IO_ERROR_END_RANGE = 0x07FF
+    AWS_IO_ERROR_END_RANGE = (AWS_C_IO_PACKAGE_ID + 1 ) * AWS_ERROR_ENUM_STRIDE - 1
 };
 
 AWS_EXTERN_C_BEGIN

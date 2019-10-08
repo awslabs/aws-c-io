@@ -17,6 +17,7 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/statistics.h>
 #include <aws/common/task_scheduler.h>
 
 enum aws_channel_direction {
@@ -129,6 +130,8 @@ struct aws_channel_handler {
     struct aws_channel_handler_vtable *vtable;
     struct aws_allocator *alloc;
     void *impl;
+
+
 };
 
 extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
