@@ -23,6 +23,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/statistics.h>
 
 #include <Windows.h>
 
@@ -97,6 +98,7 @@ struct secure_channel_handler {
     uint8_t buffered_read_out_data[READ_OUT_SIZE + KB_1];
     struct aws_byte_buf buffered_read_out_data_buf;
     struct aws_channel_task sequential_task_storage;
+    struct aws_crt_statistics_tls stats;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
@@ -1519,6 +1521,16 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
     aws_mem_release(handler->alloc, sc_handler);
 }
 
+static void s_reset_statistics(struct aws_channel_handler *handler) {
+    (void)handler;
+}
+
+static void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    aws_array_list_push_back(stats, &sc_handler->stats);
+}
+
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation", (void *)handler);
 
@@ -1530,6 +1542,11 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
         return err;
+    }
+
+    sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    if (aws_channel_current_clock_time(handler->slot->channel, &sc_handler->stats.handshake_start_ms)) {
+        return AWS_OP_ERR;
     }
 
     aws_channel_task_init(
@@ -1551,15 +1568,15 @@ struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *hand
     return sc_handler->server_name;
 }
 
-static struct aws_channel_handler_vtable s_handler_vtable = {
-    .destroy = s_handler_destroy,
-    .process_read_message = s_process_read_message,
-    .process_write_message = s_process_write_message,
-    .shutdown = s_handler_shutdown,
-    .increment_read_window = s_increment_read_window,
-    .initial_window_size = s_initial_window_size,
-    .message_overhead = s_message_overhead,
-};
+static struct aws_channel_handler_vtable s_handler_vtable = {.destroy = s_handler_destroy,
+                                                             .process_read_message = s_process_read_message,
+                                                             .process_write_message = s_process_write_message,
+                                                             .shutdown = s_handler_shutdown,
+                                                             .increment_read_window = s_increment_read_window,
+                                                             .initial_window_size = s_initial_window_size,
+                                                             .message_overhead = s_message_overhead,
+                                                             .reset_statistics = s_reset_statistics,
+                                                             .append_statistics = s_append_statistics};
 
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *alloc,
@@ -1576,6 +1593,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
+
+    if (!aws_crt_statistics_tls_init(&sc_handler->stats)) {
+        aws_mem_release(alloc, sc_handler);
+        return NULL;
+    }
 
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 

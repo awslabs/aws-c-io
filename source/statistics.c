@@ -15,28 +15,34 @@
 
 #include <aws/io/statistics.h>
 
-
-int aws_statistics_set_socket_init(struct aws_statistics_set_socket *stats) {
+int aws_crt_statistics_socket_init(struct aws_crt_statistics_socket *stats) {
     AWS_ZERO_STRUCT(*stats);
-    stats->category = AWS_IO_STAT_CAT_SOCKET;
+    stats->category = AWSCRT_STAT_CAT_SOCKET;
 
     return AWS_OP_SUCCESS;
 }
 
-void aws_statistics_set_socket_cleanup(struct aws_statistics_set_socket *stats) {}
+void aws_crt_statistics_socket_cleanup(struct aws_crt_statistics_socket *stats) {
+    (void)stats;
+}
 
-void aws_statistics_set_socket_reset(struct aws_statistics_set_socket *stats) {
+void aws_crt_statistics_socket_reset(struct aws_crt_statistics_socket *stats) {
     stats->bytes_read = 0;
     stats->bytes_written = 0;
 }
 
-int aws_statistics_set_tls_init(struct aws_statistics_set_tls *stats) {
+int aws_crt_statistics_tls_init(struct aws_crt_statistics_tls *stats) {
     AWS_ZERO_STRUCT(*stats);
-    stats->category = AWS_IO_STAT_CAT_TLS;
+    stats->category = AWSCRT_STAT_CAT_TLS;
+    stats->handshake_status = AWS_MTLS_STATUS_NONE;
 
     return AWS_OP_SUCCESS;
 }
 
-void aws_statistics_set_tls_cleanup(struct aws_statistics_set_tls *stats) {}
+void aws_crt_statistics_tls_cleanup(struct aws_crt_statistics_tls *stats) {
+    (void)stats;
+}
 
-void aws_statistics_set_tls_reset(struct aws_statistics_set_tls *stats) {}
+void aws_crt_statistics_tls_reset(struct aws_crt_statistics_tls *stats) {
+    (void)stats;
+}

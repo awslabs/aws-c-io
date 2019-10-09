@@ -124,14 +124,24 @@ struct aws_channel_handler_vtable {
      * function is called.
      */
     void (*destroy)(struct aws_channel_handler *handler);
+
+    /**
+     * Directs the channel handler to reset all of the internal statistics it tracks about itself.
+     */
+    void (*reset_statistics)(struct aws_channel_handler *handler);
+
+    /**
+     * Adds a pointer to the handler's internal statistics (if they exist) to a list of statistics structures
+     * associated with the channel's handler chain.
+     */
+    void (*append_statistics)(struct aws_channel_handler *handler, struct aws_array_list *stats_list);
 };
 
 struct aws_channel_handler {
     struct aws_channel_handler_vtable *vtable;
     struct aws_allocator *alloc;
+    struct aws_channel_slot *slot;
     void *impl;
-
-
 };
 
 extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
@@ -273,6 +283,12 @@ void aws_channel_schedule_task_future(
     struct aws_channel *channel,
     struct aws_channel_task *task,
     uint64_t run_at_nanos);
+
+/**
+ * ??
+ */
+AWS_IO_API
+int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_crt_statistics_handler *handler);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use

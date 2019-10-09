@@ -17,6 +17,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/statistics.h>
 
 #include <aws/io/logging.h>
 
@@ -109,6 +110,7 @@ struct secure_transport_handler {
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
     struct aws_channel_task read_task;
+    struct aws_crt_statistics_tls stats;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
     aws_tls_on_error_fn *on_error;
@@ -478,6 +480,11 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return AWS_OP_ERR;
     }
 
+    secure_transport_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    if (aws_channel_current_clock_time(handler->slot->channel, &secure_transport_handler->stats.handshake_start_ms)) {
+        return AWS_OP_ERR;
+    }
+
     aws_channel_task_init(
         negotiation_task, s_negotiation_task, handler, "secure_transport_channel_handler_start_negotiation");
     aws_channel_schedule_task_now(secure_transport_handler->parent_slot->channel, negotiation_task);
@@ -704,6 +711,16 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     return EST_HANDSHAKE_SIZE;
 }
 
+static void s_reset_statistics(struct aws_channel_handler *handler) {
+    (void)handler;
+}
+
+static void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+
+    aws_array_list_push_back(stats, &secure_transport_handler->stats);
+}
+
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     return secure_transport_handler->protocol;
@@ -722,6 +739,8 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .increment_read_window = s_increment_read_window,
     .initial_window_size = s_initial_window_size,
     .message_overhead = s_message_overhead,
+    .reset_statistics = s_reset_statistics,
+    .append_statistics = s_append_statistics,
 };
 
 struct secure_transport_ctx {
@@ -751,12 +770,17 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
+    secure_transport_handler->handler.slot = slot;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
     secure_transport_handler->advertise_alpn_message = options->advertise_alpn_message;
     secure_transport_handler->on_data_read = options->on_data_read;
     secure_transport_handler->on_error = options->on_error;
     secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
     secure_transport_handler->user_data = options->user_data;
+
+    if (!aws_crt_statistics_tls_init(&secure_transport_handler->stats)) {
+        goto cleanup_s2n_handler;
+    }
 
     secure_transport_handler->ctx =
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);

@@ -19,6 +19,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/statistics.h>
 
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
@@ -80,6 +81,7 @@ struct s2n_handler {
     struct aws_byte_buf server_name;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     struct aws_channel_task sequential_tasks;
+    struct aws_crt_statistics_tls stats;
     void *latest_message_completion_user_data;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
@@ -325,9 +327,25 @@ static int s_s2n_handler_send(void *io_context, const uint8_t *buf, uint32_t len
 static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
     if (handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+        aws_crt_statistics_tls_cleanup(&s2n_handler->stats);
         s2n_connection_free(s2n_handler->connection);
         aws_mem_release(handler->alloc, (void *)s2n_handler);
     }
+}
+
+static void s_on_negotiation_result(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    int error_code,
+    void *user_data) {
+
+    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+    if (s2n_handler->on_negotiation_result) {
+        s2n_handler->on_negotiation_result(handler, slot, error_code, user_data);
+    }
+
+    s2n_handler->stats.handshake_status =
+        (error_code == AWS_ERROR_SUCCESS) ? AWS_MTLS_STATUS_SUCCESS : AWS_MTLS_STATUS_FAILURE;
 }
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
@@ -372,9 +390,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 }
             }
 
-            if (s2n_handler->on_negotiation_result) {
-                s2n_handler->on_negotiation_result(handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->user_data);
-            }
+            s_on_negotiation_result(handler, s2n_handler->slot, AWS_OP_SUCCESS, s2n_handler->user_data);
 
             break;
         }
@@ -400,10 +416,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
-            if (s2n_handler->on_negotiation_result) {
-                s2n_handler->on_negotiation_result(
-                    handler, s2n_handler->slot, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, s2n_handler->user_data);
-            }
+            s_on_negotiation_result(
+                handler, s2n_handler->slot, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, s2n_handler->user_data);
 
             return AWS_OP_ERR;
         }
@@ -424,6 +438,11 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+
+    s2n_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    if (aws_channel_current_clock_time(handler->slot->channel, &s2n_handler->stats.handshake_start_ms)) {
+        return AWS_OP_ERR;
+    }
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
@@ -653,6 +672,16 @@ static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *hand
     return EST_HANDSHAKE_SIZE;
 }
 
+static void s_s2n_handler_reset_statistics(struct aws_channel_handler *handler) {
+    (void)handler;
+}
+
+static void s_s2n_handler_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct s2n_handler *s2n_handler = handler->impl;
+
+    aws_array_list_push_back(stats, &s2n_handler->stats);
+}
+
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
     return s2n_handler->protocol;
@@ -671,6 +700,8 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .increment_read_window = s_s2n_handler_increment_read_window,
     .initial_window_size = s_s2n_handler_initial_window_size,
     .message_overhead = s_s2n_handler_message_overhead,
+    .reset_statistics = s_s2n_handler_reset_statistics,
+    .append_statistics = s_s2n_handler_append_statistics,
 };
 
 static int s_parse_protocol_preferences(
@@ -770,9 +801,14 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_s2n_handler;
     }
 
+    if (!aws_crt_statistics_tls_init(&s2n_handler->stats)) {
+        goto cleanup_s2n_handler;
+    }
+
     s2n_handler->handler.impl = s2n_handler;
     s2n_handler->handler.alloc = allocator;
     s2n_handler->handler.vtable = &s_handler_vtable;
+    s2n_handler->handler.slot = slot;
     s2n_handler->user_data = options->user_data;
     s2n_handler->on_data_read = options->on_data_read;
     s2n_handler->on_error = options->on_error;

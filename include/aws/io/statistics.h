@@ -18,41 +18,51 @@
 
 #include <aws/io/io.h>
 
-enum aws_io_statistics_category_type {
-    AWS_IO_STAT_CAT_SOCKET = AWS_C_IO_PACKAGE_ID * AWS_STATISTICS_CATEGORY_TYPE_STRIDE,
-    AWS_IO_STAT_CAT_TLS
+#include <aws/common/statistics.h>
+
+enum aws_crt_io_statistics_category {
+    AWSCRT_STAT_CAT_SOCKET = AWS_C_IO_PACKAGE_ID * AWS_CRT_STATISTICS_CATEGORY_STRIDE,
+    AWSCRT_STAT_CAT_TLS
 };
 
-struct aws_statistics_set_socket {
-    aws_statistics_category_t category;
+struct aws_crt_statistics_socket {
+    aws_crt_statistics_category_t category;
     uint64_t bytes_read;
     uint64_t bytes_written;
 };
 
-struct aws_statistics_set_tls {
-    aws_statistics_category_t category;
-    bool handshake_complete;
+enum aws_tls_negotiation_status {
+    AWS_MTLS_STATUS_NONE,
+    AWS_MTLS_STATUS_ONGOING,
+    AWS_MTLS_STATUS_SUCCESS,
+    AWS_MTLS_STATUS_FAILURE
+};
+
+struct aws_crt_statistics_tls {
+    aws_crt_statistics_category_t category;
+    uint64_t handshake_start_ms;
+    enum aws_tls_negotiation_status handshake_status;
 };
 
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
-int aws_statistics_set_socket_init(struct aws_statistics_set_socket *stats);
+int aws_crt_statistics_socket_init(struct aws_crt_statistics_socket *stats);
 
 AWS_IO_API
-void aws_statistics_set_socket_cleanup(struct aws_statistics_set_socket *stats);
+void aws_crt_statistics_socket_cleanup(struct aws_crt_statistics_socket *stats);
 
 AWS_IO_API
-void aws_statistics_set_socket_reset(struct aws_statistics_set_socket *stats);
+void aws_crt_statistics_socket_reset(struct aws_crt_statistics_socket *stats);
 
 AWS_IO_API
-int aws_statistics_set_tls_init(struct aws_statistics_set_tls *stats);
+int aws_crt_statistics_tls_init(struct aws_crt_statistics_tls *stats);
 
 AWS_IO_API
-void aws_statistics_set_tls_cleanup(struct aws_statistics_set_tls *stats);
+void aws_crt_statistics_tls_cleanup(struct aws_crt_statistics_tls *stats);
 
 AWS_IO_API
-void aws_statistics_set_tls_reset(struct aws_statistics_set_tls *stats);
+void aws_crt_statistics_tls_reset(struct aws_crt_statistics_tls *stats);
 
 AWS_EXTERN_C_END
 
