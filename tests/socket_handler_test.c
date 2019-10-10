@@ -57,6 +57,9 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
     tester->condition_variable = condition_variable;
+
+    aws_io_library_init(allocator);
+
     return AWS_OP_SUCCESS;
 }
 
@@ -365,15 +368,18 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &dummy_resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        s_socket_handler_test_client_setup_callback,
-        s_socket_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -484,15 +490,18 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &dummy_resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        s_socket_handler_test_client_setup_callback,
-        s_socket_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(

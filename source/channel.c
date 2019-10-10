@@ -223,7 +223,7 @@ struct aws_channel *aws_channel_new(
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
-    if (!aws_array_list_init_dynamic(
+    if (aws_array_list_init_dynamic(
             &channel->statistic_list, alloc, INITIAL_STATISTIC_LIST_SIZE, sizeof(struct aws_crt_statistics_base *))) {
         goto on_error;
     }
@@ -996,6 +996,19 @@ struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel)
     return channel->first;
 }
 
+static void s_reset_statistics(struct aws_channel *channel) {
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
+
+    struct aws_channel_slot *current_slot = channel->first;
+    while (current_slot) {
+        struct aws_channel_handler *handler = current_slot->handler;
+        if (handler != NULL && handler->vtable->reset_statistics != NULL) {
+            handler->vtable->reset_statistics(handler);
+        }
+        current_slot = current_slot->adj_right;
+    }
+}
+
 static void s_channel_gather_statistics_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     if (status != AWS_TASK_STATUS_RUN_READY) {
         return;
@@ -1035,14 +1048,7 @@ static void s_channel_gather_statistics_task(struct aws_task *task, void *arg, e
     channel->statistics_handler->vtable->process_statistics(
         channel->statistics_handler, &sample_interval, statistics_list);
 
-    current_slot = channel->first;
-    while (current_slot) {
-        struct aws_channel_handler *handler = current_slot->handler;
-        if (handler != NULL && handler->vtable->reset_statistics != NULL) {
-            handler->vtable->reset_statistics(handler);
-        }
-        current_slot = current_slot->adj_right;
-    }
+    s_reset_statistics(channel);
 
     uint64_t reschedule_interval_ns = aws_timestamp_convert(
         channel->statistics_handler->vtable->get_report_interval_ms(channel->statistics_handler),
@@ -1078,6 +1084,10 @@ int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_c
                          AWS_TIMESTAMP_MILLIS,
                          AWS_TIMESTAMP_NANOS,
                          NULL);
+
+        channel->statistics_interval_start_time_ms =
+            aws_timestamp_convert(now_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+        s_reset_statistics(channel);
 
         aws_event_loop_schedule_task_future(channel->loop, &channel->statistics_task, report_time_ns);
     }

@@ -120,8 +120,9 @@ struct client_channel_data {
 
 struct client_connection_args {
     struct aws_client_bootstrap *bootstrap;
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback;
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback;
+    aws_client_bootstrap_on_channel_event_fn *creation_callback;
+    aws_client_bootstrap_on_channel_event_fn *setup_callback;
+    aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
     struct client_channel_data channel_data;
     struct aws_socket_options outgoing_options;
     uint16_t outgoing_port;
@@ -168,7 +169,7 @@ static void s_connection_args_setup_callback(
     AWS_ASSERT(!args->setup_called);
     if (!args->setup_called) {
         AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
-        aws_client_bootstrap_on_channel_setup_fn *setup_callback = args->setup_callback;
+        aws_client_bootstrap_on_channel_event_fn *setup_callback = args->setup_callback;
         setup_callback(args->bootstrap, error_code, channel, args->user_data);
         args->setup_called = true;
         /* if setup_callback is called with an error, we will not call shutdown_callback */
@@ -189,7 +190,7 @@ static void s_connection_args_shutdown_callback(
         s_connection_args_setup_callback(args, error_code, NULL);
         return;
     }
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback = args->shutdown_callback;
+    aws_client_bootstrap_on_channel_event_fn *shutdown_callback = args->shutdown_callback;
     if (shutdown_callback) {
         shutdown_callback(args->bootstrap, error_code, channel, args->user_data);
     }
@@ -661,17 +662,20 @@ static void s_on_host_resolved(
     }
 }
 
-static inline int s_new_client_channel(
-    struct aws_client_bootstrap *bootstrap,
-    const char *host_name,
-    uint16_t port,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback,
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
-    void *user_data) {
-    AWS_ASSERT(setup_callback);
-    AWS_ASSERT(shutdown_callback);
+int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_options *options) {
+
+    struct aws_client_bootstrap *bootstrap = options->bootstrap;
+    AWS_FATAL_ASSERT(options->setup_callback);
+    AWS_FATAL_ASSERT(options->shutdown_callback);
+    AWS_FATAL_ASSERT(bootstrap);
+
+    const struct aws_socket_options *socket_options = options->socket_options;
+    AWS_FATAL_ASSERT(socket_options != NULL);
+
+    const struct aws_tls_connection_options *tls_options = options->tls_options;
+
+    AWS_FATAL_ASSERT(tls_options == NULL || socket_options->type == AWS_SOCKET_STREAM);
+    aws_io_fatal_assert_library_initialized();
 
     struct client_connection_args *client_connection_args =
         aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
@@ -680,6 +684,9 @@ static inline int s_new_client_channel(
         return AWS_OP_ERR;
     }
 
+    const char *host_name = options->host_name;
+    uint16_t port = options->port;
+
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new client channel to %s:%d",
@@ -687,22 +694,23 @@ static inline int s_new_client_channel(
         host_name,
         (int)port);
 
-    client_connection_args->user_data = user_data;
+    client_connection_args->user_data = options->user_data;
     client_connection_args->bootstrap = bootstrap;
     s_client_connection_args_acquire(client_connection_args);
-    client_connection_args->setup_callback = setup_callback;
-    client_connection_args->shutdown_callback = shutdown_callback;
-    client_connection_args->outgoing_options = *options;
+    client_connection_args->creation_callback = options->creation_callback;
+    client_connection_args->setup_callback = options->setup_callback;
+    client_connection_args->shutdown_callback = options->shutdown_callback;
+    client_connection_args->outgoing_options = *socket_options;
     client_connection_args->outgoing_port = port;
 
-    if (connection_options) {
-        if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, connection_options)) {
+    if (tls_options) {
+        if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, tls_options)) {
             goto error;
         }
         client_connection_args->channel_data.use_tls = true;
 
         client_connection_args->channel_data.on_protocol_negotiated = bootstrap->on_protocol_negotiated;
-        client_connection_args->channel_data.tls_user_data = connection_options->user_data;
+        client_connection_args->channel_data.tls_user_data = tls_options->user_data;
 
         /* in order to honor any callbacks a user may have installed on their tls_connection_options,
          * we need to wrap them if they were set.*/
@@ -710,25 +718,25 @@ static inline int s_new_client_channel(
             client_connection_args->channel_data.tls_options.advertise_alpn_message = true;
         }
 
-        if (connection_options->on_data_read) {
-            client_connection_args->channel_data.user_on_data_read = connection_options->on_data_read;
+        if (tls_options->on_data_read) {
+            client_connection_args->channel_data.user_on_data_read = tls_options->on_data_read;
             client_connection_args->channel_data.tls_options.on_data_read = s_tls_client_on_data_read;
         }
 
-        if (connection_options->on_error) {
-            client_connection_args->channel_data.user_on_error = connection_options->on_error;
+        if (tls_options->on_error) {
+            client_connection_args->channel_data.user_on_error = tls_options->on_error;
             client_connection_args->channel_data.tls_options.on_error = s_tls_client_on_error;
         }
 
-        if (connection_options->on_negotiation_result) {
-            client_connection_args->channel_data.user_on_negotiation_result = connection_options->on_negotiation_result;
+        if (tls_options->on_negotiation_result) {
+            client_connection_args->channel_data.user_on_negotiation_result = tls_options->on_negotiation_result;
         }
 
         client_connection_args->channel_data.tls_options.on_negotiation_result = s_tls_client_on_negotiation_result;
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
-    if (options->domain != AWS_SOCKET_LOCAL) {
+    if (socket_options->domain != AWS_SOCKET_LOCAL) {
         client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
 
         if (!client_connection_args->host_name) {
@@ -762,7 +770,7 @@ static inline int s_new_client_channel(
             goto error;
         }
 
-        if (aws_socket_init(outgoing_socket, bootstrap->allocator, options)) {
+        if (aws_socket_init(outgoing_socket, bootstrap->allocator, socket_options)) {
             aws_mem_release(bootstrap->allocator, outgoing_socket);
             goto error;
         }
@@ -789,39 +797,6 @@ error:
         s_client_connection_args_release(client_connection_args);
     }
     return AWS_OP_ERR;
-}
-
-int aws_client_bootstrap_new_tls_socket_channel(
-    struct aws_client_bootstrap *bootstrap,
-    const char *host_name,
-    uint16_t port,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback,
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
-    void *user_data) {
-    AWS_ASSERT(connection_options);
-    AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
-    aws_io_fatal_assert_library_initialized();
-
-    if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-    }
-
-    return s_new_client_channel(
-        bootstrap, host_name, port, options, connection_options, setup_callback, shutdown_callback, user_data);
-}
-
-int aws_client_bootstrap_new_socket_channel(
-    struct aws_client_bootstrap *bootstrap,
-    const char *host_name,
-    uint16_t port,
-    const struct aws_socket_options *options,
-    aws_client_bootstrap_on_channel_setup_fn *setup_callback,
-    aws_client_bootstrap_on_channel_shutdown_fn *shutdown_callback,
-    void *user_data) {
-    return s_new_client_channel(
-        bootstrap, host_name, port, options, NULL, setup_callback, shutdown_callback, user_data);
 }
 
 void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {

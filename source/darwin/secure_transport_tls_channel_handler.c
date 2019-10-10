@@ -778,7 +778,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
     secure_transport_handler->user_data = options->user_data;
 
-    if (!aws_crt_statistics_tls_init(&secure_transport_handler->stats)) {
+    if (aws_crt_statistics_tls_init(&secure_transport_handler->stats)) {
         goto cleanup_s2n_handler;
     }
 

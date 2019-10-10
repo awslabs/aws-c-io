@@ -801,7 +801,7 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_s2n_handler;
     }
 
-    if (!aws_crt_statistics_tls_init(&s2n_handler->stats)) {
+    if (aws_crt_statistics_tls_init(&s2n_handler->stats)) {
         goto cleanup_s2n_handler;
     }
 

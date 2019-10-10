@@ -1595,7 +1595,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->handler.vtable = &s_handler_vtable;
     sc_handler->handler.slot = slot;
 
-    if (!aws_crt_statistics_tls_init(&sc_handler->stats)) {
+    if (aws_crt_statistics_tls_init(&sc_handler->stats)) {
         aws_mem_release(alloc, sc_handler);
         return NULL;
     }

@@ -84,6 +84,8 @@ static int s_tls_client_opt_tester_init(
     struct tls_opt_tester *tester,
     struct aws_byte_cursor server_name) {
 
+    aws_io_library_init(allocator);
+
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
     aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "./unittests.crt");
 
@@ -448,15 +450,19 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
@@ -608,15 +614,18 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        (const char *)aws_string_bytes(host_name),
-        443,
-        &options,
-        &tls_client_conn_options,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = (const char *)aws_string_bytes(host_name);
+    channel_options.port = 443;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &tls_client_conn_options;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
@@ -749,15 +758,18 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        host_name,
-        port,
-        &options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = host_name;
+    channel_options.port = port;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* Wait for setup to complete */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -827,15 +839,19 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        (const char *)aws_string_bytes(host_name),
-        443,
-        &options,
-        &tls_client_conn_options,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = (const char *)aws_string_bytes(host_name);
+    channel_options.port = 443;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &tls_client_conn_options;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
@@ -908,17 +924,21 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     struct aws_client_bootstrap *client_bootstrap =
         aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
 
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
@@ -938,15 +958,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     outgoing_args.shutdown_finished = false;
     incoming_args.tls_negotiated = false;
     incoming_args.shutdown_finished = false;
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
