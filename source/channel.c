@@ -302,6 +302,8 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 
     aws_array_list_clean_up(&channel->statistic_list);
 
+    aws_channel_set_statistics_handler(channel, NULL);
+
     aws_mem_release(channel->alloc, channel);
 }
 
@@ -1079,11 +1081,9 @@ int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_c
         }
 
         uint64_t report_time_ns =
-            now_ns + aws_timestamp_convert(
-                         channel->statistics_handler->vtable->get_report_interval_ms(channel->statistics_handler),
-                         AWS_TIMESTAMP_MILLIS,
-                         AWS_TIMESTAMP_NANOS,
-                         NULL);
+            now_ns +
+            aws_timestamp_convert(
+                handler->vtable->get_report_interval_ms(handler), AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
         channel->statistics_interval_start_time_ms =
             aws_timestamp_convert(now_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);

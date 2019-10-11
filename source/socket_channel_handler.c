@@ -361,7 +361,8 @@ static void s_reset_statistics(struct aws_channel_handler *handler) {
 void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats_list) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    aws_array_list_push_back(stats_list, &socket_handler->stats);
+    void *stats_base = &socket_handler->stats;
+    aws_array_list_push_back(stats_list, &stats_base);
 }
 
 static struct aws_channel_handler_vtable s_vtable = {

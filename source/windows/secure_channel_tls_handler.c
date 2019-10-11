@@ -1528,7 +1528,8 @@ static void s_reset_statistics(struct aws_channel_handler *handler) {
 static void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    aws_array_list_push_back(stats, &sc_handler->stats);
+    void *stats_base = &sc_handler->stats;
+    aws_array_list_push_back(stats, &stats_base);
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {

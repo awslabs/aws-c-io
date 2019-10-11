@@ -150,6 +150,9 @@ add_test_case(test_input_stream_file_seek_end)
 add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
 
+add_test_case(open_channel_statistics_test)
+add_test_case(tls_channel_statistics_test)
+
 add_test_case(shared_library_open_failure)
 
 if (BUILD_SHARED_LIBS)

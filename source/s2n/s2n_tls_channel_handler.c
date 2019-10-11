@@ -679,7 +679,8 @@ static void s_s2n_handler_reset_statistics(struct aws_channel_handler *handler) 
 static void s_s2n_handler_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct s2n_handler *s2n_handler = handler->impl;
 
-    aws_array_list_push_back(stats, &s2n_handler->stats);
+    void *stats_base = &s2n_handler->stats;
+    aws_array_list_push_back(stats, &stats_base);
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {

@@ -180,16 +180,27 @@ static void s_connection_args_setup_callback(
     }
 }
 
+static void s_connection_args_creation_callback(struct client_connection_args *args, struct aws_channel *channel) {
+
+    AWS_FATAL_ASSERT(channel != NULL);
+
+    if (args->creation_callback) {
+        args->creation_callback(args->bootstrap, AWS_ERROR_SUCCESS, channel, args->user_data);
+    }
+}
+
 static void s_connection_args_shutdown_callback(
     struct client_connection_args *args,
     int error_code,
     struct aws_channel *channel) {
+
     if (!args->setup_called) {
         /* if setup_callback was not called yet, an error occurred, ensure we tell the user *SOMETHING* */
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_connection_args_setup_callback(args, error_code, NULL);
         return;
     }
+
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback = args->shutdown_callback;
     if (shutdown_callback) {
         shutdown_callback(args->bootstrap, error_code, channel, args->user_data);
@@ -504,6 +515,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         if (connection_args->failed_count == connection_args->addresses_count) {
             s_connection_args_setup_callback(connection_args, error_code, NULL);
         }
+    } else {
+        s_connection_args_creation_callback(connection_args, connection_args->channel_data.channel);
     }
 }
 

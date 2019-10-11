@@ -718,7 +718,8 @@ static void s_reset_statistics(struct aws_channel_handler *handler) {
 static void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    aws_array_list_push_back(stats, &secure_transport_handler->stats);
+    void *stats_base = &secure_transport_handler->stats;
+    aws_array_list_push_back(stats, &stats_base);
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
