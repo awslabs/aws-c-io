@@ -133,10 +133,10 @@ static int s_tls_test_arg_init(
     struct aws_allocator *allocator,
     struct tls_test_args *test_arg,
     bool server,
-    struct tls_common_tester *c_tester) {
+    struct tls_common_tester *tls_c_tester) {
     AWS_ZERO_STRUCT(*test_arg);
-    test_arg->mutex = &c_tester->mutex;
-    test_arg->condition_variable = &c_tester->condition_variable;
+    test_arg->mutex = &tls_c_tester->mutex;
+    test_arg->condition_variable = &tls_c_tester->condition_variable;
     test_arg->allocator = allocator;
     test_arg->server = server;
     return AWS_OP_SUCCESS;
@@ -309,7 +309,7 @@ static int s_tls_local_server_tester_init(
     struct aws_allocator *allocator,
     struct tls_local_server_tester *tester,
     struct tls_test_args *args,
-    struct tls_common_tester *c_tester) {
+    struct tls_common_tester *tls_c_tester) {
     AWS_ZERO_STRUCT(*tester);
     ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
@@ -318,7 +318,7 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
     sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &tls_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
     tester->listener = aws_server_bootstrap_new_tls_socket_listener(
         tester->server_bootstrap,
@@ -350,11 +350,11 @@ struct tls_test_rw_args {
 
 static int s_tls_rw_args_init(
     struct tls_test_rw_args *args,
-    struct tls_common_tester *c_tester,
+    struct tls_common_tester *tls_c_tester,
     struct aws_byte_buf received_message) {
     AWS_ZERO_STRUCT(*args);
-    args->mutex = &c_tester->mutex;
-    args->condition_variable = &c_tester->condition_variable;
+    args->mutex = &tls_c_tester->mutex;
+    args->condition_variable = &tls_c_tester->condition_variable;
     args->received_message = received_message;
     return AWS_OP_SUCCESS;
 }
@@ -1247,7 +1247,7 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
 
     uint64_t ms_to_ns = aws_timestamp_convert(1, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
-    aws_atomic_store_int(&c_tester.current_time_ns, ms_to_ns);
+    aws_atomic_store_int(&c_tester.current_time_ns, (size_t)ms_to_ns);
 
     struct aws_crt_statistics_handler *stats_handler = aws_atomic_load_ptr(&c_tester.stats_handler);
     struct aws_statistics_handler_test_impl *stats_impl = stats_handler->impl;

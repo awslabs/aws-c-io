@@ -257,12 +257,12 @@ static void s_socket_handler_test_server_listener_destroy_callback(
 
 static int s_rw_args_init(
     struct socket_test_rw_args *args,
-    struct socket_common_tester *c_tester,
+    struct socket_common_tester *s_c_tester,
     struct aws_byte_buf received_message,
     int expected_read) {
     AWS_ZERO_STRUCT(*args);
-    args->mutex = &c_tester->mutex;
-    args->condition_variable = &c_tester->condition_variable;
+    args->mutex = &s_c_tester->mutex;
+    args->condition_variable = &s_c_tester->condition_variable;
     args->received_message = received_message;
     args->expected_read = expected_read;
     return AWS_OP_SUCCESS;
@@ -270,11 +270,11 @@ static int s_rw_args_init(
 
 static int s_socket_test_args_init(
     struct socket_test_args *args,
-    struct socket_common_tester *c_tester,
+    struct socket_common_tester *s_c_tester,
     struct aws_channel_handler *rw_handler) {
     AWS_ZERO_STRUCT(*args);
-    args->mutex = &c_tester->mutex;
-    args->condition_variable = &c_tester->condition_variable;
+    args->mutex = &s_c_tester->mutex;
+    args->condition_variable = &s_c_tester->condition_variable;
     args->rw_handler = rw_handler;
     return AWS_OP_SUCCESS;
 }
@@ -283,7 +283,7 @@ static int s_local_server_tester_init(
     struct aws_allocator *allocator,
     struct local_server_tester *tester,
     struct socket_test_args *args,
-    struct socket_common_tester *c_tester) {
+    struct socket_common_tester *s_c_tester) {
     AWS_ZERO_STRUCT(*tester);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
@@ -295,7 +295,7 @@ static int s_local_server_tester_init(
         sizeof(tester->endpoint.address),
         LOCAL_SOCK_TEST_PATTERN,
         (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
     tester->listener = aws_server_bootstrap_new_socket_listener(
         tester->server_bootstrap,
@@ -682,7 +682,7 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
 
     uint64_t ms_to_ns = aws_timestamp_convert(1, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
-    aws_atomic_store_int(&c_tester.current_time_ns, ms_to_ns);
+    aws_atomic_store_int(&c_tester.current_time_ns, (size_t)ms_to_ns);
 
     struct aws_crt_statistics_handler *stats_handler = aws_atomic_load_ptr(&c_tester.stats_handler);
     struct aws_statistics_handler_test_impl *stats_impl = stats_handler->impl;
