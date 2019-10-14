@@ -32,7 +32,8 @@ struct aws_socket_endpoint;
  *   (2) Channel setup - If TLS is being used, this function is called once the socket has connected, the channel has
  * been initialized, and TLS has been successfully negotiated. A TLS handler has already been added to the channel. If
  * TLS negotiation fails, this function will be called with the corresponding error code. If TLS is not being used, this
- * function is called once the socket has connected and the channel has been initialized. (3) Channel shutdown
+ * function is called once the socket has connected and the channel has been initialized.
+ *   (3) Channel shutdown
  *
  * These callbacks are always invoked within the thread of the event-loop that the channel is assigned to.
  *
@@ -128,21 +129,24 @@ struct aws_server_bootstrap {
 };
 
 /**
- * Socket channel creation options.
- * The connection is made to `host_name` and `port` using socket options `options`
- * and `connection_options` for TLS configuration.
- * If AWS_SOCKET_LOCAL is used, host_name should be the name of the socket or named pipe, and port is ignored.
- * If `host_name` is a dns address, it will be resolved prior to attempting a connection.
- * 'creation_callback' will be invoked when the channel is first created (connect success/failure)
- * `setup_callback` will be invoked once the channel is ready for use and TLS has been
- * negotiated or if an error is encountered.
- * `shutdown_callback` will be invoked once the channel has shutdown.
+ * Socket-based channel creation options.
+ *
+ * bootstrap - configs name resolution and which event loop group the connection will be seated into
+ * host_name - host to connect to; if a dns address, will be resolved prior to connecting
+ * port - port to connect to
+ * socket_options - socket properties, including type (tcp vs. udp vs. unix domain) and connect timeout.  TLS
+ *   connections are currently restricted to tcp (AWS_SOCKET_STREAM) only.
+ * tls_options - (optional) tls context to apply after connection establishment.  If NULL, the connection will
+ *   not be protected by TLS.
+ * creation_callback - (optional) callback invoked when the channel is first created.  This is always right after
+ *   the connection was successfully established.  *Does NOT* get called if the initial connect failed.
+ * setup_callback - callback invoked once the channel is ready for use and TLS has been negotiated or if an error
+ *   is encountered
+ * shutdown_callback - callback invoked once the channel has shutdown.
+ *
  * Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All callbacks are invoked
  * in the thread of the event-loop that the new channel is assigned to.
  *
- * `connection_options` is copied.
- *
- * The socket type in `options` must be AWS_SOCKET_STREAM. DTLS is not supported via. this API.
  */
 struct aws_socket_channel_bootstrap_options {
     struct aws_client_bootstrap *bootstrap;

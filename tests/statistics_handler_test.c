@@ -72,6 +72,8 @@ static void s_cleanup_handler(struct aws_crt_statistics_handler *handler) {
 }
 
 static uint64_t s_get_report_interval_ms(struct aws_crt_statistics_handler *handler) {
+    (void)handler;
+
     /*
      * Making this a very small number means the stat task will be in the very near future and thus a very
      * short wait.
