@@ -351,8 +351,8 @@ static void s_on_negotiation_result(
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-	if (s2n_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
-        sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    if (s2n_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+        s2n_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
     }
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;

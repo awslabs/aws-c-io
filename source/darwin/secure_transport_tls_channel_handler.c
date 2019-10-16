@@ -314,7 +314,7 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-	sc_handler->stats.handshake_status = (err_code == AWS_ERROR_SUCCESS) ? AWS_MTLS_STATUS_SUCCESS : FAILURE;
+    sc_handler->stats.handshake_status = (err_code == AWS_ERROR_SUCCESS) ? AWS_MTLS_STATUS_SUCCESS : FAILURE;
 
     if (secure_transport_handler->on_negotiation_result) {
         secure_transport_handler->on_negotiation_result(
@@ -324,8 +324,8 @@ static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, i
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
-    
-	if (secure_transport_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+
+    if (secure_transport_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
         secure_transport_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
     }
 
