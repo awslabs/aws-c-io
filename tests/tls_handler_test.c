@@ -1252,12 +1252,16 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     struct aws_crt_statistics_handler *stats_handler = aws_atomic_load_ptr(&c_tester.stats_handler);
     struct aws_statistics_handler_test_impl *stats_impl = stats_handler->impl;
 
+	aws_mutex_lock(&stats_impl->lock);
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &stats_impl->signal, &stats_impl->lock, s_stats_processed_predicate, stats_handler));
 
     ASSERT_TRUE(stats_impl->total_bytes_read >= read_tag.len);
     ASSERT_TRUE(stats_impl->total_bytes_written >= write_tag.len);
     ASSERT_TRUE(stats_impl->tls_status == AWS_MTLS_STATUS_SUCCESS);
+
+	aws_mutex_unlock(&stats_impl->lock);
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(

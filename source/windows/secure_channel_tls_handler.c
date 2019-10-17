@@ -255,6 +255,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int err) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
+	sc_handler->stats.handshake_status = AWS_MTLS_STATUS_FAILURE;
+
     if (sc_handler->on_negotiation_result) {
         sc_handler->on_negotiation_result(handler, sc_handler->slot, err, sc_handler->user_data);
     }
@@ -280,6 +282,8 @@ static void s_on_negotiation_success(struct aws_channel_handler *handler) {
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
     }
+
+	sc_handler->stats.handshake_status = AWS_MTLS_STATUS_SUCCESS;
 
     if (sc_handler->on_negotiation_result) {
         sc_handler->on_negotiation_result(handler, sc_handler->slot, AWS_OP_SUCCESS, sc_handler->user_data);
@@ -388,6 +392,11 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: server starting negotiation", (void *)handler);
+
+	if (sc_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+        sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    }
+
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_bufs[] = {
         {
@@ -660,6 +669,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: client starting negotiation", (void *)handler);
+
+	if (sc_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+        sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    }
 
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_buf = {
@@ -1545,7 +1558,6 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return err;
     }
 
-    sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
     if (aws_channel_current_clock_time(handler->slot->channel, &sc_handler->stats.handshake_start_ms)) {
         return AWS_OP_ERR;
     }

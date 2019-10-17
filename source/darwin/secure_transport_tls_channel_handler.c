@@ -314,6 +314,8 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
+	sc_handler->stats.handshake_status = (err_code == AWS_ERROR_SUCCESS) ? AWS_MTLS_STATUS_SUCCESS : FAILURE;
+
     if (secure_transport_handler->on_negotiation_result) {
         secure_transport_handler->on_negotiation_result(
             handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->user_data);
@@ -322,6 +324,10 @@ static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, i
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+    
+	if (secure_transport_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+        secure_transport_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    }
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
 
@@ -401,7 +407,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
         }
 
-        s_invoke_negotiation_callback(handler, AWS_OP_SUCCESS);
+        s_invoke_negotiation_callback(handler, AWS_ERR_SUCCESS);
 
         /* this branch gets hit only when verification is disabled,
          * or a custom CA bundle is being used. */
@@ -480,7 +486,6 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return AWS_OP_ERR;
     }
 
-    secure_transport_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
     if (aws_channel_current_clock_time(handler->slot->channel, &secure_transport_handler->stats.handshake_start_ms)) {
         return AWS_OP_ERR;
     }

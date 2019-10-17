@@ -351,6 +351,10 @@ static void s_on_negotiation_result(
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
+	if (s2n_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
+        sc_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
+    }
+
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
@@ -439,7 +443,6 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    s2n_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
     if (aws_channel_current_clock_time(handler->slot->channel, &s2n_handler->stats.handshake_start_ms)) {
         return AWS_OP_ERR;
     }
