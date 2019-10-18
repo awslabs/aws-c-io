@@ -77,7 +77,7 @@ static void s_on_socket_write_complete(
             message->on_completion(channel, message, error_code, message->user_data);
         }
 
-        if (socket->handler) {
+        if (socket && socket->handler) {
             struct socket_handler *socket_handler = socket->handler->impl;
             socket_handler->stats.bytes_written += amount_written;
         }
