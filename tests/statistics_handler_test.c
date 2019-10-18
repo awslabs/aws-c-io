@@ -64,11 +64,14 @@ static void s_process_statistics(
     aws_condition_variable_notify_one(&impl->signal);
 }
 
-static void s_cleanup_handler(struct aws_crt_statistics_handler *handler) {
+static void s_destroy_handler(struct aws_crt_statistics_handler *handler) {
     struct aws_statistics_handler_test_impl *impl = handler->impl;
 
     aws_mutex_clean_up(&impl->lock);
     aws_condition_variable_clean_up(&impl->signal);
+
+    /* impl and handler allocated via acquire_many */
+    aws_mem_release(handler->allocator, handler);
 }
 
 static uint64_t s_get_report_interval_ms(struct aws_crt_statistics_handler *handler) {
@@ -83,7 +86,7 @@ static uint64_t s_get_report_interval_ms(struct aws_crt_statistics_handler *hand
 
 static struct aws_crt_statistics_handler_vtable s_test_statistics_handler_vtable = {
     .process_statistics = s_process_statistics,
-    .cleanup = s_cleanup_handler,
+    .destroy = s_destroy_handler,
     .get_report_interval_ms = s_get_report_interval_ms};
 
 struct aws_crt_statistics_handler *aws_statistics_handler_new_test(struct aws_allocator *allocator) {
