@@ -1047,13 +1047,13 @@ static void s_channel_gather_statistics_task(struct aws_task *task, void *arg, e
     struct aws_crt_statistics_sample_interval sample_interval = {
         .begin_time_ms = channel->statistics_interval_start_time_ms, .end_time_ms = now_ms};
 
-    channel->statistics_handler->vtable->process_statistics(
-        channel->statistics_handler, &sample_interval, statistics_list);
+    aws_crt_statistics_handler_process_statistics(
+        channel->statistics_handler, &sample_interval, statistics_list, channel);
 
     s_reset_statistics(channel);
 
     uint64_t reschedule_interval_ns = aws_timestamp_convert(
-        channel->statistics_handler->vtable->get_report_interval_ms(channel->statistics_handler),
+        aws_crt_statistics_handler_get_report_interval_ms(channel->statistics_handler),
         AWS_TIMESTAMP_MILLIS,
         AWS_TIMESTAMP_NANOS,
         NULL);
@@ -1080,10 +1080,11 @@ int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_c
             return AWS_OP_ERR;
         }
 
-        uint64_t report_time_ns =
-            now_ns +
-            aws_timestamp_convert(
-                handler->vtable->get_report_interval_ms(handler), AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        uint64_t report_time_ns = now_ns + aws_timestamp_convert(
+                                               aws_crt_statistics_handler_get_report_interval_ms(handler),
+                                               AWS_TIMESTAMP_MILLIS,
+                                               AWS_TIMESTAMP_NANOS,
+                                               NULL);
 
         channel->statistics_interval_start_time_ms =
             aws_timestamp_convert(now_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);

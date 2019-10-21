@@ -20,10 +20,10 @@
 static void s_process_statistics(
     struct aws_crt_statistics_handler *handler,
     struct aws_crt_statistics_sample_interval *interval,
-    struct aws_array_list *stats_list) {
-    (void)handler;
-    (void)interval;
-    (void)stats_list;
+    struct aws_array_list *stats_list,
+    void *context) {
+
+    (void)context;
 
     struct aws_statistics_handler_test_impl *impl = handler->impl;
 
