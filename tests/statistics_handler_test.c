@@ -16,7 +16,13 @@
 #include "statistics_handler_test.h"
 
 #include <aws/common/clock.h>
+#include <aws/common/thread.h>
+#include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/tls_channel_handler.h>
 #include <aws/testing/aws_test_harness.h>
+
+#include "tls_handler_test.h"
 
 static void s_process_statistics(
     struct aws_crt_statistics_handler *handler,
@@ -216,3 +222,205 @@ static int s_test_statistics_handler_chain(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(test_statistics_handler_chain, s_test_statistics_handler_chain);
+
+/*
+ * Tls monitor test - verify exceeding the timeout shuts down the channel
+ *
+ * Create a real channel and a real tls handler adjacent to a dummy handler that pretends to be a socket but does
+ * nothing.  Then wait for the timeout and verify the channel was shutdown with the correct error code.
+ */
+
+struct channel_stat_test_context {
+    struct aws_allocator *allocator;
+    struct tls_opt_tester *tls_tester;
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    bool setup_completed;
+    bool shutdown_completed;
+    int error_code;
+};
+
+static void s_channel_setup_stat_test_context_init(
+    struct channel_stat_test_context *context,
+    struct aws_allocator *allocator,
+    struct tls_opt_tester *tls_tester) {
+    AWS_ZERO_STRUCT(*context);
+    aws_mutex_init(&context->lock);
+    aws_condition_variable_init(&context->signal);
+    context->allocator = allocator;
+    context->tls_tester = tls_tester;
+}
+
+static void s_channel_setup_stat_test_context_clean_up(struct channel_stat_test_context *context) {
+    aws_mutex_clean_up(&context->lock);
+    aws_condition_variable_clean_up(&context->signal);
+}
+
+static int s_dummy_process_message(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
+    (void)handler;
+    (void)slot;
+
+    aws_mem_release(message->allocator, message);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_dummy_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
+    (void)handler;
+    (void)slot;
+    (void)size;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_dummy_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool free_scarce_resources_immediately) {
+
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
+}
+
+static size_t s_dummy_initial_window_size(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 10000;
+}
+
+static size_t s_dummy_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 0;
+}
+
+static void s_dummy_destroy(struct aws_channel_handler *handler) {
+    aws_mem_release(handler->alloc, handler);
+}
+
+static struct aws_channel_handler_vtable s_dummy_handler_vtable = {.process_read_message = s_dummy_process_message,
+                                                                   .process_write_message = s_dummy_process_message,
+                                                                   .increment_read_window =
+                                                                       s_dummy_increment_read_window,
+                                                                   .shutdown = s_dummy_shutdown,
+                                                                   .initial_window_size = s_dummy_initial_window_size,
+                                                                   .message_overhead = s_dummy_message_overhead,
+                                                                   .destroy = s_dummy_destroy};
+
+static struct aws_channel_handler *aws_channel_handler_new_dummy(struct aws_allocator *allocator) {
+    struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
+    handler->alloc = allocator;
+    handler->vtable = &s_dummy_handler_vtable;
+    handler->impl = NULL;
+
+    return handler;
+}
+
+static bool s_setup_completed_predicate(void *arg) {
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)arg;
+    return context->setup_completed;
+}
+
+static bool s_shutdown_completed_predicate(void *arg) {
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)arg;
+    return context->shutdown_completed;
+}
+
+static void s_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)user_data;
+
+    context->shutdown_completed = true;
+    context->error_code = error_code;
+
+    aws_condition_variable_notify_one(&context->signal);
+}
+
+static const int s_tls_timeout_ms = 1000;
+
+static void s_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)user_data;
+
+    /* attach a tls timeout monitor */
+    struct aws_tls_monitor_options options = {.tls_timeout_ms = s_tls_timeout_ms};
+
+    struct aws_crt_statistics_handler *tls_monitor =
+        aws_crt_statistics_handler_new_tls_monitor(context->allocator, &options);
+    aws_channel_set_statistics_handler(channel, tls_monitor);
+
+    /* attach a dummy channel handler */
+    struct aws_channel_slot *dummy_slot = aws_channel_slot_new(channel);
+
+    struct aws_channel_handler *dummy_handler = aws_channel_handler_new_dummy(context->allocator);
+    aws_channel_slot_set_handler(dummy_slot, dummy_handler);
+
+    /* attach a tls channel handler and start negotiation */
+    aws_channel_setup_client_tls(dummy_slot, &context->tls_tester->opt);
+
+    aws_mutex_lock(&context->lock);
+    context->error_code = error_code;
+    context->setup_completed = true;
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_one(&context->signal);
+}
+
+static int s_test_tls_monitor_timeout(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct tls_opt_tester tls_test_context;
+    tls_client_opt_tester_init(allocator, &tls_test_context, aws_byte_cursor_from_c_str("derp.com"));
+
+    struct channel_stat_test_context channel_context;
+    s_channel_setup_stat_test_context_init(&channel_context, allocator, &tls_test_context);
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_on_setup_completed,
+        .setup_user_data = &channel_context,
+        .on_shutdown_completed = s_on_shutdown_completed,
+        .shutdown_user_data = &channel_context,
+    };
+
+    /* set up the channel */
+    ASSERT_SUCCESS(aws_mutex_lock(&channel_context.lock));
+    struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &channel_context.signal, &channel_context.lock, s_setup_completed_predicate, &channel_context));
+    aws_mutex_unlock(&channel_context.lock);
+
+    /* wait for the timeout */
+    aws_thread_current_sleep(aws_timestamp_convert(s_tls_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+    aws_mutex_lock(&channel_context.lock);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &channel_context.signal, &channel_context.lock, s_shutdown_completed_predicate, &channel_context));
+
+    ASSERT_TRUE(channel_context.error_code == AWS_IO_CHANNEL_TLS_TIMEOUT);
+
+    aws_mutex_unlock(&channel_context.lock);
+
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    tls_opt_tester_clean_up(&tls_test_context);
+
+    s_channel_setup_stat_test_context_clean_up(&channel_context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_tls_monitor_timeout, s_test_tls_monitor_timeout)

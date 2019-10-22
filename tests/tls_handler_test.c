@@ -13,6 +13,8 @@
  * permissions and limitations under the License.
  */
 
+#include "tls_handler_test.h"
+
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
@@ -57,14 +59,7 @@ struct tls_test_args {
     bool creation_callback_invoked;
 };
 
-/* common structure for tls options */
-struct tls_opt_tester {
-    struct aws_tls_ctx_options ctx_options;
-    struct aws_tls_ctx *ctx;
-    struct aws_tls_connection_options opt;
-};
-
-static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
+int tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
 
 #ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
@@ -81,7 +76,7 @@ static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct 
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_client_opt_tester_init(
+int tls_client_opt_tester_init(
     struct aws_allocator *allocator,
     struct tls_opt_tester *tester,
     struct aws_byte_cursor server_name) {
@@ -100,7 +95,7 @@ static int s_tls_client_opt_tester_init(
     return AWS_OP_SUCCESS;
 }
 
-static int s_tls_opt_tester_clean_up(struct tls_opt_tester *tester) {
+int tls_opt_tester_clean_up(struct tls_opt_tester *tester) {
     aws_tls_connection_options_clean_up(&tester->opt);
     aws_tls_ctx_options_clean_up(&tester->ctx_options);
     aws_tls_ctx_destroy(tester->ctx);
@@ -311,7 +306,7 @@ static int s_tls_local_server_tester_init(
     struct tls_test_args *args,
     struct tls_common_tester *tls_c_tester) {
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
+    ASSERT_SUCCESS(tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
@@ -335,7 +330,7 @@ static int s_tls_local_server_tester_init(
 }
 
 static int s_tls_local_server_tester_clean_up(struct tls_local_server_tester *tester) {
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&tester->server_tls_opt_tester));
+    ASSERT_SUCCESS(tls_opt_tester_clean_up(&tester->server_tls_opt_tester));
     aws_server_bootstrap_release(tester->server_bootstrap);
     return AWS_OP_SUCCESS;
 }
@@ -449,7 +444,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
-    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    ASSERT_SUCCESS(tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
@@ -559,7 +554,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
     aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
+    ASSERT_SUCCESS(tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
@@ -750,7 +745,7 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str(host_name);
-    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    ASSERT_SUCCESS(tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
 
     struct tls_test_args outgoing_args;
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &outgoing_args, false, &c_tester));
@@ -791,7 +786,7 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     /* Clean up */
     aws_client_bootstrap_release(client_bootstrap);
 
-    s_tls_opt_tester_clean_up(&client_tls_opt_tester);
+    tls_opt_tester_clean_up(&client_tls_opt_tester);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_io_library_clean_up();
 
@@ -922,7 +917,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
-    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    ASSERT_SUCCESS(tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
@@ -983,7 +978,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
     aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
+    ASSERT_SUCCESS(tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
@@ -1087,7 +1082,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     aws_socket_clean_up(&shutdown_tester->client_socket);
     aws_mem_release(allocator, shutdown_tester);
     /* cannot double free the listener */
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&local_server_tester.server_tls_opt_tester));
+    ASSERT_SUCCESS(tls_opt_tester_clean_up(&local_server_tester.server_tls_opt_tester));
     aws_server_bootstrap_release(local_server_tester.server_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_io_library_clean_up();
@@ -1201,7 +1196,7 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
-    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    ASSERT_SUCCESS(tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
@@ -1276,7 +1271,7 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
     aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
+    ASSERT_SUCCESS(tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));

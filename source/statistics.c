@@ -15,6 +15,9 @@
 
 #include <aws/io/statistics.h>
 
+#include <aws/io/channel.h>
+#include <aws/io/logging.h>
+
 int aws_crt_statistics_socket_init(struct aws_crt_statistics_socket *stats) {
     AWS_ZERO_STRUCT(*stats);
     stats->category = AWSCRT_STAT_CAT_SOCKET;
@@ -153,4 +156,111 @@ on_error:
     s_chain_destroy(handler);
 
     return NULL;
+}
+
+///////////////////////////
+
+struct aws_statistics_handler_tls_monitor_impl {
+    uint32_t tls_timeout_ms;
+    uint64_t tls_start_time_ms;
+};
+
+static void s_tls_monitor_process_statistics(
+    struct aws_crt_statistics_handler *handler,
+    struct aws_crt_statistics_sample_interval *interval,
+    struct aws_array_list *stats_list,
+    void *context) {
+
+    struct aws_statistics_handler_tls_monitor_impl *impl = handler->impl;
+    enum aws_tls_negotiation_status tls_status = AWS_MTLS_STATUS_NONE;
+
+    size_t stats_count = aws_array_list_length(stats_list);
+    for (size_t i = 0; i < stats_count; ++i) {
+        struct aws_crt_statistics_base *stats_base = NULL;
+        if (aws_array_list_get_at(stats_list, &stats_base, i)) {
+            continue;
+        }
+
+        switch (stats_base->category) {
+
+            case AWSCRT_STAT_CAT_TLS: {
+                struct aws_crt_statistics_tls *tls_stats = (struct aws_crt_statistics_tls *)stats_base;
+                tls_status = tls_stats->handshake_status;
+                if (tls_status != AWS_MTLS_STATUS_NONE && impl->tls_start_time_ms == 0) {
+                    impl->tls_start_time_ms = interval->end_time_ms;
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    }
+
+    if (impl->tls_timeout_ms == 0 || tls_status != AWS_MTLS_STATUS_ONGOING) {
+        return;
+    }
+
+    AWS_FATAL_ASSERT(interval->end_time_ms >= impl->tls_start_time_ms);
+
+    if (interval->end_time_ms - impl->tls_start_time_ms < impl->tls_timeout_ms) {
+        return;
+    }
+
+    struct aws_channel *channel = context;
+
+    AWS_LOGF_INFO(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: Channel tls timeout (%u ms) hit.  Shutting down.",
+        (void *)(channel),
+        impl->tls_timeout_ms);
+
+    aws_channel_shutdown(channel, AWS_IO_CHANNEL_TLS_TIMEOUT);
+}
+
+static void s_tls_monitor_destroy(struct aws_crt_statistics_handler *handler) {
+    if (handler == NULL) {
+        return;
+    }
+
+    aws_mem_release(handler->allocator, handler);
+}
+
+static uint64_t s_tls_monitor_get_report_interval_ms(struct aws_crt_statistics_handler *handler) {
+    (void)handler;
+
+    return 1000;
+}
+
+static struct aws_crt_statistics_handler_vtable s_statistics_handler_tls_monitor_vtable = {
+    .process_statistics = s_tls_monitor_process_statistics,
+    .destroy = s_tls_monitor_destroy,
+    .get_report_interval_ms = s_tls_monitor_get_report_interval_ms,
+};
+
+struct aws_crt_statistics_handler *aws_crt_statistics_handler_new_tls_monitor(
+    struct aws_allocator *allocator,
+    struct aws_tls_monitor_options *options) {
+    struct aws_crt_statistics_handler *handler = NULL;
+    struct aws_statistics_handler_tls_monitor_impl *impl = NULL;
+
+    if (!aws_mem_acquire_many(
+            allocator,
+            2,
+            &handler,
+            sizeof(struct aws_crt_statistics_handler),
+            &impl,
+            sizeof(struct aws_statistics_handler_tls_monitor_impl))) {
+        return NULL;
+    }
+
+    AWS_ZERO_STRUCT(*handler);
+    AWS_ZERO_STRUCT(*impl);
+    impl->tls_timeout_ms = options->tls_timeout_ms;
+
+    handler->vtable = &s_statistics_handler_tls_monitor_vtable;
+    handler->allocator = allocator;
+    handler->impl = impl;
+
+    return handler;
 }

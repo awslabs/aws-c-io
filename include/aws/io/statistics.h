@@ -44,6 +44,10 @@ struct aws_crt_statistics_tls {
     enum aws_tls_negotiation_status handshake_status;
 };
 
+struct aws_tls_monitor_options {
+    uint32_t tls_timeout_ms;
+};
+
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
@@ -51,6 +55,11 @@ struct aws_crt_statistics_handler *aws_statistics_handler_new_chain(
     struct aws_allocator *allocator,
     struct aws_crt_statistics_handler **handlers,
     size_t handler_count);
+
+AWS_IO_API
+struct aws_crt_statistics_handler *aws_crt_statistics_handler_new_tls_monitor(
+    struct aws_allocator *allocator,
+    struct aws_tls_monitor_options *options);
 
 AWS_IO_API
 int aws_crt_statistics_socket_init(struct aws_crt_statistics_socket *stats);
