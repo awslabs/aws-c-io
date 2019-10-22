@@ -152,6 +152,7 @@ add_test_case(test_input_stream_file_length)
 
 add_test_case(open_channel_statistics_test)
 add_test_case(tls_channel_statistics_test)
+add_test_case(test_statistics_handler_chain)
 
 add_test_case(shared_library_open_failure)
 

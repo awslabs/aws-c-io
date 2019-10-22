@@ -16,6 +16,7 @@
 #include "statistics_handler_test.h"
 
 #include <aws/common/clock.h>
+#include <aws/testing/aws_test_harness.h>
 
 static void s_process_statistics(
     struct aws_crt_statistics_handler *handler,
@@ -115,3 +116,103 @@ struct aws_crt_statistics_handler *aws_statistics_handler_new_test(struct aws_al
 
     return handler;
 }
+
+/* mock handler to let us test the chain implementation */
+
+struct aws_statistics_handler_mock_impl {
+    uint32_t process_call_count;
+    uint32_t get_report_interval_call_count;
+};
+
+static void s_mock_process_statistics(
+    struct aws_crt_statistics_handler *handler,
+    struct aws_crt_statistics_sample_interval *interval,
+    struct aws_array_list *stats_list,
+    void *context) {
+
+    (void)context;
+    (void)stats_list;
+    (void)interval;
+
+    struct aws_statistics_handler_mock_impl *impl = handler->impl;
+
+    ++impl->process_call_count;
+}
+
+static void s_mock_destroy_handler(struct aws_crt_statistics_handler *handler) {
+
+    /* impl and handler allocated via acquire_many */
+    aws_mem_release(handler->allocator, handler);
+}
+
+static uint64_t s_mock_get_report_interval_ms(struct aws_crt_statistics_handler *handler) {
+    (void)handler;
+
+    struct aws_statistics_handler_mock_impl *impl = handler->impl;
+    ++impl->get_report_interval_call_count;
+
+    return 1;
+}
+
+static struct aws_crt_statistics_handler_vtable s_mock_statistics_handler_vtable = {
+    .process_statistics = s_mock_process_statistics,
+    .destroy = s_mock_destroy_handler,
+    .get_report_interval_ms = s_mock_get_report_interval_ms};
+
+struct aws_crt_statistics_handler *aws_crt_statistics_handler_new_mock(struct aws_allocator *allocator) {
+    struct aws_crt_statistics_handler *handler = NULL;
+    struct aws_statistics_handler_mock_impl *impl = NULL;
+
+    if (!aws_mem_acquire_many(
+            allocator,
+            2,
+            &handler,
+            sizeof(struct aws_crt_statistics_handler),
+            &impl,
+            sizeof(struct aws_statistics_handler_mock_impl))) {
+        return NULL;
+    }
+
+    AWS_ZERO_STRUCT(*handler);
+    AWS_ZERO_STRUCT(*impl);
+
+    handler->vtable = &s_mock_statistics_handler_vtable;
+    handler->allocator = allocator;
+    handler->impl = impl;
+
+    return handler;
+}
+
+static int s_test_statistics_handler_chain(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_crt_statistics_handler *handler1 = aws_crt_statistics_handler_new_mock(allocator);
+    struct aws_statistics_handler_mock_impl *impl1 = handler1->impl;
+
+    struct aws_crt_statistics_handler *handler2 = aws_crt_statistics_handler_new_mock(allocator);
+    struct aws_statistics_handler_mock_impl *impl2 = handler2->impl;
+
+    struct aws_crt_statistics_handler *handler3 = aws_crt_statistics_handler_new_mock(allocator);
+    struct aws_statistics_handler_mock_impl *impl3 = handler3->impl;
+
+    struct aws_crt_statistics_handler *handlers[3] = {handler1, handler2, handler3};
+
+    struct aws_crt_statistics_handler *handler_chain = aws_statistics_handler_new_chain(allocator, handlers, 3);
+
+    aws_crt_statistics_handler_get_report_interval_ms(handler_chain);
+    ASSERT_TRUE(impl1->get_report_interval_call_count == 1);
+    ASSERT_TRUE(impl2->get_report_interval_call_count == 1);
+    ASSERT_TRUE(impl3->get_report_interval_call_count == 1);
+
+    aws_crt_statistics_handler_process_statistics(handler_chain, NULL, NULL, NULL);
+    aws_crt_statistics_handler_process_statistics(handler_chain, NULL, NULL, NULL);
+    ASSERT_TRUE(impl1->process_call_count == 2);
+    ASSERT_TRUE(impl2->process_call_count == 2);
+    ASSERT_TRUE(impl3->process_call_count == 2);
+
+    aws_crt_statistics_handler_destroy(handler_chain);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_statistics_handler_chain, s_test_statistics_handler_chain);

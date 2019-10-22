@@ -47,6 +47,12 @@ struct aws_crt_statistics_tls {
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
+struct aws_crt_statistics_handler *aws_statistics_handler_new_chain(
+    struct aws_allocator *allocator,
+    struct aws_crt_statistics_handler **handlers,
+    size_t handler_count);
+
+AWS_IO_API
 int aws_crt_statistics_socket_init(struct aws_crt_statistics_socket *stats);
 
 AWS_IO_API
