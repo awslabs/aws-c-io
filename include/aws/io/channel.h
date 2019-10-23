@@ -134,7 +134,7 @@ struct aws_channel_handler_vtable {
      * Adds a pointer to the handler's internal statistics (if they exist) to a list of statistics structures
      * associated with the channel's handler chain.
      */
-    void (*append_statistics)(struct aws_channel_handler *handler, struct aws_array_list *stats_list);
+    void (*gather_statistics)(struct aws_channel_handler *handler, struct aws_array_list *stats_list);
 };
 
 struct aws_channel_handler {

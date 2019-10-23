@@ -718,7 +718,7 @@ static void s_reset_statistics(struct aws_channel_handler *handler) {
     aws_crt_statistics_tls_reset(&secure_transport_handler->shared_state.stats);
 }
 
-static void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     void *stats_base = &secure_transport_handler->shared_state.stats;
@@ -744,7 +744,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .initial_window_size = s_initial_window_size,
     .message_overhead = s_message_overhead,
     .reset_statistics = s_reset_statistics,
-    .append_statistics = s_append_statistics,
+    .gather_statistics = s_gather_statistics,
 };
 
 struct secure_transport_ctx {

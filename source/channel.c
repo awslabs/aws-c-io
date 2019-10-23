@@ -1038,8 +1038,8 @@ static void s_channel_gather_statistics_task(struct aws_task *task, void *arg, e
     struct aws_channel_slot *current_slot = channel->first;
     while (current_slot) {
         struct aws_channel_handler *handler = current_slot->handler;
-        if (handler != NULL && handler->vtable->append_statistics != NULL) {
-            handler->vtable->append_statistics(handler, statistics_list);
+        if (handler != NULL && handler->vtable->gather_statistics != NULL) {
+            handler->vtable->gather_statistics(handler, statistics_list);
         }
         current_slot = current_slot->adj_right;
     }

@@ -358,7 +358,7 @@ static void s_reset_statistics(struct aws_channel_handler *handler) {
     aws_crt_statistics_socket_reset(&socket_handler->stats);
 }
 
-void s_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats_list) {
+void s_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats_list) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
     void *stats_base = &socket_handler->stats;
@@ -374,7 +374,7 @@ static struct aws_channel_handler_vtable s_vtable = {
     .shutdown = s_socket_shutdown,
     .message_overhead = s_message_overhead,
     .reset_statistics = s_reset_statistics,
-    .append_statistics = s_append_statistics,
+    .gather_statistics = s_gather_statistics,
 };
 
 struct aws_channel_handler *aws_socket_handler_new(

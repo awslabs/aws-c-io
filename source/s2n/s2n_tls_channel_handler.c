@@ -676,7 +676,7 @@ static void s_s2n_handler_reset_statistics(struct aws_channel_handler *handler) 
     aws_crt_statistics_tls_reset(&s2n_handler->shared_state.stats);
 }
 
-static void s_s2n_handler_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+static void s_s2n_handler_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct s2n_handler *s2n_handler = handler->impl;
 
     void *stats_base = &s2n_handler->shared_state.stats;
@@ -702,7 +702,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .initial_window_size = s_s2n_handler_initial_window_size,
     .message_overhead = s_s2n_handler_message_overhead,
     .reset_statistics = s_s2n_handler_reset_statistics,
-    .append_statistics = s_s2n_handler_append_statistics,
+    .gather_statistics = s_s2n_handler_gather_statistics,
 };
 
 static int s_parse_protocol_preferences(
