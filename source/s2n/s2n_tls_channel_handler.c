@@ -19,6 +19,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
 #include <aws/common/task_scheduler.h>
@@ -74,6 +75,7 @@ static unsigned long s_id_fn(void) {
 
 struct s2n_handler {
     struct aws_channel_handler handler;
+    struct aws_tls_channel_handler_shared shared_state;
     struct s2n_connection *connection;
     struct aws_channel_slot *slot;
     struct aws_linked_list input_queue;
@@ -81,7 +83,6 @@ struct s2n_handler {
     struct aws_byte_buf server_name;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     struct aws_channel_task sequential_tasks;
-    struct aws_crt_statistics_tls stats;
     void *latest_message_completion_user_data;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
@@ -327,7 +328,7 @@ static int s_s2n_handler_send(void *io_context, const uint8_t *buf, uint32_t len
 static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
     if (handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-        aws_crt_statistics_tls_cleanup(&s2n_handler->stats);
+        aws_tls_channel_handler_shared_clean_up(&s2n_handler->shared_state);
         s2n_connection_free(s2n_handler->connection);
         aws_mem_release(handler->alloc, (void *)s2n_handler);
     }
@@ -340,20 +341,18 @@ static void s_on_negotiation_result(
     void *user_data) {
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+
+    aws_on_tls_negotiation_completed(&s2n_handler->shared_state, error_code);
+
     if (s2n_handler->on_negotiation_result) {
         s2n_handler->on_negotiation_result(handler, slot, error_code, user_data);
     }
-
-    s2n_handler->stats.handshake_status =
-        (error_code == AWS_ERROR_SUCCESS) ? AWS_MTLS_STATUS_SUCCESS : AWS_MTLS_STATUS_FAILURE;
 }
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    if (s2n_handler->stats.handshake_status == AWS_MTLS_STATUS_NONE) {
-        s2n_handler->stats.handshake_status = AWS_MTLS_STATUS_ONGOING;
-    }
+    aws_on_drive_tls_negotiation(&s2n_handler->shared_state);
 
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
     do {
@@ -442,10 +441,6 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
-    if (aws_channel_current_clock_time(handler->slot->channel, &s2n_handler->stats.handshake_start_ms)) {
-        return AWS_OP_ERR;
-    }
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
@@ -676,13 +671,15 @@ static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *hand
 }
 
 static void s_s2n_handler_reset_statistics(struct aws_channel_handler *handler) {
-    (void)handler;
+    struct s2n_handler *s2n_handler = handler->impl;
+
+    aws_crt_statistics_tls_reset(&s2n_handler->shared_state.stats);
 }
 
 static void s_s2n_handler_append_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
     struct s2n_handler *s2n_handler = handler->impl;
 
-    void *stats_base = &s2n_handler->stats;
+    void *stats_base = &s2n_handler->shared_state.stats;
     aws_array_list_push_back(stats, &stats_base);
 }
 
@@ -805,9 +802,7 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_s2n_handler;
     }
 
-    if (aws_crt_statistics_tls_init(&s2n_handler->stats)) {
-        goto cleanup_s2n_handler;
-    }
+    aws_tls_channel_handler_shared_init(&s2n_handler->shared_state, &s2n_handler->handler, options);
 
     s2n_handler->handler.impl = s2n_handler;
     s2n_handler->handler.alloc = allocator;

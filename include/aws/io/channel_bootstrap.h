@@ -37,8 +37,8 @@ struct aws_socket_endpoint;
  *
  * These callbacks are always invoked within the thread of the event-loop that the channel is assigned to.
  *
- * This function does NOT mean "success", if error_code is AWS_OP_SUCCESS then everything was successful, otherwise an
- * error condition occurred.
+ * This function does NOT always imply "success" -- if error_code is AWS_OP_SUCCESS then everything was successful,
+ * otherwise an error condition occurred.
  */
 typedef void(aws_client_bootstrap_on_channel_event_fn)(
     struct aws_client_bootstrap *bootstrap,

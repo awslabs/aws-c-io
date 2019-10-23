@@ -153,7 +153,7 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
         "System call error during attempt to find shared library symbol"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_CHANNEL_TLS_TIMEOUT,
+        AWS_IO_TLS_NEGOTIATION_TIMEOUT,
         "Channel shutdown due to tls negotiation timeout"),
 };
 /* clang-format on */
