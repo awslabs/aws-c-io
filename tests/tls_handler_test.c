@@ -1346,6 +1346,7 @@ static int s_dummy_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
+    (void)handler;
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
