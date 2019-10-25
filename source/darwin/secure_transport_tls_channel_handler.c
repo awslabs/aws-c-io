@@ -317,7 +317,7 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    aws_on_tls_negotiation_completed(&secure_transport_handler->shared_state, error_code);
+    aws_on_tls_negotiation_completed(&secure_transport_handler->shared_state, err_code);
 
     if (secure_transport_handler->on_negotiation_result) {
         secure_transport_handler->on_negotiation_result(
@@ -408,7 +408,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
         }
 
-        s_invoke_negotiation_callback(handler, AWS_ERR_SUCCESS);
+        s_invoke_negotiation_callback(handler, AWS_ERROR_SUCCESS);
 
         /* this branch gets hit only when verification is disabled,
          * or a custom CA bundle is being used. */
