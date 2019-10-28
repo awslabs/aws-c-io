@@ -329,8 +329,7 @@ static int s_fillin_alpn_data(
     struct aws_byte_cursor alpn_buffer_array[4];
     aws_array_list_init_static(&alpn_buffers, alpn_buffer_array, 4, sizeof(struct aws_byte_cursor));
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_TLS, "Setting ALPN extension with string %s.", aws_string_c_str(sc_handler->alpn_list));
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Setting ALPN extension with string %s.", aws_string_c_str(sc_handler->alpn_list));
     struct aws_byte_cursor alpn_str_cur = aws_byte_cursor_from_string(sc_handler->alpn_list);
     if (aws_byte_cursor_split_on_char(&alpn_str_cur, ';', &alpn_buffers)) {
         return AWS_OP_ERR;
@@ -408,8 +407,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, aws_string_c_str(sc_handler->alpn_list));
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             return AWS_OP_ERR;
@@ -678,10 +676,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS,
-            "id=%p: Setting ALPN data as %s",
-            handler,
-            aws_string_c_str(sc_handler->alpn_list));
+            AWS_LS_IO_TLS, "id=%p: Setting ALPN data as %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
             s_invoke_negotiation_error(handler, aws_last_error());

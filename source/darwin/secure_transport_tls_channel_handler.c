@@ -850,8 +850,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (options->server_name) {
         size_t server_name_len = options->server_name->len;
-        SSLSetPeerDomainName(
-            secure_transport_handler->ctx, aws_string_c_str(options->server_name), server_name_len);
+        SSLSetPeerDomainName(secure_transport_handler->ctx, aws_string_c_str(options->server_name), server_name_len);
     }
 
     struct aws_string *alpn_list = NULL;
