@@ -405,6 +405,7 @@ void aws_socket_clean_up(struct aws_socket *socket) {
         /* protect from double clean */
         return;
     }
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p, handle=%p: cleaning up socket.",

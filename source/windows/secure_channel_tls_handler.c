@@ -1393,6 +1393,27 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     return EST_HANDSHAKE_SIZE;
 }
 
+struct alert_data {
+    struct aws_allocator *allocator;
+    struct aws_channel_slot *slot;
+    int shutdown_error;
+    bool shutdown_immediately;
+};
+
+static int count = 0;
+static void s_on_alert_sent(struct aws_channel *channel, struct aws_io_message *message, int err_code, void *user_data) {
+    (void)channel;
+    (void)message;
+    (void)err_code;
+    
+    struct alert_data *alert_data = user_data;
+    struct aws_channel_slot *slot = alert_data->slot;
+    int shutdown_error = alert_data->shutdown_error;
+    bool shutdown_immediately = alert_data->shutdown_immediately;
+    aws_mem_release(alert_data->allocator, alert_data);
+    aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_WRITE, shutdown_error, shutdown_immediately);
+}
+
 static int s_handler_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -1465,12 +1486,31 @@ static int s_handler_shutdown(
                 if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
                     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
-                memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
 
-                /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
-                if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
+                struct alert_data *alert_data = aws_mem_calloc(slot->alloc, 1, sizeof(struct alert_data));
+                if (!alert_data) {
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
+                    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
+
+                alert_data->allocator = slot->alloc;
+                alert_data->slot = slot;
+                alert_data->shutdown_error = error_code;
+                alert_data->shutdown_immediately = abort_immediately;
+
+                outgoing_message->on_completion = s_on_alert_sent;
+                outgoing_message->user_data = alert_data;
+
+                memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);                
+                
+                /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
+                int send_err = aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE);
+                if (!send_err) {
+                    return AWS_OP_SUCCESS;
+                }
+
+                aws_mem_release(slot->alloc, alert_data);
+                aws_mem_release(outgoing_message->allocator, outgoing_message);
             }
         }
     }
