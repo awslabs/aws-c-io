@@ -30,7 +30,7 @@ int aws_default_dns_resolve(
 
     (void)user_data;
     ADDRINFOA *result = NULL;
-    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
+    const char *hostname_cstr = aws_string_c_str(host_name);
 
     aws_check_and_init_winsock();
 

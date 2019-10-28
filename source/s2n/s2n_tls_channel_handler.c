@@ -788,7 +788,7 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     if (options->server_name) {
 
-        if (s2n_set_server_name(s2n_handler->connection, (const char *)aws_string_bytes(options->server_name))) {
+        if (s2n_set_server_name(s2n_handler->connection, aws_string_c_str(options->server_name))) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
@@ -807,7 +807,7 @@ static struct aws_channel_handler *s_new_tls_handler(
             AWS_LS_IO_TLS,
             "id=%p: Setting ALPN list %s",
             (void *)&s2n_handler->handler,
-            (const char *)aws_string_bytes(options->alpn_list));
+            aws_string_c_str(options->alpn_list));
 
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
@@ -971,14 +971,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
         if (options->ca_path) {
             if (s2n_config_set_verification_ca_location(
-                    s2n_ctx->s2n_config, NULL, (const char *)aws_string_bytes(options->ca_path))) {
+                    s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
                 AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "Failed to set ca_path %s\n", (const char *)aws_string_bytes(options->ca_path));
+                    AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
@@ -1032,7 +1032,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", (const char *)aws_string_bytes(options->alpn_list));
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", aws_string_c_str(options->alpn_list));
         const char protocols_cpy[4][128];
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;

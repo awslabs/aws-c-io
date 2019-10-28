@@ -934,7 +934,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
         bootstrap,
-        (const char *)aws_string_bytes(s3_host),
+        aws_string_c_str(s3_host),
         80,
         &options,
         s_test_channel_connect_some_hosts_timeout_setup,
