@@ -406,8 +406,8 @@ static int s_subscribe_to_io_events(
     if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data.fd, &epoll_event)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", (void *)event_loop, handle->data.fd);
-        aws_mem_release(event_loop->alloc, epoll_event_data);
         handle->additional_data = NULL;
+        aws_mem_release(event_loop->alloc, epoll_event_data);
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
