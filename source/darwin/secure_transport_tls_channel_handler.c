@@ -850,8 +850,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (options->server_name) {
         size_t server_name_len = options->server_name->len;
-        SSLSetPeerDomainName(
-            secure_transport_handler->ctx, (const char *)aws_string_bytes(options->server_name), server_name_len);
+        SSLSetPeerDomainName(secure_transport_handler->ctx, aws_string_c_str(options->server_name), server_name_len);
     }
 
     struct aws_string *alpn_list = NULL;
@@ -860,7 +859,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             AWS_LS_IO_TLS,
             "id=%p: setting ALPN list %s",
             (void *)&secure_transport_handler->handler,
-            (const char *)aws_string_bytes(options->alpn_list));
+            aws_string_c_str(options->alpn_list));
         alpn_list = options->alpn_list;
 
     } else if (secure_transport_ctx->alpn_list) {

@@ -610,7 +610,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         client_bootstrap,
-        (const char *)aws_string_bytes(host_name),
+        aws_string_c_str(host_name),
         443,
         &options,
         &tls_client_conn_options,
@@ -829,7 +829,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
         client_bootstrap,
-        (const char *)aws_string_bytes(host_name),
+        aws_string_c_str(host_name),
         443,
         &options,
         &tls_client_conn_options,

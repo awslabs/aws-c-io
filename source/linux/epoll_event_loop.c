@@ -106,7 +106,7 @@ struct epoll_event_data {
     aws_event_loop_on_event_fn *on_event;
     void *user_data;
     struct aws_task cleanup_task;
-    bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't beeen cleaned up yet */
+    bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't been cleaned up yet */
 };
 
 /* default timeout is 100 seconds */
@@ -374,7 +374,7 @@ static int s_subscribe_to_io_events(
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
     struct epoll_event_data *epoll_event_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct epoll_event_data));
-    handle->additional_data = NULL;
+    handle->additional_data = epoll_event_data;
     if (!epoll_event_data) {
         return AWS_OP_ERR;
     }
@@ -406,11 +406,10 @@ static int s_subscribe_to_io_events(
     if (epoll_ctl(epoll_loop->epoll_fd, EPOLL_CTL_ADD, handle->data.fd, &epoll_event)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP, "id=%p: failed to subscribe to events on fd %d", (void *)event_loop, handle->data.fd);
+        handle->additional_data = NULL;
         aws_mem_release(event_loop->alloc, epoll_event_data);
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
-
-    handle->additional_data = epoll_event_data;
 
     return AWS_OP_SUCCESS;
 }

@@ -38,7 +38,7 @@ int aws_default_dns_resolve(
     char address_buffer[max_len];
 
     size_t hostname_len = host_name->len;
-    const char *hostname_cstr = (const char *)aws_string_bytes(host_name);
+    const char *hostname_cstr = aws_string_c_str(host_name);
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
     struct addrinfo hints;
