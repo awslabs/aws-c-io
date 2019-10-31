@@ -221,7 +221,9 @@ static void s_testing_channel_handler_reset_statistics(struct aws_channel_handle
     aws_crt_statistics_socket_reset(&testing_handler->stats);
 }
 
-static void s_testing_channel_handler_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+static void s_testing_channel_handler_gather_statistics(
+    struct aws_channel_handler *handler,
+    struct aws_array_list *stats) {
     struct testing_channel_handler *testing_handler = handler->impl;
 
     void *stats_base = &testing_handler->stats;
@@ -396,7 +398,10 @@ struct aws_testing_channel_options {
     aws_io_clock_fn *clock_fn;
 };
 
-AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct aws_allocator *allocator, struct aws_testing_channel_options *options) {
+AWS_STATIC_IMPL int testing_channel_init(
+    struct testing_channel *testing,
+    struct aws_allocator *allocator,
+    struct aws_testing_channel_options *options) {
     AWS_ZERO_STRUCT(*testing);
 
     testing->loop = s_testing_loop_new(allocator, options->clock_fn);
