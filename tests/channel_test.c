@@ -935,7 +935,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = bootstrap;
-    channel_options.host_name = (const char *)aws_string_bytes(s3_host);
+    channel_options.host_name = aws_string_c_str(s3_host);
     channel_options.port = 80;
     channel_options.socket_options = &options;
     channel_options.setup_callback = s_test_channel_connect_some_hosts_timeout_setup;

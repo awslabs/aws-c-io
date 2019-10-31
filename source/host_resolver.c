@@ -474,7 +474,7 @@ static void resolver_thread_fn(void *arg) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_DNS,
             "static, resolving %s, unsolicited resolve count %d",
-            (const char *)aws_string_bytes(host_entry->host_name),
+            aws_string_c_str(host_entry->host_name),
             (int)unsolicited_resolve_count);
 
         ++unsolicited_resolve_count;

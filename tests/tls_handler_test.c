@@ -625,7 +625,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
-    channel_options.host_name = (const char *)aws_string_bytes(host_name);
+    channel_options.host_name = aws_string_c_str(host_name);
     channel_options.port = 443;
     channel_options.socket_options = &options;
     channel_options.tls_options = &tls_client_conn_options;
@@ -849,7 +849,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
-    channel_options.host_name = (const char *)aws_string_bytes(host_name);
+    channel_options.host_name = aws_string_c_str(host_name);
     channel_options.port = 443;
     channel_options.socket_options = &options;
     channel_options.tls_options = &tls_client_conn_options;
