@@ -19,6 +19,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/statistics.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct testing_loop {
@@ -55,6 +56,11 @@ static void s_testing_loop_schedule_task_future(
     aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
 }
 
+static void s_testing_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    struct testing_loop *testing_loop = event_loop->impl_data;
+    aws_task_scheduler_cancel_task(&testing_loop->scheduler, task);
+}
+
 static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct testing_loop *testing_loop = event_loop->impl_data;
     return testing_loop->mock_on_callers_thread;
@@ -74,6 +80,7 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
     .run = s_testing_loop_run,
     .schedule_task_now = s_testing_loop_schedule_task_now,
     .schedule_task_future = s_testing_loop_schedule_task_future,
+    .cancel_task = s_testing_loop_cancel_task,
     .stop = s_testing_loop_stop,
     .wait_for_stop_completion = s_testing_loop_wait_for_stop_completion,
 };
@@ -105,6 +112,7 @@ struct testing_channel_handler {
     int complete_write_error_code;
     testing_channel_handler_on_shutdown_fn *on_shutdown;
     void *on_shutdown_user_data;
+    struct aws_crt_statistics_socket stats;
 };
 
 static int s_testing_channel_handler_process_read_message(
@@ -207,6 +215,19 @@ static void s_testing_channel_handler_destroy(struct aws_channel_handler *handle
     aws_mem_release(handler->alloc, handler);
 }
 
+static void s_testing_channel_handler_reset_statistics(struct aws_channel_handler *handler) {
+    struct testing_channel_handler *testing_handler = handler->impl;
+
+    aws_crt_statistics_socket_reset(&testing_handler->stats);
+}
+
+static void s_testing_channel_handler_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct testing_channel_handler *testing_handler = handler->impl;
+
+    void *stats_base = &testing_handler->stats;
+    aws_array_list_push_back(stats, &stats_base);
+}
+
 static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
     .process_read_message = s_testing_channel_handler_process_read_message,
     .process_write_message = s_testing_channel_handler_process_write_message,
@@ -215,6 +236,8 @@ static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
     .initial_window_size = s_testing_channel_handler_initial_window_size,
     .message_overhead = s_testing_channel_handler_message_overhead,
     .destroy = s_testing_channel_handler_destroy,
+    .gather_statistics = s_testing_channel_handler_gather_statistics,
+    .reset_statistics = s_testing_channel_handler_reset_statistics,
 };
 
 static struct aws_channel_handler *s_new_testing_channel_handler(
@@ -369,10 +392,14 @@ AWS_STATIC_IMPL void testing_channel_set_is_on_users_thread(struct testing_chann
     testing->loop_impl->mock_on_callers_thread = on_users_thread;
 }
 
-AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct aws_allocator *allocator) {
+struct aws_testing_channel_options {
+    aws_io_clock_fn *clock_fn;
+};
+
+AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct aws_allocator *allocator, struct aws_testing_channel_options *options) {
     AWS_ZERO_STRUCT(*testing);
 
-    testing->loop = s_testing_loop_new(allocator, aws_high_res_clock_get_ticks);
+    testing->loop = s_testing_loop_new(allocator, options->clock_fn);
     testing->loop_impl = testing->loop->impl_data;
 
     struct aws_channel_creation_callbacks callbacks = {

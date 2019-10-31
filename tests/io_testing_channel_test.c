@@ -17,8 +17,10 @@
 static int s_test_io_testing_channel(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
+    struct aws_testing_channel_options test_channel_options = {.clock_fn = aws_high_res_clock_get_ticks};
+
     struct testing_channel testing_channel;
-    ASSERT_SUCCESS(testing_channel_init(&testing_channel, allocator));
+    ASSERT_SUCCESS(testing_channel_init(&testing_channel, allocator, &test_channel_options));
 
     /* Install downstream handler, so the 2 handlers can pass messages to each other */
     ASSERT_SUCCESS(testing_channel_install_downstream_handler(&testing_channel, 16 * 1024));
