@@ -48,7 +48,7 @@ void aws_crt_statistics_tls_cleanup(struct aws_crt_statistics_tls *stats) {
 
 void aws_crt_statistics_tls_reset(struct aws_crt_statistics_tls *stats) {
     /*
-     * We currently don't have any resetable tls statistics yet, but they may be added in the future.
+     * We currently don't have any resettable tls statistics yet, but they may be added in the future.
      */
     (void)stats;
 }
