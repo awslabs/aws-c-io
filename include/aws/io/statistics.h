@@ -23,7 +23,7 @@
 
 enum aws_crt_io_statistics_category {
     AWSCRT_STAT_CAT_SOCKET = AWS_CRT_STATISTICS_CATEGORY_BEGIN_RANGE(AWS_C_IO_PACKAGE_ID),
-    AWSCRT_STAT_CAT_TLS
+    AWSCRT_STAT_CAT_TLS,
 };
 
 /**
