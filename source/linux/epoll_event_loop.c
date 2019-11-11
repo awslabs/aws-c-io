@@ -95,6 +95,7 @@ struct epoll_loop {
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
     struct aws_task stop_task;
+    struct aws_atomic_var stop_task_ptr;
     int epoll_fd;
     bool should_process_task_pre_queue;
     bool should_continue;
@@ -286,11 +287,17 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
          */
         epoll_loop->should_continue = false;
     }
+    aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
 }
 
 static int s_stop(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    bool update_succeeded = aws_atomic_compare_exchange_ptr(&epoll_loop->stop_task_ptr, NULL, &epoll_loop->stop_task);
+    if (!update_succeeded) {
+      /* the stop task is already scheduled. */
+      return AWS_OP_SUCCESS;
+    }
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
     aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop, "epoll_event_loop_stop");
     s_schedule_task_now(event_loop, &epoll_loop->stop_task);
@@ -385,6 +392,7 @@ static int s_subscribe_to_io_events(
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
     epoll_event_data->is_subscribed = true;
+    aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
