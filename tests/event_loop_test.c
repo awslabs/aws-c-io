@@ -31,6 +31,7 @@ struct task_args {
     enum aws_task_status status;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
+    bool thread_complete;
 };
 
 static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
@@ -1050,6 +1051,12 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
+/* mark the thread complete when the async shutdown thread is done */
+static void s_async_shutdown_thread_exit(void *user_data) {
+    struct task_args *args = user_data;
+    args->thread_complete = true;
+}
+
 static void s_async_shutdown_complete_callback(void *user_data) {
 
     struct task_args *args = user_data;
@@ -1059,6 +1066,9 @@ static void s_async_shutdown_complete_callback(void *user_data) {
     args->invoked = true;
     aws_mutex_unlock((&args->mutex));
     aws_condition_variable_notify_one(&args->condition_variable);
+
+    /* schedule an at exit callback when the async shutdown thread dies */
+    aws_thread_current_at_exit(s_async_shutdown_thread_exit, args);
 }
 
 static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
@@ -1101,6 +1111,10 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
+
+    while (!task_args.thread_complete) {
+        aws_thread_current_sleep(15);
+    }
 
     return AWS_OP_SUCCESS;
 }
