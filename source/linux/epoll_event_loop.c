@@ -295,8 +295,8 @@ static int s_stop(struct aws_event_loop *event_loop) {
 
     bool update_succeeded = aws_atomic_compare_exchange_ptr(&epoll_loop->stop_task_ptr, NULL, &epoll_loop->stop_task);
     if (!update_succeeded) {
-      /* the stop task is already scheduled. */
-      return AWS_OP_SUCCESS;
+        /* the stop task is already scheduled. */
+        return AWS_OP_SUCCESS;
     }
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
     aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop, "epoll_event_loop_stop");
