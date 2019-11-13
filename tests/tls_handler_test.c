@@ -784,7 +784,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_socket_closed,
     s_tls_client_channel_negotiation_error_socket_closed_fn);
 
-static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name) {
+static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name, bool verify) {
     aws_io_library_init(allocator);
 
     struct tls_common_tester c_tester;
@@ -804,6 +804,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
+    aws_tls_ctx_options_set_verify_peer(&client_ctx_options, verify);
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -847,7 +848,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
     /* check ALPN and SNI was properly negotiated */
 
-    if (aws_tls_is_alpn_available()) {
+    if (aws_tls_is_alpn_available() && verify) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
             expected_protocol.len,
@@ -876,12 +877,24 @@ static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *all
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "www.amazon.com");
     ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name);
+    int err_code = s_verify_good_host(allocator, host_name, true);
     aws_string_destroy((void *)host_name);
     return err_code;
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success, s_tls_client_channel_negotiation_success_fn)
+
+/* prove that connections complete even when verify_peer is false */
+static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.amazonaws.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy(host_name);
+    return err_code;
+}
+AWS_TEST_CASE(tls_client_channel_no_verify, s_tls_client_channel_no_verify_fn)
 
 static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
