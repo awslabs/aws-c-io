@@ -1017,6 +1017,22 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 
+static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+    for (int i = 0; i < 8; ++i) {
+        ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
+    }
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_multiple_stops, s_event_loop_test_multiple_stops)
+
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
