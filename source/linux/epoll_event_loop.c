@@ -293,7 +293,9 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
 static int s_stop(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    bool update_succeeded = aws_atomic_compare_exchange_ptr(&epoll_loop->stop_task_ptr, NULL, &epoll_loop->stop_task);
+    void *expected_ptr = NULL;
+    bool update_succeeded =
+        aws_atomic_compare_exchange_ptr(&epoll_loop->stop_task_ptr, &expected_ptr, &epoll_loop->stop_task);
     if (!update_succeeded) {
         /* the stop task is already scheduled. */
         return AWS_OP_SUCCESS;
