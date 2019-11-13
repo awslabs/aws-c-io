@@ -95,6 +95,7 @@ struct epoll_loop {
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
     struct aws_task stop_task;
+    struct aws_atomic_var stop_task_ptr;
     int epoll_fd;
     bool should_process_task_pre_queue;
     bool should_continue;
@@ -139,6 +140,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     aws_linked_list_init(&epoll_loop->task_pre_queue);
     epoll_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
+    aws_atomic_init_ptr(&epoll_loop->stop_task_ptr, NULL);
 
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
@@ -280,6 +282,8 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
     struct aws_event_loop *event_loop = args;
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    /* now okay to reschedule stop tasks. */
+    aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         /*
          * this allows the event loop to invoke the callback once the event loop has completed.
@@ -291,6 +295,13 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
 static int s_stop(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    void *expected_ptr = NULL;
+    bool update_succeeded =
+        aws_atomic_compare_exchange_ptr(&epoll_loop->stop_task_ptr, &expected_ptr, &epoll_loop->stop_task);
+    if (!update_succeeded) {
+        /* the stop task is already scheduled. */
+        return AWS_OP_SUCCESS;
+    }
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
     aws_task_init(&epoll_loop->stop_task, s_stop_task, event_loop, "epoll_event_loop_stop");
     s_schedule_task_now(event_loop, &epoll_loop->stop_task);
