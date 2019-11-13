@@ -140,6 +140,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     aws_linked_list_init(&epoll_loop->task_pre_queue);
     epoll_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
+    aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
 
     epoll_loop->epoll_fd = epoll_create(100);
     if (epoll_loop->epoll_fd < 0) {
@@ -394,7 +395,6 @@ static int s_subscribe_to_io_events(
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
     epoll_event_data->is_subscribed = true;
-    aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
