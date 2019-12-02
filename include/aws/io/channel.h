@@ -204,6 +204,12 @@ AWS_IO_API
 struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel);
 
 /**
+ * Fetches the event loop the channel is a part of.
+ */
+AWS_IO_API
+struct aws_event_loop *aws_channel_get_event_loop(struct aws_channel *channel);
+
+/**
  * Fetches the current timestamp from the event-loop's clock, in nanoseconds.
  */
 AWS_IO_API

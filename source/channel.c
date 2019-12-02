@@ -963,3 +963,7 @@ size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handl
 struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel) {
     return channel->first;
 }
+
+struct aws_event_loop *aws_channel_get_event_loop(struct aws_channel *channel) {
+    return channel->loop;
+}
