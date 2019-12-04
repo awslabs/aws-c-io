@@ -18,6 +18,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
+#include <aws/common/string.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
@@ -533,6 +534,11 @@ int aws_socket_connect(
         AWS_ASSERT(on_connection_result);
     }
 
+    size_t address_strlen;
+    if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+        return AWS_OP_ERR;
+    }
+
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
     socklen_t sock_size = 0;
@@ -549,11 +555,7 @@ int aws_socket_connect(
         sock_size = sizeof(address.sock_addr_types.addr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-        AWS_ASSERT(sizeof(remote_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
-        strncpy(
-            address.sock_addr_types.un_addr.sun_path,
-            remote_endpoint->address,
-            sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
+        strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
     } else {
         AWS_ASSERT(0);
@@ -688,6 +690,11 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
+    size_t address_strlen;
+    if (aws_secure_strlen(local_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+        return AWS_OP_ERR;
+    }
+
     int error_code = -1;
 
     socket->local_endpoint = *local_endpoint;
@@ -715,11 +722,7 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         sock_size = sizeof(address.sock_addr_types.addr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-        AWS_ASSERT(sizeof(local_endpoint->address) <= sizeof(address.sock_addr_types.un_addr.sun_path));
-        strncpy(
-            address.sock_addr_types.un_addr.sun_path,
-            local_endpoint->address,
-            sizeof(address.sock_addr_types.un_addr.sun_path) - 1);
+        strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
     } else {
         AWS_ASSERT(0);
