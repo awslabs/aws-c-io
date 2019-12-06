@@ -361,8 +361,11 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     /* this should never get used for this case. */
     struct aws_host_resolver dummy_resolver;
     AWS_ZERO_STRUCT(dummy_resolver);
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &dummy_resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &dummy_resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
@@ -480,8 +483,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     /* this should not get used for a unix domain socket. */
     struct aws_host_resolver dummy_resolver;
     AWS_ZERO_STRUCT(dummy_resolver);
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &dummy_resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &dummy_resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));

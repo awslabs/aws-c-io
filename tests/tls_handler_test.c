@@ -443,8 +443,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
@@ -604,8 +607,11 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     aws_mutex_lock(&c_tester.mutex);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -745,8 +751,11 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
 
     aws_mutex_lock(&c_tester.mutex);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -824,8 +833,11 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     aws_mutex_lock(&c_tester.mutex);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
@@ -918,8 +930,11 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &c_tester.el_group,
+        .host_resolver = &c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
