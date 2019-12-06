@@ -109,6 +109,10 @@ int aws_client_bootstrap_set_alpn_callback(
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
+    if (!bootstrap) {
+        return;
+    }
+
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     s_client_bootstrap_release(bootstrap);
 }
