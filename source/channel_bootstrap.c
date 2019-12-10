@@ -60,7 +60,7 @@ void s_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
 
 struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_client_bootstrap_options *options) {
+    const struct aws_client_bootstrap_options *options) {
     AWS_ASSERT(allocator);
     AWS_ASSERT(options);
     AWS_ASSERT(options->event_loop_group);
