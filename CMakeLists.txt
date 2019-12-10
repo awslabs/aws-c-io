@@ -28,6 +28,7 @@ string(REPLACE ";" "${AWS_MODULE_DIR};" AWS_MODULE_PATH "${CMAKE_PREFIX_PATH}${A
 list(APPEND CMAKE_MODULE_PATH ${AWS_MODULE_PATH})
 
 include(AwsCFlags)
+include(AwsCheckHeaders)
 include(AwsSharedLibSetup)
 include(AwsSanitizers)
 
@@ -172,6 +173,7 @@ file(GLOB IO_SRC
 add_library(${CMAKE_PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${CMAKE_PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${CMAKE_PROJECT_NAME} "AWS_IO")
+aws_check_headers(${CMAKE_PROJECT_NAME} ${IO_HEADERS})
 
 aws_add_sanitizers(${CMAKE_PROJECT_NAME})
 
