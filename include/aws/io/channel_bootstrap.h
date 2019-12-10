@@ -174,7 +174,7 @@ AWS_EXTERN_C_BEGIN
  */
 AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_client_bootstrap_options *options);
+    const struct aws_client_bootstrap_options *options);
 
 /**
  * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
