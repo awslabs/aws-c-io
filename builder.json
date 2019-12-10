@@ -4,7 +4,8 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"]
+            "targets": ["linux", "android"],
+            "revision": "c28aed5aad1176abc213ea22b872bc2cb1dd1852"
         }
     ],
     "downstream": [
