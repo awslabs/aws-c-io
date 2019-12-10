@@ -39,7 +39,13 @@
 void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
+    aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
+    void *user_data = bootstrap->user_data;
     aws_mem_release(bootstrap->allocator, bootstrap);
+
+    if (on_shutdown_complete) {
+        on_shutdown_complete(user_data);
+    }
 }
 
 void s_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
@@ -54,12 +60,11 @@ void s_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
 
 struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group,
-    struct aws_host_resolver *host_resolver,
-    struct aws_host_resolution_config *host_resolution_config) {
+    const struct aws_client_bootstrap_options *options) {
     AWS_ASSERT(allocator);
-    AWS_ASSERT(el_group);
-    AWS_ASSERT(host_resolver);
+    AWS_ASSERT(options);
+    AWS_ASSERT(options->event_loop_group);
+    AWS_ASSERT(options->host_resolver);
 
     struct aws_client_bootstrap *bootstrap = aws_mem_calloc(allocator, 1, sizeof(struct aws_client_bootstrap));
     if (!bootstrap) {
@@ -70,16 +75,18 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Initializing client bootstrap with event-loop group %p",
         (void *)bootstrap,
-        (void *)el_group);
+        (void *)options->event_loop_group);
 
     bootstrap->allocator = allocator;
-    bootstrap->event_loop_group = el_group;
+    bootstrap->event_loop_group = options->event_loop_group;
     bootstrap->on_protocol_negotiated = NULL;
     aws_atomic_init_int(&bootstrap->ref_count, 1);
-    bootstrap->host_resolver = host_resolver;
+    bootstrap->host_resolver = options->host_resolver;
+    bootstrap->on_shutdown_complete = options->on_shutdown_complete;
+    bootstrap->user_data = options->user_data;
 
-    if (host_resolution_config) {
-        bootstrap->host_resolver_config = *host_resolution_config;
+    if (options->host_resolution_config) {
+        bootstrap->host_resolver_config = *options->host_resolution_config;
     } else {
         bootstrap->host_resolver_config = (struct aws_host_resolution_config){
             .impl = aws_default_dns_resolve,
@@ -102,6 +109,10 @@ int aws_client_bootstrap_set_alpn_callback(
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
+    if (!bootstrap) {
+        return;
+    }
+
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     s_client_bootstrap_release(bootstrap);
 }

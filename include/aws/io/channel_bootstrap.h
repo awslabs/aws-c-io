@@ -69,6 +69,11 @@ struct aws_tls_connection_options;
 struct aws_event_loop_group;
 
 /**
+ * Called after client bootstrap has been completely cleaned up, after its last refcount is released.
+ */
+typedef void aws_client_bootstrap_shutdown_complete_fn(void *user_data);
+
+/**
  * aws_client_bootstrap handles creation and setup of channels that communicate via socket with a specific endpoint.
  */
 struct aws_client_bootstrap {
@@ -78,6 +83,31 @@ struct aws_client_bootstrap {
     struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     struct aws_atomic_var ref_count;
+    aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
+    void *user_data;
+};
+
+/**
+ * aws_client_bootstrap creation options.
+ */
+struct aws_client_bootstrap_options {
+
+    /* Required. Must outlive the client bootstrap. */
+    struct aws_event_loop_group *event_loop_group;
+
+    /* Required. Must outlive the client bootstrap. */
+    struct aws_host_resolver *host_resolver;
+
+    /* Optional. If none is provided then default settings are used.
+     * This object is deep-copied by bootstrap.
+     * */
+    struct aws_host_resolution_config *host_resolution_config;
+
+    /* Optional. If provided, callback is invoked when client bootstrap has completely shut down. */
+    aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
+
+    /* Optional. Passed to callbacks */
+    void *user_data;
 };
 
 struct aws_server_bootstrap;
@@ -140,15 +170,11 @@ struct aws_server_bootstrap {
 AWS_EXTERN_C_BEGIN
 
 /**
- * Initializes the client bootstrap with `allocator` and `el_group`. This object manages client connections and
- * channels. host_resolver will be used for resolving host names.
- * If host_resolution_config is NULL, the default will be used, host_resolution_config will be copied.
+ * Create the client bootstrap.
  */
 AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group,
-    struct aws_host_resolver *host_resolver,
-    struct aws_host_resolution_config *host_resolution_config);
+    const struct aws_client_bootstrap_options *options);
 
 /**
  * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before

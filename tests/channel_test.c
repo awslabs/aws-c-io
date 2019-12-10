@@ -914,8 +914,13 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     struct aws_host_resolver resolver;
     ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 8, &event_loop_group));
 
-    struct aws_client_bootstrap *bootstrap =
-        aws_client_bootstrap_new(allocator, &event_loop_group, &resolver, &mock_resolver_config);
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = &event_loop_group,
+        .host_resolver = &resolver,
+        .host_resolution_config = &mock_resolver_config,
+    };
+
+    struct aws_client_bootstrap *bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(bootstrap);
 
     struct aws_socket_options options;
