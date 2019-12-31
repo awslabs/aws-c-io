@@ -394,17 +394,26 @@ AWS_EXTERN_C_END
 
 /******************************************************************************************************************
  * Part 3 - aws_host_resolution_service
- * A host-resolution service that uses an aws_dns_resolver in the service of CRT-specific functionality.
+ * A host-resolution service that uses an aws_dns_resolver in the service of CRT-specific host resolution functionality.
  *
  * Intended Properties:
  *   (1) Aggregation of ipv4 and ipv6 results in a single set
  *   (2) getaddrinfo() style sorting of results
  *   (3) Result caching
- *   (4) Host ranking/scoring based on connectivity/performance
+ *   (4) Host ranking/scoring based on connectivity/performance (API TBD)
+ *   (5) Support various cache seeding strategies (for example, S3 front end addresses)
  *
  * Excluded Properties:
- *   (1) AWS service-specific policies.  The configuration options for queries are built to support these policies
- *   however.
+ *   (1) AWS service-specific policies.  Instead we support options that let an external user implement these policies.
+ *
+ * It's useful to acknowledge that, from the CRT's perspective, there are at least two kinds of queries we want to
+ * support at the host resolution level:
+ *   (1) channel setup queries - a standard name resolution process that yields ipv4 and ipv6 addresses for a connection
+ *   (2) cache seeding queries - a resolution configuration that is intended to seed the internal cache with answers
+ *   (ideally) ahead-of-time.  Options should exist to control how many distinct answers to try and establish.
+ *
+ * The current host resolution design does not support recurrent controls on cache seeding, making the assumption that
+ * an external system should be responsible for over-time maintenance by making cache seeding queries periodically.
  ******************************************************************************************************************/
 
 /*
@@ -428,10 +437,16 @@ enum aws_host_resolution_service_cache_read_mode {
 
     /*
      * Name and detailed semantics a WIP.
+     * This is an option intended for cache seeding.
      * If there's fewer than N (cached results + pending queries), make a new pending query, otherwise select one
      * at random? (ideally uniform and round robin, not random)  Intent is a policy that loosely specifies a desired
-     * target number of distinct addresses.  So if I'm about to do a 10-part multi-upload, I might ask for SpreadN
-     * with N at least 10.
+     * target number of distinct addresses.  So if I'm about to do a 10-part multi-upload, I could pre-seed the cache
+     * (if possible) by making 10 queries in SPREAD_N mode with N set to 10.
+     *
+     * Note that pre-seeding has some conflicts with S3's very-short TTL policy.  Based on performance results, if
+     * SPREAD_N proves useful, we may also want to include a cache write mode that lets use override the TTL to a more
+     * reasonable value than 6 seconds, while still being safe relative to ec2 ip shuffles (although TLS with SNI
+     * should prevent mistaken connections to no-longer-valid hosts).
      */
     AWS_HRS_CRM_SPREAD_N,
 };
@@ -477,17 +492,17 @@ typedef void(on_host_resolution_query_completed_fn)(
 struct aws_host_resolution_query {
 
     /*
-     * If null, defaults to NORMAL mode
+     * If null, defaults to NORMAL read mode
      */
     struct aws_host_resolution_service_cache_read_options *cache_read_options;
 
     /*
-     * If null, defaults to NORMAL mode
+     * If null, defaults to NORMAL write mode
      */
     struct aws_host_resolution_service_cache_write_options *cache_write_options;
 
     /*
-     * If null, defaults to RECURSIVE
+     * If null, defaults to RECURSIVE query type
      */
     struct aws_host_resolution_service_resolve_options *resolve_options;
 
