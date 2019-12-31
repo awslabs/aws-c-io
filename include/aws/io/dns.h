@@ -17,81 +17,162 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/atomics.h>
+
 struct aws_array_list;
 struct aws_event_loop_group;
 struct aws_string;
 
+/* use async destruction from the start */
+typedef void (aws_dns_on_destroy_completed_fn)(void *user_data);
+
 /*
- * Part 1 - an abstraction around selecting a remote dns service to use.
+ * Vocabulary/Concepts
  *
- * Two defaults are included:
- *   (1) An upstream provider that returns the platform-specific dns service that
- *     getaddrinfo() would use.  Note that the Windows implementation is a best-guess since
- *     the actual source is not available for study.
- *   (2) A chain provider that uses a fixed list of service provider hosts in a round-robin fashion.
+ * aws_dns_resolver - A thin interface around remote DNS queries.  Includes a default implementation that supports
+ * recursive and iterative queries.  Supports DNS over UDP.  (Eventually) Supports DNS over https and tls.  No support
+ * for non-internet-class queries.  Uses a vtable and can be replaced with a custom implementation.
  *
- *  Initially, all providers must be actual resolved addresses.  However, proper root-level
- *  support means we must allow root service providers to returns names (and resolve them with the
- *  upstream provider).  For obvious (chicken and egg) reasons, an upstream provider MUST
- *  always return a resolved address.
+ * aws_dns_service_provider_config - Controls what host/port/protocol combos the default aws_dns_resolver uses to
+ * resolve queries.
  *
+ * aws_host_resolution_service - A heavy-weight host name resolution service that contains CRT-specific and
+ * getadrrinfo() specific functionality in the name of resolving DNS queries for CRT connections.  Contains
+ * a TTL-based resolution cache and uses an aws_dns_resolver to resolve queries that the local cache cannot handle.
+ * Uses a vtable and can be replaced with a custom implementation.
+ * This will be the type directly used by channel setup.
  */
 
 /*
- * Service provider selection feedback mechanism.  Non-success categories are a WIP.
+ * Part 1 - aws_dns_service_provider_config
+ * An abstraction around configuring/selecting a remote dns service provider.  Used by the default aws_dns_resolver to
+ * choose an appropriate remote provider to resolve a query.
+ *
+ * Desired Use Cases
+ *
+ * (1) EzMode - You don't want to deal with a lot of configuration nonsense that you don't understand.  With minimal
+ * effort or understanding, you want to have a resolver that matches standard system behavior (getaddrinfo()-based).
+ *
+ * (2) Testing - You're writing tests.  You want a resolver that can use custom (usually localhost-based) endpoints
+ * for complete integration testing.
+ *
+ * (3) Privacy - You're concerned about privacy. You want a DNS resolver that does not broadcast every lookup you do.
+ *
+ * (4) Cache bypass (s3) - You want certain queries to bypass resolution caching as much as possible.  The only way
+ * to do this is to perform iterative queries starting at the root (or nearest ancestor) to discover the authoritative
+ * name server and then hit it directly with a query.
+ *
+ * The aws dns resolver implementation uses this abstraction, as well as a query's properties, to determine
+ * which remote dns provider to use to resolve a query that is not cache-satisfiable.
+ *
+ * The configuration object allows you to override providers for three different categories:
+ *
+ *  (1) bootstrap - This provider will be used to resolve all other unresolved providers (default and root).
+ *  There can only be one bootstrap provider and its host entry MUST be a resolved ipv4 or ipv6 address.
+ *
+ *  (2) default - This provider will be used to resolve all normal dns queries.  There can only be one default
+ *  provider.
+ *
+ *  (3) root - this provider (or these providers) will be used to resolve cache-bypassing
+ *  iterative queries.  As the name suggests, this should literally be a list of root nameserver host names.
+ *  There can be (and should be, for redundancy and reliability) more than one root provider, and an aws_dns_resolver
+ *  will iterate through the full set in round robin fashion as needed.
+ *
+ * Why are roots necessary?  The purpose of the cache-bypass use case is to seed the local resolver cache with
+ * many different results (so as to distribute connections as uniformly as possible across VIPs).  It only provides
+ * value for host names that map to large sets of addresses.  It isn't sufficient to simply NOT set recursion-desired on
+ * a standard query (which, by specification, will return next-step nameservers if authoritative data is not available)
+ * because we don't care about the distinction between authoritative vs. cached data.  We're after distinct addresses
+ * and we don't get that unless we hit the authoritative name server ourselves.
+ *
+ * For each category, if not overridden, an aws_dns_resolver will:
+ *
+ *   (1) bootstrap - Default to standard system behavior (ala getaddrinfo()).
+ *   (2) default - Use the bootstrap provider.
+ *   (3) root - Use the default provider (to resolve iterative queries).
+ *
+ * Returning to our original use cases:
+ *
+ *  (1) EzMode - Use an empty, unmodified provider config and get standard system default behavior (as if
+ *  getaddrinfo() was used) in all cases.
+ *
+ *  (2) Testing - Set bootstrap and default to a loopback address that has a mock listener attached to it.  Roots
+ *  can be set too to test iterative resolves.
+ *
+ *  (3) Privacy - Leave the bootstrap alone (use standard behavior to set up your default provider) but set the
+ *  default to something you trust (for example, a remote host that supports dns-over-https or dns-over-tls)
+ *
+ *  (4) Cache bypass - Add one or more root name servers to the root category.  They will be used as the start points
+ *  for resolving iterative queries (when the label cache does not have better starting information).
+ *
+ * Not yet solved (unsure if necessary):
+ *
+ *  (1) Do we need additional information on the provider record to support the
+ *  (unlikely) case of getting a truncated result and being unable to get around it via edns(0) options?  In
+ *  particular, would a fallback port for a tcp connection be useful and sufficient?
+ *
+ *  (2) Do we need to publicly expose the logic that emulates getaddrinfo()-equivalent provider selection?  Possibly
+ *  asynchronous.
+ *
+ *  (3) Multiple default providers?  In particular, we don't yet know enough about how getaddrinfo() selects a host.
+ *  If it's dynamic we will need to refactor.
  */
-enum aws_dns_service_provider_result_type {
-    AWS_DNS_SPRT_SUCCESS,
-    AWS_DNS_SPRT_NO_ANSWER,
-    AWS_DNS_SPRT_REJECTED,
+
+enum aws_dns_protocol {
+    AWS_DNS_PROTOCOL_UDP,
+    AWS_DNS_PROTOCOL_TCP,
+    AWS_DNS_PROTOCOL_TLS,
+    AWS_DNS_PROTOCOL_HTTPS,
 };
 
-struct aws_dns_service_provider;
+struct aws_dns_service_provider_record {
+    enum aws_dns_protocol protocol;
+    struct aws_byte_cursor host;
+    uint16_t port;
+};
 
-AWS_EXTERN_C_BEGIN
+struct aws_dns_service_provider_config {
 
-AWS_IO_API
-struct aws_dns_service_provider *aws_dns_service_provider_new_upstream(struct aws_allocator *allocator);
+    /* If not set, the resolver will use getaddrinfo()-equivalent logic to select the bootstrap provider */
+    struct aws_dns_service_provider_record *bootstrap_provider;
 
-AWS_IO_API
-struct aws_dns_service_provider *aws_dns_service_provider_new_chain(struct aws_allocator *allocator, char **host_list, uint32_t num_hosts);
+    /* If not set, the resolver will use the bootstrap provider for all recursive queries */
+    struct aws_dns_service_provider_record *default_provider;
 
-AWS_IO_API void aws_dns_service_provider_acquire(struct aws_dns_service_provider *provider);
-
-AWS_IO_API void aws_dns_service_provider_release(struct aws_dns_service_provider *provider);
-
-AWS_IO_API
-int aws_dns_service_provider_get_provider(struct aws_dns_service_provider *provider, struct aws_byte_cursor *provider_host);
-
-AWS_IO_API
-int aws_dns_service_provider_report_result(struct aws_dns_service_provider *provider, struct aws_byte_cursor *provider_host, enum aws_dns_service_provider_result_type result);
-
-AWS_EXTERN_C_END
+    /* If empty, the resolver will use the default provider for iterative queries */
+    struct aws_dns_service_provider_record *root_providers; /* beginning of an array */
+    uint32_t root_provider_count;
+};
 
 /*
- * Part 2 - a thin wrapper around raw dns query/response.
+ * Part 2 - aws_dns_resolver
+ * A thin interface around raw dns query/response.  A default resolver is included that uses
+ * aws_dns_service_provider_config to control what remote dns services are used.
  *
- * Intended Properties:
- *   (1) 1 question allowed per query
- *   (2) Resolver caches authority/zones-of-responsibility in a label-based tree
- *   (3) Resolver supports injectable service providers (both upstream and root servers)
- *   (4) Resolver implements retries (users should not layer retry on top)
- *   (5) Resolver encapsulates transport (UDP only for now)
- *   (6) Resolver abstracts security (unsupported for foreseeable future)
+ * Musts/Requirements:
+ *   (1) 1 question allowed per query (aggregation is caller's responsibility)
+ *   (2) Implements retries (users should not layer retry on top)
  *
- * Excluded Properties:
+ * Shoulds:
+ *   (1) Cache authority/zones-of-responsibility in a label-based tree (iterative only?)
+ *   (2) Assume query input is a host name and not an IP address.
+ *
+ * Must nots:
  *   (1) No caching of answers
- *   (2) No getaddrinfo-specific functionality (result sorting, service provider selection)
+ *   (2) No getaddrinfo-specific post-processing or pre-processing
  *   (3) No CRT-specific functionality (ipv6 vs. ipv4, result caching, etc...)
- *   (4) Input pre-processing (address vs. host name)
  *
  * Open Possibilies:
- *   (1) Revere lookups
+ *   (1) Reverse lookup support
+ *   (2) Security (DNSSEC, DNSCURVE, etc...) support
  */
 
 /*
  * Exactly matches specification RR type used in query/answer.
  * Includes obsolete/unused record types for completeness.
+ *
+ * Initially we care (internally) about A, AAAA, NS, SOA, and CNAME
+ * Initially we care (externally) about A, AAAA
  */
 enum aws_dns_resource_record_type {
     AWS_DNS_RR_A = 1,
@@ -113,7 +194,7 @@ enum aws_dns_resource_record_type {
     AWS_DNS_RR_RP = 17,
     AWS_DNS_RR_AFSDB = 18,
     AWS_DNS_RR_X25 = 19,
-    AWS_DNS_RR_ISDM = 20,
+    AWS_DNS_RR_ISDN = 20,
     AWS_DNS_RR_RT = 21,
     AWS_DNS_RR_NSAP = 22,
     AWS_DNS_RR_NSAPPTR = 23,
@@ -183,114 +264,145 @@ enum aws_dns_resource_record_type {
 
 };
 
-enum aws_dns_query_algorithm {
+struct aws_dns_resource_record {
+    /* Needs to be on the record (rather than the full result/set) to support ANY-based queries */
+    enum aws_dns_resource_record_type type;
+
+    /* time-to-live in seconds */
+    uint32_t ttl;
+
+    /* raw binary data of the resource record */
+    struct aws_string *data;
+};
+
+/* what kind of query to make */
+enum aws_dns_query_type {
     /*
-     * Asks the local (hosts) upstream dns server to perform a recursive query.
-     * Roughly equivalent to what getaddrinfo() makes (per resource record type).
+     * Make a recursive query to a single provider
      */
-    AWS_DQRM_UPSTREAM,
+    AWS_DNS_QUERY_RECURSIVE,
 
     /*
-     * Performs an iterative query starting from a dns root.  Root choice is configured
-     * via a service provider.
-     */
-    AWS_DQRM_FROM_ROOT,
-
-    /*
-     * Performs an iterative query starting from the closest known ancestor to the host
+     * Performs an iterative query starting from the closest known (name server) ancestor to the host
      * in question.
      */
-    AWS_DQRM_FROM_NEAREST_ANCESTOR,
+    AWS_DNS_QUERY_ITERATIVE,
 };
 
+/* various configuration options for an individual query */
 struct aws_dns_query_options {
-    enum aws_dns_query_algorithm algorithm;
+    enum aws_dns_query_type query_type;
 
+    /*
+     * Retry controls
+     *
+     * Open Q: Move to a generic retry strategy type?
+     */
+
+    /*
+     * (Iterative only) Maximum (packet-level) queries (summed across attempts?) to send before giving up.
+     * If zero, defaults to something reasonable (20?)
+     */
     uint16_t max_iterations;
+
+    /*
+     * Maximum number of attempts to try the query (against no response).
+     * If zero, defaults to 4.
+     */
     uint16_t max_retries;
+
+    /*
+     * Time to wait for a response before considering the attempt a failure and potentially retrying.
+     * If zero, defaults to 4000.
+     */
     uint16_t retry_interval_in_millis;
-
-    bool authoritative_only;
 };
 
 /*
- * A thin abstraction/aggregation on top of the result code that can come in a single response.
- *
- * Purposely thin/WIP since it's not clear yet what the proper amount of aggregation/encapsulation should
- * be here.
- */
-enum aws_dns_query_result_code {
-    AWS_DNS_QUERY_RC_SUCCESS,
-    AWS_DNS_QUERY_RC_NXDOMAIN,
-    AWS_DNS_QUERY_RC_UNKNOWN,
-};
-
-struct aws_dns_resource_record {
-    struct aws_string *data;
-
-    /* Needs to be on the record (rather than the result/set) to support ANY-based queries */
-    enum aws_dns_resource_record_type type;
-};
-
-/*
- * There are extensions/proposals for extended error information.  A pointer-referenced intermediate struct
- * supports that.
+ * There are extensions/proposals for extended error information.  Unspecified for now.
  */
 struct aws_dns_query_result_extended_info;
 
 struct aws_dns_query_result {
-    enum aws_dns_query_result_code rc;
-    struct aws_array_list records; /* array of aws_dns_resource_record */
+    /* array of aws_dns_resource_record */
+    struct aws_array_list records;
+
     struct aws_dns_query_result_extended_info *extended_info;
-    bool truncated;
     bool authoritative;
+    bool authenticated;
+
+    /*
+     * Truncation can also be an error, but if we get enough data for a valid answer and aren't doing security
+     * validation, then it may be safe to return the answer without an error.  In that case, we'd indicate the
+     * truncation status here.
+     */
+    bool truncated;
 };
 
-typedef void (*on_dns_query_completed_callback_fn)(struct aws_dns_query_result *result, int error_code, void *user_data);
+typedef void (on_dns_query_completed_callback_fn)(struct aws_dns_query_result *result, int error_code, void *user_data);
 
 struct aws_dns_query {
     enum aws_dns_resource_record_type query_type;
     struct aws_byte_cursor hostname;
 
-    on_dns_query_completed_callback_fn on_completed_callback;
+    struct aws_dns_query_options *options; /* Optional - If null, all defaults will be used */
+
+    on_dns_query_completed_callback_fn *on_completed_callback;
     void *user_data;
 };
 
+struct aws_dns_resolver;
 
-struct aws_dns_resolver_config_options {
-    struct aws_dns_provider *upstream_provider;
-    struct aws_dns_provider *root_provider;
+struct aws_dns_resolver_vtable {
+    void (*destroy)(struct aws_dns_resolver *resolver, aws_dns_on_destroy_completed_fn *callback, void *user_data);
+    void (*make_query)(struct aws_dns_resolver *resolver, struct aws_dns_query *query);
+};
+
+struct aws_dns_resolver {
+    struct aws_allocator *allocator;
+    struct aws_dns_resolver_vtable *vtable;
+    struct aws_atomic_var ref_count;
+    void *impl;
+};
+
+/*
+ * Configuration options for the crt's default dns resolver
+ */
+struct aws_dns_resolver_default_options {
+    struct aws_dns_service_provider_config *providers;
     struct aws_event_loop_group *elg;
+
+    aws_dns_on_destroy_completed_fn *destroy_completed_callback;
+    void *destroy_user_data;
 };
 
 AWS_EXTERN_C_BEGIN
 
-struct aws_dns_resolver;
-
 AWS_IO_API
-struct aws_dns_resolver *aws_dns_resolver_new(struct aws_allocator *allocator, struct aws_dns_resolver_config_options *options);
+struct aws_dns_resolver *aws_dns_resolver_new_default(struct aws_allocator *allocator, struct aws_dns_resolver_default_options *options);
 
 AWS_IO_API void aws_dns_resolver_acquire(struct aws_dns_resolver *resolver);
 
 AWS_IO_API void aws_dns_resolver_release(struct aws_dns_resolver *resolver);
 
 AWS_IO_API
-int aws_dns_resolver_query(struct aws_dns_resolver *resolver, struct aws_dns_query *query, struct aws_dns_query_options *options);
+int aws_dns_resolver_make_query(struct aws_dns_resolver *resolver, struct aws_dns_query *query);
 
 AWS_EXTERN_C_END
 
 /******************************************************************************************************************
- * Part 3 - A host-resolution service that uses an aws_dns_resolver in the service of CRT-specific functionality.
+ * Part 3 - aws_host_resolution_service
+ * A host-resolution service that uses an aws_dns_resolver in the service of CRT-specific functionality.
  *
  * Intended Properties:
  *   (1) Aggregation of ipv4 and ipv6 results in a single set
  *   (2) getaddrinfo() style sorting of results
- *   (3) Result caching that supports both replacement and appending
+ *   (3) Result caching
  *   (4) Host ranking/scoring based on connectivity/performance
  *
  * Excluded Properties:
- *   (1) AWS service-specific policies (S3 refresh, S3 front-end spread for multipart operations as examples).  The
- *     configuration options for queries are built to support these policies however.
+ *   (1) AWS service-specific policies.  The configuration options for queries are built to support these policies
+ *   however.
  ******************************************************************************************************************/
 enum aws_host_resolution_service_cache_read_mode {
     AWS_HRS_CRM_NORMAL,
@@ -313,7 +425,7 @@ struct aws_host_resolution_service_cache_write_options {
 };
 
 struct aws_host_resolution_service_resolve_options {
-    enum aws_dns_query_algorithm algorithm;
+    enum aws_dns_query_type query_type;
 };
 
 typedef void (*on_host_resolution_query_completed_fn)(struct aws_array_list *addresses, int error_code, void *user_data);
@@ -330,19 +442,34 @@ struct aws_host_resolution_query {
     void *user_data;
 };
 
-struct aws_host_resolution_service_options {
-    struct aws_event_loop_group *elg;
-    struct aws_dns_resolver *resolver;
+struct aws_host_resolution_service;
+
+struct aws_host_resolution_service_vtable {
+    void (*destroy)(struct aws_dns_resolver *resolver, aws_dns_on_destroy_completed_fn *callback, void *user_data);
+    int (*resolve)(struct aws_host_resolution_service *service, struct aws_host_resolution_query *query);
 };
 
-struct aws_host_resolution_service;
+struct aws_host_resolution_service {
+    struct aws_allocator *allocator;
+    struct aws_host_resolution_service_vtable *vtable;
+    struct aws_atomic_var ref_count;
+    void *impl;
+};
+
+struct aws_host_resolution_service_default_options {
+    struct aws_dns_resolver *resolver;
+
+    aws_dns_on_destroy_completed_fn *destroy_completed_callback;
+    void *destroy_user_data;
+};
 
 AWS_EXTERN_C_BEGIN
 
 /**
- * Creates a new host resolution service with a ref count of 1
+ * Creates a new default host resolution service with a ref count of 1.  The default host resolution service
+ * implements all of the CRT's name resolution requirements.
  */
-AWS_IO_API struct aws_host_resolution_service *aws_host_resolution_service_new(struct aws_allocator *allocator, struct aws_host_resolution_service_options *options);
+AWS_IO_API struct aws_host_resolution_service *aws_host_resolution_service_new_default(struct aws_allocator *allocator, struct aws_host_resolution_service_default_options *options);
 
 /**
  * Adds 1 to the ref count of a host resolution service
