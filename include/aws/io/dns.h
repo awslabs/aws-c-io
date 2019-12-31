@@ -24,7 +24,7 @@ struct aws_event_loop_group;
 struct aws_string;
 
 /* use async destruction from the start */
-typedef void (aws_dns_on_destroy_completed_fn)(void *user_data);
+typedef void(aws_dns_on_destroy_completed_fn)(void *user_data);
 
 /*
  * Vocabulary/Concepts
@@ -207,7 +207,7 @@ enum aws_dns_resource_record_type {
     AWS_DNS_RR_NXT = 30,
     AWS_DNS_RR_EID = 31,
     AWS_DNS_RR_NIMLOC = 32, /* AWS_DNS_RR_NB erroneously defined as 32 */
-    AWS_DNS_RR_SRV = 33, /* AWS_DNS_RR_NBSTAT errorneously defined as 33 */
+    AWS_DNS_RR_SRV = 33,    /* AWS_DNS_RR_NBSTAT errorneously defined as 33 */
     AWS_DNS_RR_ATMA = 34,
     AWS_DNS_RR_NAPTR = 35,
     AWS_DNS_RR_KX = 36,
@@ -339,7 +339,7 @@ struct aws_dns_query_result {
     bool truncated;
 };
 
-typedef void (on_dns_query_completed_callback_fn)(struct aws_dns_query_result *result, int error_code, void *user_data);
+typedef void(on_dns_query_completed_callback_fn)(struct aws_dns_query_result *result, int error_code, void *user_data);
 
 struct aws_dns_query {
     enum aws_dns_resource_record_type query_type;
@@ -379,7 +379,9 @@ struct aws_dns_resolver_default_options {
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API
-struct aws_dns_resolver *aws_dns_resolver_new_default(struct aws_allocator *allocator, struct aws_dns_resolver_default_options *options);
+struct aws_dns_resolver *aws_dns_resolver_new_default(
+    struct aws_allocator *allocator,
+    struct aws_dns_resolver_default_options *options);
 
 AWS_IO_API void aws_dns_resolver_acquire(struct aws_dns_resolver *resolver);
 
@@ -410,7 +412,7 @@ AWS_EXTERN_C_END
  *
  * (1) How to read from the cache.
  * (2) How to perform the network-level query if the cache couldn't provide an answer.
- * (3) Hot to write back to the cache if a network-level query successfully returned results.
+ * (3) How to write back to the cache if a network-level query successfully returned results.
  */
 
 enum aws_host_resolution_service_cache_read_mode {
@@ -467,7 +469,10 @@ struct aws_dns_host_address_pair {
     struct aws_string *ipv6_address;
 };
 
-typedef void (on_host_resolution_query_completed_fn)(struct aws_dns_host_address_pair *addresses, int error_code, void *user_data);
+typedef void(on_host_resolution_query_completed_fn)(
+    struct aws_dns_host_address_pair *addresses,
+    int error_code,
+    void *user_data);
 
 struct aws_host_resolution_query {
 
@@ -524,7 +529,9 @@ AWS_EXTERN_C_BEGIN
  * Creates a new default host resolution service with a ref count of 1.  The default host resolution service
  * implements all of the CRT's name resolution requirements.
  */
-AWS_IO_API struct aws_host_resolution_service *aws_host_resolution_service_new_default(struct aws_allocator *allocator, struct aws_host_resolution_service_default_options *options);
+AWS_IO_API struct aws_host_resolution_service *aws_host_resolution_service_new_default(
+    struct aws_allocator *allocator,
+    struct aws_host_resolution_service_default_options *options);
 
 /**
  * Adds 1 to the ref count of a host resolution service
@@ -540,7 +547,9 @@ AWS_IO_API void aws_host_resolution_service_release(struct aws_host_resolution_s
 /**
  * Submits a resolution query to the host resolution service.
  */
-AWS_IO_API int aws_host_resolution_service_resolve(struct aws_host_resolution_service *service, struct aws_host_resolution_query *query);
+AWS_IO_API int aws_host_resolution_service_resolve(
+    struct aws_host_resolution_service *service,
+    struct aws_host_resolution_query *query);
 
 AWS_EXTERN_C_END
 
@@ -550,7 +559,7 @@ AWS_EXTERN_C_END
 enum aws_ip_address_type {
     AWS_IP_AT_NONE,
     AWS_IP_AT_IPV4,
-    AWS_IP_AT_IPV6
+    AWS_IP_AT_IPV6,
 };
 
 AWS_EXTERN_C_BEGIN
