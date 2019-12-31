@@ -414,6 +414,8 @@ AWS_EXTERN_C_END
  *
  * The current host resolution design does not support recurrent controls on cache seeding, making the assumption that
  * an external system should be responsible for over-time maintenance by making cache seeding queries periodically.
+ * This is subject to change, given the privileged view the resolution service has of the cache and when it would
+ * be proper to make additional queries.
  ******************************************************************************************************************/
 
 /*
