@@ -404,9 +404,33 @@ AWS_EXTERN_C_END
  *   (1) AWS service-specific policies.  The configuration options for queries are built to support these policies
  *   however.
  ******************************************************************************************************************/
+
+/*
+ * A host resolution query contains three sets of options (on top of what to actually look up):
+ *
+ * (1) How to read from the cache.
+ * (2) How to perform the network-level query if the cache couldn't provide an answer.
+ * (3) Hot to write back to the cache if a network-level query successfully returned results.
+ */
+
 enum aws_host_resolution_service_cache_read_mode {
+    /*
+     * If the cache has a valid answer, use it.  If there's a pending query for the same address, wait on it.
+     */
     AWS_HRS_CRM_NORMAL,
+
+    /*
+     * Don't use the cache at all.  Skip directly to the resolver query.
+     */
     AWS_HRS_CRM_SKIP,
+
+    /*
+     * Name and detailed semantics a WIP.
+     * If there's fewer than N (cached results + pending queries), make a new pending query, otherwise select one
+     * at random? (ideally uniform and round robin, not random)  Intent is a policy that loosely specifies a desired
+     * target number of distinct addresses.  So if I'm about to do a 10-part multi-upload, I might ask for SpreadN
+     * with N at least 10.
+     */
     AWS_HRS_CRM_SPREAD_N,
 };
 
@@ -416,7 +440,14 @@ struct aws_host_resolution_service_cache_read_options {
 };
 
 enum aws_host_resolution_service_cache_write_mode {
+    /*
+     * Write the answer(s) back to the cache as normal using the associated TTLs
+     */
     AWS_HRS_CWM_NORMAL,
+
+    /*
+     * Don't write to the cache at all.
+     */
     AWS_HRS_CWM_SKIP,
 };
 
@@ -428,12 +459,31 @@ struct aws_host_resolution_service_resolve_options {
     enum aws_dns_query_type query_type;
 };
 
-typedef void (*on_host_resolution_query_completed_fn)(struct aws_array_list *addresses, int error_code, void *user_data);
+/*
+ * Success implies at least one non-null address.
+ */
+struct aws_dns_host_address_pair {
+    struct aws_string *ipv4_address;
+    struct aws_string *ipv6_address;
+};
+
+typedef void (on_host_resolution_query_completed_fn)(struct aws_dns_host_address_pair *addresses, int error_code, void *user_data);
 
 struct aws_host_resolution_query {
 
+    /*
+     * If null, defaults to NORMAL mode
+     */
     struct aws_host_resolution_service_cache_read_options *cache_read_options;
+
+    /*
+     * If null, defaults to NORMAL mode
+     */
     struct aws_host_resolution_service_cache_write_options *cache_write_options;
+
+    /*
+     * If null, defaults to RECURSIVE
+     */
     struct aws_host_resolution_service_resolve_options *resolve_options;
 
     struct aws_byte_cursor host_name;
@@ -456,6 +506,11 @@ struct aws_host_resolution_service {
     void *impl;
 };
 
+/*
+ * Configuration options for the default host resolution service
+ *
+ * ToDo: There's a lot of cache configuration that could be done here.
+ */
 struct aws_host_resolution_service_default_options {
     struct aws_dns_resolver *resolver;
 
