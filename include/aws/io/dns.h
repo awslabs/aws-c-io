@@ -31,7 +31,7 @@ typedef void(aws_dns_on_destroy_completed_fn)(void *user_data);
  *
  * Why implement our own DNS:
  *
- *  (1) no other way of doing non-blocking DNS across all platforms
+ *  (1) no other way of doing truly async DNS across all platforms (without spawning threads per resolve)
  *  (2) make it possible to support, across all platforms and runtimes, DNS resolution that goes beyond what is
  *  provided by default on a given platform (dns-over-https/tls, dns security extensions, etc...).
  *  (3) makes it possible to support name resolution strategies that improve our ability to utilize AWS services
