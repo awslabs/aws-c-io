@@ -160,7 +160,7 @@ if (BUILD_SHARED_LIBS)
     add_test_case(shared_library_find_function_success)
 endif()
 
-set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
+set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
 #SSL certificates to use for testing.
