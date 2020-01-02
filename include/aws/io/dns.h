@@ -79,13 +79,14 @@ typedef void(aws_dns_on_destroy_completed_fn)(void *user_data);
  *
  * The configuration object allows you to override providers for three different categories:
  *
- *  (1) bootstrap - This provider will be used to resolve all other unresolved providers (default and root).
- *  There can only be one bootstrap provider and its host entry MUST be a resolved ipv4 or ipv6 address.
+ *  (1) bootstrap - These providers will be used to resolve all other unresolved providers (default and root).
+ *  Each host entry MUST be a resolved ipv4 or ipv6 address.
  *
- *  (2) default - This provider will be used to resolve all normal dns queries.  There can only be one default
- *  provider.
+ *  (2) default - These providers will be used to resolve all normal dns queries.  Roughly equivalent to the
+ *  'nameserver' entries in resolv.conf.  Providers are tried sequentially until success or a timeout/retry policy
+ *  failure.
  *
- *  (3) root - this provider (or these providers) will be used to resolve cache-bypassing
+ *  (3) root - These providers will be used to resolve cache-bypassing
  *  iterative queries.  As the name suggests, this should literally be a list of root nameserver host names.
  *  There can be (and should be, for redundancy and reliability) more than one root provider, and an aws_dns_resolver
  *  will iterate through the full set in round robin fashion as needed.
@@ -99,9 +100,9 @@ typedef void(aws_dns_on_destroy_completed_fn)(void *user_data);
  *
  * For each category, if not overridden, an aws_dns_resolver will:
  *
- *   (1) bootstrap - Default to standard system behavior (ala getaddrinfo()).
- *   (2) default - Use the bootstrap provider.
- *   (3) root - Use the default provider (to resolve iterative queries).
+ *   (1) bootstrap - Default to standard system behavior (ala /etc/resolv.conf).
+ *   (2) default - Use the bootstrap providers.
+ *   (3) root - Use the default providers (to resolve iterative queries).
  *
  * Returning to our original use cases:
  *
@@ -123,11 +124,7 @@ typedef void(aws_dns_on_destroy_completed_fn)(void *user_data);
  *  (unlikely) case of getting a truncated result and being unable to get around it via edns(0) options?  In
  *  particular, would a fallback port for a tcp connection be useful and sufficient?
  *
- *  (2) Do we need to publicly expose the logic that emulates getaddrinfo()-equivalent provider selection?  Possibly
- *  asynchronous.
- *
- *  (3) Multiple default providers?  In particular, we don't yet know enough about how getaddrinfo() selects a host.
- *  If it's dynamic we will need to refactor.
+ *  (2) Do we need to publicly expose the logic that works with resolv.conf/host.conf/nsswitch.conf?
  */
 
 enum aws_dns_protocol {
@@ -145,15 +142,20 @@ struct aws_dns_service_provider_record {
 
 struct aws_dns_service_provider_config {
 
-    /* If not set, the resolver will use getaddrinfo()-equivalent logic to select the bootstrap provider */
-    struct aws_dns_service_provider_record *bootstrap_provider;
+    /* If empty, the resolver will use resolv.conf-equivalent logic to select bootstrap providers */
+    struct aws_dns_service_provider_record *bootstrap_providers;
+    uint32_t bootstrap_provider_count;
 
-    /* If not set, the resolver will use the bootstrap provider for all recursive queries */
-    struct aws_dns_service_provider_record *default_provider;
+    /* If empty, the resolver will use the bootstrap providers for all recursive queries */
+    struct aws_dns_service_provider_record *default_providers;
+    uint32_t default_provider_count;
 
-    /* If empty, the resolver will use the default provider for iterative queries */
+    /* If empty, the resolver will use the default providers for iterative queries */
     struct aws_dns_service_provider_record *root_providers; /* beginning of an array */
     uint32_t root_provider_count;
+
+    /* If true, will skip all local host resolution rules (host.conf, /etc/hosts) */
+    bool disable_local_host_resolution;
 };
 
 /*
@@ -183,7 +185,7 @@ struct aws_dns_service_provider_config {
  * Exactly matches specification RR type used in query/answer.
  * Includes obsolete/unused record types for completeness.
  *
- * Initially we care (internally) about A, AAAA, NS, SOA, and CNAME
+ * Initially we care (internally) about A, AAAA, NS, SOA, DNAME, and CNAME
  * Initially we care (externally) about A, AAAA
  */
 enum aws_dns_resource_record_type {
@@ -410,7 +412,7 @@ AWS_EXTERN_C_END
  *
  * Intended Properties:
  *   (1) Aggregation of ipv4 and ipv6 results in a single set
- *   (2) getaddrinfo() style sorting of results
+ *   (2) getaddrinfo() style sorting of results (via resolv.conf sortlist entry?)
  *   (3) Result caching
  *   (4) Host ranking/scoring based on connectivity/performance (API TBD)
  *   (5) Support various cache seeding strategies (for example, S3 front end addresses)
