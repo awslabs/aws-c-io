@@ -290,8 +290,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     }
 
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    aws_thread_id current_thread_id = aws_thread_current_thread_id();
-    aws_atomic_store_ptr(&impl->thread_id, &current_thread_id);
+    impl->thread.thread_id = aws_thread_current_thread_id();
+    aws_atomic_store_ptr(&impl->thread_id, &impl->thread.thread_id);
 
     /* Clean up task-related stuff first.
      * It's possible the a cancelled task adds further tasks to this event_loop, these new tasks would end up in
@@ -484,7 +484,7 @@ static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
     AWS_ASSERT(impl);
 
-    aws_thread_id *el_thread_id = aws_atomic_load_ptr(&impl->thread_id);
+    aws_thread_id_t *el_thread_id = aws_atomic_load_ptr(&impl->thread_id);
     return el_thread_id && aws_thread_thread_id_equal(*el_thread_id, aws_thread_current_thread_id());
 }
 

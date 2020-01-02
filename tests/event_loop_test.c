@@ -25,7 +25,7 @@
 struct task_args {
     bool invoked;
     bool was_in_thread;
-    aws_thread_id thread_id;
+    aws_thread_id_t thread_id;
     struct aws_event_loop *loop;
     struct aws_event_loop_group *el_group;
     enum aws_task_status status;

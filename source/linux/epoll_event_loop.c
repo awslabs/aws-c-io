@@ -236,8 +236,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_wait_for_stop_completion(event_loop);
 
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    aws_thread_id current_thread_id = aws_thread_current_thread_id();
-    aws_atomic_store_ptr(&epoll_loop->thread_id, &current_thread_id);
+    epoll_loop->thread.thread_id = aws_thread_current_thread_id();
+    aws_atomic_store_ptr(&epoll_loop->thread_id, &epoll_loop->thread.thread_id);
     aws_task_scheduler_clean_up(&epoll_loop->scheduler);
 
     while (!aws_linked_list_empty(&epoll_loop->task_pre_queue)) {
@@ -475,7 +475,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
-    aws_thread_id *thread_id = aws_atomic_load_ptr(&epoll_loop->thread_id);
+    aws_thread_id_t *thread_id = aws_atomic_load_ptr(&epoll_loop->thread_id);
     return thread_id && aws_thread_thread_id_equal(*thread_id, aws_thread_current_thread_id());
 }
 
