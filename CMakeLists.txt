@@ -219,8 +219,11 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
         COMPONENT Development)
 
-if (BUILD_TESTING)
-   include(CTest)
-   add_subdirectory(tests)
-endif ()
+if (NOT CMAKE_CROSSCOMPILING)
+    if (NOT DEFINED BUILD_TESTING OR BUILD_TESTING)
+       include(CTest)
+       add_subdirectory(tests)
+    endif()
+endif()
+
 
