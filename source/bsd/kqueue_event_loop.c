@@ -163,7 +163,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
         goto clean_up;
     }
     /* intialize thread id to 0. It will be set when the event loop thread starts. */
-    aws_atomic_init_int(&impl->thread_id, (size_t)0);
+    aws_atomic_init_ptr(&impl->thread_id, NULL);
     clean_up_impl_mem = true;
 
     err = aws_thread_init(&impl->thread, alloc);
@@ -297,7 +297,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         return;
     }
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    aws_atomic_store_int(&impl->thread_id, (size_t)aws_thread_current_thread_id());
+    aws_atomic_store_ptr(&impl->thread_id, aws_thread_current_thread_id());
 
     /* Clean up task-related stuff first. It's possible the a cancelled task adds further tasks to this event_loop.
      * Tasks added in this way will be in cross_thread_data.tasks_to_schedule, so we clean that up last */
@@ -711,7 +711,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    uint64_t thread_id = aws_atomic_load_int(&impl->thread_id);
+    aws_thread_id_t thread_id = aws_atomic_load_ptr(&impl->thread_id);
     return aws_thread_current_thread_id() == thread_id;
 }
 
