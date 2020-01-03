@@ -32,6 +32,7 @@ include(AwsCheckHeaders)
 include(AwsSharedLibSetup)
 include(AwsSanitizers)
 include(AwsFindPackage)
+include(CTest)
 
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
@@ -220,8 +221,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         COMPONENT Development)
 
 if (NOT CMAKE_CROSSCOMPILING)
-    if (NOT DEFINED BUILD_TESTING OR BUILD_TESTING)
-       include(CTest)
+    if (BUILD_TESTING)
        add_subdirectory(tests)
     endif()
 endif()
