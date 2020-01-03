@@ -68,7 +68,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
                                   .was_in_thread = false,
                                   .status = -1,
                                   .loop = event_loop,
-                                  .thread_id = NULL};
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args, "xthread_scheduled_tasks_execute");
@@ -126,14 +126,14 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
                                    .was_in_thread = false,
                                    .status = -1,
                                    .loop = event_loop,
-                                   .thread_id = NULL};
+                                   .thread_id = 0};
     struct task_args task2_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
                                    .mutex = AWS_MUTEX_INIT,
                                    .invoked = false,
                                    .was_in_thread = false,
                                    .status = -1,
                                    .loop = event_loop,
-                                   .thread_id = NULL};
+                                   .thread_id = 0};
 
     struct aws_task task1;
     aws_task_init(&task1, s_test_task, &task1_args, "canceled_tasks_run_in_el_thread1");
@@ -987,7 +987,7 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
                                   .was_in_thread = false,
                                   .status = -1,
                                   .loop = event_loop,
-                                  .thread_id = NULL};
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args, "stop_then_restart");
@@ -1111,7 +1111,7 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
                                   .status = -1,
                                   .loop = event_loop,
                                   .el_group = &event_loop_group,
-                                  .thread_id = NULL};
+                                  .thread_id = 0};
 
     struct aws_task task;
     aws_task_init(&task, s_async_shutdown_task, &task_args, "async elg shutdown invoked from an event loop thread");
