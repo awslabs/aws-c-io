@@ -18,6 +18,8 @@
 #include <aws/io/logging.h>
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/string.h>
+
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
     AWS_ZERO_STRUCT(*options);
     options->allocator = allocator;
