@@ -26,7 +26,7 @@
 #endif
 
 struct rw_test_handler_impl {
-    bool shutdown_called;
+    struct aws_atomic_var shutdown_called;
     bool increment_read_window_called;
     struct aws_atomic_var *destroy_called;
     struct aws_condition_variable *destroy_condition_variable;
@@ -36,7 +36,7 @@ struct rw_test_handler_impl {
     size_t window;
     struct aws_condition_variable condition_variable;
     struct aws_mutex mutex;
-    int shutdown_error;
+    struct aws_atomic_var shutdown_error;
     void *ctx;
 };
 
@@ -105,8 +105,8 @@ static int s_rw_handler_shutdown(
     bool abort_immediately) {
 
     struct rw_test_handler_impl *handler_impl = handler->impl;
-    handler_impl->shutdown_called = true;
-    handler_impl->shutdown_error = error_code;
+    aws_atomic_store_int(&handler_impl->shutdown_called, true);
+    aws_atomic_store_int(&handler_impl->shutdown_error, error_code);
     aws_condition_variable_notify_one(&handler_impl->condition_variable);
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
@@ -289,7 +289,7 @@ void rw_handler_trigger_increment_read_window(
 
 bool rw_handler_shutdown_called(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
-    return handler_impl->shutdown_called;
+    return aws_atomic_load_int(&handler_impl->shutdown_called);
 }
 
 bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler) {
@@ -299,12 +299,12 @@ bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler
 
 int rw_handler_last_error_code(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
-    return handler_impl->shutdown_error;
+    return aws_atomic_load_int(&handler_impl->shutdown_error);
 }
 
 static bool s_rw_test_handler_shutdown_predicate(void *arg) {
     struct rw_test_handler_impl *handler_impl = arg;
-    return handler_impl->shutdown_called;
+    return aws_atomic_load_int(&handler_impl->shutdown_called);
 }
 
 int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
