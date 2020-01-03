@@ -70,8 +70,9 @@ typedef enum event_thread_state {
 
 struct iocp_loop {
     HANDLE iocp_handle;
-    struct aws_thread thread;
-    struct aws_atomic_var thread_id;
+    struct aws_thread thread_created_on;
+    aws_thread_id_t thread_joined_to;
+    struct aws_atomic_var running_thread_id;
 
     /* synced_data holds things that must be communicated across threads.
      * When the event-thread is running, the mutex must be locked while anyone touches anything in synced_data.
@@ -193,7 +194,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
 
     /* initialize thread id to NULL. This will be updated once the event loop thread starts. */
-    aws_atomic_init_ptr(&impl->thread_id, NULL);
+    aws_atomic_init_ptr(&impl->running_thread_id, NULL);
 
     impl->iocp_handle = CreateIoCompletionPort(
         INVALID_HANDLE_VALUE, /* FileHandle: passing invalid handle creates a new IOCP */
@@ -211,7 +212,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
     clean_up_iocp_handle = true;
 
-    err = aws_thread_init(&impl->thread, alloc);
+    err = aws_thread_init(&impl->thread_created_on, alloc);
     if (err) {
         goto clean_up;
     }
@@ -248,7 +249,7 @@ clean_up:
     }
 
     if (clean_up_thread) {
-        aws_thread_clean_up(&impl->thread);
+        aws_thread_clean_up(&impl->thread_created_on);
     }
 
     if (clean_up_iocp_handle) {
@@ -290,8 +291,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     }
 
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    impl->thread.thread_id = aws_thread_current_thread_id();
-    aws_atomic_store_ptr(&impl->thread_id, &impl->thread.thread_id);
+    impl->thread_joined_to = aws_thread_current_thread_id();
+    aws_atomic_store_ptr(&impl->running_thread_id, &impl->thread_joined_to);
 
     /* Clean up task-related stuff first.
      * It's possible the a cancelled task adds further tasks to this event_loop, these new tasks would end up in
@@ -311,7 +312,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     (void)close_iocp_success;
 
     aws_mutex_clean_up(&impl->synced_data.mutex);
-    aws_thread_clean_up(&impl->thread);
+    aws_thread_clean_up(&impl->thread_created_on);
     aws_mem_release(event_loop->alloc, impl);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -348,7 +349,7 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
-    int err = aws_thread_launch(&impl->thread, s_event_thread_main, event_loop, NULL);
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, event_loop, NULL);
     if (err) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
@@ -397,7 +398,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&impl->synced_data.mutex);
 #endif
 
-    int err = aws_thread_join(&impl->thread);
+    int err = aws_thread_join(&impl->thread_created_on);
     if (err) {
         return AWS_OP_ERR;
     }
@@ -484,7 +485,7 @@ static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;
     AWS_ASSERT(impl);
 
-    aws_thread_id_t *el_thread_id = aws_atomic_load_ptr(&impl->thread_id);
+    aws_thread_id_t *el_thread_id = aws_atomic_load_ptr(&impl->running_thread_id);
     return el_thread_id && aws_thread_thread_id_equal(*el_thread_id, aws_thread_current_thread_id());
 }
 
@@ -618,7 +619,7 @@ static void s_event_thread_main(void *user_data) {
     struct iocp_loop *impl = event_loop->impl_data;
 
     /* Set thread id to event loop thread id. */
-    aws_atomic_store_ptr(&impl->thread_id, &impl->thread.thread_id);
+    aws_atomic_store_ptr(&impl->running_thread_id, &impl->thread_created_on.thread_id);
 
     AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
@@ -723,5 +724,5 @@ static void s_event_thread_main(void *user_data) {
     }
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* set back to NULL. This should be updated again in destroy, right before task cancelation happens. */
-    aws_atomic_store_ptr(&impl->thread_id, NULL);
+    aws_atomic_store_ptr(&impl->running_thread_id, NULL);
 }

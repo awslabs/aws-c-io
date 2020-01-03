@@ -67,8 +67,15 @@ enum pipe_fd_index {
 };
 
 struct kqueue_loop {
-    struct aws_thread thread;
-    struct aws_atomic_var thread_id;
+    /* thread_created_on is the handle to the event loop thread. */
+    struct aws_thread thread_created_on;
+    /* thread_joined_to is used by the thread destroying the event loop. */
+    aws_thread_id_t thread_joined_to;
+    /* running_thread_id is NULL if the event loop thread is stopped or points-to the thread_id of the thread running
+     * the event loop (either thread_created_on or thread_joined_to). Atomic because of concurrent writes (e.g.,
+     * run/stop) and reads (e.g., is_event_loop_thread).
+     * An aws_thread_id_t variable itself cannot be atomic because it is an opaque type that is platform-dependent. */
+    struct aws_atomic_var running_thread_id;
     int kq_fd; /* kqueue file descriptor */
 
     /* Pipe for signaling to event-thread that cross_thread_data has changed. */
@@ -163,10 +170,10 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
         goto clean_up;
     }
     /* intialize thread id to NULL. It will be set when the event loop thread starts. */
-    aws_atomic_init_ptr(&impl->thread_id, NULL);
+    aws_atomic_init_ptr(&impl->running_thread_id, NULL);
     clean_up_impl_mem = true;
 
-    err = aws_thread_init(&impl->thread, alloc);
+    err = aws_thread_init(&impl->thread_created_on, alloc);
     if (err) {
         goto clean_up;
     }
@@ -267,7 +274,7 @@ clean_up:
         close(impl->kq_fd);
     }
     if (clean_up_thread) {
-        aws_thread_clean_up(&impl->thread);
+        aws_thread_clean_up(&impl->thread_created_on);
     }
     if (clean_up_impl_mem) {
         aws_mem_release(alloc, impl);
@@ -297,8 +304,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
         return;
     }
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    impl->thread.thread_id = aws_thread_current_thread_id();
-    aws_atomic_store_ptr(&impl->thread_id, &impl->thread.thread_id);
+    impl->thread_joined_to = aws_thread_current_thread_id();
+    aws_atomic_store_ptr(&impl->running_thread_id, &impl->thread_joined_to);
 
     /* Clean up task-related stuff first. It's possible the a cancelled task adds further tasks to this event_loop.
      * Tasks added in this way will be in cross_thread_data.tasks_to_schedule, so we clean that up last */
@@ -338,7 +345,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     close(impl->cross_thread_signal_pipe[READ_FD]);
     close(impl->cross_thread_signal_pipe[WRITE_FD]);
     close(impl->kq_fd);
-    aws_thread_clean_up(&impl->thread);
+    aws_thread_clean_up(&impl->thread_created_on);
     aws_mem_release(event_loop->alloc, impl);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -356,7 +363,7 @@ static int s_run(struct aws_event_loop *event_loop) {
      * and it's ok to touch cross_thread_data without locking the mutex */
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
-    int err = aws_thread_launch(&impl->thread, s_event_thread_main, (void *)event_loop, NULL);
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, NULL);
     if (err) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
@@ -416,7 +423,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&impl->cross_thread_data.mutex);
 #endif
 
-    int err = aws_thread_join(&impl->thread);
+    int err = aws_thread_join(&impl->thread_created_on);
     if (err) {
         return AWS_OP_ERR;
     }
@@ -712,7 +719,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    aws_thread_id_t *thread_id = aws_atomic_load_ptr(&impl->thread_id);
+    aws_thread_id_t *thread_id = aws_atomic_load_ptr(&impl->running_thread_id);
     return thread_id && aws_thread_thread_id_equal(*thread_id, aws_thread_current_thread_id());
 }
 
@@ -799,7 +806,7 @@ static void s_event_thread_main(void *user_data) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
     /* set thread id to the event-loop's thread. */
-    aws_atomic_store_ptr(&impl->thread_id, &impl->thread.thread_id);
+    aws_atomic_store_ptr(&impl->running_thread_id, &impl->thread_created_on.thread_id);
 
     AWS_ASSERT(impl->thread_data.state == EVENT_THREAD_STATE_READY_TO_RUN);
     impl->thread_data.state = EVENT_THREAD_STATE_RUNNING;
@@ -959,5 +966,5 @@ static void s_event_thread_main(void *user_data) {
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* reset to NULL. This should be updated again during destroy before tasks are canceled. */
-    aws_atomic_store_ptr(&impl->thread_id, NULL);
+    aws_atomic_store_ptr(&impl->running_thread_id, NULL);
 }
