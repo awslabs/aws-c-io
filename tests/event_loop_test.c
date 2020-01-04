@@ -25,7 +25,7 @@
 struct task_args {
     bool invoked;
     bool was_in_thread;
-    uint64_t thread_id;
+    aws_thread_id_t thread_id;
     struct aws_event_loop *loop;
     struct aws_event_loop_group *el_group;
     enum aws_task_status status;
@@ -85,7 +85,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
-    ASSERT_FALSE(task_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
 
     /* Test "now" tasks */
     task_args.invoked = false;
@@ -152,7 +152,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
         &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
     ASSERT_TRUE(task1_args.invoked);
     ASSERT_TRUE(task1_args.was_in_thread);
-    ASSERT_FALSE(task1_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
     aws_mutex_unlock(&task1_args.mutex);
 
@@ -166,7 +166,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     aws_mutex_unlock(&task2_args.mutex);
 
     ASSERT_TRUE(task2_args.was_in_thread);
-    ASSERT_TRUE(task2_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
 
     return AWS_OP_SUCCESS;
