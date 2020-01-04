@@ -147,6 +147,8 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
  * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
+ * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
+ * must ensure their API calls to the event loop happen-before the call to destroy.
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
