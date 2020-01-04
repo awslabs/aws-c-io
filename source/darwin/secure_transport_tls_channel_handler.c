@@ -21,6 +21,7 @@
 #include <aws/io/logging.h>
 
 #include <aws/common/encoding.h>
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
 #include <AvailabilityMacros.h>

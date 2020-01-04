@@ -20,6 +20,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
 
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
