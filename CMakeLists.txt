@@ -155,10 +155,6 @@ if (NOT CUSTOM_TLS)
         file(GLOB AWS_IO_TLS_SRC
                 "source/s2n/*.c"
                 )
-        
-	if (IN_SOURCE_BUILD)
-            find_package(LibCrypto REQUIRED)
-        endif()
 
     	aws_use_package(s2n)
     endif ()
