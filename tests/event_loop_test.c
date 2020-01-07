@@ -25,12 +25,13 @@
 struct task_args {
     bool invoked;
     bool was_in_thread;
-    uint64_t thread_id;
+    aws_thread_id_t thread_id;
     struct aws_event_loop *loop;
     struct aws_event_loop_group *el_group;
     enum aws_task_status status;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
+    bool thread_complete;
 };
 
 static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
@@ -84,7 +85,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
-    ASSERT_FALSE(task_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
 
     /* Test "now" tasks */
     task_args.invoked = false;
@@ -151,7 +152,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
         &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
     ASSERT_TRUE(task1_args.invoked);
     ASSERT_TRUE(task1_args.was_in_thread);
-    ASSERT_FALSE(task1_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
     aws_mutex_unlock(&task1_args.mutex);
 
@@ -165,7 +166,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     aws_mutex_unlock(&task2_args.mutex);
 
     ASSERT_TRUE(task2_args.was_in_thread);
-    ASSERT_TRUE(task2_args.thread_id == aws_thread_current_thread_id());
+    ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
 
     return AWS_OP_SUCCESS;
@@ -1017,6 +1018,22 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 
+static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+    for (int i = 0; i < 8; ++i) {
+        ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
+    }
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_multiple_stops, s_event_loop_test_multiple_stops)
+
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
@@ -1050,6 +1067,12 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
+/* mark the thread complete when the async shutdown thread is done */
+static void s_async_shutdown_thread_exit(void *user_data) {
+    struct task_args *args = user_data;
+    args->thread_complete = true;
+}
+
 static void s_async_shutdown_complete_callback(void *user_data) {
 
     struct task_args *args = user_data;
@@ -1059,6 +1082,9 @@ static void s_async_shutdown_complete_callback(void *user_data) {
     args->invoked = true;
     aws_mutex_unlock((&args->mutex));
     aws_condition_variable_notify_one(&args->condition_variable);
+
+    /* schedule an at exit callback when the async shutdown thread dies */
+    aws_thread_current_at_exit(s_async_shutdown_thread_exit, args);
 }
 
 static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
@@ -1101,6 +1127,10 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
+
+    while (!task_args.thread_complete) {
+        aws_thread_current_sleep(15);
+    }
 
     return AWS_OP_SUCCESS;
 }

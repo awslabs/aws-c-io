@@ -1097,3 +1097,7 @@ int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_c
 
     return AWS_OP_SUCCESS;
 }
+
+struct aws_event_loop *aws_channel_get_event_loop(struct aws_channel *channel) {
+    return channel->loop;
+}

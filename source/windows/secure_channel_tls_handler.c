@@ -17,6 +17,7 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/math.h>
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
@@ -1304,9 +1305,7 @@ static int s_process_write_message(
             status = EncryptMessage(&sc_handler->sec_handle, 0, &buffer_desc, 0);
 
             if (status == SEC_E_OK) {
-                outgoing_message->message_data.len = original_message_fragment_to_process +
-                                                     sc_handler->stream_sizes.cbHeader +
-                                                     sc_handler->stream_sizes.cbTrailer;
+                outgoing_message->message_data.len = buffers[0].cbBuffer + buffers[1].cbBuffer + buffers[2].cbBuffer;
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
                     "id=%p:message fragment encrypted successfully: size is %zu",

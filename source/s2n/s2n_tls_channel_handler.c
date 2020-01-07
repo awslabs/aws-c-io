@@ -22,6 +22,7 @@
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 

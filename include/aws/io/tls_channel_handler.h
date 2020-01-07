@@ -15,12 +15,12 @@
  * permissions and limitations under the License.
  */
 #include <aws/common/byte_buf.h>
-#include <aws/common/string.h>
 
 #include <aws/io/io.h>
 
 struct aws_channel_slot;
 struct aws_channel_handler;
+struct aws_string;
 
 enum aws_tls_versions {
     AWS_IO_SSLv3,

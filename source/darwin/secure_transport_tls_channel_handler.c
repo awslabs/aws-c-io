@@ -23,6 +23,7 @@
 #include <aws/io/logging.h>
 
 #include <aws/common/encoding.h>
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
 #include <AvailabilityMacros.h>
@@ -449,7 +450,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: Using custom CA, certificate validation failed.", (void *)handler)
             return AWS_OP_ERR;
         }
-        return AWS_OP_SUCCESS;
+        return s_drive_negotiation(handler);
         /* if this is here, everything went wrong. */
     } else if (status != errSSLWouldBlock) {
         secure_transport_handler->negotiation_finished = false;

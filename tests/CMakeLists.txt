@@ -41,6 +41,7 @@ else ()
 endif ()
 
 add_test_case(event_loop_stop_then_restart)
+add_test_case(event_loop_multiple_stops)
 add_test_case(event_loop_group_setup_and_shutdown)
 add_test_case(event_loop_group_setup_and_shutdown_async)
 
@@ -111,12 +112,13 @@ add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
 #add_net_test_case(tls_client_channel_negotiation_error_pinning)
 add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
 add_net_test_case(tls_client_channel_negotiation_success)
-add_test_case(tls_server_multiple_connections)
-add_test_case(tls_server_hangup_during_negotiation)
-add_test_case(test_tls_negotiation_timeout)
+add_net_test_case(tls_server_multiple_connections)
+add_net_test_case(tls_server_hangup_during_negotiation)
+add_net_test_case(tls_client_channel_no_verify)
+add_net_test_case(test_tls_negotiation_timeout)
 
-add_test_case(alpn_successfully_negotiates)
-add_test_case(alpn_no_protocol_message)
+add_net_test_case(alpn_successfully_negotiates)
+add_net_test_case(alpn_no_protocol_message)
 add_test_case(alpn_error_creating_handler)
 
 add_test_case(uri_full_parse)
@@ -162,7 +164,7 @@ if (BUILD_SHARED_LIBS)
     add_test_case(shared_library_find_function_success)
 endif()
 
-set(TEST_BINARY_NAME ${CMAKE_PROJECT_NAME}-tests)
+set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
 #SSL certificates to use for testing.
