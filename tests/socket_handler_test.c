@@ -654,8 +654,13 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     /* this should not get used for a unix domain socket. */
     struct aws_host_resolver dummy_resolver;
     AWS_ZERO_STRUCT(dummy_resolver);
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &dummy_resolver, NULL);
+
+    struct aws_client_bootstrap_options bootstrap_options;
+    AWS_ZERO_STRUCT(bootstrap_options);
+    bootstrap_options.event_loop_group = &c_tester.el_group;
+    bootstrap_options.host_resolver = &dummy_resolver;
+
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     struct aws_socket_channel_bootstrap_options channel_options;

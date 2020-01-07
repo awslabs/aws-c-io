@@ -1235,8 +1235,12 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
-    struct aws_client_bootstrap *client_bootstrap =
-        aws_client_bootstrap_new(allocator, &c_tester.el_group, &c_tester.resolver, NULL);
+    struct aws_client_bootstrap_options bootstrap_options;
+    AWS_ZERO_STRUCT(bootstrap_options);
+    bootstrap_options.event_loop_group = &c_tester.el_group;
+    bootstrap_options.host_resolver = &c_tester.resolver;
+
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
