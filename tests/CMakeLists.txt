@@ -76,9 +76,9 @@ add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
-#if (NOT WIN32)
-#    add_test_case(channel_message_passing)
-#endif ()
+if (NOT WIN32)
+    add_test_case(channel_message_passing)
+endif ()
 
 add_net_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_resolver_ipv6_address_lookup)

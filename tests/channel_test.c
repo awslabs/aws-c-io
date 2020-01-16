@@ -299,7 +299,7 @@ struct channel_rw_test_args {
     bool write_on_read;
     struct aws_condition_variable *condition_variable;
 };
-#if 0
+
 static bool s_rw_test_shutdown_predicate(void *arg) {
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)arg;
     return aws_atomic_load_int(&rw_test_args->shutdown_completed);
@@ -390,6 +390,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     struct aws_condition_variable shutdown_condition = AWS_CONDITION_VARIABLE_INIT;
     struct aws_mutex shutdown_mutex = AWS_MUTEX_INIT;
 
+    ASSERT_SUCCESS(aws_mutex_lock(&shutdown_mutex));
     struct channel_rw_test_args handler_1_args = {
         .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
         .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
@@ -484,7 +485,6 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(channel_message_passing, s_test_channel_message_passing)
-#endif
 
 static void s_channel_post_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)task;
