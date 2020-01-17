@@ -120,7 +120,11 @@ struct host_entry {
     struct aws_host_resolution_config resolution_config;
     struct aws_linked_list pending_resolution_callbacks;
     int64_t resolve_frequency_ns;
-    struct aws_atomic_var last_use;
+    /* this member will be a monotonic increasing value and not protected by a memory barrier.
+       Let it tear on 32-bit systems, we don't care, we just want to see a change. This at least assumes cache coherency
+       for the target architecture, which these days is a fairly safe assumption. Where it's not a safe assumption, we
+       probably don't have multiple cores available anyways. */
+    volatile uint64_t last_use;
     struct aws_atomic_var keep_active;
 };
 
@@ -464,7 +468,7 @@ static void resolver_thread_fn(void *arg) {
     }
 
     while (aws_atomic_load_int(&host_entry->keep_active) && unsolicited_resolve_count < unsolicited_resolve_max) {
-        if (last_updated != (uint64_t)aws_atomic_load_int(&host_entry->last_use)) {
+        if (last_updated != host_entry->last_use) {
             unsolicited_resolve_count = 0;
         }
 
@@ -475,7 +479,7 @@ static void resolver_thread_fn(void *arg) {
             (int)unsolicited_resolve_count);
 
         ++unsolicited_resolve_count;
-        last_updated = aws_atomic_load_int(&host_entry->last_use);
+        last_updated = host_entry->last_use;
 
         /* resolve and then process each record */
         int err_code = AWS_ERROR_SUCCESS;
@@ -659,7 +663,7 @@ static inline int create_and_init_host_entry(
 
     new_host_entry->resolver = resolver;
     new_host_entry->allocator = resolver->allocator;
-    aws_atomic_init_int(&new_host_entry->last_use, timestamp);
+    new_host_entry->last_use = timestamp;
     new_host_entry->resolve_frequency_ns = NS_PER_SEC;
 
     bool a_records_init = false, aaaa_records_init = false, failed_a_records_init = false,
@@ -763,7 +767,7 @@ static inline int create_and_init_host_entry(
             aws_thread_launch(&race_condition_entry->resolver_thread, resolver_thread_fn, race_condition_entry, NULL);
         }
 
-        aws_atomic_store_int(&race_condition_entry->last_use, timestamp);
+        race_condition_entry->last_use = timestamp;
 
         aws_mutex_unlock(&race_condition_entry->entry_lock);
         aws_mutex_unlock(&default_host_resolver->host_lock);
@@ -845,7 +849,7 @@ static int default_resolve_host(
         return create_and_init_host_entry(resolver, host_name, res, config, timestamp, host_entry, user_data);
     }
 
-    aws_atomic_store_int(&host_entry->last_use, timestamp);
+    host_entry->last_use = timestamp;
     aws_mutex_lock(&host_entry->entry_lock);
 
     struct aws_host_address *aaaa_record = aws_lru_cache_use_lru_element(&host_entry->aaaa_records);
