@@ -216,8 +216,9 @@ static int s_wait_a_bit(struct aws_event_loop *loop) {
     run_at_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     aws_event_loop_schedule_task_future(loop, &task, run_at_ns);
 
-    while (!aws_atomic_load_int(&task_executed))
+    while (!aws_atomic_load_int(&task_executed)) {
         ; /* block until signaled */
+    }
     return AWS_OP_SUCCESS;
 }
 
