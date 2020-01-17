@@ -14,6 +14,7 @@
  */
 #include <aws/io/host_resolver.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/hash_table.h>
@@ -124,7 +125,7 @@ struct host_entry {
        for the target architecture, which these days is a fairly safe assumption. Where it's not a safe assumption, we
        probably don't have multiple cores available anyways. */
     volatile uint64_t last_use;
-    volatile bool keep_active;
+    struct aws_atomic_var keep_active;
 };
 
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
@@ -466,7 +467,7 @@ static void resolver_thread_fn(void *arg) {
         return;
     }
 
-    while (host_entry->keep_active && unsolicited_resolve_count < unsolicited_resolve_max) {
+    while (aws_atomic_load_int(&host_entry->keep_active) && unsolicited_resolve_count < unsolicited_resolve_max) {
         if (last_updated != host_entry->last_use) {
             unsolicited_resolve_count = 0;
         }
@@ -583,7 +584,7 @@ static void resolver_thread_fn(void *arg) {
         host_entry->host_name->bytes)
 
     aws_array_list_clean_up(&address_list);
-    host_entry->keep_active = false;
+    aws_atomic_store_int(&host_entry->keep_active, false);
 }
 
 static void on_host_key_removed(void *key) {
@@ -598,8 +599,8 @@ static void on_host_value_removed(void *value) {
         "the cache due to cache size or shutdown",
         host_entry->host_name->bytes);
 
-    if (host_entry->keep_active) {
-        host_entry->keep_active = false;
+    if (aws_atomic_load_int(&host_entry->keep_active)) {
+        aws_atomic_store_int(&host_entry->keep_active, false);
         aws_condition_variable_notify_one(&host_entry->resolver_thread_semaphore);
         aws_thread_join(&host_entry->resolver_thread);
         aws_thread_clean_up(&host_entry->resolver_thread);
@@ -738,7 +739,7 @@ static inline int create_and_init_host_entry(
 
     /*add the current callback here */
     aws_mutex_init(&new_host_entry->entry_lock);
-    new_host_entry->keep_active = false;
+    aws_atomic_init_int(&new_host_entry->keep_active, false);
     new_host_entry->resolution_config = *config;
     aws_mutex_init(&new_host_entry->semaphore_mutex);
     aws_condition_variable_init(&new_host_entry->resolver_thread_semaphore);
@@ -759,8 +760,8 @@ static inline int create_and_init_host_entry(
         aws_mutex_lock(&race_condition_entry->entry_lock);
         aws_linked_list_push_back(&race_condition_entry->pending_resolution_callbacks, &pending_callback->node);
 
-        if (!race_condition_entry->keep_active) {
-            race_condition_entry->keep_active = true;
+        if (!aws_atomic_load_int(&race_condition_entry->keep_active)) {
+            aws_atomic_store_int(&race_condition_entry->keep_active, true);
             aws_thread_clean_up(&race_condition_entry->resolver_thread);
             aws_thread_init(&race_condition_entry->resolver_thread, resolver->allocator);
             aws_thread_launch(&race_condition_entry->resolver_thread, resolver_thread_fn, race_condition_entry, NULL);
@@ -774,7 +775,7 @@ static inline int create_and_init_host_entry(
     }
 
     host_entry = new_host_entry;
-    host_entry->keep_active = true;
+    aws_atomic_store_int(&host_entry->keep_active, true);
 
     if (AWS_UNLIKELY(aws_lru_cache_put(&default_host_resolver->host_table, host_string_copy, host_entry))) {
         aws_mutex_unlock(&default_host_resolver->host_lock);
@@ -858,7 +859,7 @@ static int default_resolve_host(
     struct aws_array_list callback_address_list;
     aws_array_list_init_static(&callback_address_list, address_array, 2, sizeof(struct aws_host_address));
 
-    if ((aaaa_record || a_record) && host_entry->keep_active) {
+    if ((aaaa_record || a_record) && aws_atomic_load_int(&host_entry->keep_active)) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_DNS,
             "id=%p: cached entries found for %s returning to caller.",
@@ -919,10 +920,10 @@ static int default_resolve_host(
     pending_callback->callback = res;
     aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
 
-    if (!host_entry->keep_active) {
+    if (!aws_atomic_load_int(&host_entry->keep_active)) {
         aws_thread_clean_up(&host_entry->resolver_thread);
         aws_thread_init(&host_entry->resolver_thread, default_host_resolver->allocator);
-        host_entry->keep_active = true;
+        aws_atomic_store_int(&host_entry->keep_active, true);
         aws_thread_launch(&host_entry->resolver_thread, resolver_thread_fn, host_entry, NULL);
     }
 

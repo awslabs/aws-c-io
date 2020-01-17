@@ -202,24 +202,24 @@ AWS_TEST_CASE(channel_slots_clean_up, s_test_channel_slots_clean_up)
 static void s_wait_a_bit_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
-    struct aws_condition_variable *cv = arg;
-    aws_condition_variable_notify_one(cv);
+    struct aws_atomic_var *task_executed = arg;
+    aws_atomic_store_int(task_executed, true);
 }
 
 static int s_wait_a_bit(struct aws_event_loop *loop) {
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable cv = AWS_CONDITION_VARIABLE_INIT;
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     struct aws_task task;
-    aws_task_init(&task, s_wait_a_bit_task, &cv, "wait_a_bit");
+    struct aws_atomic_var task_executed = AWS_ATOMIC_INIT_INT(false);
+    aws_task_init(&task, s_wait_a_bit_task, &task_executed, "wait_a_bit");
 
     uint64_t run_at_ns;
     ASSERT_SUCCESS(aws_event_loop_current_clock_time(loop, &run_at_ns));
     run_at_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     aws_event_loop_schedule_task_future(loop, &task, run_at_ns);
 
-    return aws_condition_variable_wait(&cv, &mutex);
+    while (!aws_atomic_load_int(&task_executed)) {
+        ; /* block until signaled */
+    }
+    return AWS_OP_SUCCESS;
 }
 
 static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
@@ -294,14 +294,14 @@ struct channel_rw_test_args {
     struct aws_byte_buf read_tag;
     struct aws_byte_buf write_tag;
     struct aws_byte_buf latest_message;
-    bool shutdown_completed;
+    struct aws_atomic_var shutdown_completed;
     bool write_on_read;
     struct aws_condition_variable *condition_variable;
 };
 
 static bool s_rw_test_shutdown_predicate(void *arg) {
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)arg;
-    return rw_test_args->shutdown_completed;
+    return aws_atomic_load_int(&rw_test_args->shutdown_completed);
 }
 
 static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
@@ -309,7 +309,7 @@ static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int err
     (void)error_code;
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
-    rw_test_args->shutdown_completed = true;
+    aws_atomic_store_int(&rw_test_args->shutdown_completed, true);
 
     if (rw_test_args->condition_variable) {
         aws_condition_variable_notify_one(rw_test_args->condition_variable);
@@ -389,8 +389,9 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     struct aws_condition_variable shutdown_condition = AWS_CONDITION_VARIABLE_INIT;
     struct aws_mutex shutdown_mutex = AWS_MUTEX_INIT;
 
+    ASSERT_SUCCESS(aws_mutex_lock(&shutdown_mutex));
     struct channel_rw_test_args handler_1_args = {
-        .shutdown_completed = false,
+        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
         .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
 
         .read_tag = aws_byte_buf_from_c_str("handler 1 read, "),
@@ -401,7 +402,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     };
 
     struct channel_rw_test_args handler_3_args = {
-        .shutdown_completed = false,
+        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
         .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_1_latest_message)),
         .read_tag = aws_byte_buf_from_c_str("handler 3 read, "),
         .write_tag = aws_byte_buf_from_c_str("handler 3 written, "),
@@ -439,7 +440,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
     struct channel_rw_test_args handler_2_args = {
-        .shutdown_completed = false,
+        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
         .latest_message = aws_byte_buf_from_array(handler_2_latest_message, sizeof(handler_1_latest_message)),
         .read_tag = aws_byte_buf_from_c_str("handler 2 read, "),
         .write_tag = aws_byte_buf_from_c_str("handler 2 written, "),
@@ -468,7 +469,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &shutdown_condition, &shutdown_mutex, s_rw_test_shutdown_predicate, &handler_1_args));
 
-    ASSERT_TRUE(handler_1_args.shutdown_completed);
+    ASSERT_TRUE(aws_atomic_load_int(&handler_1_args.shutdown_completed));
 
     ASSERT_TRUE(rw_handler_shutdown_called(handler_1));
     ASSERT_TRUE(rw_handler_shutdown_called(handler_2));
