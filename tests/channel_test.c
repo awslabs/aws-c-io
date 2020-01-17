@@ -202,23 +202,22 @@ AWS_TEST_CASE(channel_slots_clean_up, s_test_channel_slots_clean_up)
 static void s_wait_a_bit_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
-    struct aws_condition_variable *cv = arg;
-    aws_condition_variable_notify_one(cv);
+    struct aws_atomic_var *task_executed = arg;
+    aws_atomic_store_int(task_executed, true);
 }
 
-static int s_wait_a_bit(struct aws_event_loop *loop, struct aws_task *task) {
-    struct aws_mutex mutex = AWS_MUTEX_INIT;
-    struct aws_condition_variable cv = AWS_CONDITION_VARIABLE_INIT;
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
-    aws_task_init(task, s_wait_a_bit_task, &cv, "wait_a_bit");
+static int s_wait_a_bit(struct aws_event_loop *loop) {
+    struct aws_task task;
+    struct aws_atomic_var task_executed = AWS_ATOMIC_INIT_INT(false);
+    aws_task_init(&task, s_wait_a_bit_task, &task_executed, "wait_a_bit");
 
     uint64_t run_at_ns;
     ASSERT_SUCCESS(aws_event_loop_current_clock_time(loop, &run_at_ns));
     run_at_ns += aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
-    aws_event_loop_schedule_task_future(loop, task, run_at_ns);
+    aws_event_loop_schedule_task_future(loop, &task, run_at_ns);
 
-    return aws_condition_variable_wait(&cv, &mutex);
+    while (!aws_atomic_load_int(&task_executed)); /* block until signaled */
+    return AWS_OP_SUCCESS;
 }
 
 static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
@@ -270,14 +269,12 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     aws_channel_acquire_hold(channel);
     aws_channel_acquire_hold(channel);
     aws_channel_destroy(channel);
-    struct aws_task task1;
-    ASSERT_SUCCESS(s_wait_a_bit(event_loop, &task1));
+    ASSERT_SUCCESS(s_wait_a_bit(event_loop));
     ASSERT_FALSE(aws_atomic_load_int(&destroy_called));
 
     /* Release hold 1/2. Handler shouldn't get destroyed. */
     aws_channel_release_hold(channel);
-    struct aws_task task2;
-    ASSERT_SUCCESS(s_wait_a_bit(event_loop, &task2));
+    ASSERT_SUCCESS(s_wait_a_bit(event_loop));
     ASSERT_FALSE(aws_atomic_load_int(&destroy_called));
 
     /* Release hold 2/2. The handler and channel should be destroyed. */

@@ -120,10 +120,6 @@ struct host_entry {
     struct aws_host_resolution_config resolution_config;
     struct aws_linked_list pending_resolution_callbacks;
     int64_t resolve_frequency_ns;
-    /* this member will be a monotonic increasing value and not protected by a memory barrier.
-       Let it tear on 32-bit systems, we don't care, we just want to see a change. This at least assumes cache coherency
-       for the target architecture, which these days is a fairly safe assumption. Where it's not a safe assumption, we
-       probably don't have multiple cores available anyways. */
     struct aws_atomic_var last_use;
     struct aws_atomic_var keep_active;
 };
