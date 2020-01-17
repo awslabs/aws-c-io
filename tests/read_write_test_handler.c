@@ -23,6 +23,7 @@
 
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
+#    pragma warning(disable : 4267) /* size_t to int conversion */
 #endif
 
 struct rw_test_handler_impl {
