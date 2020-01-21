@@ -18,6 +18,7 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 
@@ -38,7 +39,8 @@ struct socket_test_args {
     struct aws_condition_variable *condition_variable;
     struct aws_channel *channel;
     struct aws_channel_handler *rw_handler;
-    struct aws_channel_slot *rw_slot;
+
+    struct aws_atomic_var rw_slot; /* pointer-to struct aws_channel_slot */
     int error_code;
     bool shutdown_invoked;
     bool error_invoked;
@@ -91,7 +93,7 @@ struct local_server_tester {
 
 static bool s_channel_setup_predicate(void *user_data) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-    return setup_test_args->rw_slot != NULL;
+    return aws_atomic_load_ptr(&setup_test_args->rw_slot) != NULL;
 }
 
 static bool s_channel_shutdown_predicate(void *user_data) {
@@ -123,7 +125,7 @@ static void s_socket_handler_test_client_setup_callback(
     aws_channel_slot_insert_end(channel, rw_slot);
 
     aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
-    setup_test_args->rw_slot = rw_slot;
+    aws_atomic_store_ptr(&setup_test_args->rw_slot, rw_slot);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
@@ -145,7 +147,7 @@ static void s_socket_handler_test_server_setup_callback(
     aws_channel_slot_insert_end(channel, rw_slot);
 
     aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
-    setup_test_args->rw_slot = rw_slot;
+    aws_atomic_store_ptr(&setup_test_args->rw_slot, rw_slot);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
@@ -400,11 +402,11 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &outgoing_args));
 
-    rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
+    rw_handler_write(outgoing_args.rw_handler, aws_atomic_load_ptr(&outgoing_args.rw_slot), &write_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_read_predicate, &incoming_rw_args));
 
-    rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+    rw_handler_write(incoming_args.rw_handler, aws_atomic_load_ptr(&incoming_args.rw_slot), &read_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_read_predicate, &outgoing_rw_args));
     incoming_rw_args.invocation_happened = false;
@@ -414,11 +416,13 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     ASSERT_INT_EQUALS(s_incoming_initial_read_window, incoming_rw_args.amount_read);
 
     /* Go ahead and verify back-pressure works*/
-    rw_handler_trigger_increment_read_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(
+        incoming_args.rw_handler, aws_atomic_load_ptr(&incoming_args.rw_slot), 100);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_full_read_predicate, &incoming_rw_args));
 
-    rw_handler_trigger_increment_read_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
+    rw_handler_trigger_increment_read_window(
+        outgoing_args.rw_handler, aws_atomic_load_ptr(&outgoing_args.rw_slot), 100);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_full_read_predicate, &outgoing_rw_args));
 

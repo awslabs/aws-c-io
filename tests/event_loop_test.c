@@ -158,7 +158,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
 
     aws_event_loop_destroy(event_loop);
 
-    aws_mutex_lock(&task1_args.mutex);
+    aws_mutex_lock(&task2_args.mutex);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task2_args.condition_variable, &task2_args.mutex, s_test_cancel_thread_task_predicate, &task2_args));
