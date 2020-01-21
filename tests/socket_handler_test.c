@@ -689,11 +689,13 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
 
     ASSERT_TRUE(outgoing_args.creation_callback_invoked);
 
-    rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
+    struct aws_channel_slot *outgoing_slot = aws_atomic_load_ptr(&outgoing_args.rw_slot);
+    rw_handler_write(outgoing_args.rw_handler, outgoing_slot, &write_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_read_predicate, &incoming_rw_args));
 
-    rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+    struct aws_channel_slot *incoming_slot = aws_atomic_load_ptr(&incoming_args.rw_slot);
+    rw_handler_write(incoming_args.rw_handler, incoming_slot, &read_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_socket_test_read_predicate, &outgoing_rw_args));
 
