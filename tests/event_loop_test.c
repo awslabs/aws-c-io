@@ -1071,7 +1071,6 @@ AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_a
 /* mark the thread complete when the async shutdown thread is done */
 static void s_async_shutdown_thread_exit(void *user_data) {
     struct task_args *args = user_data;
-    //args->thread_complete = true;
     aws_atomic_store_int(&args->thread_complete, true);
 }
 
