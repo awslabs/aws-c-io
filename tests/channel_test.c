@@ -239,15 +239,16 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     struct aws_channel_creation_callbacks callbacks = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
-        .on_shutdown_completed = s_channel_setup_test_on_setup_completed,
-        .shutdown_user_data = &test_args,
+        .on_shutdown_completed = NULL,
+        .shutdown_user_data = NULL,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
 
     /* Add handler to channel */
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
@@ -258,14 +259,12 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     struct aws_atomic_var destroy_called = AWS_ATOMIC_INIT_INT(0);
     struct aws_mutex destroy_mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable destroy_condition_variable = AWS_CONDITION_VARIABLE_INIT;
-    ASSERT_SUCCESS(aws_mutex_lock(&destroy_mutex));
     rw_handler_enable_wait_on_destroy(handler, &destroy_called, &destroy_condition_variable);
 
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot, handler));
 
     /* Shut down channel */
     ASSERT_SUCCESS(aws_channel_shutdown(channel, 0));
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
 
     /* Acquire 2 holds on channel and try to destroy it. The holds should prevent memory from being freed yet */
     aws_channel_acquire_hold(channel);
@@ -281,8 +280,10 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
 
     /* Release hold 2/2. The handler and channel should be destroyed. */
     aws_channel_release_hold(channel);
+    ASSERT_SUCCESS(aws_mutex_lock(&destroy_mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait(&destroy_condition_variable, &destroy_mutex));
     ASSERT_TRUE(aws_atomic_load_int(&destroy_called));
+    ASSERT_SUCCESS(aws_mutex_unlock(&destroy_mutex));
 
     aws_event_loop_destroy(event_loop);
 
@@ -389,7 +390,6 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     struct aws_condition_variable shutdown_condition = AWS_CONDITION_VARIABLE_INIT;
     struct aws_mutex shutdown_mutex = AWS_MUTEX_INIT;
 
-    ASSERT_SUCCESS(aws_mutex_lock(&shutdown_mutex));
     struct channel_rw_test_args handler_1_args = {
         .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
         .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
@@ -422,6 +422,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
 
     struct aws_channel_slot *slot_1, *slot_2, *slot_3;
     slot_1 = aws_channel_slot_new(channel);
@@ -466,8 +467,10 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_BIN_ARRAYS_EQUALS(expected.buffer, expected.len, final_message.buffer, final_message.len);
 
     aws_channel_shutdown(channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&shutdown_mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &shutdown_condition, &shutdown_mutex, s_rw_test_shutdown_predicate, &handler_1_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&shutdown_mutex));
 
     ASSERT_TRUE(aws_atomic_load_int(&handler_1_args.shutdown_completed));
 
