@@ -13,7 +13,7 @@ jobs:
 
     - name: Install Dependencies
       run: |
-        apt-get install ninja-build
+        sudo apt-get install ninja-build
       
     - name: Build and test
       run: |
