@@ -21,4 +21,5 @@ jobs:
         cd build
         cmake -GNinja -DCMAKE_C_COMPILER=clang -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread" -DCMAKE_PREFIX_PATH=`pwd`/deps/install/ ..
         ninja
-        ninja test ARGS="-E test_resolver"
+        cd tests
+        ctest -E "^test_resolver" #< deliberately exclude for now (issue #228)
