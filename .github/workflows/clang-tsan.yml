@@ -1,0 +1,20 @@
+name: ClangTSan
+
+on: [push]
+
+jobs:
+  clang-tsan:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Sources
+      uses: actions/checkout@v1
+      
+    - name: Build and test
+      run: |
+        ./build-deps.sh -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread"
+        cd build
+        cmake -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread" -DCMAKE_PREFIX_PATH=`pwd`/deps/install/ ..
+        make
+        make test ARGS="-E test_resolver"
