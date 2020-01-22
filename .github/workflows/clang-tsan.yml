@@ -10,11 +10,15 @@ jobs:
     steps:
     - name: Checkout Sources
       uses: actions/checkout@v1
+
+    - name: Install Dependencies
+      run: |
+        apt-get install ninja-build
       
     - name: Build and test
       run: |
         ./build-deps.sh -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread"
         cd build
         cmake -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread" -DCMAKE_PREFIX_PATH=`pwd`/deps/install/ ..
-        make
-        make test ARGS="-E test_resolver"
+        ninja
+        ninja test ARGS="-E test_resolver"
