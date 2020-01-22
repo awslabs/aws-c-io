@@ -19,6 +19,6 @@ jobs:
       run: |
         ./build-deps.sh -DCMAKE_C_COMPILER=clang -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread"
         cd build
-        cmake -DCMAKE_C_COMPILER=clang -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread" -DCMAKE_PREFIX_PATH=`pwd`/deps/install/ ..
+        cmake -GNinja -DCMAKE_C_COMPILER=clang -DCMAKE_C_FLAGS="-g" -DENABLE_SANITIZERS=ON -DSANITIZERS=",thread" -DCMAKE_PREFIX_PATH=`pwd`/deps/install/ ..
         ninja
         ninja test ARGS="-E test_resolver"
