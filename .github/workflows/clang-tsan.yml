@@ -23,4 +23,4 @@ jobs:
         ninja
         cd tests
         # always return 0 (ok) until we've squashed all bugs (issue #228)
-        ctest || true
+        ctest --verbose || true
