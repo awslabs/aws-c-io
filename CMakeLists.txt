@@ -157,6 +157,9 @@ if (NOT CUSTOM_TLS)
                 )
 
     	aws_use_package(s2n)
+        #this following usage of LibCrypto is because it's actually a direct dependency
+	# of aws-c-io due to use setting the locking callbacks.
+	set(PLATFORM_LIBS LibCrypto::Crypto)
     endif ()
 endif ()
 
