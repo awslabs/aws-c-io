@@ -619,7 +619,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    aws_mutex_lock(&c_tester.mutex);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
@@ -646,6 +646,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_TRUE(outgoing_args.error_invoked);
 
@@ -850,8 +851,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    aws_mutex_lock(&c_tester.mutex);
-
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
         .host_resolver = &c_tester.resolver,
@@ -876,8 +875,10 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
@@ -894,9 +895,11 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     ASSERT_BIN_ARRAYS_EQUALS(
         aws_string_bytes(host_name), host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     aws_client_bootstrap_release(client_bootstrap);
 

@@ -2,6 +2,7 @@ include(CMakeFindDependencyMacro)
 
 if (UNIX AND NOT APPLE)
     find_dependency(s2n)
+    find_dependency(LibCrypto)
 endif()
 
 find_dependency(aws-c-common)
