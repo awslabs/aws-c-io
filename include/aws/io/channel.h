@@ -17,6 +17,7 @@
 
 #include <aws/io/io.h>
 
+#include <aws/common/statistics.h>
 #include <aws/common/task_scheduler.h>
 
 enum aws_channel_direction {
@@ -123,11 +124,23 @@ struct aws_channel_handler_vtable {
      * function is called.
      */
     void (*destroy)(struct aws_channel_handler *handler);
+
+    /**
+     * Directs the channel handler to reset all of the internal statistics it tracks about itself.
+     */
+    void (*reset_statistics)(struct aws_channel_handler *handler);
+
+    /**
+     * Adds a pointer to the handler's internal statistics (if they exist) to a list of statistics structures
+     * associated with the channel's handler chain.
+     */
+    void (*gather_statistics)(struct aws_channel_handler *handler, struct aws_array_list *stats_list);
 };
 
 struct aws_channel_handler {
     struct aws_channel_handler_vtable *vtable;
     struct aws_allocator *alloc;
+    struct aws_channel_slot *slot;
     void *impl;
 };
 
@@ -276,6 +289,20 @@ void aws_channel_schedule_task_future(
     struct aws_channel *channel,
     struct aws_channel_task *task,
     uint64_t run_at_nanos);
+
+/**
+ * Instrument a channel with a statistics handler.  While instrumented with a statistics handler, the channel
+ * will periodically report per-channel-handler-specific statistics about handler performance and state.
+ *
+ * Assigning a statistics handler to a channel is a transfer of ownership -- the channel will clean up
+ * the handler appropriately.  Statistics handlers may be changed dynamically (for example, the upgrade
+ * from a vanilla http channel to a websocket channel), but this function may only be called from the
+ * event loop thread that the channel is a part of.
+ *
+ * The first possible hook to set a statistics handler is the channel's creation callback.
+ */
+AWS_IO_API
+int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_crt_statistics_handler *handler);
 
 /**
  * Returns true if the caller is on the event loop's thread. If false, you likely need to use

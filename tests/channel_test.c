@@ -958,14 +958,17 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .shutdown = false,
     };
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(
-        bootstrap,
-        aws_string_c_str(s3_host),
-        80,
-        &options,
-        s_test_channel_connect_some_hosts_timeout_setup,
-        s_test_channel_connect_some_hosts_timeout_shutdown,
-        &callback_data));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = bootstrap;
+    channel_options.host_name = aws_string_c_str(s3_host);
+    channel_options.port = 80;
+    channel_options.socket_options = &options;
+    channel_options.setup_callback = s_test_channel_connect_some_hosts_timeout_setup;
+    channel_options.shutdown_callback = s_test_channel_connect_some_hosts_timeout_shutdown;
+    channel_options.user_data = &callback_data;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_setup_complete_pred, &callback_data));

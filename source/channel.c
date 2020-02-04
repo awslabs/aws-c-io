@@ -16,11 +16,13 @@
 #include <aws/io/channel.h>
 
 #include <aws/common/atomics.h>
+#include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
+#include <aws/io/statistics.h>
 
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
@@ -33,6 +35,8 @@ enum {
 };
 
 size_t g_aws_channel_max_fragment_size = KB_16;
+
+#define INITIAL_STATISTIC_LIST_SIZE 5
 
 enum aws_channel_state {
     AWS_CHANNEL_SETTING_UP,
@@ -66,6 +70,12 @@ struct aws_channel {
     void *shutdown_user_data;
     struct aws_atomic_var refcount;
     struct aws_task deletion_task;
+
+    struct aws_task statistics_task;
+    struct aws_crt_statistics_handler *statistics_handler;
+    uint64_t statistics_interval_start_time_ms;
+    struct aws_array_list statistic_list;
+
     struct {
         struct aws_linked_list list;
     } channel_thread_tasks;
@@ -187,6 +197,16 @@ cleanup_setup_args:
 
 static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum aws_task_status status);
 
+static void s_destroy_partially_constructed_channel(struct aws_channel *channel) {
+    if (channel == NULL) {
+        return;
+    }
+
+    aws_array_list_clean_up(&channel->statistic_list);
+
+    aws_mem_release(channel->alloc, channel);
+}
+
 struct aws_channel *aws_channel_new(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
@@ -203,6 +223,11 @@ struct aws_channel *aws_channel_new(
     channel->on_shutdown_completed = callbacks->on_shutdown_completed;
     channel->shutdown_user_data = callbacks->shutdown_user_data;
 
+    if (aws_array_list_init_dynamic(
+            &channel->statistic_list, alloc, INITIAL_STATISTIC_LIST_SIZE, sizeof(struct aws_crt_statistics_base *))) {
+        goto on_error;
+    }
+
     /* Start refcount at 2:
      * 1 for self-reference, released from aws_channel_destroy()
      * 1 for the setup task, released when task executes */
@@ -210,8 +235,7 @@ struct aws_channel *aws_channel_new(
 
     struct channel_setup_args *setup_args = aws_mem_calloc(alloc, 1, sizeof(struct channel_setup_args));
     if (!setup_args) {
-        aws_mem_release(alloc, channel);
-        return NULL;
+        goto on_error;
     }
 
     channel->channel_state = AWS_CHANNEL_SETTING_UP;
@@ -233,6 +257,12 @@ struct aws_channel *aws_channel_new(
     aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
 
     return channel;
+
+on_error:
+
+    s_destroy_partially_constructed_channel(channel);
+
+    return NULL;
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {
@@ -269,6 +299,10 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
         s_cleanup_slot(current);
         current = tmp;
     }
+
+    aws_array_list_clean_up(&channel->statistic_list);
+
+    aws_channel_set_statistics_handler(channel, NULL);
 
     aws_mem_release(channel->alloc, channel);
 }
@@ -962,6 +996,106 @@ size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handl
 
 struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel) {
     return channel->first;
+}
+
+static void s_reset_statistics(struct aws_channel *channel) {
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
+
+    struct aws_channel_slot *current_slot = channel->first;
+    while (current_slot) {
+        struct aws_channel_handler *handler = current_slot->handler;
+        if (handler != NULL && handler->vtable->reset_statistics != NULL) {
+            handler->vtable->reset_statistics(handler);
+        }
+        current_slot = current_slot->adj_right;
+    }
+}
+
+static void s_channel_gather_statistics_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        return;
+    }
+
+    struct aws_channel *channel = arg;
+    if (channel->statistics_handler == NULL) {
+        return;
+    }
+
+    if (channel->channel_state == AWS_CHANNEL_SHUTTING_DOWN || channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+        return;
+    }
+
+    uint64_t now_ns = 0;
+    if (aws_channel_current_clock_time(channel, &now_ns)) {
+        return;
+    }
+
+    uint64_t now_ms = aws_timestamp_convert(now_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+
+    struct aws_array_list *statistics_list = &channel->statistic_list;
+    aws_array_list_clear(statistics_list);
+
+    struct aws_channel_slot *current_slot = channel->first;
+    while (current_slot) {
+        struct aws_channel_handler *handler = current_slot->handler;
+        if (handler != NULL && handler->vtable->gather_statistics != NULL) {
+            handler->vtable->gather_statistics(handler, statistics_list);
+        }
+        current_slot = current_slot->adj_right;
+    }
+
+    struct aws_crt_statistics_sample_interval sample_interval = {
+        .begin_time_ms = channel->statistics_interval_start_time_ms, .end_time_ms = now_ms};
+
+    aws_crt_statistics_handler_process_statistics(
+        channel->statistics_handler, &sample_interval, statistics_list, channel);
+
+    s_reset_statistics(channel);
+
+    uint64_t reschedule_interval_ns = aws_timestamp_convert(
+        aws_crt_statistics_handler_get_report_interval_ms(channel->statistics_handler),
+        AWS_TIMESTAMP_MILLIS,
+        AWS_TIMESTAMP_NANOS,
+        NULL);
+
+    aws_event_loop_schedule_task_future(channel->loop, task, now_ns + reschedule_interval_ns);
+
+    channel->statistics_interval_start_time_ms = now_ms;
+}
+
+int aws_channel_set_statistics_handler(struct aws_channel *channel, struct aws_crt_statistics_handler *handler) {
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
+
+    if (channel->statistics_handler) {
+        aws_crt_statistics_handler_destroy(channel->statistics_handler);
+        aws_event_loop_cancel_task(channel->loop, &channel->statistics_task);
+        channel->statistics_handler = NULL;
+    }
+
+    if (handler != NULL) {
+        aws_task_init(&channel->statistics_task, s_channel_gather_statistics_task, channel, "gather_statistics");
+
+        uint64_t now_ns = 0;
+        if (aws_channel_current_clock_time(channel, &now_ns)) {
+            return AWS_OP_ERR;
+        }
+
+        uint64_t report_time_ns = now_ns + aws_timestamp_convert(
+                                               aws_crt_statistics_handler_get_report_interval_ms(handler),
+                                               AWS_TIMESTAMP_MILLIS,
+                                               AWS_TIMESTAMP_NANOS,
+                                               NULL);
+
+        channel->statistics_interval_start_time_ms =
+            aws_timestamp_convert(now_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+        s_reset_statistics(channel);
+
+        aws_event_loop_schedule_task_future(channel->loop, &channel->statistics_task, report_time_ns);
+    }
+
+    channel->statistics_handler = handler;
+
+    return AWS_OP_SUCCESS;
 }
 
 struct aws_event_loop *aws_channel_get_event_loop(struct aws_channel *channel) {

@@ -25,7 +25,7 @@ struct aws_log_formatter;
 struct aws_log_writer;
 
 enum aws_io_log_subject {
-    AWS_LS_IO_GENERAL = 0x0400,
+    AWS_LS_IO_GENERAL = AWS_LOG_SUBJECT_BEGIN_RANGE(AWS_C_IO_PACKAGE_ID),
     AWS_LS_IO_EVENT_LOOP,
     AWS_LS_IO_SOCKET,
     AWS_LS_IO_SOCKET_HANDLER,
@@ -37,7 +37,7 @@ enum aws_io_log_subject {
     AWS_LS_IO_CHANNEL_BOOTSTRAP,
     AWS_LS_IO_FILE_UTILS,
     AWS_LS_IO_SHARED_LIBRARY,
-    AWS_IO_LS_LAST = (AWS_LS_IO_GENERAL + AWS_LOG_SUBJECT_SPACE_SIZE - 1)
+    AWS_IO_LS_LAST = AWS_LOG_SUBJECT_END_RANGE(AWS_C_IO_PACKAGE_ID)
 };
 
 #endif /* AWS_IO_LOGGING_H */

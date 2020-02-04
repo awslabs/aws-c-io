@@ -115,6 +115,7 @@ add_net_test_case(tls_client_channel_negotiation_success)
 add_net_test_case(tls_server_multiple_connections)
 add_net_test_case(tls_server_hangup_during_negotiation)
 add_net_test_case(tls_client_channel_no_verify)
+add_net_test_case(test_tls_negotiation_timeout)
 
 add_net_test_case(alpn_successfully_negotiates)
 add_net_test_case(alpn_no_protocol_message)
@@ -151,6 +152,9 @@ add_test_case(test_input_stream_file_seek_beginning)
 add_test_case(test_input_stream_file_seek_end)
 add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
+
+add_test_case(open_channel_statistics_test)
+add_test_case(tls_channel_statistics_test)
 
 add_test_case(shared_library_open_failure)
 
