@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!master'
+
+env:
+  BUILDER_VERSION: fixes
+  PACKAGE_NAME: aws-c-io
+
+jobs:
+  linux-compat:
+    strategy:
+      matrix:
+        image:
+          - manylinux1-x64
+          - manylinux1-x86
+          - manylinux2014-x64
+          - manylinux2014-x86
+          - ubuntu-16-x64
+          - al2-x64
+    steps:
+      runs-on: ubuntu-latest
+        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      name: Build aws-c-io + consumers
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
+        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build
+      
+  clang-compat:
+    strategy:
+      matrix:
+        version: [3.6, 6.0, 7, 8, 9]
+    steps:
+      runs-on: ubuntu-latest
+        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      name: Build aws-c-io
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
+        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
+
+  gcc-compat:
+    strategy:
+      matrix:
+        version: [4.8, 5, 6, 7, 8]
+    steps:
+      runs-on: ubuntu-latest
+        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      name: Build aws-c-io
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
+        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
+
+  windows:
+    steps:
+      runs-on: windows-latest
+      name: Build aws-c-io
+      run: |
+        python -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
+        python builder.pyz -p ${{ env.PACKAGE_NAME }} build
+
+  osx:
+    steps:
+      runs-on: macos-latest
+      name: Build aws-c-io
+      run:
+        python3 -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder')"
+        ./builder -p ${{ env.PACKAGE_NAME }} build
+
+        
