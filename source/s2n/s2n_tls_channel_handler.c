@@ -1110,9 +1110,11 @@ cleanup_s2n_ctx:
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }

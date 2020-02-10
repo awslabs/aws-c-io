@@ -978,21 +978,4 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
 
 AWS_TEST_CASE(test_pem_invalid_in_chain_parse, s_test_pem_invalid_in_chain_parse)
 
-struct import_info {
-    const char *filename;
-}
 
-void s_import_cert(void *ctx) {
-    struct import_info *import = ctx;
-
-    
-}
-
-int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    const size_t num_pairs = 8;
-    struct import_info imports[num_pairs];
-}
-
-AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
