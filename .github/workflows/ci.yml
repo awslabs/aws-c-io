@@ -23,39 +23,45 @@ jobs:
           - manylinux2014-x86
           - ubuntu-16-x64
           - al2-x64
+    env:
+      DOCKER_IMAGE: docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }}
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build aws-c-io + consumers
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
-        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build
+        docker pull ${{ env.DOCKER_IMAGE }}
+        docker run --env GITHUB_REF ${{ env.DOCKER_IMAGE }} -p ${{ env.PACKAGE_NAME }} build
       
   clang-compat:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         version: [3.6, 6.0, 7, 8, 9]
+    env:
+      DOCKER_IMAGE: docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
-        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
+        docker pull ${{ env.DOCKER_IMAGE }}
+        docker run --env GITHUB_REF ${{ env.DOCKER_IMAGE }} -p ${{ env.PACKAGE_NAME }} build linux-clang-${{ matrix.version }}-linux-x64
 
   gcc-compat:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         version: [4.8, 5, 6, 7, 8]
+    env:
+      DOCKER_IMAGE: docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
-        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
+        docker pull ${{ env.DOCKER_IMAGE }}
+        docker run --env GITHUB_REF ${{ env.DOCKER_IMAGE }} -p ${{ env.PACKAGE_NAME }} build linux-gcc-${{ matrix.version }}-linux-x64
 
   windows:
     runs-on: windows-latest
