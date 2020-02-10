@@ -24,7 +24,7 @@ jobs:
           - al2-x64
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-      name: Build aws-c-io + consumers
+    - name: Build aws-c-io + consumers
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
@@ -37,7 +37,7 @@ jobs:
         version: [3.6, 6.0, 7, 8, 9]
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-      name: Build aws-c-io
+    - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
@@ -50,7 +50,7 @@ jobs:
         version: [4.8, 5, 6, 7, 8]
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-      name: Build aws-c-io
+    - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
@@ -59,7 +59,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      name: Build aws-c-io
+    - name: Build aws-c-io
       run: |
         python -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
         python builder.pyz -p ${{ env.PACKAGE_NAME }} build
@@ -67,7 +67,7 @@ jobs:
   osx:
     runs-on: macos-latest
     steps:
-      name: Build aws-c-io
+    - name: Build aws-c-io
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder')"
         ./builder -p ${{ env.PACKAGE_NAME }} build
