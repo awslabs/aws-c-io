@@ -9,6 +9,7 @@ on:
 env:
   BUILDER_VERSION: fixes
   PACKAGE_NAME: aws-c-io
+  LINUX_BASE_IMAGE: ubuntu-16-x64
 
 jobs:
   linux-compat:
@@ -40,8 +41,8 @@ jobs:
     - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
-        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
+        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
 
   gcc-compat:
     runs-on: ubuntu-latest
@@ -53,8 +54,8 @@ jobs:
     - name: Build aws-c-io
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
-        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
+        docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
 
   windows:
     runs-on: windows-latest
