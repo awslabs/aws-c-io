@@ -68,7 +68,7 @@ jobs:
     steps:
       runs-on: macos-latest
       name: Build aws-c-io
-      run:
+      run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder')"
         ./builder -p ${{ env.PACKAGE_NAME }} build
 
