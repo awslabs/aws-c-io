@@ -14,11 +14,16 @@
  */
 #include <aws/io/pki_utils.h>
 
+#include <aws/common/mutex.h>
 #include <aws/io/logging.h>
 
 #include <Security/SecCertificate.h>
 #include <Security/SecKey.h>
 #include <Security/Security.h>
+
+/* SecureTransport is not thread-safe during identity import */
+/* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
+static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
@@ -49,6 +54,8 @@ int aws_import_public_and_private_keys_to_identity(
     SecCertificateRef certificate_ref = NULL;
     SecKeychainRef import_keychain = NULL;
     SecKeychainCopyDefault(&import_keychain);
+
+    aws_mutex_lock(&s_sec_mutex);
 
     /* import certificate */
     OSStatus cert_status =
@@ -122,6 +129,7 @@ int aws_import_public_and_private_keys_to_identity(
     }
 
 done:
+    aws_mutex_unlock(&s_sec_mutex);
     if (certificate_ref) {
         CFRelease(certificate_ref);
     }
@@ -156,7 +164,9 @@ int aws_import_pkcs12_to_identity(
 
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
 
+    aws_mutex_lock(&s_sec_mutex);
     OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+    aws_mutex_unlock(&s_sec_mutex);
     CFRelease(pkcs12_data);
 
     if (password_ref) {
@@ -203,7 +213,7 @@ int aws_import_trusted_certificates(
     CFMutableArrayRef temp_cert_array = CFArrayCreateMutable(cf_alloc, cert_count, &kCFTypeArrayCallBacks);
 
     int err = AWS_OP_SUCCESS;
-
+    aws_mutex_lock(&s_sec_mutex);
     for (size_t i = 0; i < cert_count; ++i) {
         struct aws_byte_buf *byte_buf_ptr = NULL;
         aws_array_list_get_at_ptr(&certificates, (void **)&byte_buf_ptr, i);
@@ -219,6 +229,7 @@ int aws_import_trusted_certificates(
             err = AWS_OP_SUCCESS;
         }
     }
+    aws_mutex_unlock(&s_sec_mutex);
 
     *certs = temp_cert_array;
     aws_cert_chain_clean_up(&certificates);
