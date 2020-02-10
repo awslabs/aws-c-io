@@ -28,7 +28,7 @@ jobs:
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build
       
   clang-compat:
     runs-on: ubuntu-latest
@@ -41,7 +41,7 @@ jobs:
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-clang-${{ matrix.version }}-linux-x64
 
   gcc-compat:
     runs-on: ubuntu-latest
@@ -54,7 +54,7 @@ jobs:
       run: |
         echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u awslabs --password-stdin
         docker pull docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }}
-        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
+        docker run --env GITHUB_REF docker.pkg.github.com/awslabs/aws-crt-builder/aws-crt-${{ matrix.image }}:${{ env.BUILDER_VERSION }} -p ${{ env.PACKAGE_NAME}} build linux-gcc-${{ matrix.version }}-linux-x64
 
   windows:
     runs-on: windows-latest
