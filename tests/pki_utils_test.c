@@ -977,5 +977,3 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
 }
 
 AWS_TEST_CASE(test_pem_invalid_in_chain_parse, s_test_pem_invalid_in_chain_parse)
-
-

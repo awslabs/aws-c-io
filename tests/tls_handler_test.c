@@ -1532,7 +1532,8 @@ static void s_import_cert(void *ctx) {
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
     struct aws_tls_ctx_options tls_options = {0};
-    AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import->allocator, &cert_cur, &key_cur));
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import->allocator, &cert_cur, &key_cur));
 
     /* import happens in here */
     import->tls = aws_tls_client_ctx_new(import->allocator, &tls_options);
@@ -1562,7 +1563,7 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
         /* parse key pair from combined PEM */
         struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&pem_buf);
         struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&pem_buf);
-        uint8_t *key_end = (uint8_t*)strstr((const char*)key_cur.ptr, "END PRIVATE KEY");
+        uint8_t *key_end = (uint8_t *)strstr((const char *)key_cur.ptr, "END PRIVATE KEY");
         while (*key_end != '\n') {
             ++key_end;
         }
@@ -1576,8 +1577,10 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
         cert_cur.len = cert_cur.len - (cert_start - cert_cur.ptr);
         cert_cur.ptr = cert_start;
 
-        AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->cert_buf, import->allocator, cert_cur));
-        AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->key_buf, import->allocator, key_cur));
+        AWS_FATAL_ASSERT(
+            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->cert_buf, import->allocator, cert_cur));
+        AWS_FATAL_ASSERT(
+            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->key_buf, import->allocator, key_cur));
 
         aws_byte_buf_clean_up(&pem_buf);
 
