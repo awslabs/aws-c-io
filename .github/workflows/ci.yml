@@ -65,7 +65,7 @@ jobs:
     steps:
     - name: Build aws-c-io
       run: |
-        python -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
+        python -c "from urllib.request import urlretrieve; urlretrieve('https://aws-crt-builder.s3.amazonaws.com/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
         python builder.pyz -p ${{ env.PACKAGE_NAME }} build
 
   osx:
@@ -73,7 +73,7 @@ jobs:
     steps:
     - name: Build aws-c-io
       run: |
-        python3 -c "from urllib.request import urlretrieve; urlretrieve('https://github.com/awslabs/aws-crt-builder/releases/download/${{ env.BUILDER_VERSION }}/builder', 'builder')"
+        python3 -c "from urllib.request import urlretrieve; urlretrieve('https://aws-crt-builder.s3.amazonaws.com/${{ env.BUILDER_VERSION }}/builder', 'builder')"
         ./builder -p ${{ env.PACKAGE_NAME }} build
 
         
