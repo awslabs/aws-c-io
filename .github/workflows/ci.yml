@@ -83,6 +83,7 @@ jobs:
     - name: Build aws-c-io
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('https://aws-crt-builder.s3.amazonaws.com/${{ env.BUILDER_VERSION }}/builder', 'builder')"
+        chmod a+x builder
         ./builder -p ${{ env.PACKAGE_NAME }} build
 
         
