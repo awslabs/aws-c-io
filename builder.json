@@ -5,7 +5,7 @@
         {
             "name": "s2n",
             "targets": ["linux", "android"],
-            "revision": "53d7c01c5abfb6c56e7e6aa781de02dc573d2e72"
+            "revision": "bffd9b768d6051bce4badfed1ee73bd983c2b260"
         }
     ],
     "downstream": [
