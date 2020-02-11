@@ -13,6 +13,6 @@
         { "name": "aws-c-http" }
     ],
     "build_env": {
-        "LSAN_OPTIONS": "suppressions={project_dir}/tests/resources/suppressions.txt"
+        "LSAN_OPTIONS": "suppressions={project_dir}/tests/resources/suppressions.txt;allow_addr2line=1"
     }
 }
