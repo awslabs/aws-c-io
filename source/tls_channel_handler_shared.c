@@ -49,10 +49,6 @@ void aws_tls_channel_handler_shared_clean_up(struct aws_tls_channel_handler_shar
 }
 
 void aws_on_drive_tls_negotiation(struct aws_tls_channel_handler_shared *tls_handler_shared) {
-    AWS_FATAL_ASSERT(
-        tls_handler_shared->stats.handshake_status == AWS_TLS_NEGOTIATION_STATUS_NONE ||
-        tls_handler_shared->stats.handshake_status == AWS_TLS_NEGOTIATION_STATUS_ONGOING);
-
     if (tls_handler_shared->stats.handshake_status == AWS_TLS_NEGOTIATION_STATUS_NONE) {
         tls_handler_shared->stats.handshake_status = AWS_TLS_NEGOTIATION_STATUS_ONGOING;
 
@@ -72,8 +68,6 @@ void aws_on_drive_tls_negotiation(struct aws_tls_channel_handler_shared *tls_han
 }
 
 void aws_on_tls_negotiation_completed(struct aws_tls_channel_handler_shared *tls_handler_shared, int error_code) {
-    AWS_FATAL_ASSERT(tls_handler_shared->stats.handshake_status == AWS_TLS_NEGOTIATION_STATUS_ONGOING);
-
     tls_handler_shared->stats.handshake_status =
         (error_code == AWS_ERROR_SUCCESS) ? AWS_TLS_NEGOTIATION_STATUS_SUCCESS : AWS_TLS_NEGOTIATION_STATUS_FAILURE;
     aws_channel_current_clock_time(
