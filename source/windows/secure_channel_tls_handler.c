@@ -1208,7 +1208,7 @@ static int s_process_read_message(
             return AWS_OP_SUCCESS;
         }
 
-        aws_channel_shutdown(slot->channel, err);
+        aws_channel_shutdown(slot->channel, aws_last_error());
         return AWS_OP_ERR;
     }
 
