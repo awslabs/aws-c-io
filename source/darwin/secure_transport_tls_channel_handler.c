@@ -17,6 +17,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/statistics.h>
 
 #include <aws/io/logging.h>
 
@@ -98,6 +100,7 @@ void aws_tls_clean_up_static_state(void) { /* no op */
 
 struct secure_transport_handler {
     struct aws_channel_handler handler;
+    struct aws_tls_channel_handler_shared shared_state;
     SSLContextRef ctx;
     CFAllocatorRef wrapped_allocator;
     struct aws_linked_list input_queue;
@@ -219,6 +222,8 @@ static void s_destroy(struct aws_channel_handler *handler) {
             aws_byte_buf_clean_up(&secure_transport_handler->protocol);
         }
 
+        aws_tls_channel_handler_shared_clean_up(&secure_transport_handler->shared_state);
+
         aws_mem_release(handler->alloc, secure_transport_handler);
     }
 }
@@ -313,6 +318,8 @@ static void s_set_protocols(
 static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, int err_code) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
+    aws_on_tls_negotiation_completed(&secure_transport_handler->shared_state, err_code);
+
     if (secure_transport_handler->on_negotiation_result) {
         secure_transport_handler->on_negotiation_result(
             handler, secure_transport_handler->parent_slot, err_code, secure_transport_handler->user_data);
@@ -321,6 +328,8 @@ static void s_invoke_negotiation_callback(struct aws_channel_handler *handler, i
 
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+
+    aws_on_drive_tls_negotiation(&secure_transport_handler->shared_state);
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
 
@@ -400,7 +409,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
         }
 
-        s_invoke_negotiation_callback(handler, AWS_OP_SUCCESS);
+        s_invoke_negotiation_callback(handler, AWS_ERROR_SUCCESS);
 
         /* this branch gets hit only when verification is disabled,
          * or a custom CA bundle is being used. */
@@ -705,6 +714,19 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     return EST_HANDSHAKE_SIZE;
 }
 
+static void s_reset_statistics(struct aws_channel_handler *handler) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+
+    aws_crt_statistics_tls_reset(&secure_transport_handler->shared_state.stats);
+}
+
+static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+
+    void *stats_base = &secure_transport_handler->shared_state.stats;
+    aws_array_list_push_back(stats, &stats_base);
+}
+
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     return secure_transport_handler->protocol;
@@ -723,6 +745,8 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .increment_read_window = s_increment_read_window,
     .initial_window_size = s_initial_window_size,
     .message_overhead = s_message_overhead,
+    .reset_statistics = s_reset_statistics,
+    .gather_statistics = s_gather_statistics,
 };
 
 struct secure_transport_ctx {
@@ -752,12 +776,16 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
     secure_transport_handler->handler.vtable = &s_handler_vtable;
+    secure_transport_handler->handler.slot = slot;
     secure_transport_handler->wrapped_allocator = secure_transport_ctx->wrapped_allocator;
     secure_transport_handler->advertise_alpn_message = options->advertise_alpn_message;
     secure_transport_handler->on_data_read = options->on_data_read;
     secure_transport_handler->on_error = options->on_error;
     secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
     secure_transport_handler->user_data = options->user_data;
+
+    aws_tls_channel_handler_shared_init(
+        &secure_transport_handler->shared_state, &secure_transport_handler->handler, options);
 
     secure_transport_handler->ctx =
         SSLCreateContext(secure_transport_handler->wrapped_allocator, protocol_side, kSSLStreamType);

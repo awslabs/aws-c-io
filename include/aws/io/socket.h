@@ -114,6 +114,7 @@ struct aws_socket {
     struct aws_socket_options options;
     struct aws_io_handle io_handle;
     struct aws_event_loop *event_loop;
+    struct aws_channel_handler *handler;
     int state;
     aws_socket_on_readable_fn *readable_fn;
     void *readable_user_data;

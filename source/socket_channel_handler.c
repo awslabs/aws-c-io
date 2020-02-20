@@ -20,6 +20,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
+#include <aws/io/statistics.h>
 
 #if _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
@@ -31,6 +32,7 @@ struct socket_handler {
     size_t max_rw_size;
     struct aws_channel_task read_task_storage;
     struct aws_channel_task shutdown_task_storage;
+    struct aws_crt_statistics_socket stats;
     int shutdown_err_code;
     bool shutdown_in_progress;
 };
@@ -61,8 +63,6 @@ static void s_on_socket_write_complete(
     int error_code,
     size_t amount_written,
     void *user_data) {
-    (void)amount_written;
-    (void)socket;
 
     if (user_data) {
         struct aws_io_message *message = user_data;
@@ -75,6 +75,11 @@ static void s_on_socket_write_complete(
 
         if (message->on_completion) {
             message->on_completion(channel, message, error_code, message->user_data);
+        }
+
+        if (socket && socket->handler) {
+            struct socket_handler *socket_handler = socket->handler->impl;
+            socket_handler->stats.bytes_written += amount_written;
         }
 
         aws_mem_release(message->allocator, message);
@@ -177,6 +182,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
         "id=%p: total read on this tick %llu",
         (void *)&socket_handler->slot->handler,
         (unsigned long long)total_read);
+
+    socket_handler->stats.bytes_read += total_read;
 
     /* resubscribe as long as there's no error, just return if we're in a would block scenario. */
     if (total_read < max_to_read) {
@@ -335,7 +342,27 @@ static size_t s_socket_initial_window_size(struct aws_channel_handler *handler) 
 }
 
 static void s_socket_destroy(struct aws_channel_handler *handler) {
-    aws_mem_release(handler->alloc, handler);
+    if (handler != NULL) {
+        struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
+        if (socket_handler != NULL) {
+            aws_crt_statistics_socket_cleanup(&socket_handler->stats);
+        }
+
+        aws_mem_release(handler->alloc, handler);
+    }
+}
+
+static void s_reset_statistics(struct aws_channel_handler *handler) {
+    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
+
+    aws_crt_statistics_socket_reset(&socket_handler->stats);
+}
+
+void s_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats_list) {
+    struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
+
+    void *stats_base = &socket_handler->stats;
+    aws_array_list_push_back(stats_list, &stats_base);
 }
 
 static struct aws_channel_handler_vtable s_vtable = {
@@ -346,6 +373,8 @@ static struct aws_channel_handler_vtable s_vtable = {
     .increment_read_window = s_socket_increment_read_window,
     .shutdown = s_socket_shutdown,
     .message_overhead = s_message_overhead,
+    .reset_statistics = s_reset_statistics,
+    .gather_statistics = s_gather_statistics,
 };
 
 struct aws_channel_handler *aws_socket_handler_new(
@@ -373,6 +402,9 @@ struct aws_channel_handler *aws_socket_handler_new(
     AWS_ZERO_STRUCT(impl->read_task_storage);
     AWS_ZERO_STRUCT(impl->shutdown_task_storage);
     impl->shutdown_in_progress = false;
+    if (aws_crt_statistics_socket_init(&impl->stats)) {
+        goto cleanup_handler;
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET_HANDLER,
@@ -383,9 +415,12 @@ struct aws_channel_handler *aws_socket_handler_new(
     handler->alloc = allocator;
     handler->impl = impl;
     handler->vtable = &s_vtable;
+    handler->slot = slot;
     if (aws_socket_subscribe_to_readable_events(socket, s_on_readable_notification, impl)) {
         goto cleanup_handler;
     }
+
+    socket->handler = handler;
 
     return handler;
 

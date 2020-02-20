@@ -5,11 +5,17 @@
         {
             "name": "s2n",
             "targets": ["linux", "android"],
-            "revision": "c28aed5aad1176abc213ea22b872bc2cb1dd1852"
+            "revision": "bffd9b768d6051bce4badfed1ee73bd983c2b260"
         }
     ],
     "downstream": [
         { "name": "aws-c-mqtt" },
         { "name": "aws-c-http" }
+    ],
+    "build_env": {
+        "LSAN_OPTIONS": "suppressions={project_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
+    },
+    "cmake_args": [
+        "-DS2N_NO_PQ_ASM=ON"
     ]
 }

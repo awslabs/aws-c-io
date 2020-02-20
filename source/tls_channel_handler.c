@@ -18,6 +18,8 @@
 #include <aws/io/logging.h>
 #include <aws/io/tls_channel_handler.h>
 
+#define AWS_DEFAULT_TLS_TIMEOUT_MS 4000
+
 #include <aws/common/string.h>
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
@@ -315,6 +317,8 @@ void aws_tls_connection_options_init_from_ctx(
     /* the assumption here, is that if it was set in the context, we WANT it to be NULL here unless it's different.
      * so only set verify peer at this point. */
     conn_options->ctx = ctx;
+
+    conn_options->timeout_ms = AWS_DEFAULT_TLS_TIMEOUT_MS;
 }
 
 int aws_tls_connection_options_copy(

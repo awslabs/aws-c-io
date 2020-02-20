@@ -152,6 +152,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
         "System call error during attempt to find shared library symbol"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_NEGOTIATION_TIMEOUT,
+        "Channel shutdown due to tls negotiation timeout"),
 };
 /* clang-format on */
 
@@ -195,9 +198,9 @@ void aws_io_library_init(struct aws_allocator *allocator) {
     if (!s_io_library_initialized) {
         s_io_library_initialized = true;
         aws_common_library_init(allocator);
-        aws_tls_init_static_state(allocator);
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
+        aws_tls_init_static_state(allocator);
     }
 }
 

@@ -15,17 +15,20 @@
 
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/file_utils.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/thread.h>
 
 #include <aws/testing/aws_test_harness.h>
 
 #include <aws/common/string.h>
 #include <read_write_test_handler.h>
+#include <statistics_handler_test.h>
 
 #if _MSC_VER
 #    pragma warning(disable : 4996) /* sprintf */
@@ -53,6 +56,7 @@ struct tls_test_args {
     bool expects_error;
     bool server;
     bool shutdown_finished;
+    bool creation_callback_invoked;
 };
 
 /* common structure for tls options */
@@ -84,6 +88,8 @@ static int s_tls_client_opt_tester_init(
     struct tls_opt_tester *tester,
     struct aws_byte_cursor server_name) {
 
+    aws_io_library_init(allocator);
+
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
     aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "./unittests.crt");
 
@@ -109,7 +115,11 @@ struct tls_common_tester {
     struct aws_condition_variable condition_variable;
     struct aws_event_loop_group el_group;
     struct aws_host_resolver resolver;
+    struct aws_atomic_var current_time_ns;
+    struct aws_atomic_var stats_handler;
 };
+
+static struct tls_common_tester c_tester;
 
 /* common structure for a tls local server */
 struct tls_local_server_tester {
@@ -125,10 +135,10 @@ static int s_tls_test_arg_init(
     struct aws_allocator *allocator,
     struct tls_test_args *test_arg,
     bool server,
-    struct tls_common_tester *c_tester) {
+    struct tls_common_tester *tls_c_tester) {
     AWS_ZERO_STRUCT(*test_arg);
-    test_arg->mutex = &c_tester->mutex;
-    test_arg->condition_variable = &c_tester->condition_variable;
+    test_arg->mutex = &tls_c_tester->mutex;
+    test_arg->condition_variable = &tls_c_tester->condition_variable;
     test_arg->allocator = allocator;
     test_arg->server = server;
     return AWS_OP_SUCCESS;
@@ -142,6 +152,9 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
     tester->condition_variable = condition_variable;
+    aws_atomic_store_int(&tester->current_time_ns, 0);
+    aws_atomic_store_ptr(&tester->stats_handler, NULL);
+
     return AWS_OP_SUCCESS;
 }
 
@@ -298,7 +311,7 @@ static int s_tls_local_server_tester_init(
     struct aws_allocator *allocator,
     struct tls_local_server_tester *tester,
     struct tls_test_args *args,
-    struct tls_common_tester *c_tester) {
+    struct tls_common_tester *tls_c_tester) {
     AWS_ZERO_STRUCT(*tester);
     ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
@@ -307,7 +320,7 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
     sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &c_tester->el_group);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &tls_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
     tester->listener = aws_server_bootstrap_new_tls_socket_listener(
         tester->server_bootstrap,
@@ -339,11 +352,11 @@ struct tls_test_rw_args {
 
 static int s_tls_rw_args_init(
     struct tls_test_rw_args *args,
-    struct tls_common_tester *c_tester,
+    struct tls_common_tester *tls_c_tester,
     struct aws_byte_buf received_message) {
     AWS_ZERO_STRUCT(*args);
-    args->mutex = &c_tester->mutex;
-    args->condition_variable = &c_tester->condition_variable;
+    args->mutex = &tls_c_tester->mutex;
+    args->condition_variable = &tls_c_tester->condition_variable;
     args->received_message = received_message;
     return AWS_OP_SUCCESS;
 }
@@ -394,7 +407,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
-    struct tls_common_tester c_tester;
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot.");
@@ -451,15 +463,19 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
@@ -571,7 +587,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
     aws_io_library_init(allocator);
 
-    struct tls_common_tester c_tester;
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct aws_tls_ctx_options client_ctx_options;
@@ -605,7 +620,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    aws_mutex_lock(&c_tester.mutex);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
@@ -614,21 +629,25 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        aws_string_c_str(host_name),
-        443,
-        &options,
-        &tls_client_conn_options,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = aws_string_c_str(host_name);
+    channel_options.port = 443;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &tls_client_conn_options;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_TRUE(outgoing_args.error_invoked);
 
@@ -736,12 +755,12 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
 
     aws_io_library_init(allocator);
 
-    struct tls_common_tester c_tester;
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str(host_name);
     ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    client_tls_opt_tester.opt.timeout_ms = 0; /* disable negotiation timeout for this test */
 
     struct tls_test_args outgoing_args;
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &outgoing_args, false, &c_tester));
@@ -758,15 +777,18 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        host_name,
-        port,
-        &options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = host_name;
+    channel_options.port = port;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* Wait for setup to complete */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -796,7 +818,6 @@ AWS_TEST_CASE(
 static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name, bool verify) {
     aws_io_library_init(allocator);
 
-    struct tls_common_tester c_tester;
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args = {
@@ -831,8 +852,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    aws_mutex_lock(&c_tester.mutex);
-
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
         .host_resolver = &c_tester.resolver,
@@ -840,21 +859,27 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        aws_string_c_str(host_name),
-        443,
-        &options,
-        &tls_client_conn_options,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = aws_string_c_str(host_name);
+    channel_options.port = 443;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &tls_client_conn_options;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
@@ -871,9 +896,11 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     ASSERT_BIN_ARRAYS_EQUALS(
         aws_string_bytes(host_name), host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     aws_client_bootstrap_release(client_bootstrap);
 
@@ -912,7 +939,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     (void)ctx;
 
     aws_io_library_init(allocator);
-    struct tls_common_tester c_tester;
+
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args;
@@ -936,17 +963,21 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
@@ -966,15 +997,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     outgoing_args.shutdown_finished = false;
     incoming_args.tls_negotiated = false;
     incoming_args.shutdown_finished = false;
-    ASSERT_SUCCESS(aws_client_bootstrap_new_tls_socket_channel(
-        client_bootstrap,
-        local_server_tester.endpoint.address,
-        0,
-        &local_server_tester.socket_options,
-        &client_tls_opt_tester.opt,
-        s_tls_handler_test_client_setup_callback,
-        s_tls_handler_test_client_shutdown_callback,
-        &outgoing_args));
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -1051,7 +1074,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     (void)ctx;
 
     aws_io_library_init(allocator);
-    struct tls_common_tester c_tester;
+
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args;
@@ -1105,3 +1128,493 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(tls_server_hangup_during_negotiation, s_tls_server_hangup_during_negotiation_fn)
+
+static void s_creation_callback_test_channel_creation_callback(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+
+    struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
+
+    setup_test_args->creation_callback_invoked = true;
+
+    struct aws_crt_statistics_handler *stats_handler = aws_statistics_handler_new_test(bootstrap->allocator);
+    aws_atomic_store_ptr(&c_tester.stats_handler, stats_handler);
+
+    aws_channel_set_statistics_handler(channel, stats_handler);
+}
+
+static struct aws_event_loop *s_default_new_event_loop(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    void *user_data) {
+
+    (void)user_data;
+    return aws_event_loop_new_default(allocator, clock);
+}
+
+static int s_statistic_test_clock_fn(uint64_t *timestamp) {
+    *timestamp = aws_atomic_load_int(&c_tester.current_time_ns);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
+
+    aws_io_library_init(allocator);
+
+    AWS_ZERO_STRUCT(*tester);
+    ASSERT_SUCCESS(aws_event_loop_group_init(
+        &tester->el_group, allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL));
+    ASSERT_SUCCESS(aws_host_resolver_init_default(&tester->resolver, allocator, 1, &tester->el_group));
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
+    tester->mutex = mutex;
+    tester->condition_variable = condition_variable;
+    aws_atomic_store_int(&tester->current_time_ns, 0);
+    aws_atomic_store_ptr(&tester->stats_handler, NULL);
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_stats_processed_predicate(void *user_data) {
+    struct aws_crt_statistics_handler *stats_handler = user_data;
+    struct aws_statistics_handler_test_impl *stats_impl = stats_handler->impl;
+
+    return stats_impl->total_bytes_read > 0 && stats_impl->total_bytes_written > 0 &&
+           stats_impl->tls_status != AWS_TLS_NEGOTIATION_STATUS_NONE;
+}
+
+static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_statistics_init(allocator, &c_tester));
+
+    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("This is some data.");
+    struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("Created from a blend of heirloom and cider apples");
+
+    uint8_t incoming_received_message[128] = {0};
+    uint8_t outgoing_received_message[128] = {0};
+
+    struct tls_test_rw_args incoming_rw_args;
+    ASSERT_SUCCESS(s_tls_rw_args_init(
+        &incoming_rw_args,
+        &c_tester,
+        aws_byte_buf_from_empty_array(incoming_received_message, sizeof(incoming_received_message))));
+
+    struct tls_test_rw_args outgoing_rw_args;
+    ASSERT_SUCCESS(s_tls_rw_args_init(
+        &outgoing_rw_args,
+        &c_tester,
+        aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
+
+    struct tls_test_args outgoing_args;
+    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &outgoing_args, false, &c_tester));
+
+    struct tls_test_args incoming_args;
+    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
+
+    struct tls_local_server_tester local_server_tester;
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester));
+
+    struct aws_channel_handler *outgoing_rw_handler =
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
+    ASSERT_NOT_NULL(outgoing_rw_handler);
+
+    struct aws_channel_handler *incoming_rw_handler =
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &incoming_rw_args);
+    ASSERT_NOT_NULL(incoming_rw_handler);
+
+    incoming_args.rw_handler = incoming_rw_handler;
+    outgoing_args.rw_handler = outgoing_rw_handler;
+
+    struct tls_opt_tester client_tls_opt_tester;
+    struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
+    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    aws_tls_connection_options_set_callbacks(
+        &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    struct aws_client_bootstrap_options bootstrap_options;
+    AWS_ZERO_STRUCT(bootstrap_options);
+    bootstrap_options.event_loop_group = &c_tester.el_group;
+    bootstrap_options.host_resolver = &c_tester.resolver;
+
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.creation_callback = s_creation_callback_test_channel_creation_callback;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
+    /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+
+    ASSERT_TRUE(outgoing_args.creation_callback_invoked);
+
+    /* Do the IO operations */
+    rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
+    rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+
+    uint64_t ms_to_ns = aws_timestamp_convert(1, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+
+    aws_atomic_store_int(&c_tester.current_time_ns, (size_t)ms_to_ns);
+
+    struct aws_crt_statistics_handler *stats_handler = aws_atomic_load_ptr(&c_tester.stats_handler);
+    struct aws_statistics_handler_test_impl *stats_impl = stats_handler->impl;
+
+    aws_mutex_lock(&stats_impl->lock);
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &stats_impl->signal, &stats_impl->lock, s_stats_processed_predicate, stats_handler));
+
+    ASSERT_TRUE(stats_impl->total_bytes_read >= read_tag.len);
+    ASSERT_TRUE(stats_impl->total_bytes_written >= write_tag.len);
+    ASSERT_TRUE(stats_impl->tls_status == AWS_TLS_NEGOTIATION_STATUS_SUCCESS);
+
+    aws_mutex_unlock(&stats_impl->lock);
+
+    aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
+
+    /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
+     * wait for the event to fire. */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
+    aws_mutex_unlock(&c_tester.mutex);
+    /* clean up */
+    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_channel_statistics_test, s_tls_channel_statistics_test)
+
+///////////////////////////////////////////////////////////////
+
+struct channel_stat_test_context {
+    struct aws_allocator *allocator;
+    struct tls_opt_tester *tls_tester;
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    bool setup_completed;
+    bool shutdown_completed;
+    int error_code;
+};
+
+static void s_channel_setup_stat_test_context_init(
+    struct channel_stat_test_context *context,
+    struct aws_allocator *allocator,
+    struct tls_opt_tester *tls_tester) {
+
+    AWS_ZERO_STRUCT(*context);
+    aws_mutex_init(&context->lock);
+    aws_condition_variable_init(&context->signal);
+    context->allocator = allocator;
+    context->tls_tester = tls_tester;
+}
+
+static void s_channel_setup_stat_test_context_clean_up(struct channel_stat_test_context *context) {
+    aws_mutex_clean_up(&context->lock);
+    aws_condition_variable_clean_up(&context->signal);
+}
+
+static int s_dummy_process_message(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
+    (void)handler;
+    (void)slot;
+
+    aws_mem_release(message->allocator, message);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_dummy_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
+    (void)handler;
+    (void)slot;
+    (void)size;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_dummy_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool free_scarce_resources_immediately) {
+
+    (void)handler;
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
+}
+
+static size_t s_dummy_initial_window_size(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 10000;
+}
+
+static size_t s_dummy_message_overhead(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 0;
+}
+
+static void s_dummy_destroy(struct aws_channel_handler *handler) {
+    aws_mem_release(handler->alloc, handler);
+}
+
+static struct aws_channel_handler_vtable s_dummy_handler_vtable = {
+    .process_read_message = s_dummy_process_message,
+    .process_write_message = s_dummy_process_message,
+    .increment_read_window = s_dummy_increment_read_window,
+    .shutdown = s_dummy_shutdown,
+    .initial_window_size = s_dummy_initial_window_size,
+    .message_overhead = s_dummy_message_overhead,
+    .destroy = s_dummy_destroy,
+};
+
+static struct aws_channel_handler *aws_channel_handler_new_dummy(struct aws_allocator *allocator) {
+    struct aws_channel_handler *handler = aws_mem_acquire(allocator, sizeof(struct aws_channel_handler));
+    handler->alloc = allocator;
+    handler->vtable = &s_dummy_handler_vtable;
+    handler->impl = NULL;
+
+    return handler;
+}
+
+static bool s_setup_completed_predicate(void *arg) {
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)arg;
+    return context->setup_completed;
+}
+
+static bool s_shutdown_completed_predicate(void *arg) {
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)arg;
+    return context->shutdown_completed;
+}
+
+static void s_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)user_data;
+
+    context->shutdown_completed = true;
+    context->error_code = error_code;
+
+    aws_condition_variable_notify_one(&context->signal);
+}
+
+static const int s_tls_timeout_ms = 1000;
+
+static void s_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
+    struct channel_stat_test_context *context = (struct channel_stat_test_context *)user_data;
+
+    /* attach a dummy channel handler */
+    struct aws_channel_slot *dummy_slot = aws_channel_slot_new(channel);
+
+    struct aws_channel_handler *dummy_handler = aws_channel_handler_new_dummy(context->allocator);
+    aws_channel_slot_set_handler(dummy_slot, dummy_handler);
+
+    /* attach a tls channel handler and start negotiation */
+    aws_channel_setup_client_tls(dummy_slot, &context->tls_tester->opt);
+
+    aws_mutex_lock(&context->lock);
+    context->error_code = error_code;
+    context->setup_completed = true;
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_one(&context->signal);
+}
+
+static int s_test_tls_negotiation_timeout(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct tls_opt_tester tls_test_context;
+    s_tls_client_opt_tester_init(allocator, &tls_test_context, aws_byte_cursor_from_c_str("derp.com"));
+    tls_test_context.opt.timeout_ms = s_tls_timeout_ms;
+
+    struct channel_stat_test_context channel_context;
+    s_channel_setup_stat_test_context_init(&channel_context, allocator, &tls_test_context);
+
+    struct aws_channel_creation_callbacks callbacks = {
+        .on_setup_completed = s_on_setup_completed,
+        .setup_user_data = &channel_context,
+        .on_shutdown_completed = s_on_shutdown_completed,
+        .shutdown_user_data = &channel_context,
+    };
+
+    /* set up the channel */
+    ASSERT_SUCCESS(aws_mutex_lock(&channel_context.lock));
+    struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
+    ASSERT_NOT_NULL(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &channel_context.signal, &channel_context.lock, s_setup_completed_predicate, &channel_context));
+    aws_mutex_unlock(&channel_context.lock);
+
+    /* wait for the timeout */
+    aws_thread_current_sleep(aws_timestamp_convert(s_tls_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+    aws_mutex_lock(&channel_context.lock);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &channel_context.signal, &channel_context.lock, s_shutdown_completed_predicate, &channel_context));
+
+    ASSERT_TRUE(channel_context.error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT);
+
+    aws_mutex_unlock(&channel_context.lock);
+
+    aws_channel_destroy(channel);
+    aws_event_loop_destroy(event_loop);
+
+    s_tls_opt_tester_clean_up(&tls_test_context);
+
+    s_channel_setup_stat_test_context_clean_up(&channel_context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_tls_negotiation_timeout, s_test_tls_negotiation_timeout)
+
+struct import_info {
+    struct aws_allocator *allocator;
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+    struct aws_thread thread;
+    struct aws_tls_ctx *tls;
+};
+
+static void s_import_cert(void *ctx) {
+    struct import_info *import = ctx;
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import->allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    import->tls = aws_tls_client_ctx_new(import->allocator, &tls_options);
+    AWS_FATAL_ASSERT(import->tls);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+}
+
+#define NUM_PAIRS 1
+static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    /* temporarily disable this on apple until we can fix importing to be more robust */
+#ifdef __APPLE__
+    return AWS_OP_SUCCESS;
+#endif
+
+    aws_io_library_init(allocator);
+
+    AWS_VARIABLE_LENGTH_ARRAY(struct import_info, imports, NUM_PAIRS);
+
+    /* setup, note that all I/O should be before the threads are launched */
+    for (size_t idx = 0; idx < NUM_PAIRS; ++idx) {
+        char filename[1024];
+        sprintf(filename, "./key_pair%u.pem", (uint32_t)idx);
+
+        struct import_info *import = &imports[idx];
+        import->allocator = allocator;
+        struct aws_byte_buf pem_buf;
+        ASSERT_SUCCESS(aws_byte_buf_init_from_file(&pem_buf, import->allocator, filename));
+
+        /* parse key pair from combined PEM */
+        struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&pem_buf);
+        struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&pem_buf);
+        uint8_t *key_end = (uint8_t *)strstr((const char *)key_cur.ptr, "END PRIVATE KEY");
+        while (*key_end != '\n') {
+            ++key_end;
+        }
+        ++key_end; /* advance past last \n */
+        uint8_t *cert_start = key_end;
+        while (*cert_start == '\n') {
+            ++cert_start;
+        }
+
+        key_cur.len = key_end - key_cur.ptr;
+        cert_cur.len = cert_cur.len - (cert_start - cert_cur.ptr);
+        cert_cur.ptr = cert_start;
+
+        AWS_FATAL_ASSERT(
+            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->cert_buf, import->allocator, cert_cur));
+        AWS_FATAL_ASSERT(
+            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->key_buf, import->allocator, key_cur));
+        struct aws_byte_cursor null_cur = aws_byte_cursor_from_array("", 1);
+        AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_byte_buf_append_dynamic(&import->key_buf, &null_cur));
+
+        aws_byte_buf_clean_up(&pem_buf);
+
+        struct aws_thread *thread = &import->thread;
+        ASSERT_SUCCESS(aws_thread_init(thread, allocator));
+    }
+
+    /* run threads */
+    const struct aws_thread_options *options = aws_default_thread_options();
+    for (size_t idx = 0; idx < NUM_PAIRS; ++idx) {
+        struct import_info *import = &imports[idx];
+        struct aws_thread *thread = &import->thread;
+        ASSERT_SUCCESS(aws_thread_launch(thread, s_import_cert, import, options));
+    }
+
+    /* join and clean up */
+    for (size_t idx = 0; idx < NUM_PAIRS; ++idx) {
+        struct import_info *import = &imports[idx];
+        struct aws_thread *thread = &import->thread;
+        ASSERT_SUCCESS(aws_thread_join(thread));
+        aws_tls_ctx_destroy(import->tls);
+        aws_byte_buf_clean_up(&import->cert_buf);
+        aws_byte_buf_clean_up(&import->key_buf);
+    }
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)

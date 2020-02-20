@@ -24,6 +24,8 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pki_utils.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/statistics.h>
 
 #include <Windows.h>
 
@@ -68,6 +70,7 @@ struct secure_channel_ctx {
 
 struct secure_channel_handler {
     struct aws_channel_handler handler;
+    struct aws_tls_channel_handler_shared shared_state;
     CtxtHandle sec_handle;
     CredHandle creds;
     /*
@@ -254,6 +257,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int err) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
+    aws_on_tls_negotiation_completed(&sc_handler->shared_state, err);
+
     if (sc_handler->on_negotiation_result) {
         sc_handler->on_negotiation_result(handler, sc_handler->slot, err, sc_handler->user_data);
     }
@@ -279,6 +284,8 @@ static void s_on_negotiation_success(struct aws_channel_handler *handler) {
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
     }
+
+    aws_on_tls_negotiation_completed(&sc_handler->shared_state, AWS_ERROR_SUCCESS);
 
     if (sc_handler->on_negotiation_result) {
         sc_handler->on_negotiation_result(handler, sc_handler->slot, AWS_OP_SUCCESS, sc_handler->user_data);
@@ -386,6 +393,9 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: server starting negotiation", (void *)handler);
+
+    aws_on_drive_tls_negotiation(&sc_handler->shared_state);
+
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_bufs[] = {
         {
@@ -657,6 +667,8 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: client starting negotiation", (void *)handler);
+
+    aws_on_drive_tls_negotiation(&sc_handler->shared_state);
 
     unsigned char alpn_buffer_data[128] = {0};
     SecBuffer input_buf = {
@@ -1510,7 +1522,22 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
         DeleteSecurityContext(&sc_handler->creds);
     }
 
+    aws_tls_channel_handler_shared_clean_up(&sc_handler->shared_state);
+
     aws_mem_release(handler->alloc, sc_handler);
+}
+
+static void s_reset_statistics(struct aws_channel_handler *handler) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    aws_crt_statistics_tls_reset(&sc_handler->shared_state.stats);
+}
+
+static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    void *stats_base = &sc_handler->shared_state.stats;
+    aws_array_list_push_back(stats, &stats_base);
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
@@ -1553,6 +1580,8 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .increment_read_window = s_increment_read_window,
     .initial_window_size = s_initial_window_size,
     .message_overhead = s_message_overhead,
+    .reset_statistics = s_reset_statistics,
+    .gather_statistics = s_gather_statistics,
 };
 
 static struct aws_channel_handler *s_tls_handler_new(
@@ -1570,6 +1599,9 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
+
+    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 

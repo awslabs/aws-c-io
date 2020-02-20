@@ -13,6 +13,7 @@
  * permissions and limitations under the License.
  */
 
+#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/system_info.h>
@@ -31,7 +32,7 @@ struct task_args {
     enum aws_task_status status;
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    bool thread_complete;
+    struct aws_atomic_var thread_complete;
 };
 
 static void s_test_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
@@ -158,7 +159,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
 
     aws_event_loop_destroy(event_loop);
 
-    aws_mutex_lock(&task1_args.mutex);
+    aws_mutex_lock(&task2_args.mutex);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task2_args.condition_variable, &task2_args.mutex, s_test_cancel_thread_task_predicate, &task2_args));
@@ -1070,7 +1071,7 @@ AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_a
 /* mark the thread complete when the async shutdown thread is done */
 static void s_async_shutdown_thread_exit(void *user_data) {
     struct task_args *args = user_data;
-    args->thread_complete = true;
+    aws_atomic_store_int(&args->thread_complete, true);
 }
 
 static void s_async_shutdown_complete_callback(void *user_data) {
@@ -1117,18 +1118,17 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     aws_task_init(&task, s_async_shutdown_task, &task_args, "async elg shutdown invoked from an event loop thread");
 
     /* Test "future" tasks */
-    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
-
     uint64_t now;
     ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
     aws_event_loop_schedule_task_future(event_loop, &task, now);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
-    while (!task_args.thread_complete) {
+    while (!aws_atomic_load_int(&task_args.thread_complete)) {
         aws_thread_current_sleep(15);
     }
 

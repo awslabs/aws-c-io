@@ -19,6 +19,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/statistics.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct testing_loop {
@@ -55,6 +56,11 @@ static void s_testing_loop_schedule_task_future(
     aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
 }
 
+static void s_testing_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    struct testing_loop *testing_loop = event_loop->impl_data;
+    aws_task_scheduler_cancel_task(&testing_loop->scheduler, task);
+}
+
 static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct testing_loop *testing_loop = event_loop->impl_data;
     return testing_loop->mock_on_callers_thread;
@@ -74,6 +80,7 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
     .run = s_testing_loop_run,
     .schedule_task_now = s_testing_loop_schedule_task_now,
     .schedule_task_future = s_testing_loop_schedule_task_future,
+    .cancel_task = s_testing_loop_cancel_task,
     .stop = s_testing_loop_stop,
     .wait_for_stop_completion = s_testing_loop_wait_for_stop_completion,
 };
@@ -105,6 +112,7 @@ struct testing_channel_handler {
     int complete_write_error_code;
     testing_channel_handler_on_shutdown_fn *on_shutdown;
     void *on_shutdown_user_data;
+    struct aws_crt_statistics_socket stats;
 };
 
 static int s_testing_channel_handler_process_read_message(
@@ -207,6 +215,21 @@ static void s_testing_channel_handler_destroy(struct aws_channel_handler *handle
     aws_mem_release(handler->alloc, handler);
 }
 
+static void s_testing_channel_handler_reset_statistics(struct aws_channel_handler *handler) {
+    struct testing_channel_handler *testing_handler = handler->impl;
+
+    aws_crt_statistics_socket_reset(&testing_handler->stats);
+}
+
+static void s_testing_channel_handler_gather_statistics(
+    struct aws_channel_handler *handler,
+    struct aws_array_list *stats) {
+    struct testing_channel_handler *testing_handler = handler->impl;
+
+    void *stats_base = &testing_handler->stats;
+    aws_array_list_push_back(stats, &stats_base);
+}
+
 static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
     .process_read_message = s_testing_channel_handler_process_read_message,
     .process_write_message = s_testing_channel_handler_process_write_message,
@@ -215,6 +238,8 @@ static struct aws_channel_handler_vtable s_testing_channel_handler_vtable = {
     .initial_window_size = s_testing_channel_handler_initial_window_size,
     .message_overhead = s_testing_channel_handler_message_overhead,
     .destroy = s_testing_channel_handler_destroy,
+    .gather_statistics = s_testing_channel_handler_gather_statistics,
+    .reset_statistics = s_testing_channel_handler_reset_statistics,
 };
 
 static struct aws_channel_handler *s_new_testing_channel_handler(
@@ -369,10 +394,17 @@ AWS_STATIC_IMPL void testing_channel_set_is_on_users_thread(struct testing_chann
     testing->loop_impl->mock_on_callers_thread = on_users_thread;
 }
 
-AWS_STATIC_IMPL int testing_channel_init(struct testing_channel *testing, struct aws_allocator *allocator) {
+struct aws_testing_channel_options {
+    aws_io_clock_fn *clock_fn;
+};
+
+AWS_STATIC_IMPL int testing_channel_init(
+    struct testing_channel *testing,
+    struct aws_allocator *allocator,
+    struct aws_testing_channel_options *options) {
     AWS_ZERO_STRUCT(*testing);
 
-    testing->loop = s_testing_loop_new(allocator, aws_high_res_clock_get_ticks);
+    testing->loop = s_testing_loop_new(allocator, options->clock_fn);
     testing->loop_impl = testing->loop->impl_data;
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -455,18 +487,25 @@ AWS_STATIC_IMPL void testing_channel_set_downstream_handler_shutdown_callback(
     testing->right_handler_impl->on_shutdown_user_data = user_data;
 }
 
-/* Pop first message from queue and compare its contents to expected string. */
-AWS_STATIC_IMPL int testing_channel_check_written_message(struct testing_channel *channel, const char *expected) {
+/* Pop first message from queue and compare its contents to expected data. */
+AWS_STATIC_IMPL int testing_channel_check_written_message(
+    struct testing_channel *channel,
+    struct aws_byte_cursor expected) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
     ASSERT_TRUE(!aws_linked_list_empty(msgs));
     struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
     struct aws_io_message *msg = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
 
-    ASSERT_TRUE(aws_byte_buf_eq_c_str(&msg->message_data, expected));
+    ASSERT_BIN_ARRAYS_EQUALS(expected.ptr, expected.len, msg->message_data.buffer, msg->message_data.len);
 
     aws_mem_release(msg->allocator, msg);
 
     return AWS_OP_SUCCESS;
+}
+
+/* Pop first message from queue and compare its contents to expected data. */
+AWS_STATIC_IMPL int testing_channel_check_written_message_str(struct testing_channel *channel, const char *expected) {
+    return testing_channel_check_written_message(channel, aws_byte_cursor_from_c_str(expected));
 }
 
 /* copies all messages in a list into a buffer, cleans up messages*/
@@ -485,17 +524,17 @@ AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs,
     return AWS_OP_SUCCESS;
 }
 
-/* Pop all messages from queue and compare their contents to expected string */
+/* Pop all messages from queue and compare their contents to expected data */
 AWS_STATIC_IMPL int testing_channel_check_messages_ex(
     struct aws_linked_list *msgs,
     struct aws_allocator *allocator,
-    const char *expected) {
+    struct aws_byte_cursor expected) {
     struct aws_byte_buf all_msgs;
     ASSERT_SUCCESS(aws_byte_buf_init(&all_msgs, allocator, 1024));
 
     ASSERT_SUCCESS(testing_channel_drain_messages(msgs, &all_msgs));
 
-    ASSERT_TRUE(aws_byte_buf_eq_c_str(&all_msgs, expected));
+    ASSERT_BIN_ARRAYS_EQUALS(expected.ptr, expected.len, all_msgs.buffer, all_msgs.len);
     aws_byte_buf_clean_up(&all_msgs);
     return AWS_OP_SUCCESS;
 }
@@ -504,9 +543,19 @@ AWS_STATIC_IMPL int testing_channel_check_messages_ex(
 AWS_STATIC_IMPL int testing_channel_check_written_messages(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
-    const char *expected) {
+    struct aws_byte_cursor expected) {
+
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
     return testing_channel_check_messages_ex(msgs, allocator, expected);
+}
+
+/* Check contents of all messages sent in the write direction. */
+AWS_STATIC_IMPL int testing_channel_check_written_messages_str(
+    struct testing_channel *channel,
+    struct aws_allocator *allocator,
+    const char *expected) {
+
+    return testing_channel_check_written_messages(channel, allocator, aws_byte_cursor_from_c_str(expected));
 }
 
 /* Extract contents of all messages sent in the write direction. */
@@ -523,13 +572,23 @@ AWS_STATIC_IMPL int testing_channel_drain_written_messages(
 AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
-    const char *expected) {
+    struct aws_byte_cursor expected) {
+
     struct aws_linked_list *msgs = testing_channel_get_read_message_queue(channel);
     return testing_channel_check_messages_ex(msgs, allocator, expected);
 }
 
+/* Check contents of all read-messages sent in the read direction by a midchannel http-handler */
+AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages_str(
+    struct testing_channel *channel,
+    struct aws_allocator *allocator,
+    const char *expected) {
+
+    return testing_channel_check_midchannel_read_messages(channel, allocator, aws_byte_cursor_from_c_str(expected));
+}
+
 /* For sending an aws_io_message into the channel, in the write or read direction */
-AWS_STATIC_IMPL int testing_channel_send_message_ex(
+AWS_STATIC_IMPL int testing_channel_send_data(
     struct testing_channel *channel,
     struct aws_byte_cursor data,
     enum aws_channel_direction dir,
@@ -555,28 +614,31 @@ AWS_STATIC_IMPL int testing_channel_send_message_ex(
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL int testing_channel_send_response(struct testing_channel *channel, struct aws_byte_cursor data) {
-    return testing_channel_send_message_ex(channel, data, AWS_CHANNEL_DIR_READ, false);
+/** Create an aws_io_message, containing the following data, and pushes it up the channel in the read direction */
+AWS_STATIC_IMPL int testing_channel_push_read_data(struct testing_channel *channel, struct aws_byte_cursor data) {
+    return testing_channel_send_data(channel, data, AWS_CHANNEL_DIR_READ, false);
 }
 
-AWS_STATIC_IMPL int testing_channel_send_response_str(struct testing_channel *channel, const char *str) {
-    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
+/** Create an aws_io_message, containing the following data, and pushes it up the channel in the read direction */
+AWS_STATIC_IMPL int testing_channel_push_read_str(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
 }
 
-AWS_STATIC_IMPL int testing_channel_send_response_str_ignore_errors(struct testing_channel *channel, const char *str) {
-    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
+/** Create an aws_io_message, containing the following data.
+ * Tries to push it up the channel in the read direction, but don't assert if the message can't be sent.
+ * Useful for testing data that arrives during handler shutdown */
+AWS_STATIC_IMPL int testing_channel_push_read_str_ignore_errors(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
 }
 
-AWS_STATIC_IMPL int testing_channel_readpush(struct testing_channel *channel, const char *str) {
-    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
+/** Create an aws_io_message, containing the following data, and pushes it up the channel in the write direction */
+AWS_STATIC_IMPL int testing_channel_push_write_data(struct testing_channel *channel, struct aws_byte_cursor data) {
+    return testing_channel_send_data(channel, data, AWS_CHANNEL_DIR_WRITE, false);
 }
 
-AWS_STATIC_IMPL int testing_channel_readpush_ignore_errors(struct testing_channel *channel, const char *str) {
-    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
-}
-
-AWS_STATIC_IMPL int testing_channel_writepush(struct testing_channel *channel, const char *str) {
-    return testing_channel_send_message_ex(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_WRITE, false);
+/** Create an aws_io_message, containing the following data, and pushes it up the channel in the write direction */
+AWS_STATIC_IMPL int testing_channel_push_write_str(struct testing_channel *channel, const char *str) {
+    return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_WRITE, false);
 }
 
 #endif /* AWS_TESTING_IO_TESTING_CHANNEL_H */
