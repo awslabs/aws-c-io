@@ -1045,6 +1045,7 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         aws_mutex_lock(&args.mutex);
         aws_event_loop_schedule_task_now(socket->event_loop, &args.task);
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_stop_accept_pred, &args);
+        aws_mutex_unlock(&args.mutex);
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stop accept task finished running.",
@@ -1237,6 +1238,7 @@ int aws_socket_close(struct aws_socket *socket) {
             aws_mutex_lock(&args.mutex);
             aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
+            aws_mutex_unlock(&args.mutex);
             AWS_LOGF_INFO(
                 AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, socket->io_handle.data.fd);
             if (args.ret_code) {

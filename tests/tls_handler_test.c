@@ -206,8 +206,8 @@ static void s_tls_handler_test_client_setup_callback(
         setup_test_args->last_error_code = error_code;
     }
 
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void s_tls_handler_test_server_setup_callback(
@@ -236,8 +236,8 @@ static void s_tls_handler_test_server_setup_callback(
         setup_test_args->last_error_code = error_code;
     }
 
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void s_tls_handler_test_client_shutdown_callback(
@@ -254,8 +254,8 @@ static void s_tls_handler_test_client_shutdown_callback(
 
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_finished = true;
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void s_tls_handler_test_server_shutdown_callback(
@@ -272,8 +272,8 @@ static void s_tls_handler_test_server_shutdown_callback(
 
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->shutdown_finished = true;
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void s_tls_handler_test_server_listener_destroy_callback(
@@ -383,8 +383,8 @@ static struct aws_byte_buf s_tls_test_handle_read(
     rw_args->read_invocations += 1;
     rw_args->invocation_happened = true;
 
-    aws_condition_variable_notify_one(rw_args->condition_variable);
     aws_mutex_unlock(rw_args->mutex);
+    aws_condition_variable_notify_one(rw_args->condition_variable);
 
     return rw_args->received_message;
 }
@@ -461,8 +461,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
@@ -480,8 +478,10 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
      * done messed up. */
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
     /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(incoming_args.error_invoked);
 
@@ -499,8 +499,10 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     }
 #endif
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
 
@@ -520,10 +522,12 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     incoming_rw_args.invocation_happened = false;
     outgoing_rw_args.invocation_happened = false;
@@ -535,10 +539,12 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     rw_handler_trigger_increment_read_window(incoming_args.rw_handler, incoming_args.rw_slot, 100);
     rw_handler_trigger_increment_read_window(outgoing_args.rw_handler, outgoing_args.rw_slot, 100);
 
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_INT_EQUALS(2, outgoing_rw_args.read_invocations);
     ASSERT_INT_EQUALS(2, incoming_rw_args.read_invocations);
@@ -552,11 +558,14 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer, outgoing_rw_args.received_message.len);
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
     aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
@@ -620,8 +629,6 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
         .host_resolver = &c_tester.resolver,
@@ -645,6 +652,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
@@ -768,8 +776,6 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     struct aws_socket_options options = {
         .connect_timeout_ms = 10000, .type = AWS_SOCKET_STREAM, .domain = AWS_SOCKET_IPV4};
 
-    aws_mutex_lock(&c_tester.mutex);
-
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = &c_tester.el_group,
         .host_resolver = &c_tester.resolver,
@@ -791,6 +797,7 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* Wait for setup to complete */
+    aws_mutex_lock(&c_tester.mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
 
@@ -974,23 +981,28 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
     channel_options.user_data = &outgoing_args;
 
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_FALSE(incoming_args.error_invoked);
 
     /* shut down */
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     /* no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     /* connect again! */
     outgoing_args.tls_negotiated = false;
@@ -1000,22 +1012,30 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
 
     /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     /* shut down */
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
     aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
     aws_mutex_unlock(&c_tester.mutex);
+
     /* clean up */
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
     aws_client_bootstrap_release(client_bootstrap);
@@ -1050,8 +1070,8 @@ static void s_close_client_socket_task(struct aws_task *task, void *arg, enum aw
 
     AWS_FATAL_ASSERT(aws_mutex_lock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
     tester->outgoing_args->shutdown_finished = true;
-    AWS_FATAL_ASSERT(aws_condition_variable_notify_one(tester->outgoing_args->condition_variable) == AWS_OP_SUCCESS);
     AWS_FATAL_ASSERT(aws_mutex_unlock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
+    AWS_FATAL_ASSERT(aws_condition_variable_notify_one(tester->outgoing_args->condition_variable) == AWS_OP_SUCCESS);
 }
 
 static void s_on_client_connected_do_hangup(struct aws_socket *socket, int error_code, void *user_data) {
@@ -1268,9 +1288,11 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     /* wait for both ends to setup */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+    ASSERT_FALSE(incoming_args.error_invoked);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_FALSE(outgoing_args.error_invoked);
 
     ASSERT_TRUE(outgoing_args.creation_callback_invoked);
 
@@ -1435,8 +1457,10 @@ static void s_on_shutdown_completed(struct aws_channel *channel, int error_code,
     (void)channel;
     struct channel_stat_test_context *context = (struct channel_stat_test_context *)user_data;
 
+    aws_mutex_lock(&context->lock);
     context->shutdown_completed = true;
     context->error_code = error_code;
+    aws_mutex_unlock(&context->lock);
 
     aws_condition_variable_notify_one(&context->signal);
 }

@@ -30,9 +30,9 @@
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    struct aws_atomic_var setup_completed;
-    struct aws_atomic_var shutdown_completed;
-    int error_code; /* protected by mutex */
+    bool setup_completed;    /* protected by mutex */
+    bool shutdown_completed; /* protected by mutex */
+    int error_code;          /* protected by mutex */
     enum aws_task_status task_status;
 };
 
@@ -42,14 +42,14 @@ static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel,
 
     aws_mutex_lock(&setup_test_args->mutex);
     setup_test_args->error_code |= error_code;
+    setup_test_args->setup_completed = true;
     aws_mutex_unlock(&setup_test_args->mutex);
-    aws_atomic_store_int(&setup_test_args->setup_completed, true);
     aws_condition_variable_notify_one(&setup_test_args->condition_variable);
 }
 
 static bool s_channel_setup_test_setup_completed_predicate(void *arg) {
     struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)arg;
-    return aws_atomic_load_int(&setup_test_args->setup_completed);
+    return setup_test_args->setup_completed;
 }
 
 /* Create a new channel and wait until its setup completes */
@@ -84,8 +84,8 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -120,8 +120,8 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -158,8 +158,8 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -256,8 +256,8 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -320,14 +320,17 @@ struct channel_rw_test_args {
     struct aws_byte_buf read_tag;
     struct aws_byte_buf write_tag;
     struct aws_byte_buf latest_message;
-    struct aws_atomic_var shutdown_completed;
     bool write_on_read;
+    /* condition_variable and mutex must be non-NULL to notify on shutdown */
     struct aws_condition_variable *condition_variable;
+    struct aws_mutex *mutex;
+    bool shutdown_completed; /* protected by mutex */
 };
 
 static bool s_rw_test_shutdown_predicate(void *arg) {
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)arg;
-    return aws_atomic_load_int(&rw_test_args->shutdown_completed);
+
+    return rw_test_args->shutdown_completed;
 }
 
 static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
@@ -335,9 +338,10 @@ static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int err
     (void)error_code;
     struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
 
-    aws_atomic_store_int(&rw_test_args->shutdown_completed, true);
-
-    if (rw_test_args->condition_variable) {
+    if (rw_test_args->condition_variable && rw_test_args->mutex) {
+        aws_mutex_lock(rw_test_args->mutex);
+        rw_test_args->shutdown_completed = true;
+        aws_mutex_unlock(rw_test_args->mutex);
         aws_condition_variable_notify_one(rw_test_args->condition_variable);
     }
 }
@@ -407,8 +411,8 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     uint8_t handler_1_latest_message[128] = {0};
@@ -419,24 +423,23 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     struct aws_mutex shutdown_mutex = AWS_MUTEX_INIT;
 
     struct channel_rw_test_args handler_1_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
-
         .read_tag = aws_byte_buf_from_c_str("handler 1 read, "),
         .write_tag = aws_byte_buf_from_c_str("handler 1 written, "),
-
+        .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
         .write_on_read = false,
         .condition_variable = &shutdown_condition,
+        .mutex = &shutdown_mutex,
+        .shutdown_completed = false,
     };
 
     struct channel_rw_test_args handler_3_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_1_latest_message)),
         .read_tag = aws_byte_buf_from_c_str("handler 3 read, "),
         .write_tag = aws_byte_buf_from_c_str("handler 3 written, "),
-
+        .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_3_latest_message)),
         .write_on_read = true,
         .condition_variable = NULL,
+        .mutex = NULL,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -466,13 +469,13 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
 
     struct channel_rw_test_args handler_2_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_2_latest_message, sizeof(handler_1_latest_message)),
         .read_tag = aws_byte_buf_from_c_str("handler 2 read, "),
         .write_tag = aws_byte_buf_from_c_str("handler 2 written, "),
-
+        .latest_message = aws_byte_buf_from_array(handler_2_latest_message, sizeof(handler_2_latest_message)),
         .write_on_read = false,
         .condition_variable = NULL,
+        .mutex = NULL,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_handler *handler_2 =
@@ -497,7 +500,7 @@ static int s_test_channel_message_passing(struct aws_allocator *allocator, void 
         &shutdown_condition, &shutdown_mutex, s_rw_test_shutdown_predicate, &handler_1_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&shutdown_mutex));
 
-    ASSERT_TRUE(aws_atomic_load_int(&handler_1_args.shutdown_completed));
+    ASSERT_TRUE(handler_1_args.shutdown_completed);
 
     ASSERT_TRUE(rw_handler_shutdown_called(handler_1));
     ASSERT_TRUE(rw_handler_shutdown_called(handler_2));
@@ -525,13 +528,15 @@ static void s_channel_test_shutdown(struct aws_channel *channel, int error_code,
     (void)error_code;
 
     struct channel_setup_test_args *test_args = user_data;
-    aws_atomic_store_int(&test_args->shutdown_completed, true);
+    aws_mutex_lock(&test_args->mutex);
+    test_args->shutdown_completed = true;
+    aws_mutex_unlock(&test_args->mutex);
     aws_condition_variable_notify_one(&test_args->condition_variable);
 }
 
 static bool s_channel_test_shutdown_predicate(void *arg) {
     struct channel_setup_test_args *test_args = (struct channel_setup_test_args *)arg;
-    return aws_atomic_load_int(&test_args->shutdown_completed);
+    return test_args->shutdown_completed;
 }
 
 enum tasks_run_id {
@@ -594,8 +599,8 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
@@ -661,8 +666,8 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
@@ -707,8 +712,8 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
@@ -757,8 +762,8 @@ static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, vo
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
     struct aws_channel_creation_callbacks callbacks = {

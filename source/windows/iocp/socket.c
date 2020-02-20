@@ -2018,6 +2018,7 @@ static int s_stream_stop_accept(struct aws_socket *socket) {
         aws_mutex_lock(&args.mutex);
         aws_event_loop_schedule_task_now(socket->event_loop, &stop_accept_task);
         aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_stop_accept_predicate, &args);
+        aws_mutex_unlock(&args.mutex);
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: accept shutdown completed",
@@ -2341,6 +2342,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
     aws_mutex_lock(&args.mutex);
     aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
     aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_close_predicate, &args);
+    aws_mutex_unlock(&args.mutex);
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: close task completed.",
