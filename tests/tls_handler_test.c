@@ -482,7 +482,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
     ASSERT_FALSE(incoming_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
@@ -503,7 +502,6 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
     ASSERT_FALSE(outgoing_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
@@ -1016,6 +1014,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_FALSE(incoming_args.error_invoked);
 
     /* shut down */
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
