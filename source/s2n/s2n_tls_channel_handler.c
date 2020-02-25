@@ -946,13 +946,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
             break;
         case AWS_IO_TLSv1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2016");
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2019-06");
             break;
         case AWS_IO_TLSv1_1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-1-2016");
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
             break;
         case AWS_IO_TLSv1_2:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-2-2018");
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-2-Ext-2018-06");
             break;
         case AWS_IO_TLSv1_3:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 is not supported yet.");
@@ -961,7 +961,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_ctx;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
         default:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default");
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
     }
 
     switch (options->cipher_pref) {
