@@ -61,6 +61,4 @@ void increment_read_window_task(void *arg, enum aws_task_status task_status);
 
 int rw_handler_last_error_code(struct aws_channel_handler *handler);
 
-int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler);
-
 #endif /* AWS_READ_WRITE_TEST_HANDLER */

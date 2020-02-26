@@ -26,15 +26,23 @@ struct alpn_channel_setup_test_args {
     struct aws_mutex mutex;
     int error_code;
     bool shutdown_finished;
+    bool setup_completed;
 };
 
 static void s_alpn_channel_setup_test_on_setup_completed(struct aws_channel *channel, int error_code, void *ctx) {
     (void)channel;
 
     struct alpn_channel_setup_test_args *setup_test_args = (struct alpn_channel_setup_test_args *)ctx;
-
+    aws_mutex_lock(&setup_test_args->mutex);
+    setup_test_args->setup_completed = true;
     setup_test_args->error_code |= error_code;
+    aws_mutex_unlock(&setup_test_args->mutex);
     aws_condition_variable_notify_one(&setup_test_args->condition_variable);
+}
+
+static bool s_alpn_test_setup_completed_predicate(void *arg) {
+    struct alpn_channel_setup_test_args *setup_test_args = (struct alpn_channel_setup_test_args *)arg;
+    return setup_test_args->setup_completed;
 }
 
 struct alpn_test_on_negotiation_args {
@@ -129,6 +137,7 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
     struct alpn_channel_setup_test_args test_args = {.error_code = 0,
                                                      .condition_variable = AWS_CONDITION_VARIABLE_INIT,
                                                      .mutex = AWS_MUTEX_INIT,
+                                                     .setup_completed = false,
                                                      .shutdown_finished = false};
 
     struct aws_channel_creation_callbacks callbacks = {
@@ -138,10 +147,11 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
         .shutdown_user_data = &test_args,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_alpn_test_setup_completed_predicate, &test_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
 
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
@@ -210,10 +220,11 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
         .shutdown_user_data = &test_args,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_alpn_test_setup_completed_predicate, &test_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
 
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
@@ -288,10 +299,11 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
         .shutdown_user_data = &test_args,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     channel = aws_channel_new(allocator, event_loop, &callbacks);
     ASSERT_NOT_NULL(channel);
-    ASSERT_SUCCESS(aws_condition_variable_wait(&test_args.condition_variable, &test_args.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_alpn_test_setup_completed_predicate, &test_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
 
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);

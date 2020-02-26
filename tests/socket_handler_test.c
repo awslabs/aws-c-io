@@ -61,6 +61,7 @@ static struct socket_common_tester c_tester;
 
 static int s_socket_common_tester_init(struct aws_allocator *allocator, struct socket_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
+    aws_io_library_init(allocator);
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&tester->el_group, allocator, 0));
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -68,8 +69,6 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     tester->condition_variable = condition_variable;
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
-
-    aws_io_library_init(allocator);
 
     return AWS_OP_SUCCESS;
 }

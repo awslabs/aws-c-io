@@ -1113,6 +1113,7 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
                                   .loop = event_loop,
                                   .el_group = &event_loop_group,
                                   .thread_id = 0};
+    aws_atomic_init_int(&task_args.thread_complete, false);
 
     struct aws_task task;
     aws_task_init(&task, s_async_shutdown_task, &task_args, "async elg shutdown invoked from an event loop thread");
