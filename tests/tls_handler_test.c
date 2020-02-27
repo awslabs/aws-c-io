@@ -838,7 +838,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "h2;http/1.1");
+    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "http/1.1");
     aws_tls_ctx_options_set_verify_peer(&client_ctx_options, verify);
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
@@ -849,7 +849,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
-    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "h2;http/1.1");
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "http/1.1");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -887,7 +887,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
-    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("http/1.1");
     /* check ALPN and SNI was properly negotiated */
 
     if (aws_tls_is_alpn_available() && verify) {
@@ -927,6 +927,30 @@ static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success, s_tls_client_channel_negotiation_success_fn)
+
+static int s_tls_client_channel_negotiation_success_ecc256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ecc256.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, true);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc256, s_tls_client_channel_negotiation_success_ecc256_fn)
+
+static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ecc384.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, true);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
 /* prove that connections complete even when verify_peer is false */
 static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, void *ctx) {
