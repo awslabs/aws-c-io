@@ -946,7 +946,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
             break;
         case AWS_IO_TLSv1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2019-06");
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2014");
             break;
         case AWS_IO_TLSv1_1:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
