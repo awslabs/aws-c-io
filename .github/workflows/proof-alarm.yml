@@ -19,20 +19,13 @@ jobs:
       run: |
         git diff --quiet 9276b7251 source/linux/epoll_event_loop.c
 
-    - name: Notify success
-      uses: thomas-moulard/action-amazon-chime@master
-      if: success()
-      with:
-        message: |
-          [${{ github.workflow }}][${{ github.event_name }}] No change
-          Link to GitHub Action run: https://github.com/${{ github.repository }}/commit/${{ github.sha }}/checks
-        webhook: ${{ secrets.P2ConcurrencyRoomWebHookURL }}
+    # No further action if successful
 
     - name: Notify fail
       uses: thomas-moulard/action-amazon-chime@master
       if: failure()
       with:
         message: |
-          [${{ github.workflow }}][${{ github.event_name }}] Proof update maybe required
+          [${{ github.workflow }}][${{ github.event_name }}] WARNING: Proof update maybe required
           Link to GitHub Action run: https://github.com/${{ github.repository }}/commit/${{ github.sha }}/checks
         webhook: ${{ secrets.P2ConcurrencyRoomWebHookURL }}
