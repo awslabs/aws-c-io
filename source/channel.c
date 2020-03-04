@@ -788,6 +788,23 @@ int aws_channel_slot_send_message(
     return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
 }
 
+struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws_channel_slot *slot) {
+    AWS_PRECONDITION(slot);
+    AWS_PRECONDITION(slot->channel);
+    AWS_PRECONDITION(aws_channel_thread_is_callers_thread(slot->channel));
+
+    const size_t overhead = aws_channel_slot_upstream_message_overhead(slot);
+    if (overhead >= g_aws_channel_max_fragment_size) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL, "id=%p: Upstream overhead exceeds channel's max message size.", (void *)slot->channel);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        return NULL;
+    }
+
+    const size_t size_hint = g_aws_channel_max_fragment_size - overhead;
+    return aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, size_hint);
+}
+
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
     if (slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
