@@ -366,13 +366,21 @@ int aws_channel_slot_send_message(
     enum aws_channel_direction dir);
 
 /**
+ * Convenience function that invokes aws_channel_acquire_message_from_pool(),
+ * asking for the largest reasonable DATA message that can be sent in the write direction,
+ * with upstream overhead accounted for.
+ */
+AWS_IO_API
+struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws_channel_slot *slot);
+
+/**
  * Issues a window update notification upstream (to the left.)
  */
 AWS_IO_API
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window);
 
 /**
- * Called by handlers once they have finished their shutdown in the 'dir' direction. Propogates the shutdown process
+ * Called by handlers once they have finished their shutdown in the 'dir' direction. Propagates the shutdown process
  * to the next handler in the channel.
  */
 AWS_IO_API
