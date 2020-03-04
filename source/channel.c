@@ -795,7 +795,8 @@ struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws
 
     const size_t overhead = aws_channel_slot_upstream_message_overhead(slot);
     if (overhead >= g_aws_channel_max_fragment_size) {
-        AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL, "id=%p: Channel overhead is too high", (void *)slot->channel);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL, "id=%p: Channel handler overhead exceeds max message size.", (void *)slot->channel);
         aws_raise_error(AWS_ERROR_INVALID_STATE);
         return NULL;
     }
