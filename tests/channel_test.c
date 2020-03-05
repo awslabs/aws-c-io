@@ -60,7 +60,7 @@ static int s_channel_setup_create_and_wait(
     struct channel_setup_test_args *test_args,
     struct aws_channel **returned_channel) {
     ASSERT_NULL(*returned_channel);
-    *returned_channel = aws_channel_new(allocator, event_loop, callbacks);
+    *returned_channel = aws_channel_new_with_back_pressure(allocator, event_loop, callbacks);
     ASSERT_NOT_NULL(*returned_channel);
     ASSERT_SUCCESS(aws_mutex_lock(&test_args->mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(

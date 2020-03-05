@@ -414,7 +414,7 @@ AWS_STATIC_IMPL int testing_channel_init(
         .shutdown_user_data = testing,
     };
 
-    testing->channel = aws_channel_new(allocator, testing->loop, &callbacks);
+    testing->channel = aws_channel_new_with_back_pressure(allocator, testing->loop, &callbacks);
 
     /* Wait for channel to finish setup */
     testing_channel_drain_queued_tasks(testing);

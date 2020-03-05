@@ -86,6 +86,11 @@ struct aws_channel {
         struct shutdown_task shutdown_task;
         bool is_channel_shut_down;
     } cross_thread_tasks;
+
+    size_t window_update_batch_emit_threshold;
+    struct aws_channel_task window_update_task;
+    bool read_back_pressure_enabled;
+    bool window_update_in_progress;
 };
 
 struct channel_setup_args {
@@ -207,10 +212,11 @@ static void s_destroy_partially_constructed_channel(struct aws_channel *channel)
     aws_mem_release(channel->alloc, channel);
 }
 
-struct aws_channel *aws_channel_new(
+static struct aws_channel *s_channel_new(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks) {
+    struct aws_channel_creation_callbacks *callbacks,
+    bool with_backpressure) {
 
     struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
@@ -242,6 +248,14 @@ struct aws_channel *aws_channel_new(
     aws_linked_list_init(&channel->channel_thread_tasks.list);
     aws_linked_list_init(&channel->cross_thread_tasks.list);
     channel->cross_thread_tasks.lock = (struct aws_mutex)AWS_MUTEX_INIT;
+
+    if (with_backpressure) {
+        channel->read_back_pressure_enabled = true;
+        /* we probably only need room for one fragment, but let's avoid potential deadlocks
+         * on things like tls that need extra head-room. */
+        channel->window_update_batch_emit_threshold = g_aws_channel_max_fragment_size * 2;
+    }
+
     aws_task_init(
         &channel->cross_thread_tasks.scheduling_task,
         s_schedule_cross_thread_tasks,
@@ -263,6 +277,20 @@ on_error:
     s_destroy_partially_constructed_channel(channel);
 
     return NULL;
+}
+
+struct aws_channel *aws_channel_new(
+    struct aws_allocator *alloc,
+    struct aws_event_loop *event_loop,
+    struct aws_channel_creation_callbacks *callbacks) {
+    return s_channel_new(alloc, event_loop, callbacks, false);
+}
+
+struct aws_channel *aws_channel_new_with_back_pressure(
+    struct aws_allocator *alloc,
+    struct aws_event_loop *event_loop,
+    struct aws_channel_creation_callbacks *callbacks) {
+    return s_channel_new(alloc, event_loop, callbacks, true);
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {
@@ -443,12 +471,7 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
 
     AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL, "id=%p: creating new slot %p.", (void *)channel, (void *)new_slot);
     new_slot->alloc = channel->alloc;
-    new_slot->adj_right = NULL;
-    new_slot->adj_left = NULL;
-    new_slot->handler = NULL;
     new_slot->channel = channel;
-    new_slot->window_size = 0;
-    new_slot->upstream_message_overhead = 0;
 
     if (!channel->first) {
         channel->first = new_slot;
@@ -748,7 +771,7 @@ int aws_channel_slot_send_message(
         AWS_ASSERT(slot->adj_right);
         AWS_ASSERT(slot->adj_right->handler);
 
-        if (slot->adj_right->window_size >= message->message_data.len) {
+        if (!slot->channel->read_back_pressure_enabled || slot->adj_right->window_size >= message->message_data.len) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_CHANNEL,
                 "id=%p: sending read message of size %llu, "
@@ -805,27 +828,56 @@ struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws
     return aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, size_hint);
 }
 
+static void s_window_update_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_channel_slot *slot = arg;
+        /* note the batch size has already been incremented in this case. so 0 is fine. */
+        if (aws_channel_slot_increment_read_window(slot, 0)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL,
+                "channel %p: channel update task failed with status %d",
+                (void *)slot->channel,
+                aws_last_error())
+        }
+    }
+}
+
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
-    if (slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
-        size_t temp = slot->window_size + window;
-        if (temp < slot->window_size) {
-            slot->window_size = SIZE_MAX;
-        } else {
-            slot->window_size = temp;
-        }
+    if (slot->channel->read_back_pressure_enabled && slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+        slot->current_window_update_batch_size =
+            aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
         if (slot->adj_left && slot->adj_left->handler) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_CHANNEL,
-                "id=%p: sending increment read window of size %llu, "
-                "on slot %p and notifying slot %p with handler %p.",
-                (void *)slot->channel,
-                (unsigned long long)window,
-                (void *)slot,
-                (void *)slot->adj_left,
-                (void *)slot->adj_left->handler);
-            return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, window);
+            /* in this case, the task has already been scheduled, so just do it in-band. */
+            if (slot->channel->window_update_in_progress) {
+                size_t to_update = slot->current_window_update_batch_size;
+                slot->current_window_update_batch_size = 0;
+                slot->window_size = aws_add_size_saturating(slot->window_size, to_update);
+
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_CHANNEL,
+                    "id=%p: sending increment read window of size %llu, "
+                    "on slot %p and notifying slot %p with handler %p.",
+                    (void *)slot->channel,
+                    (unsigned long long)to_update,
+                    (void *)slot,
+                    (void *)slot->adj_left,
+                    (void *)slot->adj_left->handler);
+                return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, to_update);
+            } else if (slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
+                slot->channel->window_update_in_progress = true;
+                aws_channel_task_init(
+                    &slot->channel->window_update_task, s_window_update_task, slot, "window update task");
+                aws_channel_schedule_task_now(slot->channel, &slot->channel->window_update_task);
+            }
+        }
+        /* we're all the way upstream, turn the window update back progress back off. */
+        else {
+            slot->current_window_update_batch_size = 0;
+            slot->channel->window_update_in_progress = false;
         }
     }
 
@@ -956,7 +1008,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
     AWS_ASSERT(slot->adj_right);
-    return slot->adj_right->window_size;
+    return slot->channel->read_back_pressure_enabled ? slot->adj_right->window_size : SIZE_MAX;
 }
 
 size_t aws_channel_slot_upstream_message_overhead(struct aws_channel_slot *slot) {
@@ -992,6 +1044,7 @@ int aws_channel_handler_increment_read_window(
     size_t size) {
 
     AWS_ASSERT(handler->vtable && handler->vtable->increment_read_window);
+
     return handler->vtable->increment_read_window(handler, slot, size);
 }
 

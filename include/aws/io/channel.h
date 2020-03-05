@@ -51,6 +51,7 @@ struct aws_channel_slot {
     struct aws_channel_handler *handler;
     size_t window_size;
     size_t upstream_message_overhead;
+    size_t current_window_update_batch_size;
 };
 
 struct aws_channel_task;
@@ -165,6 +166,20 @@ void aws_channel_task_init(
  */
 AWS_IO_API
 struct aws_channel *aws_channel_new(
+    struct aws_allocator *alloc,
+    struct aws_event_loop *event_loop,
+    struct aws_channel_creation_callbacks *callbacks);
+
+/**
+ * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
+ * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
+ * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
+ *
+ * This variant enables read back pressure, but it's less efficient. Set initial_window_size_bytes to the initial size
+ * of the read window.
+ */
+AWS_IO_API
+struct aws_channel *aws_channel_new_with_back_pressure(
     struct aws_allocator *alloc,
     struct aws_event_loop *event_loop,
     struct aws_channel_creation_callbacks *callbacks);
