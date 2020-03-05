@@ -1,6 +1,4 @@
-# The VCC proofs are on a snapshot of the epoll_event_loop implementation. If
-# a push occurs with an update (to the implementation) then the proofs may need
-# updating.
+# Alarm on changes to epoll_event_loop implementation
 
 name: ProofAlarm
 
@@ -19,13 +17,20 @@ jobs:
       run: |
         git diff --quiet 9276b7251 source/linux/epoll_event_loop.c
 
-    # No further action if successful
+    # No further steps if successful
 
     - name: Notify fail
       uses: thomas-moulard/action-amazon-chime@master
       if: failure()
       with:
         message: |
-          [${{ github.workflow }}][${{ github.event_name }}] WARNING: Proof update maybe required
+          [${{ github.workflow }}][${{ github.event_name }}] WARNING: Proof update may be required
           Link to GitHub Action run: https://github.com/${{ github.repository }}/commit/${{ github.sha }}/checks
         webhook: ${{ secrets.P2ConcurrencyRoomWebHookURL }}
+
+    - name: Echo fail
+      if: failure()
+      run: |
+          echo "The VCC proofs are based on a snapshot of epoll_event_loop.c.
+                This push updates this file so the proofs must be rechecked to ensure they remain valid.
+                Please contact Nathan Chong."
