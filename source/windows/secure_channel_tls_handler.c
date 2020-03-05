@@ -1324,7 +1324,7 @@ static int s_process_write_message(
                     "id=%p: Error encrypting message. SECURITY_STATUS is %d",
                     (void *)handler,
                     (int)status);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
             }
         }
 
