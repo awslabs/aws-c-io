@@ -111,6 +111,22 @@ struct secure_channel_handler {
     bool verify_peer;
 };
 
+
+static size_t s_message_overhead(struct aws_channel_handler *handler) {
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
+        SECURITY_STATUS status =
+            QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
+
+        if (status != SEC_E_OK) {
+            return EST_TLS_RECORD_OVERHEAD;
+        }
+    }
+
+    return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
+}
+
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
@@ -218,7 +234,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             NULL,
             peer_certificate->hCertStore,
             &chain_params,
-            CERT_CHAIN_REVOCATION_CHECK_CHAIN,
+            0 ,
             NULL,
             &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
@@ -626,6 +642,9 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
         sc_handler->negotiation_finished = true;
 
+        /* force query of the sizes so future calls to encrypt will be loaded. */
+        s_message_overhead(handler);
+
         /*
            grab the negotiated protocol out of the session.
         */
@@ -911,6 +930,8 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             }
         }
         sc_handler->negotiation_finished = true;
+        /* force the sizes query, so future Encrypt message calls work.*/
+        s_message_overhead(handler);
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
         if (sc_handler->alpn_list) {
@@ -1383,21 +1404,6 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
     }
     return AWS_OP_SUCCESS;
-}
-
-static size_t s_message_overhead(struct aws_channel_handler *handler) {
-    struct secure_channel_handler *sc_handler = handler->impl;
-
-    if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
-        SECURITY_STATUS status =
-            QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
-
-        if (status != SEC_E_OK) {
-            return EST_TLS_RECORD_OVERHEAD;
-        }
-    }
-
-    return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
 static size_t s_initial_window_size(struct aws_channel_handler *handler) {
