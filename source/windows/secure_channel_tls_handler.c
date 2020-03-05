@@ -45,7 +45,7 @@
 #endif
 
 #define KB_1 1024
-#define READ_OUT_SIZE (KB_1 * 16)
+#define READ_OUT_SIZE g_aws_channel_max_fragment_size
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
@@ -1339,24 +1339,34 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     struct secure_channel_handler *sc_handler = handler->impl;
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Increment read window message received %zu", (void *)handler, size);
 
-    if (AWS_UNLIKELY(!sc_handler->stream_sizes.cbMaximumMessage)) {
+    /* You can't query a context if negotiation isn't completed, since ciphers haven't been negotiated
+     * and it couldn't possibly know the overhead size yet. */
+    if (sc_handler->negotiation_finished && !sc_handler->stream_sizes.cbMaximumMessage) {
         SECURITY_STATUS status =
             QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &sc_handler->stream_sizes);
 
         if (status != SEC_E_OK) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "id=%p: QueryContextAttributes failed with error %d", (void *)handler, (int)status);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             aws_channel_shutdown(slot->channel, AWS_ERROR_SYS_CALL_FAILURE);
             return AWS_OP_ERR;
         }
     }
 
-    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-    size_t current_window_size = slot->window_size;
+    size_t total_desired_size = size;
 
-    size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(READ_IN_SIZE));
-    size_t offset_size = aws_mul_size_saturating(
-        likely_records_count, sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
-    size_t total_desired_size = aws_add_size_saturating(offset_size, downstream_size);
+    /* the only time this branch isn't taken is when a window update is propagated during tls negotiation.
+     * in that case just pass it through. */
+    if (sc_handler->stream_sizes.cbMaximumMessage) {
+        size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+        size_t current_window_size = slot->window_size;
+
+        size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(READ_IN_SIZE));
+        size_t offset_size = aws_mul_size_saturating(
+            likely_records_count, sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
+        total_desired_size = aws_add_size_saturating(offset_size, downstream_size);
+    }
 
     if (total_desired_size > current_window_size) {
         size_t window_update_size = total_desired_size - current_window_size;
