@@ -203,7 +203,8 @@ struct aws_socket_channel_bootstrap_options {
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
  *
- * The socket type in `options` must be AWS_SOCKET_STREAM. DTLS is not supported via. this API.
+ * The socket type in `options` must be AWS_SOCKET_STREAM if tls_options is set.
+ * DTLS is not currently supported for tls.
  */
 struct aws_server_socket_channel_bootstrap_options {
     struct aws_server_bootstrap *bootstrap;

@@ -175,8 +175,7 @@ struct aws_channel *aws_channel_new(
  * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
  * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
  *
- * This variant enables read back pressure, but it's less efficient. Set initial_window_size_bytes to the initial size
- * of the read window.
+ * This variant enables read back pressure, but it's less efficient.
  */
 AWS_IO_API
 struct aws_channel *aws_channel_new_with_back_pressure(
