@@ -45,7 +45,7 @@
 #endif
 
 #define KB_1 1024
-#define READ_OUT_SIZE g_aws_channel_max_fragment_size
+#define READ_OUT_SIZE (16 * KB_1)
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
@@ -1355,13 +1355,12 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     }
 
     size_t total_desired_size = size;
+    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+    size_t current_window_size = slot->window_size;
 
     /* the only time this branch isn't taken is when a window update is propagated during tls negotiation.
      * in that case just pass it through. */
     if (sc_handler->stream_sizes.cbMaximumMessage) {
-        size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-        size_t current_window_size = slot->window_size;
-
         size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(READ_IN_SIZE));
         size_t offset_size = aws_mul_size_saturating(
             likely_records_count, sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader);
