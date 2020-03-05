@@ -111,7 +111,6 @@ struct secure_channel_handler {
     bool verify_peer;
 };
 
-
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -229,14 +228,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
 
     if (!CertGetCertificateChain(
-            engine,
-            peer_certificate,
-            NULL,
-            peer_certificate->hCertStore,
-            &chain_params,
-            0 ,
-            NULL,
-            &cert_chain_ctx)) {
+            engine, peer_certificate, NULL, peer_certificate->hCertStore, &chain_params, 0, NULL, &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.",
