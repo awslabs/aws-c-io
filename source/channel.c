@@ -216,7 +216,6 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     AWS_PRECONDITION(creation_args);
     AWS_PRECONDITION(creation_args->event_loop);
     AWS_PRECONDITION(creation_args->on_setup_completed);
-    AWS_PRECONDITION(creation_args->on_shutdown_completed);
 
     struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
