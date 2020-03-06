@@ -503,12 +503,15 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     connection_args->connection_chosen = true;
     connection_args->channel_data.socket = socket;
 
-    struct aws_channel_creation_callbacks channel_callbacks = {
+    struct aws_channel_creation_args args = {
         .on_setup_completed = s_on_client_channel_on_setup_completed,
         .setup_user_data = connection_args,
         .shutdown_user_data = connection_args,
         .on_shutdown_completed = s_on_client_channel_on_shutdown,
     };
+
+    args.enable_read_back_pressure = connection_args->enable_read_back_pressure;
+    args.event_loop = aws_socket_get_event_loop(socket);
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -516,13 +519,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         (void *)connection_args->bootstrap,
         (void *)socket);
 
-    if (connection_args->enable_read_back_pressure) {
-        connection_args->channel_data.channel = aws_channel_new_with_back_pressure(
-            connection_args->bootstrap->allocator, aws_socket_get_event_loop(socket), &channel_callbacks);
-    } else {
-        connection_args->channel_data.channel = aws_channel_new(
-            connection_args->bootstrap->allocator, aws_socket_get_event_loop(socket), &channel_callbacks);
-    }
+    connection_args->channel_data.channel = aws_channel_new(connection_args->bootstrap->allocator, &args);
 
     if (!connection_args->channel_data.channel) {
         aws_socket_clean_up(socket);
@@ -1217,25 +1214,23 @@ void s_on_server_connection_result(
         struct aws_event_loop *event_loop =
             aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
-        struct aws_channel_creation_callbacks channel_callbacks = {
+        struct aws_channel_creation_args channel_args = {
             .on_setup_completed = s_on_server_channel_on_setup_completed,
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
         };
 
+        channel_args.event_loop = event_loop;
+        channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
+
         if (aws_socket_assign_to_event_loop(new_socket, event_loop)) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
         }
 
-        if (channel_data->server_connection_args->enable_read_back_pressure) {
-            channel_data->channel = aws_channel_new_with_back_pressure(
-                connection_args->bootstrap->allocator, event_loop, &channel_callbacks);
-        } else {
-            channel_data->channel =
-                aws_channel_new(connection_args->bootstrap->allocator, event_loop, &channel_callbacks);
-        }
+        channel_data->channel = aws_channel_new(connection_args->bootstrap->allocator, &channel_args);
+
         if (!channel_data->channel) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;

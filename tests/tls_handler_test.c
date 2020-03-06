@@ -1532,16 +1532,17 @@ static int s_test_tls_negotiation_timeout(struct aws_allocator *allocator, void 
     struct channel_stat_test_context channel_context;
     s_channel_setup_stat_test_context_init(&channel_context, allocator, &tls_test_context);
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_creation_args args = {
         .on_setup_completed = s_on_setup_completed,
         .setup_user_data = &channel_context,
         .on_shutdown_completed = s_on_shutdown_completed,
         .shutdown_user_data = &channel_context,
+        .event_loop = event_loop,
     };
 
     /* set up the channel */
     ASSERT_SUCCESS(aws_mutex_lock(&channel_context.lock));
-    struct aws_channel *channel = aws_channel_new(allocator, event_loop, &callbacks);
+    struct aws_channel *channel = aws_channel_new(allocator, &args);
     ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &channel_context.signal, &channel_context.lock, s_setup_completed_predicate, &channel_context));

@@ -212,11 +212,7 @@ static void s_destroy_partially_constructed_channel(struct aws_channel *channel)
     aws_mem_release(channel->alloc, channel);
 }
 
-static struct aws_channel *s_channel_new(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks,
-    bool with_backpressure) {
+struct aws_channel *aws_channel_new(struct aws_allocator *alloc, struct aws_channel_creation_args *creation_args) {
 
     struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
@@ -225,9 +221,9 @@ static struct aws_channel *s_channel_new(
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: Beginning creation and setup of new channel.", (void *)channel);
     channel->alloc = alloc;
-    channel->loop = event_loop;
-    channel->on_shutdown_completed = callbacks->on_shutdown_completed;
-    channel->shutdown_user_data = callbacks->shutdown_user_data;
+    channel->loop = creation_args->event_loop;
+    channel->on_shutdown_completed = creation_args->on_shutdown_completed;
+    channel->shutdown_user_data = creation_args->shutdown_user_data;
 
     if (aws_array_list_init_dynamic(
             &channel->statistic_list, alloc, INITIAL_STATISTIC_LIST_SIZE, sizeof(struct aws_crt_statistics_base *))) {
@@ -249,7 +245,7 @@ static struct aws_channel *s_channel_new(
     aws_linked_list_init(&channel->cross_thread_tasks.list);
     channel->cross_thread_tasks.lock = (struct aws_mutex)AWS_MUTEX_INIT;
 
-    if (with_backpressure) {
+    if (creation_args->enable_read_back_pressure) {
         channel->read_back_pressure_enabled = true;
         /* we probably only need room for one fragment, but let's avoid potential deadlocks
          * on things like tls that need extra head-room. */
@@ -264,11 +260,11 @@ static struct aws_channel *s_channel_new(
 
     setup_args->alloc = alloc;
     setup_args->channel = channel;
-    setup_args->on_setup_completed = callbacks->on_setup_completed;
-    setup_args->user_data = callbacks->setup_user_data;
+    setup_args->on_setup_completed = creation_args->on_setup_completed;
+    setup_args->user_data = creation_args->setup_user_data;
 
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args, "on_channel_setup_complete");
-    aws_event_loop_schedule_task_now(event_loop, &setup_args->task);
+    aws_event_loop_schedule_task_now(creation_args->event_loop, &setup_args->task);
 
     return channel;
 
@@ -277,20 +273,6 @@ on_error:
     s_destroy_partially_constructed_channel(channel);
 
     return NULL;
-}
-
-struct aws_channel *aws_channel_new(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks) {
-    return s_channel_new(alloc, event_loop, callbacks, false);
-}
-
-struct aws_channel *aws_channel_new_with_back_pressure(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks) {
-    return s_channel_new(alloc, event_loop, callbacks, true);
 }
 
 static void s_cleanup_slot(struct aws_channel_slot *slot) {

@@ -36,13 +36,6 @@ typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int
 /* Callback called when a channel is completely shutdown. error_code refers to the reason the channel was closed. */
 typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
-struct aws_channel_creation_callbacks {
-    aws_channel_on_setup_completed_fn *on_setup_completed;
-    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
-    void *setup_user_data;
-    void *shutdown_user_data;
-};
-
 struct aws_channel_slot {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -145,6 +138,28 @@ struct aws_channel_handler {
     void *impl;
 };
 
+/**
+ * Args for creating a new channel.
+ *  event_loop to use for IO and tasks. on_setup_completed will be invoked when
+ *  the setup process is finished It will be executed in the event loop's thread.
+ *  on_shutdown_completed will be executed upon channel shutdown.
+ *
+ *  enable_read_back_pressure toggles whether or not back pressure will be applied in the channel.
+ *  Leave this option off unless you're using something like reactive-streams, since it is a slight throughput
+ *  penalty.
+ *
+ *  Unless otherwise
+ *  specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
+ **/
+struct aws_channel_creation_args {
+    struct aws_event_loop *event_loop;
+    aws_channel_on_setup_completed_fn *on_setup_completed;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
+    void *setup_user_data;
+    void *shutdown_user_data;
+    bool enable_read_back_pressure;
+};
+
 extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
 
 AWS_EXTERN_C_BEGIN
@@ -160,28 +175,11 @@ void aws_channel_task_init(
     const char *type_tag);
 
 /**
- * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
- * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
- * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
+ * Allocates new channel, Unless otherwise specified all functions for channels and channel slots must be executed
+ * within that channel's event-loop's thread.
  */
 AWS_IO_API
-struct aws_channel *aws_channel_new(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks);
-
-/**
- * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
- * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
- * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
- *
- * This variant enables read back pressure, but it's less efficient.
- */
-AWS_IO_API
-struct aws_channel *aws_channel_new_with_back_pressure(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks);
+struct aws_channel *aws_channel_new(struct aws_allocator *allocator, struct aws_channel_creation_args *creation_args);
 
 /**
  * Mark the channel, along with all slots and handlers, for destruction.
