@@ -140,14 +140,15 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
                                                      .setup_completed = false,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    channel = aws_channel_new(allocator, &args);
     ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -213,14 +214,15 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
                                                      .mutex = AWS_MUTEX_INIT,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    channel = aws_channel_new(allocator, &args);
     ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -292,14 +294,15 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
                                                      .mutex = AWS_MUTEX_INIT,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    channel = aws_channel_new(allocator, event_loop, &callbacks);
+    channel = aws_channel_new(allocator, &args);
     ASSERT_NOT_NULL(channel);
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(

@@ -143,6 +143,7 @@ struct client_connection_args {
     uint8_t failed_count;
     bool connection_chosen;
     bool setup_called;
+    bool enable_read_back_pressure;
     uint32_t ref_count;
 };
 
@@ -502,12 +503,15 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     connection_args->connection_chosen = true;
     connection_args->channel_data.socket = socket;
 
-    struct aws_channel_creation_callbacks channel_callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_on_client_channel_on_setup_completed,
         .setup_user_data = connection_args,
         .shutdown_user_data = connection_args,
         .on_shutdown_completed = s_on_client_channel_on_shutdown,
     };
+
+    args.enable_read_back_pressure = connection_args->enable_read_back_pressure;
+    args.event_loop = aws_socket_get_event_loop(socket);
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -515,8 +519,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         (void *)connection_args->bootstrap,
         (void *)socket);
 
-    connection_args->channel_data.channel =
-        aws_channel_new(connection_args->bootstrap->allocator, aws_socket_get_event_loop(socket), &channel_callbacks);
+    connection_args->channel_data.channel = aws_channel_new(connection_args->bootstrap->allocator, &args);
+
     if (!connection_args->channel_data.channel) {
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
@@ -726,6 +730,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     client_connection_args->shutdown_callback = options->shutdown_callback;
     client_connection_args->outgoing_options = *socket_options;
     client_connection_args->outgoing_port = port;
+    client_connection_args->enable_read_back_pressure = options->enable_read_back_pressure;
 
     if (tls_options) {
         if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, tls_options)) {
@@ -886,6 +891,7 @@ struct server_connection_args {
     void *tls_user_data;
     void *user_data;
     bool use_tls;
+    bool enable_read_back_pressure;
     struct aws_atomic_var ref_count;
 };
 
@@ -1208,19 +1214,23 @@ void s_on_server_connection_result(
         struct aws_event_loop *event_loop =
             aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
-        struct aws_channel_creation_callbacks channel_callbacks = {
+        struct aws_channel_options channel_args = {
             .on_setup_completed = s_on_server_channel_on_setup_completed,
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
         };
 
+        channel_args.event_loop = event_loop;
+        channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
+
         if (aws_socket_assign_to_event_loop(new_socket, event_loop)) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
         }
 
-        channel_data->channel = aws_channel_new(connection_args->bootstrap->allocator, event_loop, &channel_callbacks);
+        channel_data->channel = aws_channel_new(connection_args->bootstrap->allocator, &channel_args);
+
         if (!channel_data->channel) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
@@ -1253,20 +1263,15 @@ static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_t
     s_server_connection_args_release(server_connection_args);
 }
 
-static inline struct aws_socket *s_server_new_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data) {
-    AWS_ASSERT(incoming_callback);
-    AWS_ASSERT(shutdown_callback);
+struct aws_socket *aws_server_bootstrap_new_socket_listener(
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
+    AWS_PRECONDITION(bootstrap_options);
+    AWS_PRECONDITION(bootstrap_options->bootstrap);
+    AWS_PRECONDITION(bootstrap_options->incoming_callback)
+    AWS_PRECONDITION(bootstrap_options->shutdown_callback)
 
     struct server_connection_args *server_connection_args =
-        aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct server_connection_args));
+        aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
     if (!server_connection_args) {
         return NULL;
     }
@@ -1275,65 +1280,82 @@ static inline struct aws_socket *s_server_new_socket_listener(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new "
         "server socket listener for %s:%d",
-        (void *)bootstrap,
-        local_endpoint->address,
-        (int)local_endpoint->port);
+        (void *)server_connection_args->bootstrap,
+        bootstrap_options->host_name,
+        (int)bootstrap_options->port);
 
-    server_connection_args->user_data = user_data;
-    server_connection_args->bootstrap = bootstrap;
+    server_connection_args->user_data = bootstrap_options->user_data;
+    server_connection_args->bootstrap = bootstrap_options->bootstrap;
     aws_atomic_init_int(&server_connection_args->ref_count, 0);
     s_server_connection_args_acquire(server_connection_args);
-    server_connection_args->shutdown_callback = shutdown_callback;
-    server_connection_args->incoming_callback = incoming_callback;
-    server_connection_args->destroy_callback = destroy_callback;
-    server_connection_args->on_protocol_negotiated = bootstrap->on_protocol_negotiated;
+    server_connection_args->shutdown_callback = bootstrap_options->shutdown_callback;
+    server_connection_args->incoming_callback = bootstrap_options->incoming_callback;
+    server_connection_args->destroy_callback = bootstrap_options->destroy_callback;
+    server_connection_args->on_protocol_negotiated = bootstrap_options->bootstrap->on_protocol_negotiated;
+    server_connection_args->enable_read_back_pressure = bootstrap_options->enable_read_back_pressure;
+
     aws_task_init(
         &server_connection_args->listener_destroy_task,
         s_listener_destroy_task,
         server_connection_args,
         "listener socket destroy");
 
-    if (connection_options) {
-        AWS_LOGF_INFO(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap);
-        if (aws_tls_connection_options_copy(&server_connection_args->tls_options, connection_options)) {
+    if (bootstrap_options->tls_options) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap_options->tls_options);
+        if (aws_tls_connection_options_copy(&server_connection_args->tls_options, bootstrap_options->tls_options)) {
             goto cleanup_server_connection_args;
         }
 
         server_connection_args->use_tls = true;
 
-        server_connection_args->tls_user_data = connection_options->user_data;
+        server_connection_args->tls_user_data = bootstrap_options->tls_options->user_data;
 
         /* in order to honor any callbacks a user may have installed on their tls_connection_options,
          * we need to wrap them if they were set.*/
-        if (bootstrap->on_protocol_negotiated) {
+        if (bootstrap_options->bootstrap->on_protocol_negotiated) {
             server_connection_args->tls_options.advertise_alpn_message = true;
         }
 
-        if (connection_options->on_data_read) {
-            server_connection_args->user_on_data_read = connection_options->on_data_read;
+        if (bootstrap_options->tls_options->on_data_read) {
+            server_connection_args->user_on_data_read = bootstrap_options->tls_options->on_data_read;
             server_connection_args->tls_options.on_data_read = s_tls_server_on_data_read;
         }
 
-        if (connection_options->on_error) {
-            server_connection_args->user_on_error = connection_options->on_error;
+        if (bootstrap_options->tls_options->on_error) {
+            server_connection_args->user_on_error = bootstrap_options->tls_options->on_error;
             server_connection_args->tls_options.on_error = s_tls_server_on_error;
         }
 
-        if (connection_options->on_negotiation_result) {
-            server_connection_args->user_on_negotiation_result = connection_options->on_negotiation_result;
+        if (bootstrap_options->tls_options->on_negotiation_result) {
+            server_connection_args->user_on_negotiation_result = bootstrap_options->tls_options->on_negotiation_result;
         }
 
         server_connection_args->tls_options.on_negotiation_result = s_tls_server_on_negotiation_result;
         server_connection_args->tls_options.user_data = server_connection_args;
     }
 
-    struct aws_event_loop *connection_loop = aws_event_loop_group_get_next_loop(bootstrap->event_loop_group);
+    struct aws_event_loop *connection_loop =
+        aws_event_loop_group_get_next_loop(bootstrap_options->bootstrap->event_loop_group);
 
-    if (aws_socket_init(&server_connection_args->listener, bootstrap->allocator, options)) {
+    if (aws_socket_init(
+            &server_connection_args->listener,
+            bootstrap_options->bootstrap->allocator,
+            bootstrap_options->socket_options)) {
         goto cleanup_server_connection_args;
     }
 
-    if (aws_socket_bind(&server_connection_args->listener, local_endpoint)) {
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    size_t host_name_len = 0;
+    if (aws_secure_strlen(bootstrap_options->host_name, sizeof(endpoint.address), &host_name_len)) {
+        goto cleanup_server_connection_args;
+    }
+
+    memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
+    endpoint.port = bootstrap_options->port;
+
+    if (aws_socket_bind(&server_connection_args->listener, &endpoint)) {
         goto cleanup_listener;
     }
 
@@ -1358,47 +1380,6 @@ cleanup_server_connection_args:
     s_server_connection_args_release(server_connection_args);
 
     return NULL;
-}
-
-struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data) {
-    return s_server_new_socket_listener(
-        bootstrap, local_endpoint, options, NULL, incoming_callback, shutdown_callback, destroy_callback, user_data);
-}
-
-struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data) {
-    AWS_ASSERT(connection_options);
-    AWS_ASSERT(options->type == AWS_SOCKET_STREAM);
-    aws_io_fatal_assert_library_initialized();
-
-    if (AWS_UNLIKELY(options->type != AWS_SOCKET_STREAM)) {
-        aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        return NULL;
-    }
-
-    return s_server_new_socket_listener(
-        bootstrap,
-        local_endpoint,
-        options,
-        connection_options,
-        incoming_callback,
-        shutdown_callback,
-        destroy_callback,
-        user_data);
 }
 
 void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
