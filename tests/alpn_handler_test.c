@@ -140,11 +140,11 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
                                                      .setup_completed = false,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_args args = {.on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
-                                             .setup_user_data = &test_args,
-                                             .on_shutdown_completed = s_on_server_channel_on_shutdown,
-                                             .shutdown_user_data = &test_args,
-                                             .event_loop = event_loop};
+    struct aws_channel_creation_options args = {.on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
+                                                .setup_user_data = &test_args,
+                                                .on_shutdown_completed = s_on_server_channel_on_shutdown,
+                                                .shutdown_user_data = &test_args,
+                                                .event_loop = event_loop};
 
     channel = aws_channel_new(allocator, &args);
     ASSERT_NOT_NULL(channel);
@@ -212,7 +212,7 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
                                                      .mutex = AWS_MUTEX_INIT,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_args args = {
+    struct aws_channel_creation_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
@@ -292,7 +292,7 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
                                                      .mutex = AWS_MUTEX_INIT,
                                                      .shutdown_finished = false};
 
-    struct aws_channel_creation_args args = {
+    struct aws_channel_creation_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_on_server_channel_on_shutdown,
