@@ -187,6 +187,35 @@ struct aws_socket_channel_bootstrap_options {
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
     aws_client_bootstrap_on_channel_event_fn *setup_callback;
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
+    bool enable_read_back_pressure;
+    void *user_data;
+};
+
+/**
+ * Arguments to setup a server socket listener which will also negotiate and configure TLS.
+ * This creates a socket listener bound to `host` and 'port' using socket options `options`, and TLS options
+ * `tls_options`. `incoming_callback` will be invoked once an incoming channel is ready for use and TLS is
+ * finished negotiating, or if an error is encountered. `shutdown_callback` will be invoked once the channel has
+ * shutdown. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
+ * connections and channels have finished shutting down. Immediately after the `shutdown_callback` returns, the channel
+ * is cleaned up automatically. All callbacks are invoked in the thread of the event-loop that listener is assigned to.
+ *
+ * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
+ * value from this function.
+ *
+ * The socket type in `options` must be AWS_SOCKET_STREAM if tls_options is set.
+ * DTLS is not currently supported for tls.
+ */
+struct aws_server_socket_channel_bootstrap_options {
+    struct aws_server_bootstrap *bootstrap;
+    const char *host_name;
+    uint16_t port;
+    const struct aws_socket_options *socket_options;
+    const struct aws_tls_connection_options *tls_options;
+    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
+    bool enable_read_back_pressure;
     void *user_data;
 };
 
@@ -253,39 +282,11 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
+ *
+ * bootstrap_options is copied.
  */
 AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data);
-
-/**
- * Sets up a server socket listener which will also negotiate and configure TLS.
- * This creates a socket listener bound to `local_endpoint` using socket options `options`, and TLS options
- * `connection_options`. `incoming_callback` will be invoked once an incoming channel is ready for use and TLS is
- * finished negotiating, or if an error is encountered. `shutdown_callback` will be invoked once the channel has
- * shutdown. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
- * connections and channels have finished shutting down. Immediately after the `shutdown_callback` returns, the channel
- * is cleaned up automatically. All callbacks are invoked in the thread of the event-loop that listener is assigned to.
- *
- * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
- * value from this function.
- *
- * The socket type in `options` must be AWS_SOCKET_STREAM. DTLS is not supported via. this API.
- */
-AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data);
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still

@@ -407,14 +407,16 @@ AWS_STATIC_IMPL int testing_channel_init(
     testing->loop = s_testing_loop_new(allocator, options->clock_fn);
     testing->loop_impl = testing->loop->impl_data;
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_testing_channel_on_setup_completed,
         .on_shutdown_completed = s_testing_channel_on_shutdown_completed,
         .setup_user_data = testing,
         .shutdown_user_data = testing,
+        .event_loop = testing->loop,
+        .enable_read_back_pressure = true,
     };
 
-    testing->channel = aws_channel_new(allocator, testing->loop, &callbacks);
+    testing->channel = aws_channel_new(allocator, &args);
 
     /* Wait for channel to finish setup */
     testing_channel_drain_queued_tasks(testing);
