@@ -1532,7 +1532,7 @@ static int s_test_tls_negotiation_timeout(struct aws_allocator *allocator, void 
     struct channel_stat_test_context channel_context;
     s_channel_setup_stat_test_context_init(&channel_context, allocator, &tls_test_context);
 
-    struct aws_channel_creation_options args = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_on_setup_completed,
         .setup_user_data = &channel_context,
         .on_shutdown_completed = s_on_shutdown_completed,

@@ -407,7 +407,7 @@ AWS_STATIC_IMPL int testing_channel_init(
     testing->loop = s_testing_loop_new(allocator, options->clock_fn);
     testing->loop_impl = testing->loop->impl_data;
 
-    struct aws_channel_creation_options args = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_testing_channel_on_setup_completed,
         .on_shutdown_completed = s_testing_channel_on_shutdown_completed,
         .setup_user_data = testing,

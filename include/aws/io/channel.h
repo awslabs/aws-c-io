@@ -151,7 +151,7 @@ struct aws_channel_handler {
  *  Unless otherwise
  *  specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
  **/
-struct aws_channel_creation_options {
+struct aws_channel_options {
     struct aws_event_loop *event_loop;
     aws_channel_on_setup_completed_fn *on_setup_completed;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
@@ -176,12 +176,10 @@ void aws_channel_task_init(
 
 /**
  * Allocates new channel, Unless otherwise specified all functions for channels and channel slots must be executed
- * within that channel's event-loop's thread.
+ * within that channel's event-loop's thread. channel_options are copied.
  */
 AWS_IO_API
-struct aws_channel *aws_channel_new(
-    struct aws_allocator *allocator,
-    struct aws_channel_creation_options *creation_args);
+struct aws_channel *aws_channel_new(struct aws_allocator *allocator, const struct aws_channel_options *creation_args);
 
 /**
  * Mark the channel, along with all slots and handlers, for destruction.

@@ -503,7 +503,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     connection_args->connection_chosen = true;
     connection_args->channel_data.socket = socket;
 
-    struct aws_channel_creation_options args = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_on_client_channel_on_setup_completed,
         .setup_user_data = connection_args,
         .shutdown_user_data = connection_args,
@@ -1214,7 +1214,7 @@ void s_on_server_connection_result(
         struct aws_event_loop *event_loop =
             aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 
-        struct aws_channel_creation_options channel_args = {
+        struct aws_channel_options channel_args = {
             .on_setup_completed = s_on_server_channel_on_setup_completed,
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
@@ -1264,7 +1264,7 @@ static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_t
 }
 
 struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
     AWS_PRECONDITION(bootstrap_options);
     AWS_PRECONDITION(bootstrap_options->bootstrap);
     AWS_PRECONDITION(bootstrap_options->incoming_callback)

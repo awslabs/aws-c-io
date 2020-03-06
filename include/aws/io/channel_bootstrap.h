@@ -282,9 +282,11 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
+ *
+ * bootstrap_options is copied.
  */
 AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still

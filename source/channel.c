@@ -212,7 +212,7 @@ static void s_destroy_partially_constructed_channel(struct aws_channel *channel)
     aws_mem_release(channel->alloc, channel);
 }
 
-struct aws_channel *aws_channel_new(struct aws_allocator *alloc, struct aws_channel_creation_options *creation_args) {
+struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aws_channel_options *creation_args) {
     AWS_PRECONDITION(creation_args);
     AWS_PRECONDITION(creation_args->event_loop);
     AWS_PRECONDITION(creation_args->on_setup_completed);
@@ -821,12 +821,8 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
     if (status == AWS_TASK_STATUS_RUN_READY && channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
         /* get the right-most slot to start the updates. */
         struct aws_channel_slot *slot = channel->first;
-        for (;;) {
-            if (slot->adj_right) {
-                slot = slot->adj_right;
-            } else {
-                break;
-            }
+        while (slot->adj_right) {
+            slot = slot->adj_right;
         }
 
         while (slot->adj_left) {
@@ -845,9 +841,8 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
                     aws_channel_shutdown(channel, aws_last_error());
                     return;
                 }
-
-                slot = slot->adj_left;
             }
+            slot = slot->adj_left;
         }
     }
     channel->window_update_in_progress = false;
