@@ -830,18 +830,41 @@ struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws
 
 static void s_window_update_task(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
+    struct aws_channel *channel = arg;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_channel_slot *slot = arg;
-        /* note the batch size has already been incremented in this case. so 0 is fine. */
-        if (aws_channel_slot_increment_read_window(slot, 0)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_CHANNEL,
-                "channel %p: channel update task failed with status %d",
-                (void *)slot->channel,
-                aws_last_error())
+    if (status == AWS_TASK_STATUS_RUN_READY && channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+        /* get the right-most slot to start the updates. */
+        struct aws_channel_slot *slot = channel->first;
+        for (;;) {
+            if (slot->adj_right) {
+                slot = slot->adj_right;
+            } else {
+                break;
+            }
+        }
+
+        while (slot->adj_left) {
+            struct aws_channel_slot *upstream_slot = slot->adj_left;
+            if (upstream_slot->handler) {
+                slot->window_size = aws_add_size_saturating(slot->window_size, slot->current_window_update_batch_size);
+                size_t update_size = slot->current_window_update_batch_size;
+                slot->current_window_update_batch_size = 0;
+                if (aws_channel_handler_increment_read_window(upstream_slot->handler, upstream_slot, update_size)) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_CHANNEL,
+                        "channel %p: channel update task failed with status %d",
+                        (void *)slot->channel,
+                        aws_last_error());
+                    slot->channel->window_update_in_progress = false;
+                    aws_channel_shutdown(channel, aws_last_error());
+                    return;
+                }
+
+                slot = slot->adj_left;
+            }
         }
     }
+    channel->window_update_in_progress = false;
 }
 
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
@@ -850,34 +873,12 @@ int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t
         slot->current_window_update_batch_size =
             aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
-        if (slot->adj_left && slot->adj_left->handler) {
-            /* in this case, the task has already been scheduled, so just do it in-band. */
-            if (slot->channel->window_update_in_progress) {
-                size_t to_update = slot->current_window_update_batch_size;
-                slot->current_window_update_batch_size = 0;
-                slot->window_size = aws_add_size_saturating(slot->window_size, to_update);
-
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_CHANNEL,
-                    "id=%p: sending increment read window of size %llu, "
-                    "on slot %p and notifying slot %p with handler %p.",
-                    (void *)slot->channel,
-                    (unsigned long long)to_update,
-                    (void *)slot,
-                    (void *)slot->adj_left,
-                    (void *)slot->adj_left->handler);
-                return aws_channel_handler_increment_read_window(slot->adj_left->handler, slot->adj_left, to_update);
-            } else if (slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
-                slot->channel->window_update_in_progress = true;
-                aws_channel_task_init(
-                    &slot->channel->window_update_task, s_window_update_task, slot, "window update task");
-                aws_channel_schedule_task_now(slot->channel, &slot->channel->window_update_task);
-            }
-        }
-        /* we're all the way upstream, turn the window update back progress back off. */
-        else {
-            slot->current_window_update_batch_size = 0;
-            slot->channel->window_update_in_progress = false;
+        if (!slot->channel->window_update_in_progress &&
+            slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
+            slot->channel->window_update_in_progress = true;
+            aws_channel_task_init(
+                &slot->channel->window_update_task, s_window_update_task, slot->channel, "window update task");
+            aws_channel_schedule_task_now(slot->channel, &slot->channel->window_update_task);
         }
     }
 
