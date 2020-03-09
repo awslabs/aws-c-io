@@ -94,7 +94,7 @@ add_test_case(test_pem_cert_chain_comments_and_whitespace)
 add_test_case(test_pem_invalid_parse)
 add_test_case(test_pem_valid_data_invalid_parse)
 add_test_case(test_pem_invalid_in_chain_parse)
-add_test_case(test_concurrent_cert_import)
+add_net_test_case(test_concurrent_cert_import)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
