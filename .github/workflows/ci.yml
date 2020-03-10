@@ -78,6 +78,23 @@ jobs:
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
         python builder.pyz -p ${{ env.PACKAGE_NAME }} build default-downstream
 
+  windows-vc14:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x86, x64]
+    steps:
+    - uses: ilammy/msvc-dev-cmd@v1
+      with:
+        toolset: 14.0
+        arch: ${{ matrix.arch }}
+        uwp: false
+        spectre: true
+    - name: Build ${{ env.PACKAGE_NAME }} + consumers
+      run: |
+        python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_VERSION }}/builder', 'builder.pyz')"
+        python builder.pyz -p ${{ env.PACKAGE_NAME }} build
+
   osx:
     runs-on: macos-latest
     steps:
