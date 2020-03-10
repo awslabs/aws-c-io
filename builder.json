@@ -1,5 +1,6 @@
 {
     "name": "aws-c-io",
+    "imports": ["s2n"],
     "upstream": [
         { "name": "aws-c-common" },
         {
