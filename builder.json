@@ -1,5 +1,17 @@
 {
     "name": "aws-c-io",
+    "targets": {
+        "linux": {
+            "imports": [
+                "s2n"
+            ]
+        },
+        "android": {
+            "imports": [
+                "s2n"
+            ]
+        }
+    },
     "upstream": [
         { "name": "aws-c-common" },
         {
@@ -13,7 +25,7 @@
         { "name": "aws-c-http" }
     ],
     "build_env": {
-        "LSAN_OPTIONS": "suppressions={project_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
+        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
     },
     "cmake_args": [
     ]
