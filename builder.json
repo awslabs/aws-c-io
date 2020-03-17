@@ -1,17 +1,5 @@
 {
     "name": "aws-c-io",
-    "targets": {
-        "linux": {
-            "imports": [
-                "s2n"
-            ]
-        },
-        "android": {
-            "imports": [
-                "s2n"
-            ]
-        }
-    },
     "upstream": [
         { "name": "aws-c-common" },
         {
