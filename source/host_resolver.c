@@ -933,10 +933,46 @@ static int default_resolve_host(
     return AWS_OP_SUCCESS;
 }
 
+static size_t default_get_host_address_count(
+    struct aws_host_resolver *host_resolver,
+    const struct aws_string *host_name,
+    uint32_t flags) {
+    struct default_host_resolver *default_host_resolver = host_resolver->impl;
+
+    aws_mutex_lock(&default_host_resolver->host_lock);
+
+    struct host_entry *host_entry = NULL;
+
+    aws_lru_cache_find(&default_host_resolver->host_table, host_name, (void **)&host_entry);
+
+    if (!host_entry) {
+        aws_mutex_unlock(&default_host_resolver->host_lock);
+        return 0;
+    }
+
+    size_t address_count = 0;
+
+    aws_mutex_lock(&host_entry->entry_lock);
+    aws_mutex_unlock(&default_host_resolver->host_lock);
+    
+    if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A) != 0) {
+        address_count += aws_lru_cache_get_element_count(&host_entry->a_records);
+    }
+
+    if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA) != 0) {
+        address_count += aws_lru_cache_get_element_count(&host_entry->aaaa_records);
+    }
+
+    aws_mutex_unlock(&host_entry->entry_lock);
+
+    return address_count;
+}
+
 static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
+    .get_host_address_count = default_get_host_address_count,
     .destroy = resolver_destroy,
 };
 
@@ -945,7 +981,6 @@ int aws_host_resolver_init_default(
     struct aws_allocator *allocator,
     size_t max_entries,
     struct aws_event_loop_group *el_group) {
-
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */
@@ -983,4 +1018,11 @@ int aws_host_resolver_init_default(
     resolver->impl = default_host_resolver;
 
     return AWS_OP_SUCCESS;
+}
+
+size_t aws_host_resolver_get_host_address_count(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host_name,
+    uint32_t flags) {
+    return resolver->vtable->get_host_address_count(resolver, host_name, flags);
 }
