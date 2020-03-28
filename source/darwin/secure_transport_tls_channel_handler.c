@@ -332,7 +332,6 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     aws_on_drive_tls_negotiation(&secure_transport_handler->shared_state);
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
-
     /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
@@ -429,9 +428,37 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return AWS_OP_ERR;
             }
 
-            status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
+            SecPolicyRef policy = SecPolicyCreateBasicX509();
+            status = SecTrustSetPolicies(trust, policy);
+            CFRelease(policy);
 
             if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS, "id=%p: Failed to set basic x509 policy %d\n", (void *)handler, (int)status);
+                CFRelease(trust);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
+            if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Failed to set anchor certificate with OSStatus %d\n",
+                    (void *)handler,
+                    (int)status);
+                CFRelease(trust);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            status = SecTrustSetAnchorCertificatesOnly(trust, false);
+            if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Failed to enable system anchors with OSStatus %d\n",
+                    (void *)handler,
+                    (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
@@ -446,7 +473,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return s_drive_negotiation(handler);
             }
 
-            AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: Using custom CA, certificate validation failed.", (void *)handler)
+            AWS_LOGF_WARN(
+                AWS_LS_IO_TLS,
+                "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
+                (void *)handler,
+                (int)status,
+                (int)trust_eval)
             return AWS_OP_ERR;
         }
         return s_drive_negotiation(handler);
