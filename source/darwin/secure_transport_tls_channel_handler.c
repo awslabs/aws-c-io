@@ -332,9 +332,10 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     aws_on_drive_tls_negotiation(&secure_transport_handler->shared_state);
 
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
-
+    fprintf(stderr, "are you even there?\n");
     /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
+        fprintf(stdout, "I guess somehow validation was disabled?");
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
         secure_transport_handler->negotiation_finished = true;
         size_t name_len = 0;
@@ -430,7 +431,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
-
+            status = SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, CFStringCreateWithCString(secure_transport_handler->wrapped_allocator, "localhost", kCFStringEncodingUTF8)));
+            fprintf(stdout, "set the mother fucking policy! %d\n", (int)status);
             if (status != errSecSuccess) {
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
