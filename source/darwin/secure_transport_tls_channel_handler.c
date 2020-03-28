@@ -429,9 +429,37 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             }
 
             status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
-            status = SecTrustSetPolicies(trust, SecPolicyCreateBasicX509());
-            fprintf(stdout, "set the policy res! %d\n", (int)status);
             if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Failed to set anchor certificate with OSStatus %d\n",
+                    (void *)handler,
+                    (int)status);
+                CFRelease(trust);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            status = SecTrustSetAnchorCertificatesOnly(trust, false);
+            if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Failed to enable system anchors with OSStatus %d\n",
+                    (void *)handler,
+                    (int)status);
+                CFRelease(trust);
+                s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                return AWS_OP_ERR;
+            }
+
+            status = SecTrustSetOptions(trust, kSecTrustOptionLeafIsCA | kSecTrustOptionImplicitAnchors);
+
+            if (status != errSecSuccess) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Failed to enable leaf CA and Implicit anchors with %d\n",
+                    (void *)handler,
+                    (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
@@ -446,7 +474,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return s_drive_negotiation(handler);
             }
 
-            AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: Using custom CA, certificate validation failed.", (void *)handler)
+            AWS_LOGF_WARN(
+                AWS_LS_IO_TLS,
+                "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
+                (void *)handler,
+                (int)status,
+                (int)trust_eval)
             return AWS_OP_ERR;
         }
         return s_drive_negotiation(handler);
