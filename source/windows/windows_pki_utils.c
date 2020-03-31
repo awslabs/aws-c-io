@@ -337,6 +337,16 @@ int aws_import_key_pair_to_cert_context(
         0,
         &key,
         &decoded_len);
+
+    if (!success) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: error decoding PKCS#1 RSA private key for key %s with errno %d",
+            uuid_str,
+            (int)GetLastError());
+        error_code = AWS_OP_ERR;
+        goto clean_up;
+    }
     HCRYPTKEY h_key = 0;
     success = CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key);
     LocalFree(key);
