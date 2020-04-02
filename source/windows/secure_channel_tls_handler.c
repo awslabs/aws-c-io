@@ -1039,9 +1039,17 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 read_len);
             sc_handler->buffered_read_in_data_buf.len = read_len;
             aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        else if (status == SEC_I_CONTEXT_EXPIRED) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS, "id=%p: Message sender has shut down the connection.", (void *)handler, (int)status);
+
+            struct aws_channel_slot *slot = handler->slot;
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            error = AWS_OP_SUCCESS;
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             int aws_error = s_determine_sspi_error(status);
             aws_raise_error(aws_error);
         }
