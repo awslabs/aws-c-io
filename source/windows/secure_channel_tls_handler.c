@@ -1040,6 +1040,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             sc_handler->buffered_read_in_data_buf.len = read_len;
             aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
+        /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
+           where this can happen is an unaccepted certificate. */        
         else if (status == SEC_I_CONTEXT_EXPIRED) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS, "id=%p: Message sender has shut down the connection.", (void *)handler, (int)status);
