@@ -304,6 +304,8 @@ static int s_determine_sspi_error(int sspi_status) {
     switch (sspi_status) {
         case SEC_E_INSUFFICIENT_MEMORY:
             return AWS_ERROR_OOM;
+        case SEC_I_CONTEXT_EXPIRED:
+            return AWS_IO_TLS_ALERT_NOT_GRACEFUL;
         case SEC_E_WRONG_PRINCIPAL:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
             /*
@@ -1045,7 +1047,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         else if (status == SEC_I_CONTEXT_EXPIRED) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: Message sender has shut down the connection. SECURITY_STATUS is %d.",
+                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
                 (void *)handler,
                 (int)status);
 
