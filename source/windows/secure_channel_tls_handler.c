@@ -304,6 +304,8 @@ static int s_determine_sspi_error(int sspi_status) {
     switch (sspi_status) {
         case SEC_E_INSUFFICIENT_MEMORY:
             return AWS_ERROR_OOM;
+        case SEC_I_CONTEXT_EXPIRED:
+            return AWS_IO_TLS_ALERT_NOT_GRACEFUL;
         case SEC_E_WRONG_PRINCIPAL:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
             /*
@@ -1039,9 +1041,22 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 read_len);
             sc_handler->buffered_read_in_data_buf.len = read_len;
             aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
+           where this can happen is an unaccepted certificate. */
+        else if (status == SEC_I_CONTEXT_EXPIRED) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
+                (void *)handler,
+                (int)status);
+
+            struct aws_channel_slot *slot = handler->slot;
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            error = AWS_OP_SUCCESS;
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             int aws_error = s_determine_sspi_error(status);
             aws_raise_error(aws_error);
         }
