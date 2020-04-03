@@ -1044,7 +1044,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
            where this can happen is an unaccepted certificate. */        
         else if (status == SEC_I_CONTEXT_EXPIRED) {
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS, "id=%p: Message sender has shut down the connection.", (void *)handler, (int)status);
+                AWS_LS_IO_TLS, "id=%p: Message sender has shut down the connection. SECURITY_STATUS is %d.", (void *)handler, (int)status);
 
             struct aws_channel_slot *slot = handler->slot;
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
