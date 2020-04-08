@@ -152,30 +152,14 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
     uint64_t max = aws_max_u64(from, to);
     uint64_t min = aws_min_u64(from, to);
 
-    /* let's short cut this a bit by ruling out the high bits we couldn't possibly use. */
-    uint64_t mask = 0xFFFFFFFFFFFFFFFF;
-    uint64_t max_cpy = max;
+    uint64_t diff = max - min;
 
-    size_t shifts = 0;
-    while (max_cpy) {
-        max_cpy >>= 1;
-        shifts += 1;
+    if (!diff) {
+        return 0;
     }
-    /* shed the high bits */
-    size_t shift_dif = 64 - shifts;
-    mask <<= shift_dif;
-    mask >>= shift_dif;
 
-    for (;;) {
-        uint64_t random = token->generate_random();
-
-        /* just throw away any bits higher than max's MSB, this isn't perfect, but it should speed this loop up a bit.
-         */
-        random &= mask;
-        if (random <= max && random >= min) {
-            return random;
-        }
-    }
+    uint64_t random = token->generate_random();
+    return min + random % (diff);
 }
 
 typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *token);
