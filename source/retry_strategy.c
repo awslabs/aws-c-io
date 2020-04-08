@@ -58,9 +58,10 @@ int aws_retry_strategy_token_record_success(struct aws_retry_token *token) {
 }
 
 void aws_retry_strategy_release_retry_token(struct aws_retry_token *token) {
-    AWS_PRECONDITION(token);
-    AWS_PRECONDITION(token->retry_strategy);
-    AWS_PRECONDITION(token->retry_strategy->vtable->release_token);
+    if (token) {
+        AWS_PRECONDITION(token->retry_strategy);
+        AWS_PRECONDITION(token->retry_strategy->vtable->release_token);
 
-    token->retry_strategy->vtable->release_token(token);
+        token->retry_strategy->vtable->release_token(token);
+    }
 }
