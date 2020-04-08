@@ -14,6 +14,7 @@
  */
 #include <aws/io/retry_strategy.h>
 
+#include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 
 #include <aws/common/clock.h>
@@ -26,7 +27,7 @@
 
 struct exponential_backoff_strategy {
     struct aws_retry_strategy base;
-    struct aws_exponential_backoff_retry_config config;
+    struct aws_exponential_backoff_retry_options config;
 };
 
 struct exponential_backoff_retry_token {
@@ -185,10 +186,10 @@ static uint64_t s_compute_deccorelated_jitter(struct exponential_backoff_retry_t
 }
 
 static compute_backoff_fn *s_backoff_compute_table[] = {
+    [AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT] = s_compute_full_jitter,
     [AWS_EXPONENTIAL_BACKOFF_JITTER_NONE] = s_compute_no_jitter,
     [AWS_EXPONENTIAL_BACKOFF_JITTER_FULL] = s_compute_full_jitter,
     [AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED] = s_compute_deccorelated_jitter,
-    [AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT] = s_compute_full_jitter,
 };
 
 static int s_exponential_retry_schedule_retry(
@@ -288,10 +289,10 @@ static uint64_t s_default_gen_rand(void) {
 
 struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     struct aws_allocator *allocator,
-    const struct aws_exponential_backoff_retry_config *config) {
+    const struct aws_exponential_backoff_retry_options *config) {
     AWS_PRECONDITION(config);
-    AWS_PRECONDITION(config->backoff_scale_factor_ms)
-    AWS_PRECONDITION(config->jitter_mode <= AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT)
+    AWS_PRECONDITION(config->el_group)
+    AWS_PRECONDITION(config->jitter_mode <= AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED)
     AWS_PRECONDITION(config->max_retries)
 
     struct exponential_backoff_strategy *exponential_backoff_strategy =
@@ -318,6 +319,14 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
 
     if (!exponential_backoff_strategy->config.generate_random) {
         exponential_backoff_strategy->config.generate_random = s_default_gen_rand;
+    }
+
+    if (!exponential_backoff_strategy->config.max_retries) {
+        exponential_backoff_strategy->config.max_retries = 10;
+    }
+
+    if (!exponential_backoff_strategy->config.backoff_scale_factor_ms) {
+        exponential_backoff_strategy->config.backoff_scale_factor_ms = 25;
     }
 
     return &exponential_backoff_strategy->base;

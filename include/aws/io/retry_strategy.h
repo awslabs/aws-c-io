@@ -14,17 +14,19 @@
  * express or implied. See the License for the specific language governing
  * permissions and limitations under the License.
  */
-#include <aws/io/event_loop.h>
+#include <aws/io/exports.h>
 
 #include <aws/common/atomics.h>
+#include <aws/common/byte_buf.h>
 
 struct aws_retry_strategy;
 struct aws_retry_token;
+struct aws_event_loop_group;
 
 /**
  * Invoked upon the acquisition, or failure to acquire a retry token. This function will always be invoked if and only
  * if aws_retry_strategy_acquire_retry_token() returns AWS_OP_SUCCESS. It will never be invoked synchronously from
- * aws_retry_strategy_acquire_retry_token().
+ * aws_retry_strategy_acquire_retry_token(). Token will always be NULL if error_code is non-zero, and vice-versa.
  */
 typedef void(aws_retry_strategy_on_retry_token_acquired_fn)(
     struct aws_retry_strategy *retry_strategy,
@@ -35,13 +37,16 @@ typedef void(aws_retry_strategy_on_retry_token_acquired_fn)(
 /**
  * Invoked after a successful call to aws_retry_strategy_schedule_retry(). This function will always be invoked if and
  * only if aws_retry_strategy_schedule_retry() returns AWS_OP_SUCCESS. It will never be invoked synchronously from
- * aws_retry_strategy_schedule_retry().
+ * aws_retry_strategy_schedule_retry(). After attempting the operation, either call aws_retry_strategy_schedule_retry()
+ * with an aws_retry_error_type or call aws_retry_strategy_token_record_success() and then release the token via.
+ * aws_retry_strategy_release_retry_token().
  */
 typedef void(aws_retry_strategy_on_retry_ready_fn)(struct aws_retry_token *token, int error_code, void *user_data);
 
 enum aws_retry_error_type {
     /** This is a connection level error such as a socket timeout, socket connect error, tls negotiation timeout etc...
-     * Typically these should never be applied for non-idempotent request types. */
+     * Typically these should never be applied for non-idempotent request types since in this scenario, it's impossible
+     * to know whether the operation had a side effect on the server. */
     AWS_RETRY_ERROR_TYPE_TRANSIENT,
     /** This is an error where the server explicitly told the client to back off, such as a 429 or 503 Http error. */
     AWS_RETRY_ERROR_TYPE_THROTTLING,
@@ -89,32 +94,30 @@ struct aws_retry_token {
  * https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
  */
 enum aws_exponential_backoff_jitter_mode {
+    /* Uses AWS_EXPONENTIAL_BACKOFF_JITTER_FULL */
+    AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT,
     AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
     AWS_EXPONENTIAL_BACKOFF_JITTER_FULL,
     AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED,
-    /* Uses AWS_EXPONENTIAL_BACKOFF_JITTER_FULL */
-    AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT,
 };
 
-struct aws_exponential_backoff_retry_config {
+/**
+ * Options for exponential backoff retry strategy. el_group must be set, any other option, if set to 0 will signify
+ * "use defaults"
+ */
+struct aws_exponential_backoff_retry_options {
     /** Event loop group to use for scheduling tasks. */
     struct aws_event_loop_group *el_group;
-    /** Max retries to allow. This value must be greater than 0 */
+    /** Max retries to allow. The default value is 10 */
     size_t max_retries;
-    /** Scaling factor to add for the backoff. 25ms is usually a good default. */
+    /** Scaling factor to add for the backoff. Default is 25ms */
     uint32_t backoff_scale_factor_ms;
-    /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode. */
+    /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode.
+     * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
     enum aws_exponential_backoff_jitter_mode jitter_mode;
     /** By default this will be set to use aws_device_random. If you want something else, set it here. */
     uint64_t (*generate_random)(void);
 };
-
-/**
- * Defaults to 10 retries, 25ms scaling factor, and full jitter.
- */
-#define AWS_EXPONENTIAL_BACKOFF_DEFAULT_CONFIG(el_group)                                                               \
-    /* Don't do this with designated initializers, otherwise C++ users can't touch this. */                            \
-    { el_group, 10, 25, AWS_EXPONENTIAL_BACKOFF_JITTER_FULL, }
 
 AWS_EXTERN_C_BEGIN
 /**
@@ -165,11 +168,11 @@ AWS_IO_API void aws_retry_strategy_release_retry_token(struct aws_retry_token *t
 /**
  * Creates a retry strategy using exponential backoff. This strategy does not perform any bookkeeping on error types and
  * success. There is no circuit breaker functionality in here. See the comments above for
- * aws_exponential_backoff_retry_config.
+ * aws_exponential_backoff_retry_options.
  */
 AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     struct aws_allocator *allocator,
-    const struct aws_exponential_backoff_retry_config *config);
+    const struct aws_exponential_backoff_retry_options *config);
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CLIENT_RETRY_STRATEGY_H */

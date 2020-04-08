@@ -19,6 +19,8 @@
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 
+#include <aws/io/event_loop.h>
+
 struct exponential_backoff_test_data {
     size_t retry_count;
     size_t client_error_count;
@@ -71,9 +73,11 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
     enum aws_exponential_backoff_jitter_mode jitter_mode) {
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_exponential_backoff_retry_config config = AWS_EXPONENTIAL_BACKOFF_DEFAULT_CONFIG(&el_group);
-    config.max_retries = 3;
-    config.jitter_mode = jitter_mode;
+    struct aws_exponential_backoff_retry_options config = {
+        .max_retries = 3,
+        .jitter_mode = jitter_mode,
+        .el_group = &el_group,
+    };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
@@ -151,8 +155,10 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_exponential_backoff_retry_config config = AWS_EXPONENTIAL_BACKOFF_DEFAULT_CONFIG(&el_group);
-    config.max_retries = 3;
+    struct aws_exponential_backoff_retry_options config = {
+        .el_group = &el_group,
+        .max_retries = 3,
+    };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
@@ -188,9 +194,10 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
 
     struct aws_event_loop_group el_group;
     ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_exponential_backoff_retry_config config = AWS_EXPONENTIAL_BACKOFF_DEFAULT_CONFIG(&el_group);
-    config.max_retries = 3;
-    config.jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE;
+    struct aws_exponential_backoff_retry_options config = {
+        .max_retries = 3,
+        .jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
+    };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
