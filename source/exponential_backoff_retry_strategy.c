@@ -35,7 +35,7 @@ struct exponential_backoff_retry_token {
     struct aws_atomic_var current_retry_count;
     struct aws_atomic_var last_backoff;
     size_t max_retries;
-    uint64_t backofff_scale_factor_ns;
+    uint64_t backoff_scale_factor_ns;
     enum aws_exponential_backoff_jitter_mode jitter_mode;
     /* Let's not make this worst by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
@@ -130,7 +130,7 @@ static int s_exponential_retry_acquire_token(
     struct exponential_backoff_strategy *exponential_backoff_strategy = retry_strategy->impl;
     backoff_retry_token->bound_loop = aws_event_loop_group_get_next_loop(exponential_backoff_strategy->config.el_group);
     backoff_retry_token->max_retries = exponential_backoff_strategy->config.max_retries;
-    backoff_retry_token->backofff_scale_factor_ns = aws_timestamp_convert(
+    backoff_retry_token->backoff_scale_factor_ns = aws_timestamp_convert(
         exponential_backoff_strategy->config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->jitter_mode = exponential_backoff_strategy->config.jitter_mode;
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
@@ -169,8 +169,8 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
 typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *token);
 
 static uint64_t s_compute_no_jitter(struct exponential_backoff_retry_token *token) {
-    size_t retry_count = aws_atomic_load_int(&token->current_retry_count);
-    return aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backofff_scale_factor_ns);
+    size_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
+    return aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns);
 }
 
 static uint64_t s_compute_full_jitter(struct exponential_backoff_retry_token *token) {
@@ -185,7 +185,7 @@ static uint64_t s_compute_deccorelated_jitter(struct exponential_backoff_retry_t
         return s_compute_full_jitter(token);
     }
 
-    return s_random_in_range(token->backofff_scale_factor_ns, aws_mul_u64_saturating(last_backoff_val, 3), token);
+    return s_random_in_range(token->backoff_scale_factor_ns, aws_mul_u64_saturating(last_backoff_val, 3), token);
 }
 
 static compute_backoff_fn *s_backoff_compute_table[] = {
@@ -263,6 +263,11 @@ static int s_exponential_retry_schedule_retry(
     } /**** END CRITICAL SECTION ***********/
 
     if (already_scheduled) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
+            "id=%p: retry token %p is already scheduled.",
+            (void *)backoff_retry_token->base.retry_strategy,
+            (void *)token)
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
