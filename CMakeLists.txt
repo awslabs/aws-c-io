@@ -94,7 +94,7 @@ if (WIN32)
     set(PLATFORM_LIBS Secur32 Crypt32 Shlwapi)
     set(TLS_STACK_DETERMINED ON)
 
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" or CMAKE_SYSTEM_NAME STREQUAL "Android")
     file(GLOB AWS_IO_OS_HEADERS
             )
 
