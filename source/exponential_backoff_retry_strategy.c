@@ -70,14 +70,16 @@ static void s_exponential_retry_task(struct aws_task *task, void *arg, enum aws_
     void *user_data = NULL;
 
     { /***** BEGIN CRITICAL SECTION *********/
-        AWS_FATAL_ASSERT(!aws_mutex_lock(&backoff_retry_token->thread_data.mutex) && "Mutex lock acquisition failed");
+        AWS_FATAL_ASSERT(
+            !aws_mutex_lock(&backoff_retry_token->thread_data.mutex) && "Retry token mutex acquisition failed");
         acquired_fn = backoff_retry_token->thread_data.acquired_fn;
         retry_ready_fn = backoff_retry_token->thread_data.retry_ready_fn;
         user_data = backoff_retry_token->thread_data.user_data;
         backoff_retry_token->thread_data.user_data = NULL;
         backoff_retry_token->thread_data.retry_ready_fn = NULL;
         backoff_retry_token->thread_data.acquired_fn = NULL;
-        AWS_FATAL_ASSERT(!aws_mutex_unlock(&backoff_retry_token->thread_data.mutex) && "Mutex lock release failed");
+        AWS_FATAL_ASSERT(
+            !aws_mutex_unlock(&backoff_retry_token->thread_data.mutex) && "Retry token mutex release failed");
     } /**** END CRITICAL SECTION ***********/
 
     if (acquired_fn) {
@@ -137,7 +139,8 @@ static int s_exponential_retry_acquire_token(
 
     backoff_retry_token->thread_data.acquired_fn = on_acquired;
     backoff_retry_token->thread_data.user_data = user_data;
-    AWS_FATAL_ASSERT(!aws_mutex_init(&backoff_retry_token->thread_data.mutex) && "Mutex initialization failed");
+    AWS_FATAL_ASSERT(
+        !aws_mutex_init(&backoff_retry_token->thread_data.mutex) && "Retry strategy mutex initialization failed");
 
     aws_task_init(
         &backoff_retry_token->retry_task,
@@ -241,7 +244,8 @@ static int s_exponential_retry_schedule_retry(
     bool already_scheduled = false;
 
     { /***** BEGIN CRITICAL SECTION *********/
-        AWS_FATAL_ASSERT(!aws_mutex_lock(&backoff_retry_token->thread_data.mutex) && "Mutex lock acquisition failed");
+        AWS_FATAL_ASSERT(
+            !aws_mutex_lock(&backoff_retry_token->thread_data.mutex) && "Retry token mutex acquisition failed");
 
         if (backoff_retry_token->thread_data.user_data) {
             already_scheduled = true;
@@ -254,7 +258,8 @@ static int s_exponential_retry_schedule_retry(
                 backoff_retry_token,
                 "aws_exponential_backoff_retry_task");
         }
-        AWS_FATAL_ASSERT(!aws_mutex_unlock(&backoff_retry_token->thread_data.mutex) && "Mutex lock release failed");
+        AWS_FATAL_ASSERT(
+            !aws_mutex_unlock(&backoff_retry_token->thread_data.mutex) && "Retry token mutex release failed");
     } /**** END CRITICAL SECTION ***********/
 
     if (already_scheduled) {

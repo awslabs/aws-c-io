@@ -104,6 +104,7 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
     return AWS_OP_SUCCESS;
 }
 
+/* Test that no jitter mode exponential back-off fails after max retries are exceeded. */
 static int s_test_exponential_backoff_retry_too_many_retries_no_jitter_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     return s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
@@ -114,6 +115,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_too_many_retries_no_jitter,
     s_test_exponential_backoff_retry_too_many_retries_no_jitter_fn)
 
+/* Test that full jitter mode exponential back-off fails after max retries are exceeded. */
 static int s_test_exponential_backoff_retry_too_many_retries_full_jitter_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -126,6 +128,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_too_many_retries_full_jitter,
     s_test_exponential_backoff_retry_too_many_retries_full_jitter_fn)
 
+/* Test that decorrelated jitter mode exponential back-off fails after max retries are exceeded. */
 static int s_test_exponential_backoff_retry_too_many_retries_decorrelated_jitter_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -138,6 +141,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_too_many_retries_decorrelated_jitter,
     s_test_exponential_backoff_retry_too_many_retries_decorrelated_jitter_fn)
 
+/* Test that default jitter mode exponential back-off fails after max retries are exceeded. */
 static int s_test_exponential_backoff_retry_too_many_retries_default_jitter_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -150,6 +154,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_too_many_retries_default_jitter,
     s_test_exponential_backoff_retry_too_many_retries_default_jitter_fn)
 
+/* Test that client failures do not count against the max retry budget. */
 static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -189,6 +194,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_client_errors_do_not_count,
     s_test_exponential_backoff_retry_client_errors_do_not_count_fn)
 
+/* Test that in no jitter mode, exponential backoff is actually applied as documented. */
 static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -236,6 +242,7 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_no_jitter_time_taken,
     s_test_exponential_backoff_retry_no_jitter_time_taken_fn)
 
+/* verify that invalid options cause a failure at creation time. */
 static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
