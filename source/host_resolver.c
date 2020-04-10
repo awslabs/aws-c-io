@@ -954,7 +954,7 @@ static size_t default_get_host_address_count(
 
     aws_mutex_lock(&host_entry->entry_lock);
     aws_mutex_unlock(&default_host_resolver->host_lock);
-    
+
     if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A) != 0) {
         address_count += aws_lru_cache_get_element_count(&host_entry->a_records);
     }
