@@ -163,6 +163,14 @@ if (BUILD_SHARED_LIBS)
     add_test_case(shared_library_find_function_success)
 endif()
 
+add_test_case(test_exponential_backoff_retry_too_many_retries_no_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_full_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_decorrelated_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_default_jitter)
+add_test_case(test_exponential_backoff_retry_client_errors_do_not_count)
+add_test_case(test_exponential_backoff_retry_no_jitter_time_taken)
+add_test_case(test_exponential_backoff_retry_invalid_options)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
@@ -170,5 +178,3 @@ generate_test_driver(${TEST_BINARY_NAME})
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
-
-
