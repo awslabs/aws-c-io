@@ -160,9 +160,9 @@ struct aws_channel_options {
     bool enable_read_back_pressure;
 };
 
-extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
-
 AWS_EXTERN_C_BEGIN
+
+extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
 
 /**
  * Initializes channel_task for use.
