@@ -47,8 +47,10 @@ static int s_test_io_testing_channel(struct aws_allocator *allocator, void *ctx)
     ASSERT_FALSE(aws_linked_list_empty(write_queue));
     ASSERT_PTR_EQUALS(&write_msg->queueing_handle, aws_linked_list_front(write_queue));
 
+    testing_channel_drain_queued_tasks(&testing_channel);
     /* Test window updates */
     ASSERT_SUCCESS(testing_channel_increment_read_window(&testing_channel, 12345));
+    testing_channel_drain_queued_tasks(&testing_channel);
     ASSERT_UINT_EQUALS(12345, testing_channel_last_window_update(&testing_channel));
 
     /* Clean up */

@@ -36,13 +36,6 @@ typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int
 /* Callback called when a channel is completely shutdown. error_code refers to the reason the channel was closed. */
 typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
-struct aws_channel_creation_callbacks {
-    aws_channel_on_setup_completed_fn *on_setup_completed;
-    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
-    void *setup_user_data;
-    void *shutdown_user_data;
-};
-
 struct aws_channel_slot {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -51,6 +44,7 @@ struct aws_channel_slot {
     struct aws_channel_handler *handler;
     size_t window_size;
     size_t upstream_message_overhead;
+    size_t current_window_update_batch_size;
 };
 
 struct aws_channel_task;
@@ -144,9 +138,31 @@ struct aws_channel_handler {
     void *impl;
 };
 
-extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
+/**
+ * Args for creating a new channel.
+ *  event_loop to use for IO and tasks. on_setup_completed will be invoked when
+ *  the setup process is finished It will be executed in the event loop's thread.
+ *  on_shutdown_completed will be executed upon channel shutdown.
+ *
+ *  enable_read_back_pressure toggles whether or not back pressure will be applied in the channel.
+ *  Leave this option off unless you're using something like reactive-streams, since it is a slight throughput
+ *  penalty.
+ *
+ *  Unless otherwise
+ *  specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
+ **/
+struct aws_channel_options {
+    struct aws_event_loop *event_loop;
+    aws_channel_on_setup_completed_fn *on_setup_completed;
+    aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
+    void *setup_user_data;
+    void *shutdown_user_data;
+    bool enable_read_back_pressure;
+};
 
 AWS_EXTERN_C_BEGIN
+
+extern AWS_IO_API size_t g_aws_channel_max_fragment_size;
 
 /**
  * Initializes channel_task for use.
@@ -159,15 +175,11 @@ void aws_channel_task_init(
     const char *type_tag);
 
 /**
- * Allocates new channel, with event loop to use for IO and tasks. callbacks->on_setup_completed will be invoked when
- * the setup process is finished It will be executed in the event loop's thread. callbacks is copied. Unless otherwise
- * specified all functions for channels and channel slots must be executed within that channel's event-loop's thread.
+ * Allocates new channel, Unless otherwise specified all functions for channels and channel slots must be executed
+ * within that channel's event-loop's thread. channel_options are copied.
  */
 AWS_IO_API
-struct aws_channel *aws_channel_new(
-    struct aws_allocator *alloc,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks);
+struct aws_channel *aws_channel_new(struct aws_allocator *allocator, const struct aws_channel_options *creation_args);
 
 /**
  * Mark the channel, along with all slots and handlers, for destruction.
@@ -366,13 +378,21 @@ int aws_channel_slot_send_message(
     enum aws_channel_direction dir);
 
 /**
+ * Convenience function that invokes aws_channel_acquire_message_from_pool(),
+ * asking for the largest reasonable DATA message that can be sent in the write direction,
+ * with upstream overhead accounted for.
+ */
+AWS_IO_API
+struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws_channel_slot *slot);
+
+/**
  * Issues a window update notification upstream (to the left.)
  */
 AWS_IO_API
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window);
 
 /**
- * Called by handlers once they have finished their shutdown in the 'dir' direction. Propogates the shutdown process
+ * Called by handlers once they have finished their shutdown in the 'dir' direction. Propagates the shutdown process
  * to the next handler in the channel.
  */
 AWS_IO_API

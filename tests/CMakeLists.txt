@@ -76,10 +76,6 @@ add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
-if (NOT WIN32)
-    add_test_case(channel_message_passing)
-endif ()
-
 add_net_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_resolver_ipv6_address_lookup)
 add_net_test_case(test_default_with_multiple_lookups)
@@ -98,7 +94,7 @@ add_test_case(test_pem_cert_chain_comments_and_whitespace)
 add_test_case(test_pem_invalid_parse)
 add_test_case(test_pem_valid_data_invalid_parse)
 add_test_case(test_pem_invalid_in_chain_parse)
-add_test_case(test_concurrent_cert_import)
+add_net_test_case(test_concurrent_cert_import)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
@@ -167,6 +163,14 @@ if (BUILD_SHARED_LIBS)
     add_test_case(shared_library_find_function_success)
 endif()
 
+add_test_case(test_exponential_backoff_retry_too_many_retries_no_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_full_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_decorrelated_jitter)
+add_test_case(test_exponential_backoff_retry_too_many_retries_default_jitter)
+add_test_case(test_exponential_backoff_retry_client_errors_do_not_count)
+add_test_case(test_exponential_backoff_retry_no_jitter_time_taken)
+add_test_case(test_exponential_backoff_retry_invalid_options)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
@@ -174,5 +178,3 @@ generate_test_driver(${TEST_BINARY_NAME})
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
-
-
