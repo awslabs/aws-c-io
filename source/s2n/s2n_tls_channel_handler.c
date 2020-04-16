@@ -219,7 +219,7 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             return true;
-    /* PQ Crypto no-ops on android for now */
+            /* PQ Crypto no-ops on android for now */
 #ifndef ANDROID
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
