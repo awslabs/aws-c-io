@@ -169,7 +169,7 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
 typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *token);
 
 static uint64_t s_compute_no_jitter(struct exponential_backoff_retry_token *token) {
-    size_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
+    uint64_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
     return aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns);
 }
 
