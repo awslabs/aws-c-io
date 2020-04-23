@@ -1352,7 +1352,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
         size_t vec_idx = 0;
         struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->write_queue);
         /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
-        while (node && vec_idx < 100) {
+        while (aws_linked_list_node_next_is_valid(node) && vec_idx < 100) {
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
             AWS_LOGF_TRACE(
@@ -1366,7 +1366,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
             io_vecs[vec_idx].iov_base = write_request->cursor_cpy.ptr;
             io_vecs[vec_idx].iov_len = write_request->cursor_cpy.len;
             vec_idx++;
-            node = node->next;
+            node = aws_linked_list_next(node);
         }
         ssize_t written = writev(socket->io_handle.data.fd, io_vecs, vec_idx + 1);
 
@@ -1379,7 +1379,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
 
         ssize_t written_cpy = written;
         node = aws_linked_list_front(&socket_impl->write_queue);
-        while (written_cpy > 0 && node) {
+        while (written_cpy > 0 && node->next) {
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
             size_t remaining_to_write = write_request->cursor_cpy.len;
@@ -1400,13 +1400,17 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
                     (void *)socket,
                     socket->io_handle.data.fd);
 
-                aws_linked_list_remove(node);
+                struct aws_linked_list_node *to_remove = node;
+                node = aws_linked_list_next(node);
+                aws_linked_list_remove(to_remove);
                 write_request->written_fn(
                     socket, AWS_OP_SUCCESS, write_request->original_buffer_len, write_request->write_user_data);
                 aws_mem_release(allocator, write_request);
+            } else {
+                node = aws_linked_list_next(node);
             }
+
             written_cpy -= cur_written;
-            node = node->next;
         }
 
         if (written < 0) {
@@ -1697,6 +1701,12 @@ int aws_socket_write(
     write_request->written_fn = written_fn;
     write_request->write_user_data = user_data;
     write_request->cursor_cpy = *cursor;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: queueing write of size %lu",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        cursor->len);
     aws_linked_list_push_back(&socket_impl->write_queue, &write_request->node);
 
     /* avoid reentrancy when a user calls write after receiving their completion callback. */
