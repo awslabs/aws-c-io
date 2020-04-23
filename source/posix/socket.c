@@ -1379,7 +1379,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
 
         ssize_t written_cpy = written;
         node = aws_linked_list_front(&socket_impl->write_queue);
-        while (written_cpy > 0 && node->next) {
+        while (written_cpy > 0 && aws_linked_list_node_next_is_valid(node)) {
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
             size_t remaining_to_write = write_request->cursor_cpy.len;
