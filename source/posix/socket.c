@@ -30,6 +30,7 @@
 #include <sys/errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #if defined(__MACH__)
@@ -1345,21 +1346,29 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
     int aws_error = AWS_OP_SUCCESS;
     bool parent_request_failed = false;
 
-    /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
-    while (!aws_linked_list_empty(&socket_impl->write_queue)) {
+    if (!aws_linked_list_empty(&socket_impl->write_queue)) {
+        struct iovec io_vecs[100];
+        AWS_ZERO_ARRAY(io_vecs);
+        size_t vec_idx = 0;
         struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->write_queue);
-        struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+        /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
+        while (node && vec_idx < 100) {
+            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
 
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: dequeued write request of size %llu, remaining to write %llu",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            (unsigned long long)write_request->original_buffer_len,
-            (unsigned long long)write_request->cursor_cpy.len);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: dequeued write request of size %llu, remaining to write %llu",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                (unsigned long long)write_request->original_buffer_len,
+                (unsigned long long)write_request->cursor_cpy.len);
 
-        ssize_t written =
-            send(socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL);
+            io_vecs[vec_idx].iov_base = write_request->cursor_cpy.ptr;
+            io_vecs[vec_idx].iov_len = write_request->cursor_cpy.len;
+            vec_idx++;
+            node = node->next;
+        }
+        ssize_t written = writev(socket->io_handle.data.fd, io_vecs, vec_idx + 1);
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
@@ -1368,15 +1377,44 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
             socket->io_handle.data.fd,
             (int)written);
 
+        ssize_t written_cpy = written;
+        node = aws_linked_list_front(&socket_impl->write_queue);
+        while (written_cpy > 0 && node) {
+            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+
+            size_t remaining_to_write = write_request->cursor_cpy.len;
+            size_t cur_written = aws_min_size((size_t)written_cpy, remaining_to_write);
+
+            aws_byte_cursor_advance(&write_request->cursor_cpy, cur_written);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: remaining write request to write %llu",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                (unsigned long long)write_request->cursor_cpy.len);
+
+            if (cur_written == remaining_to_write) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: write request completed",
+                    (void *)socket,
+                    socket->io_handle.data.fd);
+
+                aws_linked_list_remove(node);
+                write_request->written_fn(
+                    socket, AWS_OP_SUCCESS, write_request->original_buffer_len, write_request->write_user_data);
+                aws_mem_release(allocator, write_request);
+            }
+            written_cpy -= cur_written;
+            node = node->next;
+        }
+
         if (written < 0) {
             int error = errno;
             if (error == EAGAIN) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET, "id=%p fd=%d: returned would block", (void *)socket, socket->io_handle.data.fd);
-                break;
-            }
-
-            if (error == EPIPE) {
+            } else if (error == EPIPE) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: already closed before write",
@@ -1385,39 +1423,17 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
                 aws_error = AWS_IO_SOCKET_CLOSED;
                 aws_raise_error(aws_error);
                 purge = true;
-                break;
+            } else {
+                purge = true;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: write error with error code %d",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    error);
+                aws_error = s_determine_socket_error(error);
+                aws_raise_error(aws_error);
             }
-
-            purge = true;
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: write error with error code %d",
-                (void *)socket,
-                socket->io_handle.data.fd,
-                error);
-            aws_error = s_determine_socket_error(error);
-            aws_raise_error(aws_error);
-            break;
-        }
-
-        size_t remaining_to_write = write_request->cursor_cpy.len;
-
-        aws_byte_cursor_advance(&write_request->cursor_cpy, (size_t)written);
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: remaining write request to write %llu",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            (unsigned long long)write_request->cursor_cpy.len);
-
-        if ((size_t)written == remaining_to_write) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_SOCKET, "id=%p fd=%d: write request completed", (void *)socket, socket->io_handle.data.fd);
-
-            aws_linked_list_remove(node);
-            write_request->written_fn(
-                socket, AWS_OP_SUCCESS, write_request->original_buffer_len, write_request->write_user_data);
-            aws_mem_release(allocator, write_request);
         }
     }
 
