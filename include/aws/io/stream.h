@@ -48,6 +48,7 @@ struct aws_input_stream_vtable {
     int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
     int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
     int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
+    int (*get_remaining_length)(struct aws_input_stream *stream, int64_t *out_length);
     void (*destroy)(struct aws_input_stream *stream);
 };
 
@@ -68,6 +69,12 @@ AWS_IO_API int aws_input_stream_seek(
     enum aws_stream_seek_basis basis);
 
 /*
+ * Read data from a stream.  If data is available, will read up to the max_read or (capacity - len), whichever is less,
+ * open bytes in the destination buffer. If AWS_OP_ERR is returned, the destination buffer will be unchanged.
+ */
+AWS_IO_API int aws_input_stream_read_n(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t max_read);
+
+/*
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes
  * in the destination buffer. If AWS_OP_ERR is returned, the destination buffer will be unchanged.
  */
@@ -81,9 +88,14 @@ AWS_IO_API int aws_input_stream_get_status(struct aws_input_stream *stream, stru
 /*
  * Returns the total stream length, if able, regardless of current stream position.  Under certain conditions,
  * a valid stream may return an error instead when there is not a good answer (socket stream, for example).
- *
  */
 AWS_IO_API int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
+
+/*
+ * Returns the length in bytes remaining in the stream. Under certain conditions, a valid stream may return an error
+ * instead when there is not a good answer (socket stream, for example).
+ */
+AWS_IO_API int aws_input_stream_get_remaining_length(struct aws_input_stream *stream, int64_t *out_length);
 
 /*
  * Tears down the stream

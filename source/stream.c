@@ -29,7 +29,7 @@ int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enu
     return stream->vtable->seek(stream, offset, basis);
 }
 
-int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
+int aws_input_stream_read_n(struct aws_input_stream *stream, struct aws_byte_buf *dest, size_t max_read) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->read);
     AWS_ASSERT(dest);
     AWS_ASSERT(dest->len <= dest->capacity);
@@ -42,7 +42,7 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     /* Prevent implementations from accidentally overwriting existing data in the buffer.
      * Hand them a "safe" buffer that starts where the existing data ends. */
     const void *safe_buf_start = dest->buffer + dest->len;
-    const size_t safe_buf_capacity = dest->capacity - dest->len;
+    const size_t safe_buf_capacity = aws_min_size((dest->capacity - dest->len), max_read);
     struct aws_byte_buf safe_buf = aws_byte_buf_from_empty_array(safe_buf_start, safe_buf_capacity);
 
     int read_result = stream->vtable->read(stream, &safe_buf);
@@ -50,7 +50,7 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     /* Ensure the implementation did not commit forbidden acts upon the buffer */
     AWS_FATAL_ASSERT(
         (safe_buf.buffer == safe_buf_start) && (safe_buf.capacity == safe_buf_capacity) &&
-        (safe_buf.len <= safe_buf_capacity));
+            (safe_buf.len <= safe_buf_capacity));
 
     if (read_result == AWS_OP_SUCCESS) {
         /* Update the actual buffer */
@@ -58,6 +58,13 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     }
 
     return read_result;
+}
+
+int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
+    AWS_ASSERT(dest);
+    AWS_ASSERT(dest->len <= dest->capacity);
+
+    return aws_input_stream_read_n(stream, dest, (dest->capacity - dest->len));
 }
 
 int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
@@ -70,6 +77,12 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
     AWS_ASSERT(stream && stream->vtable && stream->vtable->get_length);
 
     return stream->vtable->get_length(stream, out_length);
+}
+
+int aws_input_stream_get_remaining_length(struct aws_input_stream *stream, int64_t *out_length) {
+    AWS_ASSERT(stream && stream->vtable && stream->vtable->get_remaining_length);
+
+    return stream->vtable->get_remaining_length(stream, out_length);
 }
 
 void aws_input_stream_destroy(struct aws_input_stream *stream) {
@@ -204,6 +217,20 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
     return AWS_OP_SUCCESS;
 }
 
+static int s_aws_input_stream_byte_cursor_get_remaining_length(struct aws_input_stream *stream, int64_t *out_length) {
+    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+#if SIZE_MAX > INT64_MAX
+    size_t length = impl->original_cursor.len;
+    if (length > INT64_MAX) {
+        return aws_raise_error(AWS_ERROR_OVERFLOW_DETECTED);
+    }
+#endif
+
+    *out_length = (int64_t)impl->current_cursor.len;
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_aws_input_stream_byte_cursor_destroy(struct aws_input_stream *stream) {
     aws_mem_release(stream->allocator, stream);
 }
@@ -213,6 +240,7 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .read = s_aws_input_stream_byte_cursor_read,
     .get_status = s_aws_input_stream_byte_cursor_get_status,
     .get_length = s_aws_input_stream_byte_cursor_get_length,
+    .get_remaining_length = s_aws_input_stream_byte_cursor_get_remaining_length,
     .destroy = s_aws_input_stream_byte_cursor_destroy};
 
 struct aws_input_stream *aws_input_stream_new_from_cursor(
