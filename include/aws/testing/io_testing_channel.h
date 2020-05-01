@@ -306,9 +306,7 @@ static inline int testing_channel_push_read_message(struct testing_channel *test
 
 /** when you want to test the write path of your handler, call this with the message you want it to write.
  * A downstream handler must have been installed */
-static inline int testing_channel_push_write_message(
-    struct testing_channel *testing,
-    struct aws_io_message *message) {
+static inline int testing_channel_push_write_message(struct testing_channel *testing, struct aws_io_message *message) {
     ASSERT_NOT_NULL(testing->right_handler_slot);
     return aws_channel_slot_send_message(testing->right_handler_slot, message, AWS_CHANNEL_DIR_WRITE);
 }
@@ -561,9 +559,7 @@ static inline int testing_channel_check_written_messages_str(
 }
 
 /* Extract contents of all messages sent in the write direction. */
-static inline int testing_channel_drain_written_messages(
-    struct testing_channel *channel,
-    struct aws_byte_buf *output) {
+static inline int testing_channel_drain_written_messages(struct testing_channel *channel, struct aws_byte_buf *output) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
     ASSERT_SUCCESS(testing_channel_drain_messages(msgs, output));
 
