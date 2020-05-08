@@ -442,25 +442,27 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         connection_args->failed_count++;
     }
 
-    if (error_code || connection_args->connection_chosen) {
-        if (connection_args->outgoing_options.domain != AWS_SOCKET_LOCAL && error_code) {
-            struct aws_host_address host_address;
-            host_address.host = connection_args->host_name;
-            host_address.address =
-                aws_string_new_from_c_str(connection_args->bootstrap->allocator, socket->remote_endpoint.address);
-            host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
-                                           ? AWS_ADDRESS_RECORD_TYPE_AAAA
-                                           : AWS_ADDRESS_RECORD_TYPE_A;
+    bool is_remote_connection = connection_args->outgoing_options.domain != AWS_SOCKET_LOCAL;
+    struct aws_host_address host_address;
+    AWS_ZERO_STRUCT(host_address);
 
-            if (host_address.address) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                    "id=%p: recording bad address %s.",
-                    (void *)connection_args->bootstrap,
-                    socket->remote_endpoint.address);
-                aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
-                aws_string_destroy((void *)host_address.address);
-            }
+    if (is_remote_connection) {
+        host_address.allocator = connection_args->bootstrap->allocator;
+        host_address.host = aws_string_new_from_string(host_address.allocator, connection_args->host_name);
+        host_address.address = aws_string_new_from_c_str(host_address.allocator, socket->remote_endpoint.address);
+        host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
+                                       ? AWS_ADDRESS_RECORD_TYPE_AAAA
+                                       : AWS_ADDRESS_RECORD_TYPE_A;
+    }
+
+    if (error_code || connection_args->connection_chosen) {
+        if (is_remote_connection && error_code) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: recording bad address %s.",
+                (void *)connection_args->bootstrap,
+                socket->remote_endpoint.address);
+            aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
         }
 
         AWS_LOGF_TRACE(
@@ -469,6 +471,9 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             "successful connection or because it errored out.",
             (void *)connection_args->bootstrap,
             (void *)socket);
+
+        aws_host_address_clean_up(&host_address);
+
         aws_socket_close(socket);
 
         aws_socket_clean_up(socket);
@@ -502,6 +507,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 
     args.enable_read_back_pressure = connection_args->enable_read_back_pressure;
     args.event_loop = aws_socket_get_event_loop(socket);
+    args.host_address = is_remote_connection ? &host_address : NULL;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -510,6 +516,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         (void *)socket);
 
     connection_args->channel_data.channel = aws_channel_new(connection_args->bootstrap->allocator, &args);
+
+    aws_host_address_clean_up(&host_address);
 
     if (!connection_args->channel_data.channel) {
         aws_socket_clean_up(socket);

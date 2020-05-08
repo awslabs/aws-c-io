@@ -10,6 +10,7 @@
 #include <aws/common/mutex.h>
 
 #include <aws/io/event_loop.h>
+#include <aws/io/host_resolver.h>
 #include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
 #include <aws/io/statistics.h>
@@ -60,6 +61,7 @@ struct aws_channel {
     void *shutdown_user_data;
     struct aws_atomic_var refcount;
     struct aws_task deletion_task;
+    struct aws_host_address *host_address;
 
     struct aws_task statistics_task;
     struct aws_crt_statistics_handler *statistics_handler;
@@ -218,6 +220,12 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     channel->on_shutdown_completed = creation_args->on_shutdown_completed;
     channel->shutdown_user_data = creation_args->shutdown_user_data;
 
+    if (creation_args->host_address != NULL) {
+        channel->host_address =
+            aws_mem_acquire(creation_args->host_address->allocator, sizeof(struct aws_host_address));
+        aws_host_address_copy(creation_args->host_address, channel->host_address);
+    }
+
     if (aws_array_list_init_dynamic(
             &channel->statistic_list, alloc, INITIAL_STATISTIC_LIST_SIZE, sizeof(struct aws_crt_statistics_base *))) {
         goto on_error;
@@ -301,6 +309,17 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
         struct aws_channel_slot *tmp = current->adj_right;
         s_cleanup_slot(current);
         current = tmp;
+    }
+
+    struct aws_host_address *host_address = channel->host_address;
+
+    if (host_address != NULL) {
+        struct aws_allocator *host_address_allocator = host_address->allocator;
+
+        aws_host_address_clean_up(host_address);
+        aws_mem_release(host_address_allocator, host_address);
+
+        channel->host_address = NULL;
     }
 
     aws_array_list_clean_up(&channel->statistic_list);
@@ -1037,6 +1056,10 @@ size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handl
 
 struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel) {
     return channel->first;
+}
+
+struct aws_host_address *aws_channel_get_host_address(struct aws_channel *channel) {
+    return channel->host_address;
 }
 
 static void s_reset_statistics(struct aws_channel *channel) {
