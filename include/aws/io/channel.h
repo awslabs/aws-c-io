@@ -157,6 +157,7 @@ struct aws_channel_options {
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *setup_user_data;
     void *shutdown_user_data;
+    struct aws_host_address *host_address;
     bool enable_read_back_pressure;
 };
 
@@ -476,6 +477,12 @@ size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handl
 
 AWS_IO_API
 struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel);
+
+/**
+ * Returns the host address for this channel if it has one, otherwise, returns NULL.
+ */
+AWS_IO_API
+struct aws_host_address *aws_channel_get_host_address(struct aws_channel *channel);
 
 AWS_EXTERN_C_END
 
