@@ -139,7 +139,7 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
 
 static void resolver_destroy(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
-    aws_cache_clean_up(default_host_resolver->host_table);
+    aws_cache_destroy(default_host_resolver->host_table);
     aws_mem_release(resolver->allocator, default_host_resolver);
     AWS_ZERO_STRUCT(*resolver);
 }
@@ -624,10 +624,10 @@ static void on_host_value_removed(void *value) {
         aws_mem_release(host_entry->allocator, pending_callback);
     }
 
-    aws_cache_clean_up(host_entry->aaaa_records);
-    aws_cache_clean_up(host_entry->a_records);
-    aws_cache_clean_up(host_entry->failed_connection_a_records);
-    aws_cache_clean_up(host_entry->failed_connection_aaaa_records);
+    aws_cache_destroy(host_entry->aaaa_records);
+    aws_cache_destroy(host_entry->a_records);
+    aws_cache_destroy(host_entry->failed_connection_a_records);
+    aws_cache_destroy(host_entry->failed_connection_aaaa_records);
     aws_string_destroy((void *)host_entry->host_name);
     aws_mem_release(host_entry->allocator, host_entry);
 }
@@ -795,19 +795,19 @@ setup_host_entry_error:
     }
 
     if (a_records_init) {
-        aws_cache_clean_up(new_host_entry->a_records);
+        aws_cache_destroy(new_host_entry->a_records);
     }
 
     if (aaaa_records_init) {
-        aws_cache_clean_up(new_host_entry->aaaa_records);
+        aws_cache_destroy(new_host_entry->aaaa_records);
     }
 
     if (failed_a_records_init) {
-        aws_cache_clean_up(new_host_entry->failed_connection_a_records);
+        aws_cache_destroy(new_host_entry->failed_connection_a_records);
     }
 
     if (failed_aaaa_records_init) {
-        aws_cache_clean_up(new_host_entry->failed_connection_a_records);
+        aws_cache_destroy(new_host_entry->failed_connection_a_records);
     }
 
     if (thread_init) {
