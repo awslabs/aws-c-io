@@ -683,7 +683,6 @@ static inline int create_and_init_host_entry(
         NULL,
         on_address_value_removed,
         config->max_ttl);
-
     if (AWS_UNLIKELY(!new_host_entry->a_records)) {
         goto setup_host_entry_error;
     }
