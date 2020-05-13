@@ -19,12 +19,19 @@
 
 struct aws_event_loop_group;
 
-typedef enum aws_address_record_type {
+enum aws_address_record_type {
     /* ipv4 address. */
     AWS_ADDRESS_RECORD_TYPE_A,
     /* ipv6 address. */
     AWS_ADDRESS_RECORD_TYPE_AAAA
-} aws_address_record_type;
+};
+
+enum aws_get_host_address_flags {
+    /* get number of ipv4 addresses. */
+    AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A = 0x00000001,
+    /* get number of ipv6 addresses. */
+    AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA = 0x00000002
+};
 
 struct aws_string;
 
@@ -32,7 +39,7 @@ struct aws_host_address {
     struct aws_allocator *allocator;
     const struct aws_string *host;
     const struct aws_string *address;
-    aws_address_record_type record_type;
+    enum aws_address_record_type record_type;
     uint64_t expiry;
     /* This next section is strictly for mitigating the impact of sticky hosts that aren't performing well. */
     /*for use in DNS-based load balancing.*/
@@ -92,6 +99,11 @@ struct aws_host_resolver_vtable {
     int (*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
+    /** get number of addresses for a given host. */
+    size_t (*get_host_address_count)(
+        struct aws_host_resolver *resolver,
+        const struct aws_string *host_name,
+        uint32_t flags);
 };
 
 struct aws_host_resolver {
@@ -190,6 +202,14 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
  * calls purge_cache on the vtable.
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
+
+/**
+ * get number of addresses for a given host.
+ */
+AWS_IO_API size_t aws_host_resolver_get_host_address_count(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host_name,
+    uint32_t flags);
 
 AWS_EXTERN_C_END
 
