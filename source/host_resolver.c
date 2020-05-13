@@ -93,6 +93,12 @@ struct default_host_resolver {
     struct aws_cache *host_table;
     /* Note: This can't be an RWLock as even an LRU cache read is a modifying operation */
     struct aws_mutex host_lock;
+
+    aws_host_resolver_put_failure_table_callback_fn put_failure_table_callback;
+    void *put_failure_table_callback_ud;
+
+    aws_host_resolver_remove_failure_table_callback_fn remove_failure_table_callback;
+    void *remove_failure_table_callback_ud;
 };
 
 struct host_entry {
@@ -137,11 +143,14 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
 /* this only ever gets called after resolution has already run. We expect that the entry's lock
    has been aquired for writing before this function is called and released afterwards. */
 static inline void process_records(
+    struct aws_host_resolver *resolver,
     struct aws_allocator *allocator,
     struct aws_cache *records,
     struct aws_cache *failed_records) {
     uint64_t timestamp = 0;
     aws_sys_clock_get_ticks(&timestamp);
+
+    struct default_host_resolver *default_host_resolver = resolver->impl;
 
     size_t record_count = aws_cache_get_element_count(records);
     size_t expired_records = 0;
@@ -187,6 +196,13 @@ static inline void process_records(
                         aws_mem_release(allocator, to_add);
                         continue;
                     }
+
+                    if (default_host_resolver->remove_failure_table_callback != NULL) {
+                        /* TODO likely want to move after aws_cache_remove */
+                        default_host_resolver->remove_failure_table_callback(
+                            lru_element, default_host_resolver->remove_failure_table_callback_ud);
+                    }
+
                     /* we only want to promote one per process run.*/
                     aws_cache_remove(failed_records, lru_element->address);
                     break;
@@ -251,6 +267,12 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
             if (aws_cache_put(failed_table, address_copy->address, address_copy)) {
                 goto error_host_entry_cleanup;
             }
+
+            if (default_host_resolver->put_failure_table_callback != NULL) {
+                default_host_resolver->put_failure_table_callback(
+                    address_copy, default_host_resolver->put_failure_table_callback_ud);
+            }
+
         } else {
             if (aws_cache_find(failed_table, address->address, (void **)&cached_address)) {
                 goto error_host_entry_cleanup;
@@ -501,8 +523,16 @@ static void resolver_thread_fn(void *arg) {
          * process and clean_up records in the entry. occasionally, failed connect records will be upgraded
          * for retry.
          */
-        process_records(host_entry->allocator, host_entry->aaaa_records, host_entry->failed_connection_aaaa_records);
-        process_records(host_entry->allocator, host_entry->a_records, host_entry->failed_connection_a_records);
+        process_records(
+            host_entry->resolver,
+            host_entry->allocator,
+            host_entry->aaaa_records,
+            host_entry->failed_connection_aaaa_records);
+        process_records(
+            host_entry->resolver,
+            host_entry->allocator,
+            host_entry->a_records,
+            host_entry->failed_connection_a_records);
 
         aws_linked_list_swap_contents(&pending_resolve_copy, &host_entry->pending_resolution_callbacks);
 
@@ -957,11 +987,31 @@ static size_t default_get_host_address_count(
     return address_count;
 }
 
+static void default_host_resolver_set_put_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_put_failure_table_callback_fn callback,
+    void *user_data) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+    default_host_resolver->put_failure_table_callback = callback;
+    default_host_resolver->put_failure_table_callback_ud = user_data;
+}
+
+static void default_host_resolver_set_remove_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_remove_failure_table_callback_fn callback,
+    void *user_data) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+    default_host_resolver->remove_failure_table_callback = callback;
+    default_host_resolver->remove_failure_table_callback_ud = user_data;
+}
+
 static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
     .get_host_address_count = default_get_host_address_count,
+    .set_put_failure_table_callback = default_host_resolver_set_put_failure_table_callback,
+    .set_remove_failure_table_callback = default_host_resolver_set_remove_failure_table_callback,
     .destroy = resolver_destroy,
 };
 
@@ -1015,4 +1065,18 @@ size_t aws_host_resolver_get_host_address_count(
     const struct aws_string *host_name,
     uint32_t flags) {
     return resolver->vtable->get_host_address_count(resolver, host_name, flags);
+}
+
+void aws_host_resolver_set_put_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_put_failure_table_callback_fn callback,
+    void *user_data) {
+    resolver->vtable->set_put_failure_table_callback(resolver, callback, user_data);
+}
+
+void aws_host_resolver_set_remove_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_remove_failure_table_callback_fn callback,
+    void *user_data) {
+    resolver->vtable->set_remove_failure_table_callback(resolver, callback, user_data);
 }
