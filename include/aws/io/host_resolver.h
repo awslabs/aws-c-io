@@ -81,6 +81,10 @@ struct aws_host_resolution_config {
     void *impl_data;
 };
 
+typedef void (*aws_host_resolver_put_failure_table_callback_fn)(struct aws_host_address *, void *);
+
+typedef void (*aws_host_resolver_remove_failure_table_callback_fn)(struct aws_host_address *, void *);
+
 /** should you absolutely disdain the default implementation, feel free to implement your own. */
 struct aws_host_resolver_vtable {
     /** clean up everything you allocated, but not resolver itself. */
@@ -104,6 +108,16 @@ struct aws_host_resolver_vtable {
         struct aws_host_resolver *resolver,
         const struct aws_string *host_name,
         uint32_t flags);
+
+    void (*set_put_failure_table_callback)(
+        struct aws_host_resolver *resolver,
+        aws_host_resolver_put_failure_table_callback_fn callback,
+        void *user_data);
+
+    void (*set_remove_failure_table_callback)(
+        struct aws_host_resolver *resolver,
+        aws_host_resolver_remove_failure_table_callback_fn callback,
+        void *user_data);
 };
 
 struct aws_host_resolver {
@@ -210,6 +224,16 @@ AWS_IO_API size_t aws_host_resolver_get_host_address_count(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     uint32_t flags);
+
+AWS_IO_API void aws_host_resolver_set_put_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_put_failure_table_callback_fn callback,
+    void *user_data);
+
+AWS_IO_API void aws_host_resolver_set_remove_failure_table_callback(
+    struct aws_host_resolver *resolver,
+    aws_host_resolver_remove_failure_table_callback_fn callback,
+    void *user_data);
 
 AWS_EXTERN_C_END
 
