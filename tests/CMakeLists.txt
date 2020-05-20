@@ -50,6 +50,7 @@ add_test_case(io_testing_channel)
 add_test_case(local_socket_communication)
 add_test_case(tcp_socket_communication)
 add_test_case(udp_socket_communication)
+add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
 
