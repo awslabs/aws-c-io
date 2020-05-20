@@ -532,8 +532,8 @@ int aws_socket_connect(
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
     } else { /* UDP socket */
-        /* UDP sockets jump to CONNECT_READ once bind is called */
-        if (socket->state != CONNECTED_READ) {
+        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        if (socket->state != CONNECTED_READ && socket->state != INIT) {
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
     }
