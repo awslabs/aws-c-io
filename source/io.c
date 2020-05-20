@@ -155,6 +155,15 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_NEGOTIATION_TIMEOUT,
         "Channel shutdown due to tls negotiation timeout"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ALERT_NOT_GRACEFUL,
+       "Channel shutdown due to tls alert. The alert was not for a graceful shutdown."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_MAX_RETRIES_EXCEEDED,
+       "Retry cannot be attempted because the maximum number of retries has been exceeded."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_RETRY_PERMISSION_DENIED,
+       "Retry cannot be attempted because the retry strategy has prevented the operation."),
 };
 /* clang-format on */
 
@@ -182,7 +191,10 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "Subject for channel bootstrap (client and server modes)"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_FILE_UTILS, "file-utils", "Subject for file operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SHARED_LIBRARY, "shared-library", "Subject for shared library operations"),
-};
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
+        "exp-backoff-strategy",
+        "Subject for exponential backoff retry strategy")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,

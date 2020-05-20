@@ -41,6 +41,10 @@ int aws_default_dns_resolve(
     const char *hostname_cstr = aws_string_c_str(host_name);
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
+    /* Android would prefer NO HINTS IF YOU DON'T MIND, SIR */
+#ifdef ANDROID
+    int err_code = getaddrinfo(hostname_cstr, NULL, NULL, &result);
+#else
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
@@ -48,6 +52,7 @@ int aws_default_dns_resolve(
     hints.ai_flags = AI_ALL | AI_V4MAPPED;
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
+#endif
 
     if (err_code) {
         AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", err_code);

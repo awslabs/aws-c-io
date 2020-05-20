@@ -170,7 +170,7 @@ static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, 
     }
 
     if (!aws_byte_buf_write(dest, impl->current_cursor.ptr, actually_read)) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_STREAM_READ_FAILED);
     }
 
     aws_byte_cursor_advance(&impl->current_cursor, actually_read);
@@ -195,7 +195,7 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
 #if SIZE_MAX > INT64_MAX
     size_t length = impl->original_cursor.len;
     if (length > INT64_MAX) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_OVERFLOW_DETECTED);
     }
 #endif
 
