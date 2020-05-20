@@ -256,7 +256,7 @@ static int s_test_socket_ex(
     if (local && local != endpoint) {
         ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
     }
-    ` ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
     if (listener.options.type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
