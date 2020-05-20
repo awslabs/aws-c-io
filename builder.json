@@ -14,5 +14,6 @@
     ],
     "build_env": {
         "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
-    }
+    },
+    "test_steps": ["test"]
 }
