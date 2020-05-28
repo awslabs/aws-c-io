@@ -434,9 +434,18 @@ int aws_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
     struct iocp_socket *socket_impl = socket->impl;
-    if (socket->state != INIT) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    if (socket->options.type != AWS_SOCKET_DGRAM) {
+        AWS_ASSERT(on_connection_result);
+        if (socket->state != INIT) {
+            socket->state = ERRORED;
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
+    } else { /* UDP socket */
+        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        if (socket->state != CONNECTED_READ && socket->state != INIT) {
+            socket->state = ERRORED;
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
     }
     return socket_impl->vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }

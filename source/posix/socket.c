@@ -526,12 +526,16 @@ int aws_socket_connect(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (socket->state != INIT) {
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
+        if (socket->state != INIT) {
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
+    } else { /* UDP socket */
+        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        if (socket->state != CONNECTED_READ && socket->state != INIT) {
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
     }
 
     size_t address_strlen;
