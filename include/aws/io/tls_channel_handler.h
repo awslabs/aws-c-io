@@ -347,6 +347,13 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
 
 /**
+ * Sets the minimum TLS version to allow.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_minimum_tls_version(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_versions minimum_tls_version);
+
+/**
  * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
  * ca_file is copied.
  */
