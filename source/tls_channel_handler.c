@@ -275,6 +275,12 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
+void aws_tls_ctx_options_set_minimum_tls_version(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_versions minimum_tls_version) {
+    options->minimum_tls_version = minimum_tls_version;
+}
+
 int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
