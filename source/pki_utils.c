@@ -78,7 +78,7 @@ static int s_convert_pem_to_raw_base64(
 
         /* burn off the padding in the buffer first.
          * Worst case we'll only have to do this once per line in the buffer. */
-        while (current_cur_ptr->len && isspace(*current_cur_ptr->ptr)) {
+        while (current_cur_ptr->len && aws_isspace(*current_cur_ptr->ptr)) {
             aws_byte_cursor_advance(current_cur_ptr, 1);
         }
 
