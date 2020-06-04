@@ -360,7 +360,7 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
         size_t port_len = parser->uri->authority.len - parser->uri->host_name.len - 1;
         port_delim += 1;
         for (size_t i = 0; i < port_len; ++i) {
-            if (!isdigit(port_delim[i])) {
+            if (!aws_isdigit(port_delim[i])) {
                 parser->state = ERROR;
                 aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
                 return;
@@ -449,7 +449,7 @@ static void s_unchecked_append_canonicalized_path_character(struct aws_byte_buf 
 
     uint8_t *dest_ptr = buffer->buffer + buffer->len;
 
-    if (isalnum(value)) {
+    if (aws_isalnum(value)) {
         ++buffer->len;
         *dest_ptr = value;
         return;
@@ -493,7 +493,7 @@ static void s_raw_append_canonicalized_param_character(struct aws_byte_buf *buff
 
     uint8_t *dest_ptr = buffer->buffer + buffer->len;
 
-    if (isalnum(value)) {
+    if (aws_isalnum(value)) {
         ++buffer->len;
         *dest_ptr = value;
         return;
