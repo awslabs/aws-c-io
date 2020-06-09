@@ -18,7 +18,7 @@ This library is licensed under the Apache 2.0 License.
 
 ### Building
 
-Note that aws-c-io has a dependency on aws-c-common so it must built first.  If you are building on Linux, you will also need to build s2n before being able to build aws-c-io.  Build instructions for s2n can be found [here](https://github.com/awslabs/s2n/blob/master/docs/USAGE-GUIDE.md).  For our CRT's, we build s2n at a specific commit, and recommend doing the same when using it with this library.  That commit hash can be found [here](https://github.com/awslabs/aws-crt-cpp/tree/master/aws-common-runtime).
+Note that aws-c-io has a dependency on aws-c-common so it must built first.  If you are building on Linux, you will also need to build s2n before being able to build the aws-c-io dependency.  For our CRT's, we build s2n at a specific commit, and recommend doing the same when using it with this library.  That commit hash can be found [here](https://github.com/awslabs/aws-crt-cpp/tree/master/aws-common-runtime).  Build instructions for s2n can be found [here](https://github.com/awslabs/s2n/blob/master/docs/USAGE-GUIDE.md).
 
 ````
 git clone git@github.com:awslabs/aws-c-common.git
