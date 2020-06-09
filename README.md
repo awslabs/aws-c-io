@@ -14,7 +14,23 @@ embedded, server, client, and mobile.
 
 This library is licensed under the Apache 2.0 License.
 
-## Recommended Usage
+## Usage
+
+### Building
+
+Note that aws-c-io has a dependency on aws-c-common.  If you are building on Linux, you will also need to follow the build instructions for [s2n](https://github.com/awslabs/s2n/blob/master/docs/USAGE-GUIDE.md) before building aws-c-io.
+
+````
+git clone git@github.com:awslabs/aws-c-common.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-common -B aws-c-common/build
+cmake --build aws-c-common/build --target install
+
+git clone git@github.com:awslabs/aws-c-io.git
+cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-c-io -B aws-c-io/build
+cmake --build aws-c-io/build --target install
+````
+
+### Usage Patterns
 
 This library contains many primitive building blocks that can be configured in a myriad of ways. However, most likely
 you simply need to use the `aws_event_loop_group` and `aws_channel_bootstrap` APIs.
