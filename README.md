@@ -51,9 +51,9 @@ cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -
 cmake --build s2n/build --target install
 ```
 
-#### Building Other Dependencies and aws-c-io
+#### Building aws-c-io and Remaining Dependencies
 
-Note that aws-c-io has a dependency on aws-c-common so it must built first.  If you are building on Linux, you will also need to build s2n before being able to build aws-c-io.    Build instructions for s2n can be found [here](https://github.com/awslabs/s2n/blob/master/docs/USAGE-GUIDE.md).
+Note that aws-c-io has a dependency on aws-c-common so it must built first.
 
 ```
 git clone git@github.com:awslabs/aws-c-common.git
