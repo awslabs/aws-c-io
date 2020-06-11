@@ -53,7 +53,7 @@ cmake --build s2n/build --target install
 
 #### Building aws-c-io and Remaining Dependencies
 
-Note that aws-c-io has a dependency on aws-c-common so it must built first.
+Note that aws-c-io has a dependency on aws-c-common so it must be built first:
 
 ```
 git clone git@github.com:awslabs/aws-c-common.git
