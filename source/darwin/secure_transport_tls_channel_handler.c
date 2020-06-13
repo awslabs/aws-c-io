@@ -991,6 +991,18 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
+
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
         if (aws_import_public_and_private_keys_to_identity(
