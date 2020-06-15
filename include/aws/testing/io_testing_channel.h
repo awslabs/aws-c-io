@@ -605,11 +605,12 @@ static inline int testing_channel_send_data(
         err = testing_channel_push_write_message(channel, msg);
     }
 
+    if (err) {
+        aws_mem_release(msg->allocator, msg);
+    }
+
     if (!ignore_send_message_errors) {
-        if (err) {
-            aws_mem_release(msg->allocator, msg);
-            ASSERT_SUCCESS(err);
-        }
+        ASSERT_SUCCESS(err);
     }
 
     return AWS_OP_SUCCESS;
