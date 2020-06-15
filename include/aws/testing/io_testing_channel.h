@@ -606,7 +606,7 @@ static inline int testing_channel_send_data(
     }
 
     if (!ignore_send_message_errors) {
-        if(err) {
+        if (err) {
             aws_mem_release(msg->allocator, msg);
             ASSERT_SUCCESS(err);
         }
