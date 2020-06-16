@@ -1527,7 +1527,7 @@ static void s_secure_channel_handler_destroy(
 
     if (sc_handler == NULL) {
         return;
-	}
+    }
 
     if (sc_handler->protocol.buffer) {
         aws_byte_buf_clean_up(&sc_handler->protocol);
@@ -1558,7 +1558,7 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
-	s_secure_channel_handler_destroy(handler->alloc, sc_handler);
+    s_secure_channel_handler_destroy(handler->alloc, sc_handler);
 }
 
 static void s_reset_statistics(struct aws_channel_handler *handler) {
@@ -1713,7 +1713,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
 on_error:
 
-	s_secure_channel_handler_destroy(alloc, sc_handler);
+    s_secure_channel_handler_destroy(alloc, sc_handler);
 
     return NULL;
 }
