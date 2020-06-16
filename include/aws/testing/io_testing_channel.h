@@ -605,6 +605,11 @@ static inline int testing_channel_send_data(
         err = testing_channel_push_write_message(channel, msg);
     }
 
+    if (err) {
+        /* If an error happens, clean the message here. Else, the recipient of the message will take the ownership */
+        aws_mem_release(msg->allocator, msg);
+    }
+
     if (!ignore_send_message_errors) {
         ASSERT_SUCCESS(err);
     }
