@@ -2,14 +2,14 @@ VCC?=vcc
 VCC_ARGS+=/sm
 GIT?=git
 NO_CHANGE_EXPECTED_HASH=9276b7251
-NO_CHANGE_FILE=../../source/linux/epoll_event_loop.c
+NO_CHANGE_FILE=source/linux/epoll_event_loop.c
 
 # The VCC proofs in this directory are based on a snapshot of
 # epoll_event_loop.c. This target fails if the source file has changed, in
 # which case the proof results may no longer be valid.
 .phony: .no_change
 .no_change:
-	$(GIT) diff --quiet $(NO_CHANGE_EXPECTED_HASH) $(NO_CHANGE_FILE)
+	cd ../.. && $(GIT) diff --quiet $(NO_CHANGE_EXPECTED_HASH) $(NO_CHANGE_FILE)
 
 .phony: .proofs
 .proofs:
