@@ -1521,9 +1521,13 @@ static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum
     }
 }
 
-static void s_handler_destroy(struct aws_channel_handler *handler) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
-    struct secure_channel_handler *sc_handler = handler->impl;
+static void s_secure_channel_handler_destroy(
+    struct aws_allocator *allocator,
+    struct secure_channel_handler *sc_handler) {
+
+    if (sc_handler == NULL) {
+        return;
+    }
 
     if (sc_handler->protocol.buffer) {
         aws_byte_buf_clean_up(&sc_handler->protocol);
@@ -1547,7 +1551,14 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
 
     aws_tls_channel_handler_shared_clean_up(&sc_handler->shared_state);
 
-    aws_mem_release(handler->alloc, sc_handler);
+    aws_mem_release(allocator, sc_handler);
+}
+
+static void s_handler_destroy(struct aws_channel_handler *handler) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    s_secure_channel_handler_destroy(handler->alloc, sc_handler);
 }
 
 static void s_reset_statistics(struct aws_channel_handler *handler) {
@@ -1643,7 +1654,14 @@ static struct aws_channel_handler *s_tls_handler_new(
         NULL,
         &sc_handler->creds,
         &sc_handler->sspi_timestamp);
-    (void)status;
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
@@ -1653,14 +1671,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     } else if (options->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1672,8 +1688,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             aws_string_c_str(options->server_name));
         struct aws_byte_cursor server_name_crsr = aws_byte_cursor_from_string(options->server_name);
         if (aws_byte_buf_init_copy_from_cursor(&sc_handler->server_name, alloc, server_name_crsr)) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1695,6 +1710,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->verify_peer = sc_ctx->verify_peer;
 
     return &sc_handler->handler;
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
 }
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
