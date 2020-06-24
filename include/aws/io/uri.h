@@ -121,6 +121,21 @@ AWS_IO_API uint16_t aws_uri_port(const struct aws_uri *uri);
 AWS_IO_API const struct aws_byte_cursor *aws_uri_path_and_query(const struct aws_uri *uri);
 
 /**
+ * For iterating over the params in the uri query string.
+ * `param` is an in/out argument used to track progress, it MUST be zeroed out to start.
+ * If true is returned, `param` contains the value of the next param.
+ * If false is returned, there are no further params.
+ *
+ * Edge cases:
+ * 1) Entries without '=' sign are treated as having a key and no value.
+ *    Example: First param in query string "a&b=c" has key="a" value=""
+ *
+ * 2) Blank entries are skipped.
+ *    Example: The only param in query string "&&a=b" is key="a" value="b"
+ */
+AWS_IO_API bool aws_uri_query_string_next_param(const struct aws_uri *uri, struct aws_uri_param *param);
+
+/**
  * Parses query string and stores the parameters in 'out_params'. Returns AWS_OP_SUCCESS on success and
  * AWS_OP_ERR on failure. The user is responsible for initializing out_params with item size of struct aws_query_param.
  * The user is also responsible for cleaning up out_params when finished.
@@ -134,9 +149,19 @@ AWS_IO_API int aws_uri_query_string_params(const struct aws_uri *uri, struct aws
 AWS_IO_API int aws_byte_buf_append_encoding_uri_path(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor);
 
 /**
- * Writes the uri query param encoding (passthrough alnum + '-' '_' '~' '.') of a cursor to a buffer
+ * Writes the uri query param encoding (passthrough alnum + '-' '_' '~' '.') of a UTF-8 cursor to a buffer
+ * For example, reading "a b_c" would write "a%20b_c".
  */
 AWS_IO_API int aws_byte_buf_append_encoding_uri_param(
+    struct aws_byte_buf *buffer,
+    const struct aws_byte_cursor *cursor);
+
+/**
+ * Writes the uri decoding of a UTF-8 cursor to a buffer,
+ * replacing %xx escapes by their single byte equivalent.
+ * For example, reading "a%20b_c" would write "a b_c".
+ */
+AWS_IO_API int aws_byte_buf_append_decoding_uri(
     struct aws_byte_buf *buffer,
     const struct aws_byte_cursor *cursor);
 

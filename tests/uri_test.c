@@ -299,7 +299,7 @@ AWS_TEST_CASE(uri_root_only_parse, s_test_uri_root_only_parse);
 static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     const char *str_uri = "https://www.test.com:8443/path/to/"
-                          "resource?test1=value1&testkeyonly&test%20space=value%20space&test2=value2&test2=value3";
+                          "resource?test1=value1&testkeyonly&&test%20space=value%20space&test2=value2&test2=value3";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
     struct aws_uri uri;
@@ -322,7 +322,6 @@ static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
     expected_key = aws_byte_cursor_from_c_str("testkeyonly");
 
     ASSERT_BIN_ARRAYS_EQUALS(expected_key.ptr, expected_key.len, params[1].key.ptr, params[1].key.len);
-    ASSERT_NULL(params[1].value.ptr);
     ASSERT_UINT_EQUALS(0u, params[1].value.len);
 
     expected_key = aws_byte_cursor_from_c_str("test%20space");
@@ -344,6 +343,16 @@ static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
     ASSERT_BIN_ARRAYS_EQUALS(expected_value.ptr, expected_value.len, params[4].value.ptr, params[4].value.len);
 
     aws_uri_clean_up(&uri);
+
+    /* Test empty query string */
+    str_uri = "https://www.test.com:8443/path/to/resource";
+    uri_csr = aws_byte_cursor_from_c_str(str_uri);
+    ASSERT_SUCCESS(aws_uri_init_parse(&uri, allocator, &uri_csr));
+    aws_array_list_clear(&params_list);
+    ASSERT_SUCCESS(aws_uri_query_string_params(&uri, &params_list));
+    ASSERT_UINT_EQUALS(0, aws_array_list_length(&params_list));
+    aws_uri_clean_up(&uri);
+
     return AWS_OP_SUCCESS;
 }
 
@@ -547,7 +556,7 @@ static int s_test_uri_encode_param_case(
     const char *input,
     const char *expected_output) {
     struct aws_byte_buf encoding;
-    ASSERT_SUCCESS(aws_byte_buf_init(&encoding, allocator, 100));
+    ASSERT_SUCCESS(aws_byte_buf_init(&encoding, allocator, 10));
 
     struct aws_byte_cursor path_cursor = aws_byte_cursor_from_c_str(input);
     ASSERT_SUCCESS(aws_byte_buf_append_encoding_uri_param(&encoding, &path_cursor));
@@ -580,3 +589,101 @@ static int s_test_uri_encode_query(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(test_uri_encode_query, s_test_uri_encode_query);
+
+static int s_test_uri_decode_ok(struct aws_allocator *allocator, const char *input, const char *expected_output) {
+    struct aws_byte_buf decoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&decoding, allocator, 10));
+
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_c_str(input);
+    ASSERT_SUCCESS(aws_byte_buf_append_decoding_uri(&decoding, &input_cursor));
+
+    ASSERT_BIN_ARRAYS_EQUALS(expected_output, strlen(expected_output), decoding.buffer, decoding.len);
+
+    aws_byte_buf_clean_up(&decoding);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_uri_decode_err(struct aws_allocator *allocator, const char *input) {
+    struct aws_byte_buf decoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&decoding, allocator, 10));
+
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_c_str(input);
+    ASSERT_ERROR(AWS_ERROR_MALFORMED_INPUT_STRING, aws_byte_buf_append_decoding_uri(&decoding, &input_cursor));
+
+    aws_byte_buf_clean_up(&decoding);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_uri_roundtrip(struct aws_allocator *allocator, const char *input) {
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_c_str(input);
+
+    struct aws_byte_buf encoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&encoding, allocator, 10));
+
+    struct aws_byte_buf decoding;
+    ASSERT_SUCCESS(aws_byte_buf_init(&decoding, allocator, 10));
+
+    /* test param roundtrip encode/decode */
+    ASSERT_SUCCESS(aws_byte_buf_append_encoding_uri_param(&encoding, &input_cursor));
+
+    struct aws_byte_cursor encoding_cursor = aws_byte_cursor_from_buf(&encoding);
+    ASSERT_SUCCESS(aws_byte_buf_append_decoding_uri(&decoding, &encoding_cursor));
+
+    ASSERT_BIN_ARRAYS_EQUALS(input, strlen(input), decoding.buffer, decoding.len);
+
+    /* test path roundtrip encode/decode */
+    aws_byte_buf_reset(&encoding, false);
+    aws_byte_buf_reset(&decoding, false);
+
+    ASSERT_SUCCESS(aws_byte_buf_append_encoding_uri_path(&encoding, &input_cursor));
+
+    encoding_cursor = aws_byte_cursor_from_buf(&encoding);
+    ASSERT_SUCCESS(aws_byte_buf_append_decoding_uri(&decoding, &encoding_cursor));
+
+    ASSERT_BIN_ARRAYS_EQUALS(input, strlen(input), decoding.buffer, decoding.len);
+
+    aws_byte_buf_clean_up(&encoding);
+    aws_byte_buf_clean_up(&decoding);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_uri_decode(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* test against expected */
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "", ""));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "abc123", "abc123"));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "%20", " "));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "%E1%88%B4", "ሴ"));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "%e1%88%b4", "ሴ"));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "%2520", "%20"));
+    ASSERT_SUCCESS(s_test_uri_decode_ok(allocator, "ሴ", "ሴ")); /* odd input should just pass through */
+    ASSERT_SUCCESS(s_test_uri_decode_ok(
+        allocator,
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", /* long enough to resize output buffer */
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"));
+
+    /* these should fail */
+    ASSERT_SUCCESS(s_test_uri_decode_err(allocator, "%"));
+    ASSERT_SUCCESS(s_test_uri_decode_err(allocator, "%2"));
+    ASSERT_SUCCESS(s_test_uri_decode_err(allocator, "%%20"));
+    ASSERT_SUCCESS(s_test_uri_decode_err(allocator, "%fg"));
+    ASSERT_SUCCESS(s_test_uri_decode_err(allocator, "%gf"));
+
+    /* Test roundtrip encoding and decoding. Results should match original input */
+    ASSERT_SUCCESS(s_test_uri_roundtrip(allocator, ""));
+    ASSERT_SUCCESS(s_test_uri_roundtrip(allocator, "abc123"));
+    ASSERT_SUCCESS(s_test_uri_roundtrip(allocator, "a + b"));
+    ASSERT_SUCCESS(s_test_uri_roundtrip(allocator, "ሴ"));
+
+    /* do roundtrip test against every possible value (except 0 because helper functions use c-strings) */
+    uint8_t every_value[256];
+    for (size_t i = 0; i < 255; ++i) {
+        every_value[i] = (uint8_t)(i + 1);
+    }
+    every_value[255] = 0;
+    ASSERT_SUCCESS(s_test_uri_roundtrip(allocator, (const char *)every_value));
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_uri_decode, s_test_uri_decode);
