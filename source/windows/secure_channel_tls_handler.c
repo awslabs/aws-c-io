@@ -1462,11 +1462,15 @@ static int s_handler_shutdown(
             };
 
             struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+            char server_name_cstr[256];
+            AWS_ZERO_ARRAY(server_name_cstr);
+            AWS_ASSERT(server_name.len < 256);
+            memcpy(server_name_cstr, server_name.buffer, server_name.len);
             /* this acutally gives us an Alert record to send. */
             status = InitializeSecurityContextA(
                 &sc_handler->creds,
                 &sc_handler->sec_handle,
-                (SEC_CHAR *)server_name.buffer,
+                (SEC_CHAR *)server_name_cstr,
                 sc_handler->ctx_req,
                 0,
                 0,
