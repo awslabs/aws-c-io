@@ -828,7 +828,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     char server_name_cstr[256];
     AWS_ZERO_ARRAY(server_name_cstr);
-    AWS_ASSERT(sc_handler->server_name.len < 256);
+    AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
     status = InitializeSecurityContextA(
@@ -1464,7 +1464,7 @@ static int s_handler_shutdown(
             struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
             char server_name_cstr[256];
             AWS_ZERO_ARRAY(server_name_cstr);
-            AWS_ASSERT(server_name.len < 256);
+            AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
             memcpy(server_name_cstr, server_name.buffer, server_name.len);
             /* this acutally gives us an Alert record to send. */
             status = InitializeSecurityContextA(
