@@ -1,8 +1,11 @@
 # VCC Proof Signoff
 
 Verification tool: VCC (code-level proof)
-Proofs: https://github.com/nchong-at-aws/vcc-proofs-of-cio/
+
+Proofs: tests/vcc/
+
 Implementation: Linux event loop (`source/linux/epoll_event_loop.c`)
+
 Specification / Properties (`preamble.h`):
   - *Memory safety*: the implementation only accesses valid memory.
   - *Thread safety*: threads only update objects that they own.

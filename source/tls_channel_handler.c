@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/channel.h>
@@ -273,6 +263,12 @@ int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const
 
 void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer) {
     options->verify_peer = verify_peer;
+}
+
+void aws_tls_ctx_options_set_minimum_tls_version(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_versions minimum_tls_version) {
+    options->minimum_tls_version = minimum_tls_version;
 }
 
 int aws_tls_ctx_options_override_default_trust_store_from_path(

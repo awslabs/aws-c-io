@@ -15,7 +15,7 @@ jobs:
 
     - name: Check
       run: |
-        git diff --quiet 9276b7251 source/linux/epoll_event_loop.c
+        git diff --quiet 84bfb96d0 source/linux/epoll_event_loop.c
 
     # No further steps if successful
 

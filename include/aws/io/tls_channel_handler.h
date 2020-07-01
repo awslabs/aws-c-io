@@ -1,18 +1,8 @@
 #ifndef AWS_IO_TLS_CHANNEL_HANDLER_H
 #define AWS_IO_TLS_CHANNEL_HANDLER_H
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/byte_buf.h>
 
@@ -345,6 +335,13 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
  * set verify_peer to true.
  */
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
+
+/**
+ * Sets the minimum TLS version to allow.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_minimum_tls_version(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_versions minimum_tls_version);
 
 /**
  * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
