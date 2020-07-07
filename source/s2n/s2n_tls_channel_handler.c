@@ -486,8 +486,8 @@ static int s_s2n_handler_process_read_message(
 
     while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
 
-        struct aws_io_message *outgoing_read_message =
-            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
+            slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             return AWS_OP_ERR;
         }

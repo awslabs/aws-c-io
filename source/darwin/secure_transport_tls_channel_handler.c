@@ -610,8 +610,8 @@ static int s_process_read_message(
     OSStatus status = noErr;
     while (processed < downstream_window && status == noErr) {
 
-        struct aws_io_message *outgoing_read_message =
-            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
+            slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             return AWS_OP_ERR;
         }

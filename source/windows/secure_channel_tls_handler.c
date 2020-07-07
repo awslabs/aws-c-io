@@ -1105,7 +1105,9 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                 return AWS_OP_ERR;
             }
 
-            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            if (sc_handler->slot->adj_right) {
+                downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            }
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window is %zu", (void *)handler, downstream_window);
         } else {
             if (sc_handler->on_data_read) {
