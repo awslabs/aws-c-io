@@ -417,7 +417,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         .pBuffers = input_bufs,
     };
 
-#ifdef SECBUFFER_APPLICATION_PROTOCOLS
+#if !defined(AWS_SUPPORT_WIN7) && defined(SECBUFFER_APPLICATION_PROTOCOLS)
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
