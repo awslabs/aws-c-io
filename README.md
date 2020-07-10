@@ -668,6 +668,7 @@ notifications.
         AWS_SOCKET_IPV4,
         AWS_SOCKET_IPV6,
         AWS_SOCKET_LOCAL,
+        AWS_SOCKET_VSOCK,
     } aws_socket_domain;
 
 `AWS_SOCKET_IPV4` means an IPv4 address will be used.
@@ -681,6 +682,7 @@ notifications.
         AWS_SOCKET_DGRAM
     } aws_socket_type;
 
+`AWS_SOCKET_VSOCK` means a CID address will be used. Note: VSOCK is currently only available on Linux with an appropriate VSOCK kernel driver installed. `-DUSE_VSOCK` needs to be passed during compilation to enable VSOCK support.
 
 `AWS_SOCKET_STREAM` is TCP or a connection oriented socket.
 
@@ -709,7 +711,7 @@ with it.
         char port[10];
     };
 
-`address` can be either an IPv4 or IPv6 address. This can be used for UDP or TCP.
+`address` can be either an IPv4, IPv6 or VSOCK CID address. This can be used for UDP or TCP.
 `socket_name` is only used in LOCAL mode.
 `port` can be used for TCP or UDP.
 
