@@ -496,7 +496,13 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         0,                   /* CompletionKey */
         1);                  /* NumberOfConcurrentThreads */
 
-    if (!success) {
+    /*
+     * Some handles, notably named pipes, don't like to be associated more than
+     * once with the same I/O completion port. Therefore, it's ok if this call
+     * fails as long as there's already a bound iocp_handle.
+     * This will result in a last error of ERROR_INVALID_PARAMETER.
+     */
+    if (!success && impl->iocp_handle == INVALID_HANDLE_VALUE) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d",
