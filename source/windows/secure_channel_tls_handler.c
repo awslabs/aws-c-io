@@ -417,7 +417,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
         .pBuffers = input_bufs,
     };
 
-#if !defined(AWS_SUPPORT_WIN7) && defined(SECBUFFER_APPLICATION_PROTOCOLS)
+#ifdef SECBUFFER_APPLICATION_PROTOCOLS
     if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
@@ -634,7 +634,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
            grab the negotiated protocol out of the session.
         */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
@@ -919,7 +919,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         s_message_overhead(handler);
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
