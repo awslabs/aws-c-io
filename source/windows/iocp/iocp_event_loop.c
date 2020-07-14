@@ -490,19 +490,27 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         "id=%p: subscribing to events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-    bool success = CreateIoCompletionPort(
+    /* iocp_handle should be the event loop's handle if this succeeds */
+    const HANDLE iocp_handle = CreateIoCompletionPort(
         handle->data.handle, /* FileHandle */
         impl->iocp_handle,   /* ExistingCompletionPort */
         0,                   /* CompletionKey */
         1);                  /* NumberOfConcurrentThreads */
 
     /*
-     * Some handles, notably named pipes, don't like to be associated more than
-     * once with the same I/O completion port. Therefore, it's ok if this call
-     * fails as long as there's already a bound iocp_handle.
-     * This will result in a last error of ERROR_INVALID_PARAMETER.
+     * When associating named pipes, it is possible to open the same pipe in the same
+     * process for read and write, causing multiple attempts to associate. This will
+     * return ERROR_INVALID_PARAMETER from GetLastError on the second association,
+     * but the prior association will continue. Detecting this before attempting to
+     * associate requires the DDK API.
      */
-    if (!success && impl->iocp_handle == INVALID_HANDLE_VALUE) {
+    const bool already_associated =
+        GetLastError() == ERROR_INVALID_PARAMETER &&
+        /* Both handles should be valid prior to the above call. If they are,
+         * and we got ERROR_INVALID_PARAMETER, the file handle already has an IOCP association */
+        handle->data.handle != INVALID_HANDLE_VALUE &&
+        impl->iocp_handle != INVALID_HANDLE_VALUE;
+    if (!already_associated && iocp_handle != impl->iocp_handle) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d",
