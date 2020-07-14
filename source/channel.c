@@ -132,11 +132,11 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL,
                 "id=%p: no message pool is currently stored in the event-loop "
-                "local storage, adding %p with max message size %llu, "
+                "local storage, adding %p with max message size %zu, "
                 "message count 4, with 4 small blocks of 128 bytes.",
                 (void *)setup_args->channel,
                 (void *)message_pool,
-                (unsigned long long)g_aws_channel_max_fragment_size);
+                g_aws_channel_max_fragment_size);
 
             struct aws_message_pool_creation_args creation_args = {
                 .application_data_msg_data_size = g_aws_channel_max_fragment_size,
@@ -427,12 +427,12 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
         message->owning_channel = channel;
         AWS_LOGF_TRACE(
             AWS_LS_IO_CHANNEL,
-            "id=%p: acquired message %p of length %llu from pool %p. Requested size was %llu",
+            "id=%p: acquired message %p of capacity %zu from pool %p. Requested size was %zu",
             (void *)channel,
             (void *)message,
-            (unsigned long long)message->message_data.len,
+            message->message_data.capacity,
             (void *)channel->msg_pool,
-            (unsigned long long)size_hint);
+            size_hint);
     }
 
     return message;
@@ -749,10 +749,10 @@ int aws_channel_slot_send_message(
         if (!slot->channel->read_back_pressure_enabled || slot->adj_right->window_size >= message->message_data.len) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_CHANNEL,
-                "id=%p: sending read message of size %llu, "
+                "id=%p: sending read message of size %zu, "
                 "from slot %p to slot %p with handler %p.",
                 (void *)slot->channel,
-                (unsigned long long)message->message_data.len,
+                message->message_data.len,
                 (void *)slot,
                 (void *)slot->adj_right,
                 (void *)slot->adj_right->handler);
@@ -761,11 +761,11 @@ int aws_channel_slot_send_message(
         }
         AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL,
-            "id=%p: sending message of size %llu, "
+            "id=%p: sending message of size %zu, "
             "from slot %p to slot %p with handler %p, but this would exceed the channel's "
             "read window, this is always a programming error.",
             (void *)slot->channel,
-            (unsigned long long)message->message_data.len,
+            message->message_data.len,
             (void *)slot,
             (void *)slot->adj_right,
             (void *)slot->adj_right->handler);
@@ -776,10 +776,10 @@ int aws_channel_slot_send_message(
     AWS_ASSERT(slot->adj_left->handler);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
-        "id=%p: sending write message of size %llu, "
+        "id=%p: sending write message of size %zu, "
         "from slot %p to slot %p with handler %p.",
         (void *)slot->channel,
-        (unsigned long long)message->message_data.len,
+        message->message_data.len,
         (void *)slot,
         (void *)slot->adj_left,
         (void *)slot->adj_left->handler);
