@@ -498,8 +498,10 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         1);                  /* NumberOfConcurrentThreads */
 
     /* iocp_handle should be the event loop's handle if this succeeded */
-    bool iocp_associated = iocp_handle == impl->iocp_handle
+    bool iocp_associated =
+        iocp_handle == impl->iocp_handle
 
+/* clang-format off */
 #if defined(AWS_SUPPORT_WIN7)
     /*
      * When associating named pipes, it is possible to open the same pipe in the same
@@ -515,6 +517,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         handle->data.handle != INVALID_HANDLE_VALUE && impl->iocp_handle != INVALID_HANDLE_VALUE;
     iocp_associated |= already_associated;
 #endif
+    /* clang-format on */
 
     if (!iocp_associated) {
         AWS_LOGF_ERROR(
