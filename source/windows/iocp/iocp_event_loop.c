@@ -508,8 +508,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         GetLastError() == ERROR_INVALID_PARAMETER &&
         /* Both handles should be valid prior to the above call. If they are,
          * and we got ERROR_INVALID_PARAMETER, the file handle already has an IOCP association */
-        handle->data.handle != INVALID_HANDLE_VALUE &&
-        impl->iocp_handle != INVALID_HANDLE_VALUE;
+        handle->data.handle != INVALID_HANDLE_VALUE && impl->iocp_handle != INVALID_HANDLE_VALUE;
     if (!already_associated && iocp_handle != impl->iocp_handle) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
