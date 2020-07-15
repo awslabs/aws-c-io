@@ -321,7 +321,10 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
     aws_on_drive_tls_negotiation(&secure_transport_handler->shared_state);
 
+    AWS_TRACE_EVENT_BEGIN("aws-c-io", "SSLHandshake");
     OSStatus status = SSLHandshake(secure_transport_handler->ctx);
+    AWS_TRACE_EVENT_END("aws-c-io", "SSLHandshake");
+
     /* yay!!!! negotiation finished successfully. */
     if (status == noErr) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
@@ -558,7 +561,9 @@ static int s_handle_shutdown(
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
+            AWS_TRACE_EVENT_BEGIN("aws-c-io","SSLClose");
             SSLClose(secure_transport_handler->ctx);
+            AWS_TRACE_EVENT_END("aws-c-io","SSLClose");
         }
     } else {
         AWS_LOGF_DEBUG(
@@ -617,11 +622,13 @@ static int s_process_read_message(
         }
 
         size_t read = 0;
+        AWS_TRACE_EVENT_BEGIN("aws-c-io","SSLRead");
         status = SSLRead(
             secure_transport_handler->ctx,
             outgoing_read_message->message_data.buffer,
             outgoing_read_message->message_data.capacity,
             &read);
+        AWS_TRACE_EVENT_END("aws-c-io","SSLRead");
 
         AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read %llu", (void *)handler, (unsigned long long)read);
         if (read <= 0) {

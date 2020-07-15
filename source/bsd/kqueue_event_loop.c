@@ -836,6 +836,8 @@ static void s_event_thread_main(void *user_data) {
         int num_kevents = kevent(
             impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
+        AWS_TRACE_EVENT_BEGIN("aws-c-io", "tick");
+
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, num_kevents);
         if (num_kevents == -1) {
@@ -849,8 +851,9 @@ static void s_event_thread_main(void *user_data) {
              * It's fine to do this even if nothing has changed, it just costs a mutex lock/unlock. */
             should_process_cross_thread_data = true;
         }
-
+        AWS_TRACE_EVENT_BEGIN("aws-c-io", "events");
         for (int i = 0; i < num_kevents; ++i) {
+
             struct kevent *kevent = &kevents[i];
 
             /* Was this event to signal that cross_thread_data has changed? */
@@ -878,7 +881,7 @@ static void s_event_thread_main(void *user_data) {
             }
             handle_data->events_this_loop |= event_flags;
         }
-
+        
         /* Invoke each handle's event callback (unless the handle has been unsubscribed) */
         for (int i = 0; i < num_io_handle_events; ++i) {
             struct handle_data *handle_data = io_handle_events[i];
@@ -895,10 +898,14 @@ static void s_event_thread_main(void *user_data) {
 
             handle_data->events_this_loop = 0;
         }
+        
+        AWS_TRACE_EVENT_END("aws-c-io", "events");
 
         /* Process cross_thread_data */
         if (should_process_cross_thread_data) {
+            AWS_TRACE_EVENT_BEGIN("aws-c-io", "schedule tasks");
             s_process_cross_thread_data(event_loop);
+            AWS_TRACE_EVENT_END("aws-c-io", "schedule tasks");
         }
 
         /* Run scheduled tasks */
@@ -906,7 +913,10 @@ static void s_event_thread_main(void *user_data) {
         event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
+
+        AWS_TRACE_EVENT_BEGIN("aws-c-io", "run tasks");
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
+        AWS_TRACE_EVENT_END("aws-c-io", "run tasks");
 
         /* Set timeout for next kevent() call.
          * If clock fails, or scheduler has no tasks, use default timeout */
@@ -952,6 +962,7 @@ static void s_event_thread_main(void *user_data) {
             timeout.tv_sec = (time_t)(timeout_sec);
             timeout.tv_nsec = (long)(timeout_remainder_ns);
         }
+        AWS_TRACE_EVENT_END("aws-c-io", "tick");
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);

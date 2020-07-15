@@ -1352,8 +1352,10 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
             (unsigned long long)write_request->original_buffer_len,
             (unsigned long long)write_request->cursor_cpy.len);
 
+        AWS_TRACE_EVENT_BEGIN("aws-c-io", "write");
         ssize_t written =
             send(socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL);
+        AWS_TRACE_EVENT_END("aws-c-io", "write");
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
@@ -1602,7 +1604,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
+   AWS_TRACE_EVENT_BEGIN("aws-c-io", "socket_read");
     ssize_t read_val = read(socket->io_handle.data.fd, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
+   AWS_TRACE_EVENT_END("aws-c-io", "socket_read");
+
+
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET, "id=%p fd=%d: read of %d", (void *)socket, socket->io_handle.data.fd, (int)read_val);
 

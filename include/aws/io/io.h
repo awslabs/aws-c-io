@@ -9,6 +9,9 @@
 #include <aws/common/common.h>
 #include <aws/common/linked_list.h>
 #include <aws/io/exports.h>
+/* DEBUG */
+#include <aws/common/trace_event.h>
+/* DEBUG */
 
 #define AWS_C_IO_PACKAGE_ID 1
 
