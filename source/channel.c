@@ -1024,28 +1024,39 @@ int aws_channel_handler_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-
+        
+   
     AWS_ASSERT(handler->vtable && handler->vtable->process_read_message);
-    return handler->vtable->process_read_message(handler, slot, message);
+    AWS_TRACE_EVENT_BEGIN("aws-c-io", "channel_handler_process_read_message");
+    int result = handler->vtable->process_read_message(handler, slot, message);
+    AWS_TRACE_EVENT_END("aws-c-io", "channel_handler_process_read_message");
+    return result;
 }
 
 int aws_channel_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-
+    
+    
     AWS_ASSERT(handler->vtable && handler->vtable->process_write_message);
-    return handler->vtable->process_write_message(handler, slot, message);
+    AWS_TRACE_EVENT_BEGIN("aws-c-io", "channel_handler_process_write_message");
+    int result = handler->vtable->process_write_message(handler, slot, message);
+    AWS_TRACE_EVENT_END("aws-c-io", "channel_handler_process_write_message");
+    return result;
 }
 
 int aws_channel_handler_increment_read_window(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-
     AWS_ASSERT(handler->vtable && handler->vtable->increment_read_window);
+    AWS_TRACE_EVENT_BEGIN("aws-c-io", "channel_handler_increment_read_window");
 
-    return handler->vtable->increment_read_window(handler, slot, size);
+    int result = handler->vtable->increment_read_window(handler, slot, size);
+
+    AWS_TRACE_EVENT_END("aws-c-io", "channel_handler_increment_read_window");
+    return result;
 }
 
 int aws_channel_handler_shutdown(
@@ -1056,7 +1067,10 @@ int aws_channel_handler_shutdown(
     bool free_scarce_resources_immediately) {
 
     AWS_ASSERT(handler->vtable && handler->vtable->shutdown);
-    return handler->vtable->shutdown(handler, slot, dir, error_code, free_scarce_resources_immediately);
+    AWS_TRACE_EVENT_BEGIN("aws-c-io", "channel_handler_shutdown");
+    int result = handler->vtable->shutdown(handler, slot, dir, error_code, free_scarce_resources_immediately);
+    AWS_TRACE_EVENT_END("aws-c-io", "channel_handler_shutdown");
+    return result;
 }
 
 size_t aws_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
