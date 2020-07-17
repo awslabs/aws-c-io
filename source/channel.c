@@ -640,7 +640,7 @@ static void s_update_channel_slot_message_overheads(struct aws_channel *channel)
 
 int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_channel_handler *handler) {
     slot->handler = handler;
-
+    slot->handler->slot = slot;
     s_update_channel_slot_message_overheads(slot->channel);
 
     return aws_channel_slot_increment_read_window(slot, slot->handler->vtable->initial_window_size(handler));
