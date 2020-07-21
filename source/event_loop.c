@@ -136,6 +136,8 @@ void aws_event_loop_group_clean_up_async(
     struct aws_thread_options thread_options;
     AWS_ZERO_STRUCT(thread_options);
 
+    thread_options.name = "Async";
+
     AWS_FATAL_ASSERT(
         aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, data, &thread_options) ==
         AWS_OP_SUCCESS);
