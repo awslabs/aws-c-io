@@ -353,7 +353,12 @@ static int s_run(struct aws_event_loop *event_loop) {
      * and it's ok to touch cross_thread_data without locking the mutex */
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
-    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, NULL);
+    //TODO: See if this works
+    //struct aws_thread_options options ;
+    //options.stack_size = 0;
+    //options.name = "S_Run";
+
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, NULL);//.&options);
     if (err) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
@@ -813,6 +818,8 @@ static void s_event_thread_main(void *user_data) {
         .tv_sec = DEFAULT_TIMEOUT_SEC,
         .tv_nsec = 0,
     };
+
+    //AWS_TRACE_EVENT_NAME_THREAD(aws_thread_name(&(impl->thread_created_on)));
 
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP,
