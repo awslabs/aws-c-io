@@ -364,11 +364,11 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
     //TODO: See if this works
-    //struct aws_thread_options options ;
-    //options.stack_size = 0;
-    //options.name = "S_Run";
+    struct aws_thread_options options ;
+    options.stack_size = 0;
+    options.name = "S_Run";
 
-    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, NULL);//.&options);
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, &options);//.&options);
     if (err) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
