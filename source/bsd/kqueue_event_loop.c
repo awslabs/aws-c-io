@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/event_loop.h>
@@ -364,11 +354,19 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->cross_thread_data.state = EVENT_THREAD_STATE_RUNNING;
 
     //TODO: See if this works
+<<<<<<< HEAD
     struct aws_thread_options options ;
     options.stack_size = 0;
     options.name = "S_Run";
 
     int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, &options);//.&options);
+=======
+    //struct aws_thread_options options ;
+    //options.stack_size = 0;
+    //options.name = "S_Run";
+
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, (void *)event_loop, NULL);//.&options);
+>>>>>>> 6376b21507f69da32fb674d867c59fdc9ab4f6d0
     if (err) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;

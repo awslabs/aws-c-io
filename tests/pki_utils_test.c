@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/testing/aws_test_harness.h>
@@ -496,7 +486,7 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
-    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "./unittests.crt", &output_list));
+    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "unittests.crt", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;
@@ -587,7 +577,7 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
-    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "./unittests.key", &output_list));
+    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "unittests.key", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_byte_buf *cert_data = NULL;

@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/tls_channel_handler.h>
 
@@ -625,8 +615,8 @@ static int s_process_read_message(
     OSStatus status = noErr;
     while (processed < downstream_window && status == noErr) {
 
-        struct aws_io_message *outgoing_read_message =
-            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
+            slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             return AWS_OP_ERR;
         }
@@ -997,6 +987,18 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
     if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
+
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);

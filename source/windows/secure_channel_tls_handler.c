@@ -1,21 +1,12 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #define SECURITY_WIN32
 
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/encoding.h>
 #include <aws/common/math.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
@@ -643,7 +634,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
            grab the negotiated protocol out of the session.
         */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
@@ -837,7 +828,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     char server_name_cstr[256];
     AWS_ZERO_ARRAY(server_name_cstr);
-    AWS_ASSERT(sc_handler->server_name.len < 256);
+    AWS_FATAL_ASSERT(sc_handler->server_name.len < sizeof(server_name_cstr));
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
     status = InitializeSecurityContextA(
@@ -928,7 +919,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         s_message_overhead(handler);
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
@@ -1114,7 +1105,9 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                 return AWS_OP_ERR;
             }
 
-            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            if (sc_handler->slot->adj_right) {
+                downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            }
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window is %zu", (void *)handler, downstream_window);
         } else {
             if (sc_handler->on_data_read) {
@@ -1471,11 +1464,15 @@ static int s_handler_shutdown(
             };
 
             struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+            char server_name_cstr[256];
+            AWS_ZERO_ARRAY(server_name_cstr);
+            AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
+            memcpy(server_name_cstr, server_name.buffer, server_name.len);
             /* this acutally gives us an Alert record to send. */
             status = InitializeSecurityContextA(
                 &sc_handler->creds,
                 &sc_handler->sec_handle,
-                (SEC_CHAR *)server_name.buffer,
+                (SEC_CHAR *)server_name_cstr,
                 sc_handler->ctx_req,
                 0,
                 0,
@@ -1520,9 +1517,13 @@ static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum
     }
 }
 
-static void s_handler_destroy(struct aws_channel_handler *handler) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
-    struct secure_channel_handler *sc_handler = handler->impl;
+static void s_secure_channel_handler_destroy(
+    struct aws_allocator *allocator,
+    struct secure_channel_handler *sc_handler) {
+
+    if (sc_handler == NULL) {
+        return;
+    }
 
     if (sc_handler->protocol.buffer) {
         aws_byte_buf_clean_up(&sc_handler->protocol);
@@ -1546,7 +1547,14 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
 
     aws_tls_channel_handler_shared_clean_up(&sc_handler->shared_state);
 
-    aws_mem_release(handler->alloc, sc_handler);
+    aws_mem_release(allocator, sc_handler);
+}
+
+static void s_handler_destroy(struct aws_channel_handler *handler) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    s_secure_channel_handler_destroy(handler->alloc, sc_handler);
 }
 
 static void s_reset_statistics(struct aws_channel_handler *handler) {
@@ -1642,7 +1650,14 @@ static struct aws_channel_handler *s_tls_handler_new(
         NULL,
         &sc_handler->creds,
         &sc_handler->sspi_timestamp);
-    (void)status;
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
@@ -1652,14 +1667,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     } else if (options->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1671,8 +1684,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             aws_string_c_str(options->server_name));
         struct aws_byte_cursor server_name_crsr = aws_byte_cursor_from_string(options->server_name);
         if (aws_byte_buf_init_copy_from_cursor(&sc_handler->server_name, alloc, server_name_crsr)) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1694,6 +1706,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->verify_peer = sc_ctx->verify_peer;
 
     return &sc_handler->handler;
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
 }
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
@@ -1852,6 +1870,18 @@ struct aws_tls_ctx *s_ctx_new(
     } else if (options->certificate.len && options->private_key.len) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
+
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto clean_up;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto clean_up;
+        }
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor pk_cur = aws_byte_cursor_from_buf(&options->private_key);

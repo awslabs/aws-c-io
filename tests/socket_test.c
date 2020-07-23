@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/testing/aws_test_harness.h>
@@ -217,11 +207,11 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
     return is_root;
 }
 
-static int s_test_socket(
+static int s_test_socket_ex(
     struct aws_allocator *allocator,
     struct aws_socket_options *options,
+    struct aws_socket_endpoint *local,
     struct aws_socket_endpoint *endpoint) {
-
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -253,6 +243,9 @@ static int s_test_socket(
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
+    if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
+    }
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
     if (listener.options.type == AWS_SOCKET_STREAM) {
@@ -392,6 +385,14 @@ static int s_test_socket(
     return 0;
 }
 
+static int s_test_socket(
+    struct aws_allocator *allocator,
+    struct aws_socket_options *options,
+    struct aws_socket_endpoint *endpoint) {
+
+    return s_test_socket_ex(allocator, options, NULL, endpoint);
+}
+
 static int s_test_local_socket_communication(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -446,6 +447,22 @@ static int s_test_udp_socket_communication(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(udp_socket_communication, s_test_udp_socket_communication)
+
+static int s_test_udp_bind_connect_communication(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+
+    struct aws_socket_endpoint local = {.address = "127.0.0.1", .port = 4242};
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8126};
+
+    return s_test_socket_ex(allocator, &options, &local, &endpoint);
+}
+AWS_TEST_CASE(udp_bind_connect_communication, s_test_udp_bind_connect_communication)
 
 struct test_host_callback_data {
     struct aws_host_address a_address;

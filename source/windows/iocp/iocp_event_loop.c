@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/event_loop.h>
 
@@ -500,13 +490,35 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
         "id=%p: subscribing to events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-    bool success = CreateIoCompletionPort(
+
+    const HANDLE iocp_handle = CreateIoCompletionPort(
         handle->data.handle, /* FileHandle */
         impl->iocp_handle,   /* ExistingCompletionPort */
         0,                   /* CompletionKey */
         1);                  /* NumberOfConcurrentThreads */
 
-    if (!success) {
+    /* iocp_handle should be the event loop's handle if this succeeded */
+    bool iocp_associated = iocp_handle == impl->iocp_handle;
+
+/* clang-format off */
+#if defined(AWS_SUPPORT_WIN7)
+    /*
+     * When associating named pipes, it is possible to open the same pipe in the same
+     * process for read and write, causing multiple attempts to associate. This will
+     * return ERROR_INVALID_PARAMETER from GetLastError on the second association on Win7,
+     * but the prior association will continue. Detecting this before attempting to
+     * associate requires the DDK API.
+     */
+    const bool already_associated =
+        GetLastError() == ERROR_INVALID_PARAMETER &&
+        /* Both handles should be valid prior to the above call. If they are,
+         * and we got ERROR_INVALID_PARAMETER, the file handle already has an IOCP association */
+        handle->data.handle != INVALID_HANDLE_VALUE && impl->iocp_handle != INVALID_HANDLE_VALUE;
+    iocp_associated |= already_associated;
+#endif
+    /* clang-format on */
+
+    if (!iocp_associated) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d",

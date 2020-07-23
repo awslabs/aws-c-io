@@ -50,6 +50,7 @@ add_test_case(io_testing_channel)
 add_test_case(local_socket_communication)
 add_test_case(tcp_socket_communication)
 add_test_case(udp_socket_communication)
+add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
 
@@ -177,4 +178,4 @@ generate_test_driver(${TEST_BINARY_NAME})
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/resources ${CMAKE_CURRENT_BINARY_DIR})
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources $<TARGET_FILE_DIR:${TEST_BINARY_NAME}>)
