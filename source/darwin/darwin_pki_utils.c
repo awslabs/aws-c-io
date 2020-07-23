@@ -73,7 +73,12 @@ int aws_import_public_and_private_keys_to_identity(
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
     if (cert_status == errSecDuplicateItem) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: certificate has already been imported, loading from keychain.");
+        /* The text for this log is also in the README for each CRT and v2 IoT SDK.  If changed, please also change
+         * where it is referenced. */
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI,
+            "static: certificate has an existing certificate-key pair that was previously imported into the Keychain.  "
+            "Using key from Keychain instead of the one provided.");
         struct aws_array_list cert_chain_list;
 
         if (aws_array_list_init_dynamic(&cert_chain_list, alloc, 2, sizeof(struct aws_byte_buf))) {
