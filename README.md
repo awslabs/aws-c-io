@@ -166,8 +166,6 @@ Platform | Implementation
 Linux | Edge-Triggered Epoll
 BSD Variants and Apple Devices | KQueue
 Windows | IOCP (IO Completion Ports)
-Solaris | /dev/poll
-Default Fallback | Select
 
 Also, you can always implement your own as well.
 
