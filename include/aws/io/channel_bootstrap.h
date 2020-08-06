@@ -224,7 +224,6 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
 AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap);
 
 /**
- *
  * Decrements a client bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap);

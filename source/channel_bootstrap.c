@@ -121,6 +121,13 @@ struct client_connection_args {
     bool connection_chosen;
     bool setup_called;
     bool enable_read_back_pressure;
+
+    /*
+     * It is likely that all reference adjustments to the connection args take place in a single event loop
+     * thread and are thus thread-safe. I can imagine some complex future scenarios where that might not hold true
+     * and so it seems reasonable to switch now to a safe pattern.
+     *
+     */
     struct aws_atomic_var ref_count;
 };
 
