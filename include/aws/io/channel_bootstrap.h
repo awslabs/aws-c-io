@@ -219,9 +219,13 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     const struct aws_client_bootstrap_options *options);
 
 /**
- * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak. Note that this will not necessarily free the memory immediately if
- * there are channels or channel events outstanding.
+ * Increments a client bootstrap's ref count, allowing the caller to take a reference to it.
+ */
+AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap);
+
+/**
+ *
+ * Decrements a client bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap);
 

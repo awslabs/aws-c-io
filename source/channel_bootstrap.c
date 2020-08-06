@@ -4,10 +4,8 @@
  */
 #include <aws/io/channel_bootstrap.h>
 
-#include <aws/common/condition_variable.h>
-#include <aws/common/mutex.h>
+#include <aws/common/refcount.h>
 #include <aws/common/string.h>
-
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
@@ -23,10 +21,9 @@
 #    pragma warning(disable : 4221)
 #endif
 
-#define MAX_HOST_RESOLVER_ENTRIES 64
 #define DEFAULT_DNS_TTL 30
 
-void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
+static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
@@ -38,14 +35,13 @@ void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     }
 }
 
-void s_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
-    aws_atomic_fetch_add(&bootstrap->ref_count, 1);
+struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
+    AWS_REF_COUNT_ACQUIRE_IMPL(bootstrap, ref_count);
 }
 
-void s_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
-    if (aws_atomic_fetch_sub(&bootstrap->ref_count, 1) == 1) {
-        s_client_bootstrap_destroy_impl(bootstrap);
-    }
+void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
+    AWS_REF_COUNT_RELEASE_IMPL(bootstrap, ref_count, s_client_bootstrap_destroy_impl);
 }
 
 struct aws_client_bootstrap *aws_client_bootstrap_new(
@@ -98,15 +94,6 @@ int aws_client_bootstrap_set_alpn_callback(
     return AWS_OP_SUCCESS;
 }
 
-void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
-    if (!bootstrap) {
-        return;
-    }
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-    s_client_bootstrap_release(bootstrap);
-}
-
 struct client_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
@@ -134,33 +121,31 @@ struct client_connection_args {
     bool connection_chosen;
     bool setup_called;
     bool enable_read_back_pressure;
-    uint32_t ref_count;
+    struct aws_atomic_var ref_count;
 };
 
-void s_client_connection_args_acquire(struct client_connection_args *args) {
+static void s_client_connection_args_destroy(struct client_connection_args *args) {
     AWS_ASSERT(args);
-    if (args->ref_count++ == 0) {
-        s_client_bootstrap_acquire(args->bootstrap);
+
+    struct aws_allocator *allocator = args->bootstrap->allocator;
+    aws_client_bootstrap_release(args->bootstrap);
+    if (args->host_name) {
+        aws_string_destroy(args->host_name);
     }
+
+    if (args->channel_data.use_tls) {
+        aws_tls_connection_options_clean_up(&args->channel_data.tls_options);
+    }
+
+    aws_mem_release(allocator, args);
 }
 
-void s_client_connection_args_release(struct client_connection_args *args) {
-    AWS_ASSERT(args);
-    AWS_ASSERT(args->ref_count > 0);
+static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
+    AWS_REF_COUNT_ACQUIRE_IMPL(args, ref_count);
+}
 
-    if (--args->ref_count == 0) {
-        struct aws_allocator *allocator = args->bootstrap->allocator;
-        s_client_bootstrap_release(args->bootstrap);
-        if (args->host_name) {
-            aws_string_destroy(args->host_name);
-        }
-
-        if (args->channel_data.use_tls) {
-            aws_tls_connection_options_clean_up(&args->channel_data.tls_options);
-        }
-
-        aws_mem_release(allocator, args);
-    }
+static void s_client_connection_args_release(struct client_connection_args *args) {
+    AWS_REF_COUNT_RELEASE_IMPL(args, ref_count, s_client_connection_args_destroy);
 }
 
 static void s_connection_args_setup_callback(
@@ -712,9 +697,9 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         host_name,
         (int)port);
 
+    aws_atomic_init_int(&client_connection_args->ref_count, 1);
     client_connection_args->user_data = options->user_data;
-    client_connection_args->bootstrap = bootstrap;
-    s_client_connection_args_acquire(client_connection_args);
+    client_connection_args->bootstrap = aws_client_bootstrap_acquire(bootstrap);
     client_connection_args->creation_callback = options->creation_callback;
     client_connection_args->setup_callback = options->setup_callback;
     client_connection_args->shutdown_callback = options->shutdown_callback;
