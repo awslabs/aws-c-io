@@ -60,7 +60,7 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
             aws_byte_buf_append(&concatenated_dir, &drive_cursor);
             aws_byte_buf_append(&concatenated_dir, &path_cursor);
 
-            final_path = aws_string_new_from_array(allocator, concatenated_dir.buffer, concatenated_dir.len);
+            final_path = aws_string_new_from_buf(allocator, &concatenated_dir);
 
             aws_byte_buf_clean_up(&concatenated_dir);
             aws_string_destroy(homepath_env_var_value);

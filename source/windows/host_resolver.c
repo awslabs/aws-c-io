@@ -67,7 +67,7 @@ int aws_default_dns_resolve(
             goto clean_up;
         }
 
-        host_address.host = aws_string_new_from_array(allocator, aws_string_bytes(host_name), host_name->len);
+        host_address.host = aws_string_new_from_string(allocator, host_name);
         if (!host_address.host) {
             aws_string_destroy((void *)host_address.host);
             goto clean_up;
