@@ -4,7 +4,7 @@
  */
 #include <aws/io/channel_bootstrap.h>
 
-#include <aws/common/refcount.h>
+#include <aws/common/ref_count.h>
 #include <aws/common/string.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
@@ -36,12 +36,12 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
 }
 
 struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
-    AWS_REF_COUNT_ACQUIRE_IMPL(bootstrap, ref_count);
+    return aws_ref_count_acquire(&bootstrap->ref_count);
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-    AWS_REF_COUNT_RELEASE_IMPL(bootstrap, ref_count, s_client_bootstrap_destroy_impl);
+    aws_ref_count_release(&bootstrap->ref_count);
 }
 
 struct aws_client_bootstrap *aws_client_bootstrap_new(
@@ -66,7 +66,8 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = options->event_loop_group;
     bootstrap->on_protocol_negotiated = NULL;
-    aws_atomic_init_int(&bootstrap->ref_count, 1);
+    aws_ref_count_init(
+        &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_client_bootstrap_destroy_impl);
     bootstrap->host_resolver = options->host_resolver;
     bootstrap->on_shutdown_complete = options->on_shutdown_complete;
     bootstrap->user_data = options->user_data;
@@ -128,7 +129,7 @@ struct client_connection_args {
      * and so it seems reasonable to switch now to a safe pattern.
      *
      */
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
 };
 
 static void s_client_connection_args_destroy(struct client_connection_args *args) {
@@ -148,11 +149,11 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
 }
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
-    AWS_REF_COUNT_ACQUIRE_IMPL(args, ref_count);
+    return aws_ref_count_acquire(&args->ref_count);
 }
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
-    AWS_REF_COUNT_RELEASE_IMPL(args, ref_count, s_client_connection_args_destroy);
+    aws_ref_count_release(&args->ref_count);
 }
 
 static void s_connection_args_setup_callback(
@@ -704,7 +705,10 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         host_name,
         (int)port);
 
-    aws_atomic_init_int(&client_connection_args->ref_count, 1);
+    aws_ref_count_init(
+        &client_connection_args->ref_count,
+        client_connection_args,
+        (aws_on_zero_ref_count_callback *)s_client_connection_args_destroy);
     client_connection_args->user_data = options->user_data;
     client_connection_args->bootstrap = aws_client_bootstrap_acquire(bootstrap);
     client_connection_args->creation_callback = options->creation_callback;
@@ -815,14 +819,16 @@ void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
 
-void s_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap) {
-    aws_atomic_fetch_add(&bootstrap->ref_count, 1);
+struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap) {
+    return aws_ref_count_acquire(&bootstrap->ref_count);
 }
 
-void s_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
-    if (aws_atomic_fetch_sub(&bootstrap->ref_count, 1) == 1) {
-        s_server_bootstrap_destroy_impl(bootstrap);
-    }
+void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
+    /* if destroy is being called, the user intends to not use the bootstrap anymore
+     * so we clean up the thread local state while the event loop thread is
+     * still alive */
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing server bootstrap reference", (void *)bootstrap);
+    aws_ref_count_release(&bootstrap->ref_count);
 }
 
 struct aws_server_bootstrap *aws_server_bootstrap_new(
@@ -845,17 +851,10 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
     bootstrap->allocator = allocator;
     bootstrap->event_loop_group = el_group;
     bootstrap->on_protocol_negotiated = NULL;
-    aws_atomic_init_int(&bootstrap->ref_count, 1);
+    aws_ref_count_init(
+        &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_server_bootstrap_destroy_impl);
 
     return bootstrap;
-}
-
-void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
-    /* if destroy is being called, the user intends to not use the bootstrap anymore
-     * so we clean up the thread local state while the event loop thread is
-     * still alive */
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-    s_server_bootstrap_release(bootstrap);
 }
 
 struct server_connection_args {
@@ -874,8 +873,27 @@ struct server_connection_args {
     void *user_data;
     bool use_tls;
     bool enable_read_back_pressure;
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
 };
+
+static void s_server_connection_args_destroy(struct server_connection_args *args) {
+    if (args == NULL) {
+        return;
+    }
+
+    /* fire the destroy callback */
+    if (args->destroy_callback) {
+        args->destroy_callback(args->bootstrap, args->user_data);
+    }
+
+    aws_server_bootstrap_release(args->bootstrap);
+    if (args->use_tls) {
+        aws_tls_connection_options_clean_up(&args->tls_options);
+    }
+
+    struct aws_allocator *allocator = args->bootstrap->allocator;
+    aws_mem_release(allocator, args);
+}
 
 struct server_channel_data {
     struct aws_channel *channel;
@@ -884,29 +902,12 @@ struct server_channel_data {
     bool incoming_called;
 };
 
-void s_server_connection_args_acquire(struct server_connection_args *args) {
-    AWS_ASSERT(args);
-    if (aws_atomic_fetch_add(&args->ref_count, 1) == 0) {
-        s_server_bootstrap_acquire(args->bootstrap);
-    }
+static struct server_connection_args *s_server_connection_args_acquire(struct server_connection_args *args) {
+    return aws_ref_count_acquire(&args->ref_count);
 }
 
-void s_server_connection_args_release(struct server_connection_args *args) {
-    AWS_ASSERT(args);
-
-    if (aws_atomic_fetch_sub(&args->ref_count, 1) == 1) {
-        /* fire the destroy callback */
-        if (args->destroy_callback) {
-            args->destroy_callback(args->bootstrap, args->user_data);
-        }
-        struct aws_allocator *allocator = args->bootstrap->allocator;
-        s_server_bootstrap_release(args->bootstrap);
-        if (args->use_tls) {
-            aws_tls_connection_options_clean_up(&args->tls_options);
-        }
-
-        aws_mem_release(allocator, args);
-    }
+static void s_server_connection_args_release(struct server_connection_args *args) {
+    aws_ref_count_release(&args->ref_count);
 }
 
 static void s_server_incoming_callback(
@@ -1266,10 +1267,12 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
         bootstrap_options->host_name,
         (int)bootstrap_options->port);
 
+    aws_ref_count_init(
+        &server_connection_args->ref_count,
+        server_connection_args,
+        (aws_on_zero_ref_count_callback *)s_server_connection_args_destroy);
     server_connection_args->user_data = bootstrap_options->user_data;
-    server_connection_args->bootstrap = bootstrap_options->bootstrap;
-    aws_atomic_init_int(&server_connection_args->ref_count, 0);
-    s_server_connection_args_acquire(server_connection_args);
+    server_connection_args->bootstrap = aws_server_bootstrap_acquire(bootstrap_options->bootstrap);
     server_connection_args->shutdown_callback = bootstrap_options->shutdown_callback;
     server_connection_args->incoming_callback = bootstrap_options->incoming_callback;
     server_connection_args->destroy_callback = bootstrap_options->destroy_callback;
