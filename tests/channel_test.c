@@ -645,8 +645,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 1));
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
 
@@ -734,12 +733,11 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 8, &event_loop_group));
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 8, event_loop_group);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &event_loop_group,
-        .host_resolver = &resolver,
+        .event_loop_group = event_loop_group,
+        .host_resolver = resolver,
         .host_resolution_config = &mock_resolver_config,
     };
 
@@ -790,9 +788,9 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     /* clean up */
     aws_client_bootstrap_release(bootstrap);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
-    aws_event_loop_group_clean_up(&event_loop_group);
+    aws_event_loop_group_release(event_loop_group);
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);
         aws_host_address_clean_up(resolved_s3_address);

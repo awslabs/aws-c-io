@@ -103,8 +103,8 @@ static int s_tls_opt_tester_clean_up(struct tls_opt_tester *tester) {
 struct tls_common_tester {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    struct aws_event_loop_group el_group;
-    struct aws_host_resolver resolver;
+    struct aws_event_loop_group *el_group;
+    struct aws_host_resolver *resolver;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
 };
@@ -136,8 +136,8 @@ static int s_tls_test_arg_init(
 
 static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&tester->el_group, allocator, 0));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&tester->resolver, allocator, 1, &tester->el_group));
+    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -150,8 +150,8 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
 
 static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
     aws_mutex_clean_up(&tester->mutex);
-    aws_host_resolver_clean_up(&tester->resolver);
-    aws_event_loop_group_clean_up(&tester->el_group);
+    aws_host_resolver_release(tester->resolver);
+    aws_event_loop_group_release(tester->el_group);
     return AWS_OP_SUCCESS;
 }
 
@@ -311,7 +311,7 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
     sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &tls_c_tester->el_group);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, tls_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
@@ -452,8 +452,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &c_tester.resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
@@ -625,8 +625,8 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &c_tester.resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -772,8 +772,8 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
         .connect_timeout_ms = 10000, .type = AWS_SOCKET_STREAM, .domain = AWS_SOCKET_IPV4};
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &c_tester.resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -855,8 +855,8 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     options.domain = AWS_SOCKET_IPV4;
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &c_tester.resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -984,8 +984,8 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &c_tester.resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 
@@ -1142,7 +1142,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_socket_connect(
         &shutdown_tester->client_socket,
         &local_server_tester.endpoint,
-        aws_event_loop_group_get_next_loop(&c_tester.el_group),
+        aws_event_loop_group_get_next_loop(c_tester.el_group),
         s_on_client_connected_do_hangup,
         shutdown_tester));
 
@@ -1208,9 +1208,9 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
     aws_io_library_init(allocator);
 
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(aws_event_loop_group_init(
-        &tester->el_group, allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&tester->resolver, allocator, 1, &tester->el_group));
+    tester->el_group =
+        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
+    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -1281,8 +1281,8 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
 
     struct aws_client_bootstrap_options bootstrap_options;
     AWS_ZERO_STRUCT(bootstrap_options);
-    bootstrap_options.event_loop_group = &c_tester.el_group;
-    bootstrap_options.host_resolver = &c_tester.resolver;
+    bootstrap_options.event_loop_group = c_tester.el_group;
+    bootstrap_options.host_resolver = c_tester.resolver;
 
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
 

@@ -61,12 +61,11 @@ static bool s_retry_has_failed(void *arg) {
 static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
     struct aws_allocator *allocator,
     enum aws_exponential_backoff_jitter_mode jitter_mode) {
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 3,
         .jitter_mode = jitter_mode,
-        .el_group = &el_group,
+        .el_group = el_group,
     };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
@@ -90,7 +89,7 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
     ASSERT_UINT_EQUALS(AWS_IO_MAX_RETRIES_EXCEEDED, test_data.failure_error_code);
 
     aws_retry_strategy_release(retry_strategy);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
     return AWS_OP_SUCCESS;
 }
 
@@ -148,10 +147,9 @@ AWS_TEST_CASE(
 static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_exponential_backoff_retry_options config = {
-        .el_group = &el_group,
+        .el_group = el_group,
         .max_retries = 3,
     };
 
@@ -177,7 +175,7 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
     ASSERT_UINT_EQUALS(AWS_IO_MAX_RETRIES_EXCEEDED, test_data.failure_error_code);
 
     aws_retry_strategy_release(retry_strategy);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -188,12 +186,11 @@ AWS_TEST_CASE(
 static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 3,
         .jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
-        .el_group = &el_group,
+        .el_group = el_group,
     };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
@@ -225,7 +222,7 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
     ASSERT_UINT_EQUALS(AWS_IO_MAX_RETRIES_EXCEEDED, test_data.failure_error_code);
 
     aws_retry_strategy_release(retry_strategy);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -236,18 +233,17 @@ AWS_TEST_CASE(
 static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 64,
-        .el_group = &el_group,
+        .el_group = el_group,
     };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NULL(retry_strategy);
     ASSERT_UINT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
 
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)

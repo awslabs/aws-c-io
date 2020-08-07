@@ -77,11 +77,9 @@ static void s_default_host_resolved_test_callback(
 
 static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -103,7 +101,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -129,8 +127,8 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
     return 0;
 }
 
@@ -139,11 +137,9 @@ AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 /* just FYI, this test assumes that "s3.us-east-1.amazonaws.com" does not return IPv6 addresses. */
 static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -166,7 +162,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -184,8 +180,8 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
 
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -202,11 +198,9 @@ AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_
  * this end-to-end. */
 static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
@@ -232,7 +226,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -245,7 +239,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -257,7 +251,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_mutex_unlock(&mutex);
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -273,7 +267,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     /* this will invoke in the calling thread since the address is already cached. */
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -289,8 +283,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     aws_string_destroy((void *)host_name_1);
     aws_string_destroy((void *)host_name_2);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -299,11 +293,10 @@ AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_l
 
 static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
     const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
@@ -389,7 +382,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -404,7 +397,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -423,7 +416,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -439,7 +432,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -449,9 +442,9 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_host_address_clean_up(&callback_data.a_address);
 
     mock_dns_resolver_clean_up(&mock_resolver);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -460,11 +453,9 @@ AWS_TEST_CASE(test_resolver_ttls, s_test_resolver_ttls_fn)
 
 static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -548,7 +539,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -563,7 +554,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     /* this should still be cached don't need the mutex here. */
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
@@ -575,15 +566,15 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
-    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_1_ipv6));
-    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_1_ipv4));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv4));
 
     /* following the LRU policy, address 1 should be what gets returned here, however we marked it as failed, so it
      * should be skipped and address 2 should be returned. */
     aws_mutex_unlock(&mutex);
     callback_data.invoked = false;
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
@@ -594,14 +585,14 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
-    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_2_ipv6));
-    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(&resolver, &host_address_2_ipv4));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_2_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_2_ipv4));
 
     callback_data.invoked = false;
     aws_mutex_unlock(&mutex);
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     /* here address 1 should be returned since it is now the least recently used address and all of them have failed..
      */
@@ -620,7 +611,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_mutex_unlock(&mutex);
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_mutex_lock(&mutex);
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
@@ -633,9 +624,9 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_address_clean_up(&callback_data.a_address);
 
     mock_dns_resolver_clean_up(&mock_resolver);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -644,11 +635,10 @@ AWS_TEST_CASE(test_resolver_connect_failure_recording, s_test_resolver_connect_f
 
 static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
     const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
@@ -731,7 +721,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -747,7 +737,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     /* this will resolve in the calling thread, so don't take the lock. */
     aws_mutex_unlock(&mutex);
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
@@ -768,7 +758,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_mutex_unlock(&mutex);
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     /* here address 1 should be returned since it is now the least recently used address.. */
     aws_mutex_lock(&mutex);
@@ -789,7 +779,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_mutex_unlock(&mutex);
 
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_mutex_lock(&mutex);
     /* here address 1 should still be the one returned because though we re-resolved, we don't trust the dns entries yet
@@ -804,9 +794,9 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_host_address_clean_up(&callback_data.a_address);
 
     mock_dns_resolver_clean_up(&mock_resolver);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -815,11 +805,9 @@ AWS_TEST_CASE(test_resolver_ttl_refreshes_on_resolve, s_test_resolver_ttl_refres
 
 static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
     ASSERT_NOT_NULL(host_name);
@@ -841,7 +829,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -859,8 +847,8 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
 
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -868,11 +856,9 @@ AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lo
 
 static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_host_resolver resolver;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 10, &el_group));
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "::1");
     ASSERT_NOT_NULL(host_name);
@@ -894,7 +880,7 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -912,8 +898,8 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_string_destroy((void *)host_name);
-    aws_host_resolver_clean_up(&resolver);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }

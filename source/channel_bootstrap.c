@@ -28,6 +28,10 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
     void *user_data = bootstrap->user_data;
+
+    aws_event_loop_group_release(bootstrap->event_loop_group);
+    aws_host_resolver_release(bootstrap->host_resolver);
+
     aws_mem_release(bootstrap->allocator, bootstrap);
 
     if (on_shutdown_complete) {
@@ -36,12 +40,18 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
 }
 
 struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
-    return aws_ref_count_acquire(&bootstrap->ref_count);
+    if (bootstrap != NULL) {
+        aws_ref_count_acquire(&bootstrap->ref_count);
+    }
+
+    return bootstrap;
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
-    aws_ref_count_release(&bootstrap->ref_count);
+    if (bootstrap != NULL) {
+        aws_ref_count_release(&bootstrap->ref_count);
+    }
 }
 
 struct aws_client_bootstrap *aws_client_bootstrap_new(
@@ -50,7 +60,6 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     AWS_ASSERT(allocator);
     AWS_ASSERT(options);
     AWS_ASSERT(options->event_loop_group);
-    AWS_ASSERT(options->host_resolver);
 
     struct aws_client_bootstrap *bootstrap = aws_mem_calloc(allocator, 1, sizeof(struct aws_client_bootstrap));
     if (!bootstrap) {
@@ -64,11 +73,11 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
         (void *)options->event_loop_group);
 
     bootstrap->allocator = allocator;
-    bootstrap->event_loop_group = options->event_loop_group;
+    bootstrap->event_loop_group = aws_event_loop_group_acquire(options->event_loop_group);
     bootstrap->on_protocol_negotiated = NULL;
     aws_ref_count_init(
         &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_client_bootstrap_destroy_impl);
-    bootstrap->host_resolver = options->host_resolver;
+    bootstrap->host_resolver = aws_host_resolver_acquire(options->host_resolver);
     bootstrap->on_shutdown_complete = options->on_shutdown_complete;
     bootstrap->user_data = options->user_data;
 
@@ -149,11 +158,17 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
 }
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
-    return aws_ref_count_acquire(&args->ref_count);
+    if (args != NULL) {
+        aws_ref_count_acquire(&args->ref_count);
+    }
+
+    return args;
 }
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
-    aws_ref_count_release(&args->ref_count);
+    if (args != NULL) {
+        aws_ref_count_release(&args->ref_count);
+    }
 }
 
 static void s_connection_args_setup_callback(
@@ -820,7 +835,11 @@ void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
 }
 
 struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap) {
-    return aws_ref_count_acquire(&bootstrap->ref_count);
+    if (bootstrap != NULL) {
+        aws_ref_count_acquire(&bootstrap->ref_count);
+    }
+
+    return bootstrap;
 }
 
 void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
@@ -828,7 +847,9 @@ void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
      * so we clean up the thread local state while the event loop thread is
      * still alive */
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing server bootstrap reference", (void *)bootstrap);
-    aws_ref_count_release(&bootstrap->ref_count);
+    if (bootstrap != NULL) {
+        aws_ref_count_release(&bootstrap->ref_count);
+    }
 }
 
 struct aws_server_bootstrap *aws_server_bootstrap_new(
@@ -903,11 +924,17 @@ struct server_channel_data {
 };
 
 static struct server_connection_args *s_server_connection_args_acquire(struct server_connection_args *args) {
-    return aws_ref_count_acquire(&args->ref_count);
+    if (args != NULL) {
+        aws_ref_count_acquire(&args->ref_count);
+    }
+
+    return args;
 }
 
 static void s_server_connection_args_release(struct server_connection_args *args) {
-    aws_ref_count_release(&args->ref_count);
+    if (args != NULL) {
+        aws_ref_count_release(&args->ref_count);
+    }
 }
 
 static void s_server_incoming_callback(

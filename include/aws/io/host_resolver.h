@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 struct aws_event_loop_group;
@@ -100,6 +101,7 @@ struct aws_host_resolver {
     struct aws_allocator *allocator;
     void *impl;
     struct aws_host_resolver_vtable *vtable;
+    struct aws_ref_count ref_count;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -160,16 +162,20 @@ AWS_IO_API int aws_default_dns_resolve(
  *
  * This for example, should enable you to hit thousands of hosts in the Amazon S3 fleet instead of just one or two.
  */
-AWS_IO_API int aws_host_resolver_init_default(
-    struct aws_host_resolver *resolver,
+AWS_IO_API struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
     struct aws_event_loop_group *el_group);
 
 /**
- * Simply calls destroy on the vtable.
+ * Increments the reference count on the host resolver, allowing the caller to take a reference to it.
  */
-AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *resolver);
+AWS_IO_API struct aws_host_resolver *aws_host_resolver_acquire(struct aws_host_resolver *resolver);
+
+/**
+ * Decrements a host resolver's ref count.  When the ref count drops to zero, the resolver will be destroyed.
+ */
+AWS_IO_API void aws_host_resolver_release(struct aws_host_resolver *resolver);
 
 /**
  * calls resolve_host on the vtable. config will be copied.

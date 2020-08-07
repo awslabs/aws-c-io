@@ -1028,16 +1028,15 @@ AWS_TEST_CASE(event_loop_multiple_stops, s_event_loop_test_multiple_stops)
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 0, NULL);
 
     size_t cpu_count = aws_system_info_processor_count();
     size_t el_count = 1;
 
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
     struct aws_event_loop *first_loop = event_loop;
 
-    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
@@ -1045,13 +1044,13 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     ASSERT_INT_EQUALS(cpu_count, el_count);
     el_count = 1;
     /* now do it again to make sure the counter turns over. */
-    while ((event_loop = aws_event_loop_group_get_next_loop(&event_loop_group)) != first_loop) {
+    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
     ASSERT_INT_EQUALS(cpu_count, el_count);
 
-    aws_event_loop_group_clean_up(&event_loop_group);
+    aws_event_loop_group_release(event_loop_group);
 
     return AWS_OP_SUCCESS;
 }
@@ -1082,31 +1081,46 @@ static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum a
     (void)task;
     (void)status;
 
-    struct task_args *args = user_data;
+    struct aws_event_loop_group *el_group = user_data;
 
-    aws_event_loop_group_clean_up_async(args->el_group, s_async_shutdown_complete_callback, user_data);
+    aws_event_loop_group_release(el_group);
 }
 
 static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 0));
 
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&event_loop_group);
-
+    /*
+     * Small chicken-and-egg problem here: the task args needs the event loop group and loop, but
+     * creating the event loop group needs shutdown options that refer to the task args.
+     */
     struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
                                   .mutex = AWS_MUTEX_INIT,
                                   .invoked = false,
                                   .was_in_thread = false,
                                   .status = -1,
-                                  .loop = event_loop,
-                                  .el_group = &event_loop_group,
+                                  .loop = NULL,
+                                  .el_group = NULL,
                                   .thread_id = 0};
     aws_atomic_init_int(&task_args.thread_complete, false);
 
+    struct aws_event_loop_group_shutdown_options async_shutdown_options;
+    AWS_ZERO_STRUCT(async_shutdown_options);
+    async_shutdown_options.asynchronous_shutdown = true;
+    async_shutdown_options.shutdown_complete_user_data = &task_args;
+    async_shutdown_options.shutdown_complete = s_async_shutdown_complete_callback;
+
+    struct aws_event_loop_group *event_loop_group =
+        aws_event_loop_group_new_default(allocator, 0, &async_shutdown_options);
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+
+    task_args.loop = event_loop;
+    task_args.el_group = event_loop_group;
+
     struct aws_task task;
-    aws_task_init(&task, s_async_shutdown_task, &task_args, "async elg shutdown invoked from an event loop thread");
+    aws_task_init(
+        &task, s_async_shutdown_task, event_loop_group, "async elg shutdown invoked from an event loop thread");
 
     /* Test "future" tasks */
     uint64_t now;

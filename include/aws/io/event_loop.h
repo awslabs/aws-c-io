@@ -8,6 +8,7 @@
 
 #include <aws/common/atomics.h>
 #include <aws/common/hash_table.h>
+#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 enum aws_io_event_type {
@@ -99,13 +100,21 @@ struct aws_event_loop_local_object {
 typedef struct aws_event_loop *(
     aws_new_event_loop_fn)(struct aws_allocator *alloc, aws_io_clock_fn *clock, void *new_loop_user_data);
 
+typedef void(aws_event_loop_group_cleanup_complete_fn)(void *user_data);
+
+struct aws_event_loop_group_shutdown_options {
+    bool asynchronous_shutdown;
+    aws_event_loop_group_cleanup_complete_fn *shutdown_complete;
+    void *shutdown_complete_user_data;
+};
+
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
     struct aws_array_list event_loops;
     struct aws_atomic_var current_index;
+    struct aws_ref_count ref_count;
+    struct aws_event_loop_group_shutdown_options shutdown_options;
 };
-
-typedef void(aws_event_loop_group_cleanup_complete_fn)(void *user_data);
 
 AWS_EXTERN_C_BEGIN
 
@@ -314,17 +323,17 @@ AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 /**
- * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
+ * Creates an event loop group, with clock, number of loops to manage, and the function to call for creating a new
  * event loop.
  */
 AWS_IO_API
-int aws_event_loop_group_init(
-    struct aws_event_loop_group *el_group,
+struct aws_event_loop_group *aws_event_loop_group_new(
     struct aws_allocator *alloc,
     aws_io_clock_fn *clock,
     uint16_t el_count,
     aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data);
+    void *new_loop_user_data,
+    struct aws_event_loop_group_shutdown_options *shutdown_options);
 
 /**
  * Initializes an event loop group with platform defaults. If max_threads == 0, then the
@@ -332,28 +341,23 @@ int aws_event_loop_group_init(
  * will be the number of event loops in the group.
  */
 AWS_IO_API
-int aws_event_loop_group_default_init(
-    struct aws_event_loop_group *el_group,
+struct aws_event_loop_group *aws_event_loop_group_new_default(
     struct aws_allocator *alloc,
-    uint16_t max_threads);
+    uint16_t max_threads,
+    struct aws_event_loop_group_shutdown_options *shutdown_options);
 
 /**
- * Destroys each event loop in the event loop group and then cleans up resources.
+ * Increments the reference count on the event loop group, allowing the caller to take a reference to it.
  */
 AWS_IO_API
-void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
+struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group);
 
 /**
- * Asynchronously invokes the cleanup() fn for the event loop group.
- * Spawns a background thread to run aws_event_loop_group_cleanup().
- * When the cleanup function completes, the completion callback is invoked with the supplied user data
- * Used in complex cases where the cleanup call can happen on one of the event loop group's threads.
+ * Decrements an event loop group's ref count.  When the ref count drops to zero, the event loop group will be
+ * destroyed.
  */
 AWS_IO_API
-void aws_event_loop_group_clean_up_async(
-    struct aws_event_loop_group *el_group,
-    aws_event_loop_group_cleanup_complete_fn completion_callback,
-    void *user_data);
+void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
 
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);

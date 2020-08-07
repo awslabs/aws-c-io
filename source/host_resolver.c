@@ -63,11 +63,6 @@ void aws_host_address_clean_up(struct aws_host_address *address) {
     AWS_ZERO_STRUCT(*address);
 }
 
-void aws_host_resolver_clean_up(struct aws_host_resolver *resolver) {
-    AWS_ASSERT(resolver->vtable && resolver->vtable->destroy);
-    resolver->vtable->destroy(resolver);
-}
-
 int aws_host_resolver_resolve_host(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -130,8 +125,7 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
 static void resolver_destroy(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_cache_destroy(default_host_resolver->host_table);
-    aws_mem_release(resolver->allocator, default_host_resolver);
-    AWS_ZERO_STRUCT(*resolver);
+    aws_mem_release(resolver->allocator, resolver);
 }
 
 /* this only ever gets called after resolution has already run. We expect that the entry's lock
@@ -965,8 +959,12 @@ static struct aws_host_resolver_vtable s_vtable = {
     .destroy = resolver_destroy,
 };
 
-int aws_host_resolver_init_default(
-    struct aws_host_resolver *resolver,
+static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
+    AWS_ASSERT(resolver->vtable && resolver->vtable->destroy);
+    resolver->vtable->destroy(resolver);
+}
+
+struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
     struct aws_event_loop_group *el_group) {
@@ -975,18 +973,31 @@ int aws_host_resolver_init_default(
       in bindings, and encourage it in C land. */
     (void)el_group;
     AWS_ASSERT(el_group);
-    struct default_host_resolver *default_host_resolver =
-        aws_mem_acquire(allocator, sizeof(struct default_host_resolver));
 
-    if (!default_host_resolver) {
-        return AWS_OP_ERR;
+    struct aws_host_resolver *resolver = NULL;
+    struct default_host_resolver *default_host_resolver = NULL;
+    if (!aws_mem_acquire_many(
+            allocator,
+            2,
+            &resolver,
+            sizeof(struct aws_host_resolver),
+            &default_host_resolver,
+            sizeof(struct default_host_resolver))) {
+        return NULL;
     }
+
+    AWS_ZERO_STRUCT(*resolver);
+    AWS_ZERO_STRUCT(*default_host_resolver);
 
     AWS_LOGF_INFO(
         AWS_LS_IO_DNS,
         "id=%p: Initializing default host resolver with %llu max host entries.",
         (void *)resolver,
         (unsigned long long)max_entries);
+
+    resolver->vtable = &s_vtable;
+    resolver->allocator = allocator;
+    resolver->impl = default_host_resolver;
 
     default_host_resolver->allocator = allocator;
     aws_mutex_init(&default_host_resolver->host_lock);
@@ -999,15 +1010,32 @@ int aws_host_resolver_init_default(
         on_host_value_removed,
         max_entries);
     if (!default_host_resolver->host_table) {
-        aws_mem_release(allocator, default_host_resolver);
-        return AWS_OP_ERR;
+        goto on_error;
     }
 
-    resolver->vtable = &s_vtable;
-    resolver->allocator = allocator;
-    resolver->impl = default_host_resolver;
+    aws_ref_count_init(&resolver->ref_count, resolver, (aws_on_zero_ref_count_callback *)s_aws_host_resolver_destroy);
 
-    return AWS_OP_SUCCESS;
+    return resolver;
+
+on_error:
+
+    s_aws_host_resolver_destroy(resolver);
+
+    return NULL;
+}
+
+struct aws_host_resolver *aws_host_resolver_acquire(struct aws_host_resolver *resolver) {
+    if (resolver != NULL) {
+        aws_ref_count_acquire(&resolver->ref_count);
+    }
+
+    return resolver;
+}
+
+void aws_host_resolver_release(struct aws_host_resolver *resolver) {
+    if (resolver != NULL) {
+        aws_ref_count_release(&resolver->ref_count);
+    }
 }
 
 size_t aws_host_resolver_get_host_address_count(

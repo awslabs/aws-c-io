@@ -509,9 +509,8 @@ static void s_test_host_resolved_test_callback(
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -523,8 +522,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -539,14 +537,14 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
     struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
+        resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
     aws_mutex_unlock(&mutex);
 
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
 
@@ -573,7 +571,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_TIMEOUT, outgoing_args.last_error);
 
     aws_socket_clean_up(&outgoing);
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
@@ -583,9 +581,8 @@ AWS_TEST_CASE(connect_timeout, s_test_connect_timeout)
 static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -597,8 +594,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -613,14 +609,14 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
     struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
+        resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
     aws_mutex_unlock(&mutex);
 
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
 
@@ -641,7 +637,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
     aws_socket_clean_up(&outgoing);
@@ -891,9 +887,8 @@ static void s_test_destroy_socket_task(struct aws_task *task, void *arg, enum aw
 static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_group el_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&el_group, allocator, 1));
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(&el_group);
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
@@ -906,8 +901,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 2, &el_group));
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -922,14 +916,14 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
     struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
-        &resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
+        resolver, host_name, s_test_host_resolved_test_callback, &resolution_config, &host_callback_data));
 
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
     aws_mutex_unlock(&mutex);
 
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
 
@@ -967,7 +961,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     ASSERT_FALSE(outgoing_args.connect_invoked);
     ASSERT_FALSE(outgoing_args.error_invoked);
 
-    aws_event_loop_group_clean_up(&el_group);
+    aws_event_loop_group_release(el_group);
 
     return 0;
 }
