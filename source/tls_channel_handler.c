@@ -312,7 +312,7 @@ void aws_tls_connection_options_init_from_ctx(
     AWS_ZERO_STRUCT(*conn_options);
     /* the assumption here, is that if it was set in the context, we WANT it to be NULL here unless it's different.
      * so only set verify peer at this point. */
-    conn_options->ctx = ctx;
+    conn_options->ctx = aws_tls_ctx_acquire(ctx);
 
     conn_options->timeout_ms = AWS_DEFAULT_TLS_TIMEOUT_MS;
 }
@@ -322,6 +322,9 @@ int aws_tls_connection_options_copy(
     const struct aws_tls_connection_options *from) {
     /* copy everything copyable over, then override the rest with deep copies. */
     *to = *from;
+
+    to->ctx = aws_tls_ctx_acquire(from->ctx);
+
     if (from->alpn_list) {
         to->alpn_list = aws_string_new_from_string(from->alpn_list->allocator, from->alpn_list);
 
@@ -343,6 +346,8 @@ int aws_tls_connection_options_copy(
 }
 
 void aws_tls_connection_options_clean_up(struct aws_tls_connection_options *connection_options) {
+    aws_tls_ctx_release(connection_options->ctx);
+
     if (connection_options->alpn_list) {
         aws_string_destroy(connection_options->alpn_list);
     }
@@ -433,4 +438,18 @@ int aws_channel_setup_client_tls(
     }
 
     return AWS_OP_SUCCESS;
+}
+
+struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
+    if (ctx != NULL) {
+        aws_ref_count_acquire(&ctx->ref_count);
+    }
+
+    return ctx;
+}
+
+void aws_tls_ctx_release(struct aws_tls_ctx *ctx) {
+    if (ctx != NULL) {
+        aws_ref_count_release(&ctx->ref_count);
+    }
 }

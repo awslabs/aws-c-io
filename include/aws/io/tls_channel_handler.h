@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/byte_buf.h>
-
+#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 struct aws_channel_slot;
@@ -35,6 +35,7 @@ enum aws_tls_cipher_pref {
 struct aws_tls_ctx {
     struct aws_allocator *alloc;
     void *impl;
+    struct aws_ref_count ref_count;
 };
 
 /**
@@ -479,9 +480,14 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(
     const struct aws_tls_ctx_options *options);
 
 /**
- * Destroys the output from aws_tls_server_ctx_new and aws_tls_client_ctx_new.
+ * Increments the reference count on the tls context, allowing the caller to take a reference to it.
  */
-AWS_IO_API void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx);
+AWS_IO_API struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx);
+
+/**
+ * Decrements a tls context's ref count.  When the ref count drops to zero, the object will be destroyed.
+ */
+AWS_IO_API void aws_tls_ctx_release(struct aws_tls_ctx *ctx);
 
 /**
  * Not necessary if you are installing more handlers into the channel, but if you just want to have TLS for arbitrary
