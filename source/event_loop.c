@@ -33,7 +33,7 @@ static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
 
     s_aws_event_loop_group_destroy_sync(el_group);
 
-    completion_callback(user_data);
+    aws_thread_current_at_exit(completion_callback, user_data);
 }
 
 static void s_aws_event_loop_group_destroy_async(struct aws_event_loop_group *el_group) {
