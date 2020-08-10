@@ -831,6 +831,7 @@ error:
 
 void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
+    aws_event_loop_group_release(bootstrap->event_loop_group);
     aws_mem_release(bootstrap->allocator, bootstrap);
 }
 
@@ -870,7 +871,7 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
         (void *)el_group);
 
     bootstrap->allocator = allocator;
-    bootstrap->event_loop_group = el_group;
+    bootstrap->event_loop_group = aws_event_loop_group_acquire(el_group);
     bootstrap->on_protocol_negotiated = NULL;
     aws_ref_count_init(
         &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_server_bootstrap_destroy_impl);
