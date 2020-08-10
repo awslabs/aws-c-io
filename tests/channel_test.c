@@ -595,6 +595,7 @@ struct channel_connect_test_args {
     struct aws_channel *channel;
     bool setup;
     bool shutdown;
+    bool elg_shutdown_complete;
 };
 
 static void s_test_channel_connect_some_hosts_timeout_setup(
@@ -640,14 +641,42 @@ static bool s_shutdown_complete_pred(void *user_data) {
     return test_args->shutdown;
 }
 
+static void s_on_elg_shutdown_complete(void *user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    aws_mutex_lock(test_args->mutex);
+    test_args->elg_shutdown_complete = true;
+    aws_mutex_unlock(test_args->mutex);
+    aws_condition_variable_notify_one(&test_args->cv);
+}
+
+static bool s_is_elg_shutdown_complete_pred(void *user_data) {
+    struct channel_connect_test_args *test_args = user_data;
+    return test_args->elg_shutdown_complete;
+}
+
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-
     struct aws_mutex mutex = AWS_MUTEX_INIT;
+
+    struct channel_connect_test_args callback_data = {
+        .mutex = &mutex,
+        .cv = AWS_CONDITION_VARIABLE_INIT,
+        .error_code = 0,
+        .channel = NULL,
+        .setup = false,
+        .shutdown = false,
+    };
+
+    struct aws_event_loop_group_shutdown_options shutdown_options = {
+        .asynchronous_shutdown = true,
+        .shutdown_complete = s_on_elg_shutdown_complete,
+        .shutdown_complete_user_data = &callback_data,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, &shutdown_options);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;
@@ -749,15 +778,6 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
 
-    struct channel_connect_test_args callback_data = {
-        .mutex = &mutex,
-        .cv = AWS_CONDITION_VARIABLE_INIT,
-        .error_code = 0,
-        .channel = NULL,
-        .setup = false,
-        .shutdown = false,
-    };
-
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = bootstrap;
@@ -791,6 +811,11 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     aws_host_resolver_release(resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
     aws_event_loop_group_release(event_loop_group);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_is_elg_shutdown_complete_pred, &callback_data);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);
         aws_host_address_clean_up(resolved_s3_address);
