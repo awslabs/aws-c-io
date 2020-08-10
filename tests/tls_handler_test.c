@@ -60,10 +60,11 @@ static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct 
 
 #ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
-    aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur);
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
 #else
-    aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "unittests.crt", "unittests.key");
+    ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
+        &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
 #endif /* __APPLE__ */
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
