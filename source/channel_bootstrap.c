@@ -908,12 +908,12 @@ static void s_server_connection_args_destroy(struct server_connection_args *args
         args->destroy_callback(args->bootstrap, args->user_data);
     }
 
+    struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_server_bootstrap_release(args->bootstrap);
     if (args->use_tls) {
         aws_tls_connection_options_clean_up(&args->tls_options);
     }
 
-    struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_mem_release(allocator, args);
 }
 

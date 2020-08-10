@@ -474,8 +474,9 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
     return AWS_OP_SUCCESS;
 }
@@ -564,9 +565,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
     return AWS_OP_SUCCESS;
 }
 
@@ -750,9 +753,11 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
     return AWS_OP_SUCCESS;
 }
 

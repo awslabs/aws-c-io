@@ -1400,8 +1400,8 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     aws_mutex_unlock(&c_tester.mutex);
     /* clean up */
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_io_library_clean_up();
     return AWS_OP_SUCCESS;
