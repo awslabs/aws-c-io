@@ -370,7 +370,7 @@ int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *server_name) {
-    conn_options->server_name = aws_string_new_from_array(allocator, server_name->ptr, server_name->len);
+    conn_options->server_name = aws_string_new_from_cursor(allocator, server_name);
     if (!conn_options->server_name) {
         return AWS_OP_ERR;
     }
