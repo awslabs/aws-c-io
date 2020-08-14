@@ -15,9 +15,9 @@
 
 #include <arpa/inet.h>
 #include <aws/io/io.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
-#include <sys/errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
