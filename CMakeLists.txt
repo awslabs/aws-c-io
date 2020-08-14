@@ -95,6 +95,10 @@ if (WIN32)
     set(TLS_STACK_DETERMINED ON)
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+    option(USE_VSOCK
+	    "Build in support for VSOCK sockets"
+	    OFF)
+
     file(GLOB AWS_IO_OS_HEADERS
             )
 
@@ -192,6 +196,10 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE
 
 if (BUILD_RELOCATABLE_BINARIES)
     target_compile_definitions(${PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")
+endif()
+
+if (USE_VSOCK)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC "-DUSE_VSOCK")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC

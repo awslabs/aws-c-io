@@ -24,6 +24,10 @@
 #    pragma warning(disable : 4996) /* sprintf */
 #endif
 
+#if USE_VSOCK
+#    include <linux/vm_sockets.h>
+#endif
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -431,6 +435,31 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
+
+#if defined(USE_VSOCK)
+static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
+/* Without vsock loopback it's difficult to test vsock functionality.
+ * Also note that having this defined does not guarantee that it's available
+ * for use and there's no path to figure out dynamically if it can be used. */
+#    if defined(VMADDR_CID_LOCAL)
+    (void)ctx;
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_VSOCK;
+
+    struct aws_socket_endpoint endpoint = {.address = "1" /* VMADDR_CID_LOCAL */, .port = 8127};
+
+    return s_test_socket(allocator, &options, &endpoint);
+#    else
+    return 0;
+#    endif
+}
+
+AWS_TEST_CASE(vsock_loopback_socket_communication, s_test_vsock_loopback_socket_communication)
+#endif
 
 static int s_test_udp_socket_communication(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
