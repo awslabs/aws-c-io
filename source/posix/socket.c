@@ -39,6 +39,14 @@
 #    define O_CLOEXEC 02000000
 #endif
 
+#ifdef USE_VSOCK
+#    if defined(__linux__) && defined(AF_VSOCK)
+#        include <linux/vm_sockets.h>
+#    else
+#        error "USE_VSOCK not supported on current platform"
+#    endif
+#endif
+
 /* other than CONNECTED_READ | CONNECTED_WRITE
  * a socket is only in one of these states at a time. */
 enum socket_state {
@@ -61,6 +69,10 @@ static int s_convert_domain(enum aws_socket_domain domain) {
             return AF_INET6;
         case AWS_SOCKET_LOCAL:
             return AF_UNIX;
+#ifdef USE_VSOCK
+        case AWS_SOCKET_VSOCK:
+            return AF_VSOCK;
+#endif
         default:
             AWS_ASSERT(0);
             return AF_INET;
@@ -498,8 +510,45 @@ struct socket_address {
         struct sockaddr_in addr_in;
         struct sockaddr_in6 addr_in6;
         struct sockaddr_un un_addr;
+#ifdef USE_VSOCK
+        struct sockaddr_vm vm_addr;
+#endif
     } sock_addr_types;
 };
+
+#ifdef USE_VSOCK
+/** Convert a string to a VSOCK CID. Respects the calling convetion of inet_pton:
+ * 0 on error, 1 on success. */
+static int parse_cid(const char *cid_str, unsigned int *value) {
+    if (cid_str == NULL || value == NULL) {
+        errno = EINVAL;
+        return 0;
+    }
+    /* strtoll returns 0 as both error and correct value */
+    errno = 0;
+    /* unsigned long long to handle edge cases in convention explicitly */
+    long long cid = strtoll(cid_str, NULL, 10);
+    if (errno != 0) {
+        return 0;
+    }
+
+    /* -1U means any, so it's a valid value, but it needs to be converted to
+     * unsigned int. */
+    if (cid == -1) {
+        *value = VMADDR_CID_ANY;
+        return 1;
+    }
+
+    if (cid < 0 || cid > UINT_MAX) {
+        errno = ERANGE;
+        return 0;
+    }
+
+    /* cast is safe here, edge cases already checked */
+    *value = (unsigned int)cid;
+    return 1;
+}
+#endif
 
 int aws_socket_connect(
     struct aws_socket *socket,
@@ -551,6 +600,13 @@ int aws_socket_connect(
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
+#ifdef USE_VSOCK
+    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
+        pton_err = parse_cid(remote_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
+        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
+        address.sock_addr_types.vm_addr.svm_port = (unsigned int)remote_endpoint->port;
+        sock_size = sizeof(address.sock_addr_types.vm_addr);
+#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -718,6 +774,13 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
+#ifdef USE_VSOCK
+    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
+        pton_err = parse_cid(local_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
+        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
+        address.sock_addr_types.vm_addr.svm_port = (unsigned int)local_endpoint->port;
+        sock_size = sizeof(address.sock_addr_types.vm_addr);
+#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
