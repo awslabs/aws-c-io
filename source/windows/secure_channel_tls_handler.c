@@ -1830,7 +1830,7 @@ struct aws_tls_ctx *s_ctx_new(
     aws_ref_count_init(
         &secure_channel_ctx->ctx.ref_count,
         secure_channel_ctx,
-        (aws_on_zero_ref_count_callback *)s_secure_channel_ctx_destroy);
+        (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
     if (options->verify_peer && options->ca_file.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");

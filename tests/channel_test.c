@@ -641,19 +641,6 @@ static bool s_shutdown_complete_pred(void *user_data) {
     return test_args->shutdown;
 }
 
-static void s_on_elg_shutdown_complete(void *user_data) {
-    struct channel_connect_test_args *test_args = user_data;
-    aws_mutex_lock(test_args->mutex);
-    test_args->elg_shutdown_complete = true;
-    aws_mutex_unlock(test_args->mutex);
-    aws_condition_variable_notify_one(&test_args->cv);
-}
-
-static bool s_is_elg_shutdown_complete_pred(void *user_data) {
-    struct channel_connect_test_args *test_args = user_data;
-    return test_args->elg_shutdown_complete;
-}
-
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -670,13 +657,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .shutdown = false,
     };
 
-    struct aws_event_loop_group_shutdown_options shutdown_options = {
-        .asynchronous_shutdown = true,
-        .shutdown_complete = s_on_elg_shutdown_complete,
-        .shutdown_complete_user_data = &callback_data,
-    };
-
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, &shutdown_options);
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;
@@ -812,9 +793,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     mock_dns_resolver_clean_up(&mock_dns_resolver);
     aws_event_loop_group_release(event_loop_group);
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_is_elg_shutdown_complete_pred, &callback_data);
-    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+    aws_global_thread_shutdown_wait();
 
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);

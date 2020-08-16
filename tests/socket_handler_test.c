@@ -45,22 +45,7 @@ struct socket_common_tester {
     struct aws_event_loop_group *el_group;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
-    bool is_elg_shutdown_complete;
 };
-
-static void s_on_elg_shutdown_complete(void *user_data) {
-    struct socket_common_tester *tester = user_data;
-
-    aws_mutex_lock(&tester->mutex);
-    tester->is_elg_shutdown_complete = true;
-    aws_mutex_unlock(&tester->mutex);
-    aws_condition_variable_notify_one(&tester->condition_variable);
-}
-
-static bool s_is_elg_shutdown_complete_pred(void *user_data) {
-    struct socket_common_tester *tester = user_data;
-    return tester->is_elg_shutdown_complete;
-}
 
 static struct socket_common_tester c_tester;
 
@@ -68,13 +53,7 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_shutdown_options shutdown_options = {
-        .asynchronous_shutdown = true,
-        .shutdown_complete = s_on_elg_shutdown_complete,
-        .shutdown_complete_user_data = tester,
-    };
-
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, &shutdown_options);
+    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -87,11 +66,7 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
 
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
     aws_event_loop_group_release(tester->el_group);
-
-    ASSERT_SUCCESS(aws_mutex_lock(&tester->mutex));
-    aws_condition_variable_wait_pred(
-        &tester->condition_variable, &tester->mutex, s_is_elg_shutdown_complete_pred, tester);
-    ASSERT_SUCCESS(aws_mutex_unlock(&tester->mutex));
+    aws_global_thread_shutdown_wait();
 
     aws_mutex_clean_up(&tester->mutex);
 
@@ -615,15 +590,9 @@ static int s_socket_common_tester_statistics_init(
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_shutdown_options shutdown_options = {
-        .asynchronous_shutdown = true,
-        .shutdown_complete = s_on_elg_shutdown_complete,
-        .shutdown_complete_user_data = tester,
-    };
-
     AWS_ZERO_STRUCT(*tester);
-    tester->el_group = aws_event_loop_group_new(
-        allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, &shutdown_options);
+    tester->el_group =
+        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;

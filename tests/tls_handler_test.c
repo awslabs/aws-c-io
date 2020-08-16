@@ -108,7 +108,6 @@ struct tls_common_tester {
     struct aws_host_resolver *resolver;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
-    bool elg_shutdown_complete;
 };
 
 static struct tls_common_tester c_tester;
@@ -136,15 +135,6 @@ static int s_tls_test_arg_init(
     return AWS_OP_SUCCESS;
 }
 
-static void s_on_elg_shutdown_complete(void *user_data) {
-    struct tls_common_tester *tester = user_data;
-
-    aws_mutex_lock(&tester->mutex);
-    tester->elg_shutdown_complete = true;
-    aws_mutex_unlock(&tester->mutex);
-    aws_condition_variable_notify_one(&tester->condition_variable);
-}
-
 static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
 
@@ -155,35 +145,16 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    struct aws_event_loop_group_shutdown_options shutdown_options;
-    AWS_ZERO_STRUCT(shutdown_options);
-    shutdown_options.asynchronous_shutdown = true;
-    shutdown_options.shutdown_complete = s_on_elg_shutdown_complete;
-    shutdown_options.shutdown_complete_user_data = tester;
-
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, &shutdown_options);
+    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
     tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
 
     return AWS_OP_SUCCESS;
 }
 
-static bool s_is_elg_shutdown(void *user_data) {
-    struct tls_common_tester *tester = user_data;
-
-    return tester->elg_shutdown_complete;
-}
-
-static void s_wait_on_elg_shutdown(struct tls_common_tester *tester) {
-    aws_mutex_lock(&tester->mutex);
-    aws_condition_variable_wait_pred(&tester->condition_variable, &tester->mutex, s_is_elg_shutdown, tester);
-    aws_mutex_unlock(&tester->mutex);
-}
-
 static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
-
-    s_wait_on_elg_shutdown(tester);
+    aws_global_thread_shutdown_wait();
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
@@ -1251,14 +1222,8 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    struct aws_event_loop_group_shutdown_options shutdown_options;
-    AWS_ZERO_STRUCT(shutdown_options);
-    shutdown_options.asynchronous_shutdown = true;
-    shutdown_options.shutdown_complete = s_on_elg_shutdown_complete;
-    shutdown_options.shutdown_complete_user_data = tester;
-
-    tester->el_group = aws_event_loop_group_new(
-        allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, &shutdown_options);
+    tester->el_group =
+        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
     tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
 
     return AWS_OP_SUCCESS;

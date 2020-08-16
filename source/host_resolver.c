@@ -967,7 +967,8 @@ static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
 struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
-    struct aws_event_loop_group *el_group) {
+    struct aws_event_loop_group *el_group,
+    struct aws_shutdown_callback_options *shutdown_options) {
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */
@@ -1013,7 +1014,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
         goto on_error;
     }
 
-    aws_ref_count_init(&resolver->ref_count, resolver, (aws_on_zero_ref_count_callback *)s_aws_host_resolver_destroy);
+    aws_ref_count_init(&resolver->ref_count, resolver, (aws_simple_completion_callback *)s_aws_host_resolver_destroy);
 
     return resolver;
 

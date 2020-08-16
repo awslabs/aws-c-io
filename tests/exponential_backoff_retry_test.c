@@ -90,6 +90,8 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
 
     aws_retry_strategy_release(retry_strategy);
     aws_event_loop_group_release(el_group);
+    aws_global_thread_shutdown_wait();
+
     return AWS_OP_SUCCESS;
 }
 
@@ -176,6 +178,8 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
 
     aws_retry_strategy_release(retry_strategy);
     aws_event_loop_group_release(el_group);
+    aws_global_thread_shutdown_wait();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -223,6 +227,8 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
 
     aws_retry_strategy_release(retry_strategy);
     aws_event_loop_group_release(el_group);
+    aws_global_thread_shutdown_wait();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -244,6 +250,8 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
     ASSERT_UINT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
 
     aws_event_loop_group_release(el_group);
+    aws_global_thread_shutdown_wait();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)

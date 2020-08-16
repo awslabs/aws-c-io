@@ -76,7 +76,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     bootstrap->event_loop_group = aws_event_loop_group_acquire(options->event_loop_group);
     bootstrap->on_protocol_negotiated = NULL;
     aws_ref_count_init(
-        &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_client_bootstrap_destroy_impl);
+        &bootstrap->ref_count, bootstrap, (aws_simple_completion_callback *)s_client_bootstrap_destroy_impl);
     bootstrap->host_resolver = aws_host_resolver_acquire(options->host_resolver);
     bootstrap->on_shutdown_complete = options->on_shutdown_complete;
     bootstrap->user_data = options->user_data;
@@ -723,7 +723,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     aws_ref_count_init(
         &client_connection_args->ref_count,
         client_connection_args,
-        (aws_on_zero_ref_count_callback *)s_client_connection_args_destroy);
+        (aws_simple_completion_callback *)s_client_connection_args_destroy);
     client_connection_args->user_data = options->user_data;
     client_connection_args->bootstrap = aws_client_bootstrap_acquire(bootstrap);
     client_connection_args->creation_callback = options->creation_callback;
@@ -874,7 +874,7 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
     bootstrap->event_loop_group = aws_event_loop_group_acquire(el_group);
     bootstrap->on_protocol_negotiated = NULL;
     aws_ref_count_init(
-        &bootstrap->ref_count, bootstrap, (aws_on_zero_ref_count_callback *)s_server_bootstrap_destroy_impl);
+        &bootstrap->ref_count, bootstrap, (aws_simple_completion_callback *)s_server_bootstrap_destroy_impl);
 
     return bootstrap;
 }
@@ -1298,7 +1298,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     aws_ref_count_init(
         &server_connection_args->ref_count,
         server_connection_args,
-        (aws_on_zero_ref_count_callback *)s_server_connection_args_destroy);
+        (aws_simple_completion_callback *)s_server_connection_args_destroy);
     server_connection_args->user_data = bootstrap_options->user_data;
     server_connection_args->bootstrap = aws_server_bootstrap_acquire(bootstrap_options->bootstrap);
     server_connection_args->shutdown_callback = bootstrap_options->shutdown_callback;

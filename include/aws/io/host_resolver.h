@@ -102,6 +102,7 @@ struct aws_host_resolver {
     void *impl;
     struct aws_host_resolver_vtable *vtable;
     struct aws_ref_count ref_count;
+    struct aws_shutdown_callback_options_heap *shutdown_options;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -165,7 +166,8 @@ AWS_IO_API int aws_default_dns_resolve(
 AWS_IO_API struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
-    struct aws_event_loop_group *el_group);
+    struct aws_event_loop_group *el_group,
+    struct aws_shutdown_callback_options *shutdown_options);
 
 /**
  * Increments the reference count on the host resolver, allowing the caller to take a reference to it.

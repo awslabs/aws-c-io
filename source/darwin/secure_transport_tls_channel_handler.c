@@ -1001,7 +1001,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     aws_ref_count_init(
         &secure_transport_ctx->ctx.ref_count,
         secure_transport_ctx,
-        (aws_on_zero_ref_count_callback *)s_aws_secure_transport_ctx_destroy);
+        (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");

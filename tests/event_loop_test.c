@@ -1052,6 +1052,8 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     aws_event_loop_group_release(event_loop_group);
 
+    aws_global_thread_shutdown_wait();
+
     return AWS_OP_SUCCESS;
 }
 
@@ -1096,11 +1098,10 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
                                   .thread_id = 0};
     aws_atomic_init_int(&task_args.thread_complete, false);
 
-    struct aws_event_loop_group_shutdown_options async_shutdown_options;
+    struct aws_shutdown_callback_options async_shutdown_options;
     AWS_ZERO_STRUCT(async_shutdown_options);
-    async_shutdown_options.asynchronous_shutdown = true;
-    async_shutdown_options.shutdown_complete_user_data = &task_args;
-    async_shutdown_options.shutdown_complete = s_async_shutdown_complete_callback;
+    async_shutdown_options.shutdown_callback_user_data = &task_args;
+    async_shutdown_options.shutdown_callback_fn = s_async_shutdown_complete_callback;
 
     struct aws_event_loop_group *event_loop_group =
         aws_event_loop_group_new_default(allocator, 0, &async_shutdown_options);
