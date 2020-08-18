@@ -146,7 +146,7 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
     tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
-    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
+    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group, NULL);
 
     return AWS_OP_SUCCESS;
 }
@@ -1224,7 +1224,7 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
 
     tester->el_group =
         aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
-    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group);
+    tester->resolver = aws_host_resolver_new_default(allocator, 1, tester->el_group, NULL);
 
     return AWS_OP_SUCCESS;
 }

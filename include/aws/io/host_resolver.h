@@ -102,7 +102,7 @@ struct aws_host_resolver {
     void *impl;
     struct aws_host_resolver_vtable *vtable;
     struct aws_ref_count ref_count;
-    struct aws_shutdown_callback_options_heap *shutdown_options;
+    struct aws_shutdown_callback_options shutdown_options;
 };
 
 AWS_EXTERN_C_BEGIN

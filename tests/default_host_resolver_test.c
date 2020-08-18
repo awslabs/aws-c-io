@@ -79,7 +79,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -140,7 +140,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -202,7 +202,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
@@ -298,7 +298,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -459,7 +459,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -642,7 +642,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -813,7 +813,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
     ASSERT_NOT_NULL(host_name);
@@ -865,7 +865,7 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     (void)ctx;
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "::1");
     ASSERT_NOT_NULL(host_name);

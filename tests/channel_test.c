@@ -743,7 +743,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 8, event_loop_group);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 8, event_loop_group, NULL);
 
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = event_loop_group,
