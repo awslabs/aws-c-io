@@ -46,27 +46,29 @@ static void s_default_host_resolved_test_callback(
     struct default_host_callback_data *callback_data = user_data;
 
     aws_mutex_lock(callback_data->mutex);
-    struct aws_host_address *host_address = NULL;
 
-    if (aws_array_list_length(host_addresses) >= 2) {
-        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
+    if (host_addresses != NULL) {
+        struct aws_host_address *host_address = NULL;
+        if (aws_array_list_length(host_addresses) >= 2) {
+            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
 
-        aws_host_address_copy(host_address, &callback_data->aaaa_address);
-
-        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 1);
-
-        aws_host_address_copy(host_address, &callback_data->a_address);
-        callback_data->has_aaaa_address = true;
-        callback_data->has_a_address = true;
-    } else if (aws_array_list_length(host_addresses) == 1) {
-        aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
-
-        if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_A) {
-            aws_host_address_copy(host_address, &callback_data->a_address);
-            callback_data->has_a_address = true;
-        } else if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA) {
             aws_host_address_copy(host_address, &callback_data->aaaa_address);
+
+            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 1);
+
+            aws_host_address_copy(host_address, &callback_data->a_address);
             callback_data->has_aaaa_address = true;
+            callback_data->has_a_address = true;
+        } else if (aws_array_list_length(host_addresses) == 1) {
+            aws_array_list_get_at_ptr(host_addresses, (void **)&host_address, 0);
+
+            if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_A) {
+                aws_host_address_copy(host_address, &callback_data->a_address);
+                callback_data->has_a_address = true;
+            } else if (host_address->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA) {
+                aws_host_address_copy(host_address, &callback_data->aaaa_address);
+                callback_data->has_aaaa_address = true;
+            }
         }
     }
 
@@ -99,10 +101,10 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -160,11 +162,10 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -178,6 +179,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
         aws_string_bytes(callback_data.a_address.host),
         callback_data.a_address.host->len);
     ASSERT_TRUE(callback_data.a_address.address->len > 1);
+    aws_mutex_unlock(&mutex);
 
     aws_host_address_clean_up(&callback_data.a_address);
     aws_string_destroy((void *)host_name);
@@ -225,11 +227,10 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -255,6 +256,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name_1, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_BIN_ARRAYS_EQUALS(
@@ -268,9 +270,12 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     /* this will invoke in the calling thread since the address is already cached. */
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_BIN_ARRAYS_EQUALS(
@@ -279,6 +284,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
         aws_string_bytes(callback_data.a_address.address),
         callback_data.a_address.address->len);
     aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
 
     aws_host_address_clean_up(&host_1_original_ipv6_resolve);
     aws_host_address_clean_up(&host_2_original_ipv4_resolve);
@@ -382,11 +388,10 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -399,9 +404,12 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -418,9 +426,12 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
      * As a result, we should get the second one again.*/
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
@@ -434,15 +445,19 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
     callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
     ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv6, callback_data.aaaa_address.address));
     ASSERT_INT_EQUALS(0, aws_string_compare(addr2_ipv4, callback_data.a_address.address));
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
 
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
@@ -540,11 +555,10 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -626,6 +640,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
 
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
@@ -723,11 +738,10 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -797,6 +811,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     ASSERT_TRUE(address_2_expiry < callback_data.a_address.expiry);
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
 
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
@@ -833,10 +848,10 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -852,6 +867,8 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     ASSERT_FALSE(callback_data.has_aaaa_address);
 
     aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
+
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
@@ -885,10 +902,10 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
         .mutex = &mutex,
     };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
@@ -904,6 +921,8 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     ASSERT_TRUE(callback_data.aaaa_address.address->len > 1);
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
+    aws_mutex_unlock(&mutex);
+
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);

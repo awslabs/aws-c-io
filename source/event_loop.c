@@ -10,12 +10,12 @@
 #include <aws/common/thread.h>
 
 static void s_event_loop_group_thread_exit(void *user_data) {
-    struct aws_shutdown_callback_options_heap *options = user_data;
+    struct aws_event_loop_group *el_group = user_data;
 
-    aws_simple_completion_callback *completion_callback = options->callback_options.shutdown_callback_fn;
-    void *completion_user_data = options->callback_options.shutdown_callback_user_data;
+    aws_simple_completion_callback *completion_callback = el_group->shutdown_options.shutdown_callback_fn;
+    void *completion_user_data = el_group->shutdown_options.shutdown_callback_user_data;
 
-    aws_mem_release(options->allocator, options);
+    aws_mem_release(el_group->allocator, el_group);
 
     if (completion_callback != NULL) {
         completion_callback(completion_user_data);
@@ -24,7 +24,7 @@ static void s_event_loop_group_thread_exit(void *user_data) {
     aws_global_thread_tracker_decrement();
 }
 
-static void s_aws_event_loop_group_destroy_sync(struct aws_event_loop_group *el_group) {
+static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 
@@ -36,26 +36,17 @@ static void s_aws_event_loop_group_destroy_sync(struct aws_event_loop_group *el_
     }
 
     aws_array_list_clean_up(&el_group->event_loops);
-
-    /*
-     * We intentionally do not free shutdown_options here.  shutdown_options is an async-only member that, if
-     * it exists, will get freed in the shutdown thread's at-exit callback.  Shutdown options have to be preserved
-     * until at_exit whereas everything else should be freed now.
-     */
-
-    aws_mem_release(el_group->allocator, el_group);
 }
 
 static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
     struct aws_event_loop_group *el_group = thread_data;
-    struct aws_shutdown_callback_options_heap *shutdown_options = el_group->shutdown_options;
 
-    s_aws_event_loop_group_destroy_sync(el_group);
+    s_aws_event_loop_group_shutdown_sync(el_group);
 
-    aws_thread_current_at_exit(s_event_loop_group_thread_exit, shutdown_options);
+    aws_thread_current_at_exit(s_event_loop_group_thread_exit, el_group);
 }
 
-static void s_aws_event_loop_group_destroy_async(struct aws_event_loop_group *el_group) {
+static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
 
     struct aws_thread cleanup_thread;
     AWS_ZERO_STRUCT(cleanup_thread);
@@ -70,14 +61,6 @@ static void s_aws_event_loop_group_destroy_async(struct aws_event_loop_group *el
         AWS_OP_SUCCESS);
 
     aws_thread_clean_up(&cleanup_thread);
-}
-
-static void s_aws_event_loop_group_destroy(struct aws_event_loop_group *el_group) {
-    if (el_group->shutdown_options == NULL) {
-        s_aws_event_loop_group_destroy_sync(el_group);
-    } else {
-        s_aws_event_loop_group_destroy_async(el_group);
-    }
 }
 
 struct aws_event_loop_group *aws_event_loop_group_new(
@@ -97,7 +80,7 @@ struct aws_event_loop_group *aws_event_loop_group_new(
 
     el_group->allocator = alloc;
     aws_ref_count_init(
-        &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_destroy);
+        &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
     aws_atomic_init_int(&el_group->current_index, 0);
 
     if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
@@ -121,18 +104,8 @@ struct aws_event_loop_group *aws_event_loop_group_new(
         }
     }
 
-    /*
-     * This needs to be the last failable check for event loop group creation.  Its existence implies
-     * asynchronous destruction rather than synchronous.
-     */
-    el_group->shutdown_options = aws_mem_calloc(alloc, 1, sizeof(struct aws_shutdown_callback_options_heap));
-    if (el_group->shutdown_options == NULL) {
-        goto on_error;
-    }
-
-    el_group->shutdown_options->allocator = alloc;
-    if (shutdown_options) {
-        el_group->shutdown_options->callback_options = *shutdown_options;
+    if (shutdown_options != NULL) {
+        el_group->shutdown_options = *shutdown_options;
     }
 
     aws_global_thread_tracker_increment();
@@ -141,7 +114,8 @@ struct aws_event_loop_group *aws_event_loop_group_new(
 
 on_error:
 
-    aws_event_loop_group_release(el_group);
+    s_aws_event_loop_group_shutdown_sync(el_group);
+    s_event_loop_group_thread_exit(el_group);
 
     return NULL;
 }

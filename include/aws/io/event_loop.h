@@ -105,7 +105,7 @@ struct aws_event_loop_group {
     struct aws_array_list event_loops;
     struct aws_atomic_var current_index;
     struct aws_ref_count ref_count;
-    struct aws_shutdown_callback_options_heap *shutdown_options;
+    struct aws_shutdown_callback_options shutdown_options;
 };
 
 AWS_EXTERN_C_BEGIN

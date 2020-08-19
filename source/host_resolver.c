@@ -329,16 +329,18 @@ static int resolver_record_connection_failure(struct aws_host_resolver *resolver
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
-    struct aws_hash_element *entry = NULL;
-    int host_lookup_err = aws_hash_table_find(&default_host_resolver->host_entry_table, address->host, &entry);
-
-    if (host_lookup_err) {
+    struct aws_hash_element *element = NULL;
+    if (aws_hash_table_find(&default_host_resolver->host_entry_table, address->host, &element)) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
         return AWS_OP_ERR;
     }
 
-    struct host_entry *host_entry = entry->value;
-    AWS_FATAL_ASSERT(host_entry != NULL);
+    struct host_entry *host_entry = NULL;
+    if (element != NULL) {
+        host_entry = element->value;
+        AWS_FATAL_ASSERT(host_entry);
+    }
+
     if (host_entry) {
         struct aws_host_address *cached_address = NULL;
 
@@ -716,7 +718,7 @@ static void resolver_thread_fn(void *arg) {
     aws_array_list_clean_up(&address_list);
 
     /* please don't fail */
-    aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry->resolver);
+    aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry);
 }
 
 static void on_address_value_removed(void *value) {
@@ -733,30 +735,6 @@ static void on_address_value_removed(void *value) {
     aws_host_address_clean_up(host_address);
     aws_mem_release(allocator, host_address);
 }
-
-#ifdef NEVER
-struct host_entry {
-    /* should be immutable post-creation */
-    struct aws_allocator *allocator;
-    struct aws_host_resolver *resolver;
-    struct aws_thread resolver_thread;
-    const struct aws_string *host_name;
-    int64_t resolve_frequency_ns;
-    struct aws_host_resolution_config resolution_config;
-
-    /* synchronized data and its lock */
-    struct aws_mutex entry_lock;
-    struct aws_condition_variable entry_signal;
-    struct aws_cache *aaaa_records;
-    struct aws_cache *a_records;
-    struct aws_cache *failed_connection_aaaa_records;
-    struct aws_cache *failed_connection_a_records;
-    struct aws_linked_list pending_resolution_callbacks;
-    uint32_t resolves_since_last_request;
-    uint64_t last_resolve_request_timestamp_ns;
-    enum default_resolver_state state;
-};
-#endif
 
 /*
  * The resolver lock must be held before calling this function
@@ -842,18 +820,21 @@ static inline int create_and_init_host_entry(
         goto setup_host_entry_error;
     }
 
+    /*add the current callback here */
     pending_callback->user_data = user_data;
     pending_callback->callback = res;
     aws_linked_list_push_back(&new_host_entry->pending_resolution_callbacks, &pending_callback->node);
 
-    /*add the current callback here */
     aws_mutex_init(&new_host_entry->entry_lock);
     new_host_entry->resolution_config = *config;
     aws_condition_variable_init(&new_host_entry->entry_signal);
 
-    struct default_host_resolver *default_host_resolver = resolver->impl;
-    aws_thread_init(&new_host_entry->resolver_thread, default_host_resolver->allocator);
+    if (aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator)) {
+        goto setup_host_entry_error;
+    }
 
+    thread_init = true;
+    struct default_host_resolver *default_host_resolver = resolver->impl;
     if (AWS_UNLIKELY(
             aws_hash_table_put(&default_host_resolver->host_entry_table, host_string_copy, new_host_entry, NULL))) {
         goto setup_host_entry_error;
@@ -897,6 +878,11 @@ static int default_resolve_host(
     aws_hash_table_find(&default_host_resolver->host_entry_table, host_name, &element);
 
     struct host_entry *host_entry = NULL;
+    if (element != NULL) {
+        host_entry = element->value;
+        AWS_FATAL_ASSERT(host_entry != NULL);
+    }
+
     if (!host_entry) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_DNS,
@@ -912,6 +898,7 @@ static int default_resolve_host(
 
     aws_mutex_lock(&host_entry->entry_lock);
     host_entry->last_resolve_request_timestamp_ns = timestamp;
+    host_entry->resolves_since_last_request = 0;
 
     struct aws_host_address *aaaa_record = aws_lru_cache_use_lru_element(host_entry->aaaa_records);
     struct aws_host_address *a_record = aws_lru_cache_use_lru_element(host_entry->a_records);
@@ -997,10 +984,10 @@ static size_t default_get_host_address_count(
 
     struct default_host_resolver *default_host_resolver = host_resolver->impl;
     size_t address_count = 0;
-    struct aws_hash_element *element = NULL;
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
+    struct aws_hash_element *element = NULL;
     aws_hash_table_find(&default_host_resolver->host_entry_table, host_name, &element);
     if (element != NULL) {
         struct host_entry *host_entry = element->value;
