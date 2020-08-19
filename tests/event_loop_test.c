@@ -1011,6 +1011,7 @@ AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 
 static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -1028,6 +1029,8 @@ AWS_TEST_CASE(event_loop_multiple_stops, s_event_loop_test_multiple_stops)
 static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
+    aws_io_library_init(allocator);
+
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 0, NULL);
 
     size_t cpu_count = aws_system_info_processor_count();
@@ -1053,6 +1056,8 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     aws_event_loop_group_release(event_loop_group);
 
     aws_global_thread_shutdown_wait();
+
+    aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
@@ -1083,6 +1088,8 @@ static void s_async_shutdown_task(struct aws_task *task, void *user_data, enum a
 static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     /*
      * Small chicken-and-egg problem here: the task args needs the event loop group and loop, but
@@ -1129,6 +1136,8 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     while (!aws_atomic_load_int(&task_args.thread_complete)) {
         aws_thread_current_sleep(15);
     }
+
+    aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }

@@ -509,6 +509,8 @@ static void s_test_host_resolved_test_callback(
 static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
+    aws_io_library_init(allocator);
+
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -575,6 +577,8 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -582,6 +586,8 @@ AWS_TEST_CASE(connect_timeout, s_test_connect_timeout)
 
 static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
@@ -644,6 +650,8 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
     aws_socket_clean_up(&outgoing);
+
+    aws_io_library_clean_up();
 
     return 0;
 }
@@ -890,6 +898,8 @@ static void s_test_destroy_socket_task(struct aws_task *task, void *arg, enum aw
 static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
+    aws_io_library_init(allocator);
+
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
 
@@ -966,6 +976,8 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
 
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
+
+    aws_io_library_clean_up();
 
     return 0;
 }

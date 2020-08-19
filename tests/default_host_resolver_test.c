@@ -80,6 +80,8 @@ static void s_default_host_resolved_test_callback(
 static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
+    aws_io_library_init(allocator);
+
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
 
@@ -132,6 +134,9 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
+
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -140,6 +145,8 @@ AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 /* just FYI, this test assumes that "s3.us-east-1.amazonaws.com" does not return IPv6 addresses. */
 static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -187,6 +194,8 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -202,6 +211,8 @@ AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_
  * this end-to-end. */
 static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -295,6 +306,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -302,6 +315,8 @@ AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_l
 
 static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -465,6 +480,8 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -472,6 +489,8 @@ AWS_TEST_CASE(test_resolver_ttls, s_test_resolver_ttls_fn)
 
 static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -648,6 +667,8 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -655,6 +676,8 @@ AWS_TEST_CASE(test_resolver_connect_failure_recording, s_test_resolver_connect_f
 
 static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -819,6 +842,8 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 
@@ -826,6 +851,8 @@ AWS_TEST_CASE(test_resolver_ttl_refreshes_on_resolve, s_test_resolver_ttl_refres
 
 static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -874,12 +901,16 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
 
+    aws_io_library_clean_up();
+
     return 0;
 }
 AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lookup_fn)
 
 static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+
+    aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
@@ -927,6 +958,8 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
     aws_global_thread_shutdown_wait();
+
+    aws_io_library_clean_up();
 
     return 0;
 }
