@@ -53,6 +53,9 @@ add_test_case(udp_socket_communication)
 add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
+if (USE_VSOCK)
+	add_test_case(vsock_loopback_socket_communication)
+endif ()
 
 add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
@@ -137,6 +140,7 @@ add_test_case(uri_builder)
 add_test_case(uri_builder_from_string)
 add_test_case(test_uri_encode_path_rfc3986)
 add_test_case(test_uri_encode_query)
+add_test_case(test_uri_decode)
 
 add_test_case(test_home_directory_not_null)
 
