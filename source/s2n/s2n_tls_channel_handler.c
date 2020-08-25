@@ -908,6 +908,11 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
+
+    if (ctx == NULL) {
+        return;
+    }
+
     struct s2n_ctx *s2n_ctx = ctx->impl;
 
     if (s2n_ctx) {
