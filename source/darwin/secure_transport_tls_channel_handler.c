@@ -1056,6 +1056,12 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
+
+    if (ctx == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: trying to destroy a NULL TLS Context.");
+        return;
+    }
+
     struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
 
     if (secure_transport_ctx->certs) {
