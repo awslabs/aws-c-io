@@ -1027,11 +1027,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->verify_peer) {
+#if S2N_OCSP_STAPLING_SUPPORTED
         if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) ||
             s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
+#endif
 
         if (options->ca_path) {
             if (s2n_config_set_verification_ca_location(
