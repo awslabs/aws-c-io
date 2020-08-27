@@ -1080,4 +1080,28 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
     return s_tls_ctx_new(alloc, options);
 }
 
+void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
+
+    if (secure_transport_ctx->certs) {
+        aws_release_identity(secure_transport_ctx->certs);
+    }
+
+    if (secure_transport_ctx->ca_cert) {
+        aws_release_certificates(secure_transport_ctx->ca_cert);
+    }
+
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
+    }
+
+    CFRelease(secure_transport_ctx->wrapped_allocator);
+    aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
+}
+
 #pragma clang diagnostic pop
