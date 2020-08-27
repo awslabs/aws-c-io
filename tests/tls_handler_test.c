@@ -1680,7 +1680,7 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
     struct aws_tls_ctx *null_context = NULL;
 
     /* Verify that we don't crash. */
-    aws_tls_ctx_destroy(null_context);
+    aws_tls_ctx_release(null_context);
 
     return AWS_OP_SUCCESS;
 }

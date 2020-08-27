@@ -719,12 +719,13 @@ static void resolver_thread_fn(void *arg) {
         aws_sys_clock_get_ticks(&now);
 
         /*
-         * Ideally this should just be time-based, but given the non-determinism of waits and clock time, I feel
-         * much more comfortable keeping an additional constraint in terms of iterations.
+         * Ideally this should just be time-based, but given the non-determinism of waits (and spurious wake ups) and
+         * clock time, I feel much more comfortable keeping an additional constraint in terms of iterations.
          *
-         * Note that we have (both really) the entry lock now and if any queries have arrived since our last resolution,
-         * resolves_since_last_request will be 0 or 1 (depending on timing) and so this check will always
-         * fail in that case leading to another iteration to satisfy the pending query(ies).
+         * Note that we have the entry lock now and if any queries have arrived since our last resolution,
+         * resolves_since_last_request will be 0 or 1 (depending on timing) and so, regardless of wait and wake up
+         * timings, this check will always fail in that case leading to another iteration to satisfy the pending
+         * query(ies).
          *
          * The only way we terminate the loop with pending queries is if the resolver itself has no more references
          * to it and is going away.  In that case, the pending queries will be completed (with failure) by the
