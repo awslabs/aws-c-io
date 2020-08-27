@@ -39,6 +39,7 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
 #ifdef __MACH__
 struct __CFArray;
 typedef const struct __CFArray *CFArrayRef;
+#    if !defined(AWS_OS_IOS)
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
  * into identity for use with SecurityFramework.
@@ -49,6 +50,7 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity);
+#    endif /* AWS_OS_IOS */
 
 /**
  * Imports a PKCS#12 file into identity for use with
