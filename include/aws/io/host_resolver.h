@@ -132,7 +132,7 @@ AWS_IO_API int aws_default_dns_resolve(
     void *user_data);
 
 /**
- * Initializes `resolver` with the default behavior. Here's the behavior:
+ * Creates a host resolver with the default behavior. Here's the behavior:
  *
  * Since there's not a reliable way to do non-blocking DNS without a ton of risky work that would need years of testing
  * on every Unix system in existence, we work around it by doing a threaded implementation.

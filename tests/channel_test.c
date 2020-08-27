@@ -595,7 +595,6 @@ struct channel_connect_test_args {
     struct aws_channel *channel;
     bool setup;
     bool shutdown;
-    bool elg_shutdown_complete;
 };
 
 static void s_test_channel_connect_some_hosts_timeout_setup(

@@ -141,6 +141,14 @@ struct client_connection_args {
     struct aws_ref_count ref_count;
 };
 
+static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
+    if (args != NULL) {
+        aws_ref_count_acquire(&args->ref_count);
+    }
+
+    return args;
+}
+
 static void s_client_connection_args_destroy(struct client_connection_args *args) {
     AWS_ASSERT(args);
 
@@ -155,14 +163,6 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
     }
 
     aws_mem_release(allocator, args);
-}
-
-static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
-    if (args != NULL) {
-        aws_ref_count_acquire(&args->ref_count);
-    }
-
-    return args;
 }
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
@@ -898,6 +898,21 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
+struct server_channel_data {
+    struct aws_channel *channel;
+    struct aws_socket *socket;
+    struct server_connection_args *server_connection_args;
+    bool incoming_called;
+};
+
+static struct server_connection_args *s_server_connection_args_acquire(struct server_connection_args *args) {
+    if (args != NULL) {
+        aws_ref_count_acquire(&args->ref_count);
+    }
+
+    return args;
+}
+
 static void s_server_connection_args_destroy(struct server_connection_args *args) {
     if (args == NULL) {
         return;
@@ -915,21 +930,6 @@ static void s_server_connection_args_destroy(struct server_connection_args *args
     }
 
     aws_mem_release(allocator, args);
-}
-
-struct server_channel_data {
-    struct aws_channel *channel;
-    struct aws_socket *socket;
-    struct server_connection_args *server_connection_args;
-    bool incoming_called;
-};
-
-static struct server_connection_args *s_server_connection_args_acquire(struct server_connection_args *args) {
-    if (args != NULL) {
-        aws_ref_count_acquire(&args->ref_count);
-    }
-
-    return args;
 }
 
 static void s_server_connection_args_release(struct server_connection_args *args) {

@@ -83,6 +83,9 @@ int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolv
     return resolver->vtable->record_connection_failure(resolver, address);
 }
 
+/*
+ * Used by both the resolver for its lifetime state as well as individual host entries for theirs.
+ */
 enum default_resolver_state {
     DRS_ACTIVE,
     DRS_SHUTTING_DOWN,
@@ -92,7 +95,7 @@ struct default_host_resolver {
     struct aws_allocator *allocator;
 
     /*
-     * Mutually exclusion for the whole resolver, includes member data and all host_entry_table operations.  Once
+     * Mutually exclusion for the whole resolver, includes all member data and all host_entry_table operations.  Once
      * an entry is retrieved, this lock MAY be dropped but certain logic may hold both the resolver and the entry lock.
      * The two locks must be taken in that order.
      */
@@ -103,11 +106,15 @@ struct default_host_resolver {
 
     enum default_resolver_state state;
 
+    /*
+     * Tracks the number of launched resolution threads that have not yet invoked their shutdown completion
+     * callback.
+     */
     uint32_t pending_host_entry_shutdown_completion_callbacks;
 };
 
 struct host_entry {
-    /* should be immutable post-creation */
+    /* immutable post-creation */
     struct aws_allocator *allocator;
     struct aws_host_resolver *resolver;
     struct aws_thread resolver_thread;
@@ -182,6 +189,9 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
     bool cleanup_resolver = false;
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
+
+    AWS_FATAL_ASSERT(default_host_resolver->state == DRS_ACTIVE);
+
     s_clear_default_resolver_entry_table(default_host_resolver);
     default_host_resolver->state = DRS_SHUTTING_DOWN;
     if (default_host_resolver->pending_host_entry_shutdown_completion_callbacks == 0) {
@@ -205,6 +215,12 @@ static void s_clean_up_host_entry(struct host_entry *entry) {
         return;
     }
 
+    /*
+     * This can happen if the resolver's final reference drops while an unanswered query is pending on an entry.
+     *
+     * You could add an assertion that the resolver is in the shut down state if this condition hits but that
+     * requires additional locking just to make the assert.
+     */
     if (!aws_linked_list_empty(&entry->pending_resolution_callbacks)) {
         aws_raise_error(AWS_IO_DNS_HOST_REMOVED_FROM_CACHE);
     }
@@ -575,16 +591,15 @@ static void resolver_thread_fn(void *arg) {
         unsolicited_resolve_max = 1;
     }
 
+    uint64_t max_no_solicitation_interval =
+        aws_timestamp_convert(unsolicited_resolve_max, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
     struct aws_array_list address_list;
     if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
         return;
     }
 
-    bool keep_going = false;
-    /* It's technically possible for a host entry to get shutdown before running even once */
-    aws_mutex_lock(&host_entry->entry_lock);
-    keep_going = host_entry->state == DRS_ACTIVE;
-    aws_mutex_unlock(&host_entry->entry_lock);
+    bool keep_going = true;
     while (keep_going) {
 
         AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static, resolving %s", aws_string_c_str(host_entry->host_name));
@@ -690,22 +705,42 @@ static void resolver_thread_fn(void *arg) {
 
         aws_mutex_unlock(&host_entry->entry_lock);
 
+        /*
+         * This is a bit awkward that we unlock the entry and then relock both the resolver and the entry, but it
+         * is mandatory that -- in order to maintain the consistent view of the resolver table (entry exist => entry
+         * is alive and can be queried) -- we have the resolver lock as well before making the decision to remove
+         * the entry from the table and terminate the thread.
+         */
         struct default_host_resolver *resolver = host_entry->resolver->impl;
         aws_mutex_lock(&resolver->resolver_lock);
         aws_mutex_lock(&host_entry->entry_lock);
 
-        if (host_entry->resolves_since_last_request > unsolicited_resolve_max) {
+        uint64_t now = 0;
+        aws_sys_clock_get_ticks(&now);
+
+        /*
+         * Ideally this should just be time-based, but given the non-determinism of waits and clock time, I feel
+         * much more comfortable keeping an additional constraint in terms of iterations.
+         *
+         * Note that we have (both really) the entry lock now and if any queries have arrived since our last resolution,
+         * resolves_since_last_request will be 0 or 1 (depending on timing) and so this check will always
+         * fail in that case leading to another iteration to satisfy the pending query(ies).
+         *
+         * The only way we terminate the loop with pending queries is if the resolver itself has no more references
+         * to it and is going away.  In that case, the pending queries will be completed (with failure) by the
+         * final clean up of this entry.
+         */
+        if (host_entry->resolves_since_last_request > unsolicited_resolve_max &&
+            host_entry->last_resolve_request_timestamp_ns + max_no_solicitation_interval < now) {
             host_entry->state = DRS_SHUTTING_DOWN;
         }
 
         keep_going = host_entry->state == DRS_ACTIVE;
-
-        aws_mutex_unlock(&host_entry->entry_lock);
-
         if (!keep_going) {
             aws_hash_table_remove(&resolver->host_entry_table, host_entry->host_name, NULL, NULL);
         }
 
+        aws_mutex_unlock(&host_entry->entry_lock);
         aws_mutex_unlock(&resolver->resolver_lock);
     }
 
@@ -896,6 +931,13 @@ static int default_resolve_host(
     }
 
     aws_mutex_lock(&host_entry->entry_lock);
+
+    /*
+     * We don't need to make any resolver side-affects in the remaining logic and it's impossible for the entry
+     * to disappear underneath us while holding its lock, so its safe to release the resolver lock and let other
+     * things query other entries.
+     */
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
     host_entry->last_resolve_request_timestamp_ns = timestamp;
     host_entry->resolves_since_last_request = 0;
 
@@ -939,7 +981,6 @@ static int default_resolve_host(
             }
         }
         aws_mutex_unlock(&host_entry->entry_lock);
-        aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
         /* we don't want to do the callback WHILE we hold the lock someone may reentrantly call us. */
         if (aws_array_list_length(&callback_address_list)) {
@@ -971,7 +1012,6 @@ static int default_resolve_host(
     }
 
     aws_mutex_unlock(&host_entry->entry_lock);
-    aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return result;
 }
