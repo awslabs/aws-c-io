@@ -436,6 +436,10 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     s_client_connection_args_release(connection_args);
 }
 
+static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
+    return domain == AWS_SOCKET_IPV4 || domain == AWS_SOCKET_IPV6;
+}
+
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -451,7 +455,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     }
 
     if (error_code || connection_args->connection_chosen) {
-        if (connection_args->outgoing_options.domain != AWS_SOCKET_LOCAL && error_code) {
+        if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
             struct aws_host_address host_address;
             host_address.host = connection_args->host_name;
             host_address.address =
@@ -766,7 +770,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
-    if (socket_options->domain != AWS_SOCKET_LOCAL) {
+    if (s_aws_socket_domain_uses_dns(socket_options->domain)) {
         client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
 
         if (!client_connection_args->host_name) {
@@ -792,7 +796,11 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_socket_endpoint endpoint;
         AWS_ZERO_STRUCT(endpoint);
         memcpy(endpoint.address, host_name, host_name_len);
-        endpoint.port = 0;
+        if (socket_options->domain == AWS_SOCKET_VSOCK) {
+            endpoint.port = port;
+        } else {
+            endpoint.port = 0;
+        }
 
         struct aws_socket *outgoing_socket = aws_mem_acquire(bootstrap->allocator, sizeof(struct aws_socket));
 
