@@ -36,7 +36,7 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
     const char *filename,
     struct aws_array_list *cert_chain_or_key);
 
-#ifdef __MACH__
+#ifdef AWS_OS_APPLE
 struct __CFArray;
 typedef const struct __CFArray *CFArrayRef;
 #    if !defined(AWS_OS_IOS)
@@ -82,7 +82,7 @@ void aws_release_identity(CFArrayRef identity);
  */
 void aws_release_certificates(CFArrayRef certs);
 
-#endif /* __MACH__ */
+#endif /* AWS_OS_APPLE */
 
 #ifdef _WIN32
 typedef void *HCERTSTORE;
