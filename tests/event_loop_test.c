@@ -1055,7 +1055,7 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     aws_event_loop_group_release(event_loop_group);
 
-    aws_global_thread_shutdown_wait();
+    aws_global_thread_creator_shutdown_wait_for(10);
 
     aws_io_library_clean_up();
 

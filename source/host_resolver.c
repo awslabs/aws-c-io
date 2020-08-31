@@ -180,7 +180,7 @@ static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
         shutdown_callback(shutdown_completion_user_data);
     }
 
-    aws_global_thread_tracker_decrement();
+    aws_global_thread_creator_decrement();
 }
 
 static void resolver_destroy(struct aws_host_resolver *resolver) {
@@ -1105,7 +1105,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     default_host_resolver->state = DRS_ACTIVE;
     aws_mutex_init(&default_host_resolver->resolver_lock);
 
-    aws_global_thread_tracker_increment();
+    aws_global_thread_creator_increment();
 
     if (aws_hash_table_init(
             &default_host_resolver->host_entry_table,

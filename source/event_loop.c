@@ -21,7 +21,7 @@ static void s_event_loop_group_thread_exit(void *user_data) {
         completion_callback(completion_user_data);
     }
 
-    aws_global_thread_tracker_decrement();
+    aws_global_thread_creator_decrement();
 }
 
 static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
@@ -108,7 +108,7 @@ struct aws_event_loop_group *aws_event_loop_group_new(
         el_group->shutdown_options = *shutdown_options;
     }
 
-    aws_global_thread_tracker_increment();
+    aws_global_thread_creator_increment();
 
     return el_group;
 
