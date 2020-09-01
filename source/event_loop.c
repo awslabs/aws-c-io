@@ -48,6 +48,10 @@ static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
 
 static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
 
+    /* It's possible that the last refcount was released on an event-loop thread,
+     * so we would deadlock if we waited here for all the event-loop threads to shut down.
+     * Therefore, we spawn a NEW thread and have it wait for all the event-loop threads to shut down
+     */
     struct aws_thread cleanup_thread;
     AWS_ZERO_STRUCT(cleanup_thread);
 
@@ -69,7 +73,7 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     uint16_t el_count,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data,
-    struct aws_shutdown_callback_options *shutdown_options) {
+    const struct aws_shutdown_callback_options *shutdown_options) {
 
     AWS_ASSERT(new_loop_fn);
 
@@ -132,7 +136,7 @@ static struct aws_event_loop *default_new_event_loop(
 struct aws_event_loop_group *aws_event_loop_group_new_default(
     struct aws_allocator *alloc,
     uint16_t max_threads,
-    struct aws_shutdown_callback_options *shutdown_options) {
+    const struct aws_shutdown_callback_options *shutdown_options) {
     if (!max_threads) {
         max_threads = (uint16_t)aws_system_info_processor_count();
     }

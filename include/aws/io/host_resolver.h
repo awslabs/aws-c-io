@@ -167,10 +167,12 @@ AWS_IO_API struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
     struct aws_event_loop_group *el_group,
-    struct aws_shutdown_callback_options *shutdown_options);
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
  * Increments the reference count on the host resolver, allowing the caller to take a reference to it.
+ *
+ * Returns the same host resolver passed in.
  */
 AWS_IO_API struct aws_host_resolver *aws_host_resolver_acquire(struct aws_host_resolver *resolver);
 

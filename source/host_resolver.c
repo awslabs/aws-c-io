@@ -695,7 +695,7 @@ static void resolver_thread_fn(void *arg) {
 
         ++host_entry->resolves_since_last_request;
 
-        /* we don't actually care about spurious wakeups here. */
+        /* wait for a quit notification or the base resolve frequency time interval */
         aws_condition_variable_wait_for_pred(
             &host_entry->entry_signal,
             &host_entry->entry_lock,
@@ -1068,7 +1068,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
     size_t max_entries,
     struct aws_event_loop_group *el_group,
-    struct aws_shutdown_callback_options *shutdown_options) {
+    const struct aws_shutdown_callback_options *shutdown_options) {
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */

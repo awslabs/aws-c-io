@@ -325,7 +325,7 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     uint16_t el_count,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data,
-    struct aws_shutdown_callback_options *shutdown_options);
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
  * Initializes an event loop group with platform defaults. If max_threads == 0, then the
@@ -336,10 +336,12 @@ AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new_default(
     struct aws_allocator *alloc,
     uint16_t max_threads,
-    struct aws_shutdown_callback_options *shutdown_options);
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
  * Increments the reference count on the event loop group, allowing the caller to take a reference to it.
+ *
+ * Returns the same event loop group passed in.
  */
 AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group);

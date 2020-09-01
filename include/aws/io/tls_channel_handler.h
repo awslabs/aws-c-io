@@ -481,6 +481,8 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(
 
 /**
  * Increments the reference count on the tls context, allowing the caller to take a reference to it.
+ *
+ * Returns the same tls context passed in.
  */
 AWS_IO_API struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx);
 

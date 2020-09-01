@@ -220,6 +220,8 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
 
 /**
  * Increments a client bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same client bootstrap passed in.
  */
 AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap);
 
@@ -251,6 +253,8 @@ AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
 
 /**
  * Increments a server bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same server bootstrap passed in.
  */
 AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap);
 
