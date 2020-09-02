@@ -1004,6 +1004,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (options->certificate.len && options->private_key.len) {
+#if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
@@ -1030,6 +1031,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
+#endif
     } else if (options->pkcs12.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
