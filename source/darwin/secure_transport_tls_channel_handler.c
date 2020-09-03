@@ -945,6 +945,27 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
+static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secure_transport_ctx) {
+    if (secure_transport_ctx == NULL) {
+        return;
+    }
+
+    if (secure_transport_ctx->certs) {
+        aws_release_identity(secure_transport_ctx->certs);
+    }
+
+    if (secure_transport_ctx->ca_cert) {
+        aws_release_certificates(secure_transport_ctx->ca_cert);
+    }
+
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
+    }
+
+    CFRelease(secure_transport_ctx->wrapped_allocator);
+    aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
+}
+
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
@@ -977,6 +998,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
+    aws_ref_count_init(
+        &secure_transport_ctx->ctx.ref_count,
+        secure_transport_ctx,
+        (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (options->certificate.len && options->private_key.len) {
 #if !defined(AWS_OS_IOS)

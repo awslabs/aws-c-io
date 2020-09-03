@@ -907,17 +907,10 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
 }
 
-void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-
-    if (ctx == NULL) {
-        return;
-    }
-
-    struct s2n_ctx *s2n_ctx = ctx->impl;
-
-    if (s2n_ctx) {
+static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
+    if (s2n_ctx != NULL) {
         s2n_config_free(s2n_ctx->s2n_config);
-        aws_mem_release(ctx->alloc, s2n_ctx);
+        aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
 }
 
@@ -939,6 +932,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
+    aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
     s2n_ctx->s2n_config = s2n_config_new();
 
     if (!s2n_ctx->s2n_config) {

@@ -9,69 +9,22 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-int aws_event_loop_group_init(
-    struct aws_event_loop_group *el_group,
-    struct aws_allocator *alloc,
-    aws_io_clock_fn *clock,
-    uint16_t el_count,
-    aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data) {
+static void s_event_loop_group_thread_exit(void *user_data) {
+    struct aws_event_loop_group *el_group = user_data;
 
-    AWS_ASSERT(new_loop_fn);
+    aws_simple_completion_callback *completion_callback = el_group->shutdown_options.shutdown_callback_fn;
+    void *completion_user_data = el_group->shutdown_options.shutdown_callback_user_data;
 
-    el_group->allocator = alloc;
-    aws_atomic_init_int(&el_group->current_index, 0);
+    aws_mem_release(el_group->allocator, el_group);
 
-    if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
-        return AWS_OP_ERR;
+    if (completion_callback != NULL) {
+        completion_callback(completion_user_data);
     }
 
-    for (uint16_t i = 0; i < el_count; ++i) {
-        struct aws_event_loop *loop = new_loop_fn(alloc, clock, new_loop_user_data);
-
-        if (!loop) {
-            goto cleanup_error;
-        }
-
-        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
-            aws_event_loop_destroy(loop);
-            goto cleanup_error;
-        }
-
-        if (aws_event_loop_run(loop)) {
-            goto cleanup_error;
-        }
-    }
-
-    return AWS_OP_SUCCESS;
-
-cleanup_error:
-    aws_event_loop_group_clean_up(el_group);
-    return AWS_OP_ERR;
+    aws_global_thread_creator_decrement();
 }
 
-static struct aws_event_loop *default_new_event_loop(
-    struct aws_allocator *allocator,
-    aws_io_clock_fn *clock,
-    void *user_data) {
-
-    (void)user_data;
-    return aws_event_loop_new_default(allocator, clock);
-}
-
-int aws_event_loop_group_default_init(
-    struct aws_event_loop_group *el_group,
-    struct aws_allocator *alloc,
-    uint16_t max_threads) {
-    if (!max_threads) {
-        max_threads = (uint16_t)aws_system_info_processor_count();
-    }
-
-    return aws_event_loop_group_init(
-        el_group, alloc, aws_high_res_clock_get_ticks, max_threads, default_new_event_loop, NULL);
-}
-
-void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
+static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 
@@ -85,41 +38,22 @@ void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group) {
     aws_array_list_clean_up(&el_group->event_loops);
 }
 
-struct aws_event_loop_group_destroy_async_data {
-    struct aws_allocator *allocator;
-    struct aws_event_loop_group *el_group;
-    aws_event_loop_group_cleanup_complete_fn *completion_callback;
-    void *user_data;
-};
-
 static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
-    struct aws_event_loop_group_destroy_async_data *completion_data = thread_data;
+    struct aws_event_loop_group *el_group = thread_data;
 
-    aws_event_loop_group_clean_up(completion_data->el_group);
+    s_aws_event_loop_group_shutdown_sync(el_group);
 
-    aws_event_loop_group_cleanup_complete_fn *completion_callback = completion_data->completion_callback;
-    void *user_data = completion_data->user_data;
-
-    aws_mem_release(completion_data->allocator, thread_data);
-
-    completion_callback(user_data);
+    aws_thread_current_at_exit(s_event_loop_group_thread_exit, el_group);
 }
 
-void aws_event_loop_group_clean_up_async(
-    struct aws_event_loop_group *el_group,
-    aws_event_loop_group_cleanup_complete_fn completion_callback,
-    void *user_data) {
+static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
+
+    /* It's possible that the last refcount was released on an event-loop thread,
+     * so we would deadlock if we waited here for all the event-loop threads to shut down.
+     * Therefore, we spawn a NEW thread and have it wait for all the event-loop threads to shut down
+     */
     struct aws_thread cleanup_thread;
     AWS_ZERO_STRUCT(cleanup_thread);
-
-    struct aws_event_loop_group_destroy_async_data *data =
-        aws_mem_calloc(el_group->allocator, 1, sizeof(struct aws_event_loop_group_destroy_async_data));
-    AWS_FATAL_ASSERT(data != NULL);
-
-    data->allocator = el_group->allocator;
-    data->el_group = el_group;
-    data->completion_callback = completion_callback;
-    data->user_data = user_data;
 
     AWS_FATAL_ASSERT(aws_thread_init(&cleanup_thread, el_group->allocator) == AWS_OP_SUCCESS);
 
@@ -127,10 +61,102 @@ void aws_event_loop_group_clean_up_async(
     AWS_ZERO_STRUCT(thread_options);
 
     AWS_FATAL_ASSERT(
-        aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, data, &thread_options) ==
+        aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options) ==
         AWS_OP_SUCCESS);
 
     aws_thread_clean_up(&cleanup_thread);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new(
+    struct aws_allocator *alloc,
+    aws_io_clock_fn *clock,
+    uint16_t el_count,
+    aws_new_event_loop_fn *new_loop_fn,
+    void *new_loop_user_data,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    AWS_ASSERT(new_loop_fn);
+
+    struct aws_event_loop_group *el_group = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop_group));
+    if (el_group == NULL) {
+        return NULL;
+    }
+
+    el_group->allocator = alloc;
+    aws_ref_count_init(
+        &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
+    aws_atomic_init_int(&el_group->current_index, 0);
+
+    if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
+        goto on_error;
+    }
+
+    for (uint16_t i = 0; i < el_count; ++i) {
+        struct aws_event_loop *loop = new_loop_fn(alloc, clock, new_loop_user_data);
+
+        if (!loop) {
+            goto on_error;
+        }
+
+        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
+            aws_event_loop_destroy(loop);
+            goto on_error;
+        }
+
+        if (aws_event_loop_run(loop)) {
+            goto on_error;
+        }
+    }
+
+    if (shutdown_options != NULL) {
+        el_group->shutdown_options = *shutdown_options;
+    }
+
+    aws_global_thread_creator_increment();
+
+    return el_group;
+
+on_error:
+
+    s_aws_event_loop_group_shutdown_sync(el_group);
+    s_event_loop_group_thread_exit(el_group);
+
+    return NULL;
+}
+
+static struct aws_event_loop *default_new_event_loop(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    void *user_data) {
+
+    (void)user_data;
+    return aws_event_loop_new_default(allocator, clock);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_default(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+    if (!max_threads) {
+        max_threads = (uint16_t)aws_system_info_processor_count();
+    }
+
+    return aws_event_loop_group_new(
+        alloc, aws_high_res_clock_get_ticks, max_threads, default_new_event_loop, NULL, shutdown_options);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group) {
+    if (el_group != NULL) {
+        aws_ref_count_acquire(&el_group->ref_count);
+    }
+
+    return el_group;
+}
+
+void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
+    if (el_group != NULL) {
+        aws_ref_count_release(&el_group->ref_count);
+    }
 }
 
 size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {

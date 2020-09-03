@@ -5,7 +5,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/atomics.h>
+#include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
 
@@ -63,7 +63,7 @@ struct aws_client_bootstrap {
     struct aws_host_resolver *host_resolver;
     struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
     void *user_data;
 };
@@ -145,7 +145,7 @@ struct aws_server_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
 };
 
 /**
@@ -219,9 +219,14 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     const struct aws_client_bootstrap_options *options);
 
 /**
- * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak. Note that this will not necessarily free the memory immediately if
- * there are channels or channel events outstanding.
+ * Increments a client bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same client bootstrap passed in.
+ */
+AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap);
+
+/**
+ * Decrements a client bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap);
 
@@ -247,9 +252,14 @@ AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_event_loop_group *el_group);
 
 /**
- * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak. Note that the memory will not be freed right away if there are
- * outstanding channels or channel events
+ * Increments a server bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same server bootstrap passed in.
+ */
+AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap);
+
+/**
+ * Decrements a server bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap);
 

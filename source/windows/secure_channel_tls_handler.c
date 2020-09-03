@@ -1729,13 +1729,10 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, false);
 }
 
-void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-
-    if (ctx == NULL) {
+static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_channel_ctx) {
+    if (secure_channel_ctx == NULL) {
         return;
     }
-
-    struct secure_channel_ctx *secure_channel_ctx = ctx->impl;
 
     if (secure_channel_ctx->custom_trust_store) {
         aws_close_cert_store(secure_channel_ctx->custom_trust_store);
@@ -1753,7 +1750,7 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
         aws_string_destroy(secure_channel_ctx->alpn_list);
     }
 
-    aws_mem_release(ctx->alloc, secure_channel_ctx);
+    aws_mem_release(secure_channel_ctx->ctx.alloc, secure_channel_ctx);
 }
 
 struct aws_tls_ctx *s_ctx_new(
@@ -1830,6 +1827,10 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->ctx.alloc = alloc;
     secure_channel_ctx->ctx.impl = secure_channel_ctx;
+    aws_ref_count_init(
+        &secure_channel_ctx->ctx.ref_count,
+        secure_channel_ctx,
+        (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
     if (options->verify_peer && options->ca_file.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
