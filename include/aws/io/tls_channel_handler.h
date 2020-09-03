@@ -210,6 +210,8 @@ AWS_IO_API void aws_tls_ctx_options_init_default_client(
  */
 AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
 
+#if !defined(AWS_OS_IOS)
+
 /**
  * Initializes options for use with mutual tls in client mode.
  * cert_path and pkey_path are paths to files on disk. cert_path
@@ -255,6 +257,8 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey);
+
+#endif /* AWS_OS_IOS */
 
 #ifdef _WIN32
 /**
