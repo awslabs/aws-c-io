@@ -190,7 +190,6 @@ aws_add_sanitizers(${PROJECT_NAME})
 
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
-set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
 
@@ -238,5 +237,3 @@ if (NOT CMAKE_CROSSCOMPILING)
        add_subdirectory(tests)
     endif()
 endif()
-
-
