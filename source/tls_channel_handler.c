@@ -8,7 +8,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/tls_channel_handler.h>
 
-#define AWS_DEFAULT_TLS_TIMEOUT_MS 4000
+#define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
 
 #include <aws/common/string.h>
 
