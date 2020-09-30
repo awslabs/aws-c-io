@@ -109,8 +109,8 @@ struct aws_tls_ctx_options {
     enum aws_tls_cipher_pref cipher_pref;
 
     /**
-     * A PEM armored PKCS#7 collection of CAs you want to trust. Only
-     * use this if it's a CA not currently installed on your system.
+     * A PEM armored PKCS#7 collection of CAs you want to trust as a string.
+     * Only use this if it's a CA not currently installed on your system.
      */
     struct aws_byte_buf ca_file;
     /**
@@ -125,9 +125,8 @@ struct aws_tls_ctx_options {
      */
     struct aws_string *alpn_list;
     /**
-     * This is the path to PEM armored PKCS#7
-     * certificate file. It is supported on every
-     * operating system.
+     * A PEM armored PKCS#7 certificate as a string.
+     * It is supported on every operating system.
      */
     struct aws_byte_buf certificate;
 
@@ -140,7 +139,7 @@ struct aws_tls_ctx_options {
 #endif
 
     /**
-     * The path to a PEM armored PKCS#7 private key.
+     * A PEM armored PKCS#7 private key as a string.
      *
      * On windows, this field should be NULL only if you are
      * using a system installed certficate.
@@ -151,13 +150,13 @@ struct aws_tls_ctx_options {
     /**
      * Apple Only!
      *
-     * On Apple OS you can also use a pkcs#12 file for your certificate
-     * and private key. This is the path to that file.
+     * On Apple OS you can also use a pkcs#12 for your certificate
+     * and private key. This is the contents the certificate.
      */
     struct aws_byte_buf pkcs12;
 
     /**
-     * Password for the pkcs12 file in pkcs12.
+     * Password for the pkcs12 data in pkcs12.
      */
     struct aws_byte_buf pkcs12_password;
 #endif
