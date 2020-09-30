@@ -190,7 +190,6 @@ aws_add_sanitizers(${PROJECT_NAME})
 
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
-set_target_properties(${PROJECT_NAME} PROPERTIES SOVERSION 0unstable)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
 
@@ -207,7 +206,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         $<INSTALL_INTERFACE:include>)
 
 aws_use_package(aws-c-common)
-target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS} ${PLATFORM_LIBS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
@@ -233,10 +233,12 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
         COMPONENT Development)
 
+install(FILES "cmake/modules/FindLibCrypto.cmake"
+        DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/modules/"
+        COMPONENT Development)
+
 if (NOT CMAKE_CROSSCOMPILING)
     if (BUILD_TESTING)
        add_subdirectory(tests)
     endif()
 endif()
-
-
