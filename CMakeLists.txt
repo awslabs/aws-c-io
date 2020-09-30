@@ -206,7 +206,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         $<INSTALL_INTERFACE:include>)
 
 aws_use_package(aws-c-common)
-target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS} ${PLATFORM_LIBS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
@@ -230,6 +231,10 @@ configure_file("cmake/${PROJECT_NAME}-config.cmake"
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
+        COMPONENT Development)
+
+install(FILES "cmake/modules/FindLibCrypto.cmake"
+        DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/modules/"
         COMPONENT Development)
 
 if (NOT CMAKE_CROSSCOMPILING)

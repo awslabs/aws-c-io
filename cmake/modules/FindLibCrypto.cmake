@@ -18,17 +18,17 @@
 find_path(LibCrypto_INCLUDE_DIR
     NAMES openssl/crypto.h
     HINTS
-        ${CMAKE_PREFIX_PATH}/include 
+        ${CMAKE_PREFIX_PATH}/include
         ${CMAKE_INSTALL_PREFIX}/include
     )
 find_library(LibCrypto_SHARED_LIBRARY
-    NAMES libcrypto.so
+    NAMES libcrypto.so libcrypto.dylib
     HINTS
     ${CMAKE_PREFIX_PATH}/build/crypto
     ${CMAKE_PREFIX_PATH}/build
     ${CMAKE_PREFIX_PATH}
     ${CMAKE_PREFIX_PATH}/lib64
-    ${CMAKE_PREFIX_PATH}/lib 
+    ${CMAKE_PREFIX_PATH}/lib
     ${CMAKE_INSTALL_PREFIX}/build/crypto
     ${CMAKE_INSTALL_PREFIX}/build
     ${CMAKE_INSTALL_PREFIX}
@@ -37,12 +37,12 @@ find_library(LibCrypto_SHARED_LIBRARY
     )
 find_library(LibCrypto_STATIC_LIBRARY
     NAMES libcrypto.a
-    HINTS 
+    HINTS
     ${CMAKE_PREFIX_PATH}/build/crypto
     ${CMAKE_PREFIX_PATH}/build
     ${CMAKE_PREFIX_PATH}
     ${CMAKE_PREFIX_PATH}/lib64
-    ${CMAKE_PREFIX_PATH}/lib   
+    ${CMAKE_PREFIX_PATH}/lib
     ${CMAKE_INSTALL_PREFIX}/build/crypto
     ${CMAKE_INSTALL_PREFIX}/build
     ${CMAKE_INSTALL_PREFIX}
