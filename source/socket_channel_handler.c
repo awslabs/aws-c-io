@@ -94,7 +94,7 @@ static int s_socket_process_write_message(
         (unsigned long long)message->message_data.len);
 
     if (!aws_socket_is_open(socket_handler->socket)) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
