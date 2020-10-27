@@ -843,11 +843,14 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
     ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+    ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
     struct aws_socket duplicate_bind;
     ASSERT_SUCCESS(aws_socket_init(&duplicate_bind, allocator, &options));
     ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &endpoint));
 
+    aws_socket_close(&duplicate_bind);
     aws_socket_clean_up(&duplicate_bind);
+    aws_socket_close(&incoming);
     aws_socket_clean_up(&incoming);
     aws_event_loop_destroy(event_loop);
     return 0;
