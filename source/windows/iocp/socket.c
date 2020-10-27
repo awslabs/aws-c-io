@@ -548,6 +548,8 @@ static int s_determine_socket_error(int error) {
         case STATUS_INVALID_ADDRESS_COMPONENT:
         case WSAEADDRNOTAVAIL:
             return AWS_IO_SOCKET_INVALID_ADDRESS;
+        case WSAEADDRINUSE:
+            return AWS_IO_SOCKET_ADDRESS_IN_USE;
         case WSAENETUNREACH:
         case IO_NETWORK_UNREACHABLE:
         case IO_HOST_UNREACHABLE:
