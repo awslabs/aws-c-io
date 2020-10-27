@@ -822,6 +822,42 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(incoming_tcp_sock_errors, s_test_incoming_tcp_sock_errors)
 
+static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 1000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+
+    struct aws_socket_endpoint endpoint = {
+        .address = "127.0.0.1",
+        .port = 30123,
+    };
+
+    struct aws_socket incoming;
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+    ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
+    struct aws_socket duplicate_bind;
+    ASSERT_SUCCESS(aws_socket_init(&duplicate_bind, allocator, &options));
+    ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &endpoint));
+
+    aws_socket_close(&duplicate_bind);
+    aws_socket_clean_up(&duplicate_bind);
+    aws_socket_close(&incoming);
+    aws_socket_clean_up(&incoming);
+    aws_event_loop_destroy(event_loop);
+    return 0;
+}
+
+AWS_TEST_CASE(incoming_duplicate_tcp_bind_errors, s_test_incoming_duplicate_tcp_bind_errors)
+
 static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     if (!s_test_running_as_root(allocator)) {

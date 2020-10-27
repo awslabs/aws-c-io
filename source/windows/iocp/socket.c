@@ -905,6 +905,17 @@ static inline int s_tcp_connect(
     struct iocp_socket *socket_impl = socket->impl;
     socket->remote_endpoint = *remote_endpoint;
 
+    int reuse = 1;
+    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+    }
+
     struct socket_connect_args *connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct socket_connect_args));
     if (!connect_args) {
         socket->state = ERRORED;
@@ -1209,6 +1220,18 @@ static inline int s_dgram_connect(
         (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
         (int)remote_endpoint->port);
+
+    int reuse = 1;
+    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+    }
+
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
@@ -1352,11 +1375,30 @@ static inline int s_tcp_bind(
 
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: binding to tcp %s:%p",
+        "id=%p handle=%p: binding to tcp %s:%d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         local_endpoint->address,
         (int)local_endpoint->port);
+
+    /* set this option to prevent duplicate bind calls. */
+    int exclusive_use_val = 1;
+    if (setsockopt(
+            (SOCKET)socket->io_handle.data.handle,
+            SOL_SOCKET,
+            SO_EXCLUSIVEADDRUSE,
+            (char *)&exclusive_use_val,
+            sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        int error = s_determine_socket_error(WSAGetLastError());
+        return aws_raise_error(error);
+    }
+
     int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
 
     if (!error_code) {
@@ -2189,16 +2231,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         (int)options->keep_alive_max_failed_probes);
 
     socket->options = *options;
-
-    int reuse = 1;
-    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
-        AWS_LOGF_WARN(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            WSAGetLastError());
-    }
 
     if (socket->options.domain != AWS_SOCKET_LOCAL && socket->options.type == AWS_SOCKET_STREAM) {
         if (socket->options.keepalive &&
