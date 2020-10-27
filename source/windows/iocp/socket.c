@@ -1357,6 +1357,25 @@ static inline int s_tcp_bind(
         (void *)socket->io_handle.data.handle,
         local_endpoint->address,
         (int)local_endpoint->port);
+
+    /* set this option to prevent duplicate bind calls. */
+    int exclusive_use_val = 1;
+    if (setsockopt(
+            (SOCKET)socket->io_handle.data.handle,
+            SOL_SOCKET,
+            SO_EXCLUSIVEADDRUSE,
+            (char *)&exclusive_use_val,
+            sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        int error = s_determine_socket_error(WSAGetLastError());
+        return aws_raise_error(error);
+    }
+
     int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
 
     if (!error_code) {
