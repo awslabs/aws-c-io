@@ -635,8 +635,14 @@ static void s_update_address_cache(
                     "s_update_address_cache.",
                     host_entry->host_name->bytes);
 
-                goto loop_end;
+                continue;
             }
+
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_DNS,
+                "static: new address resolved %s for host %s caching",
+                address_to_cache->address->bytes,
+                host_entry->host_name->bytes);
 
             struct aws_host_address new_address_copy;
 
@@ -646,7 +652,7 @@ static void s_update_address_cache(
                     "static: could not copy address for new-address list for host '%s' in s_update_address_cache.",
                     host_entry->host_name->bytes);
 
-                goto loop_end;
+                continue;
             }
 
             if (aws_array_list_push_back(out_new_address_list, &new_address_copy)) {
@@ -657,15 +663,8 @@ static void s_update_address_cache(
                     "static: could not push address to new-address list for host '%s' in s_update_address_cache.",
                     host_entry->host_name->bytes);
 
-                goto loop_end;
+                continue;
             }
-
-        loop_end:
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_DNS,
-                "static: new address resolved %s for host %s caching",
-                address_to_cache->address->bytes,
-                host_entry->host_name->bytes);
         }
     }
 }
@@ -761,7 +760,6 @@ static int s_resolver_thread_move_listeners_to_listener_entry(
 
     int result = 0;
     size_t num_listeners_not_moved = 0;
-    size_t total_num_listeners = 0;
 
     while (!aws_linked_list_empty(listener_list)) {
         struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_list);
@@ -770,23 +768,20 @@ static int s_resolver_thread_move_listeners_to_listener_entry(
         /* Flag this listener as no longer in-use by the resolver thread. */
         listener->synced_data.owned_by_resolver_thread = false;
 
-        /* If listener is pending destroy, remove it from the list, pushing it into the destroy list. */
+        /* If listener is pending destroy, pushing it into the destroy list. */
         if (listener->synced_data.pending_destroy) {
             aws_linked_list_push_back(listener_destroy_list, &listener->threaded_data.node);
         } else if (s_add_host_listener_to_listener_entry(resolver, host_name, listener)) {
             result = AWS_OP_ERR;
             ++num_listeners_not_moved;
         }
-
-        ++total_num_listeners;
     }
 
     if (result == AWS_OP_ERR) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_DNS,
-            "static: could not move %" PRIu64 " out of %" PRIu64 " listeners back to listener entry",
-            (uint64_t)num_listeners_not_moved,
-            (uint64_t)total_num_listeners);
+            "static: could not move %" PRIu64 " listeners back to listener entry",
+            (uint64_t)num_listeners_not_moved);
     }
 
     return result;
@@ -796,13 +791,11 @@ static int s_resolver_thread_move_listeners_to_listener_entry(
  * the destroy list. */
 /* Assumes resolver_lock is held. (This lock is necessary for reading from the listener's synced_data.) */
 static void s_resolver_thread_cull_pending_destroy_listeners(
-    struct default_host_resolver *resolver,
     struct aws_linked_list *listener_list,
-    struct aws_linked_list *out_listener_destroy_list) {
+    struct aws_linked_list *listener_destroy_list) {
 
-    AWS_PRECONDITION(resolver);
     AWS_PRECONDITION(listener_list);
-    AWS_PRECONDITION(out_listener_destroy_list);
+    AWS_PRECONDITION(listener_destroy_list);
 
     struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
 
@@ -813,10 +806,10 @@ static void s_resolver_thread_cull_pending_destroy_listeners(
         /* Advance our node pointer early to allow for a removal. */
         listener_node = aws_linked_list_next(listener_node);
 
-        /* If listener is pending destroy, remove it from the list, pushing it into the destroy list. */
+        /* If listener is pending destroy, remove it from the local list, pushing it into the destroy list. */
         if (listener->synced_data.pending_destroy) {
             aws_linked_list_remove(&listener->threaded_data.node);
-            aws_linked_list_push_back(out_listener_destroy_list, &listener->threaded_data.node);
+            aws_linked_list_push_back(listener_destroy_list, &listener->threaded_data.node);
             continue;
         }
     }
@@ -824,11 +817,8 @@ static void s_resolver_thread_cull_pending_destroy_listeners(
 
 /* Destroys all of the listeners in the resolver thread's destroy list. */
 /* Assumes no lock is held.  (We don't want any lock held so that any shutdown callbacks happen outside of a lock.) */
-static void s_resolver_thread_destroy_listeners(
-    struct default_host_resolver *resolver,
-    struct aws_linked_list *listener_destroy_list) {
+static void s_resolver_thread_destroy_listeners(struct aws_linked_list *listener_destroy_list) {
 
-    AWS_PRECONDITION(resolver);
     AWS_PRECONDITION(listener_destroy_list);
 
     while (!aws_linked_list_empty(listener_destroy_list)) {
@@ -842,12 +832,9 @@ static void s_resolver_thread_destroy_listeners(
 /* Assumes no lock is held.  The listener_list is owned by the resolver thread, so no lock is necessary.  We also don't
  * want a lock held when calling the resolver-address callback.*/
 static void s_resolver_thread_notify_listeners(
-    struct default_host_resolver *resolver,
     const struct aws_array_list *new_address_list,
     struct aws_linked_list *listener_list) {
-    (void)resolver;
 
-    AWS_PRECONDITION(resolver);
     AWS_PRECONDITION(new_address_list);
     AWS_PRECONDITION(listener_list);
 
@@ -1008,7 +995,9 @@ static void resolver_thread_fn(void *arg) {
         struct default_host_resolver *resolver = host_entry->resolver->impl;
         aws_mutex_lock(&resolver->resolver_lock);
 
-        s_resolver_thread_cull_pending_destroy_listeners(resolver, &listener_list, &listener_destroy_list);
+        /* Remove any listeners from our listener list that have been marked pending destroy, moving them into the
+         * destroy list. */
+        s_resolver_thread_cull_pending_destroy_listeners(&listener_list, &listener_destroy_list);
 
         /* Grab any listeners on the listener entry, moving them into the local list. */
         s_resolver_thread_move_listeners_from_listener_entry(resolver, host_entry->host_name, &listener_list);
@@ -1044,10 +1033,11 @@ static void resolver_thread_fn(void *arg) {
         aws_mutex_unlock(&host_entry->entry_lock);
         aws_mutex_unlock(&resolver->resolver_lock);
 
-        s_resolver_thread_destroy_listeners(resolver, &listener_destroy_list);
+        /* Destroy any listeners in our destroy list. */
+        s_resolver_thread_destroy_listeners(&listener_destroy_list);
 
-        /* Update listeners, removing any listeners pending destroy, and issuing callbacks for new addresses*/
-        s_resolver_thread_notify_listeners(resolver, &new_address_list, &listener_list);
+        /* Update listeners, removing any listeners pending destroy, and issuing callbacks for new addresses. */
+        s_resolver_thread_notify_listeners(&new_address_list, &listener_list);
 
         s_clear_address_list(&new_address_list);
     }
@@ -1064,15 +1054,17 @@ static void resolver_thread_fn(void *arg) {
     struct default_host_resolver *resolver = host_entry->resolver->impl;
     aws_mutex_lock(&resolver->resolver_lock);
 
-    /* Move any listeners we still have back to the listener entry. */
+    /* Move any listeners we still have to the listener entry, also checking for any listeners that need to be
+     * destroyed. */
     if (s_resolver_thread_move_listeners_to_listener_entry(
             resolver, host_entry->host_name, &listener_list, &listener_destroy_list)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: could not clean up listeners from resolver thread.");
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: could not clean up all listeners from resolver thread.");
     }
 
     aws_mutex_unlock(&resolver->resolver_lock);
 
-    s_resolver_thread_destroy_listeners(resolver, &listener_destroy_list);
+    /* Now that we are outside of any lock, actually destroy any listeners in our destroy list. */
+    s_resolver_thread_destroy_listeners(&listener_destroy_list);
 
     /* please don't fail */
     aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry);
