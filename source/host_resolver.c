@@ -129,7 +129,7 @@ struct default_host_resolver {
      */
     struct aws_mutex resolver_lock;
 
-    /* host_name (string) -> host_entry */
+    /* host_name (aws_string*) -> host_entry* */
     struct aws_hash_table host_entry_table;
 
     /* Hash table of listener entries per host name. We keep this decoupled from the host entry table to allow for
@@ -138,7 +138,7 @@ struct default_host_resolver {
      * Any time the listener list in the listener entry becomes empty, we remove the entry from the table.  This
      * includes when a resolver thread moves all of the available listeners to its local list.
      */
-    /* host_name (string) -> host_listener_entry */
+    /* host_name (aws_string*) -> host_listener_entry* */
     struct aws_hash_table listener_entry_table;
 
     enum default_resolver_state state;
@@ -165,14 +165,20 @@ struct host_listener {
     void *user_data;
 
     /* Synchronous data, requires host resolver lock to read/modify*/
-    bool owned_by_resolver_thread;
-    bool pending_destroy;
-    struct aws_linked_list_node node;
+    /* TODO Add a lock-synced-data function for the host resolver, replacing all current places where the host resolver
+     * mutex is locked. */
+    struct {
+        struct aws_linked_list_node node;
+        uint8_t owned_by_resolver_thread : 1;
+        uint8_t pending_destroy : 1;
+    } synced_data;
 };
 
 /* Structure for holding all listeners for a particular host name. */
 struct host_listener_entry {
     struct default_host_resolver *resolver;
+
+    /* Linked list of host_listener */
     struct aws_linked_list listeners;
 };
 
@@ -726,16 +732,17 @@ static void s_resolver_thread_handle_pending_listeners(
     while (listener != NULL) {
         /* Flag this listener as in-use by the resolver thread so that it can't be destroyed from outside of that
          * thread. */
-        listener->owned_by_resolver_thread = true;
+        listener->synced_data.owned_by_resolver_thread = true;
 
-        aws_linked_list_push_back(listener_list, &listener->node);
+        aws_linked_list_push_back(listener_list, &listener->synced_data.node);
 
         listener = s_pop_host_listener_from_entry(resolver, host_name, &listener_entry);
     }
 }
 
 /* Notify all listeners with resolve address callbacks, and also clean up any that are waiting to be cleaned up. */
-/* Assumes no lock is held. */
+/* Assumes no lock is held. Note: No lock is necessary for accessing the listener list, since it is local to the
+ * resolver thread. */
 static void s_resolver_thread_update_listeners(
     struct default_host_resolver *resolver,
     const struct aws_array_list *new_address_list,
@@ -750,14 +757,14 @@ static void s_resolver_thread_update_listeners(
 
     /* Go through each listener in our list. */
     while (listener_node != aws_linked_list_end(listener_list)) {
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, node);
+        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, synced_data.node);
 
         /* Advance our node pointer early to allow for a removal. */
         listener_node = aws_linked_list_next(listener_node);
 
         /* If listener is pending destroy, destroy it now. */
-        if (listener->pending_destroy) {
-            aws_linked_list_remove(&listener->node);
+        if (listener->synced_data.pending_destroy) {
+            aws_linked_list_remove(&listener->synced_data.node);
             s_host_listener_destroy(listener);
             continue;
         }
@@ -789,10 +796,10 @@ static int s_resolver_thread_clean_up_listeners(
 
     while (!aws_linked_list_empty(listener_list)) {
         struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_list);
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, node);
+        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, synced_data.node);
 
         /* Flag this listener as no longer in-use by the resolver thread. */
-        listener->owned_by_resolver_thread = false;
+        listener->synced_data.owned_by_resolver_thread = false;
 
         if (s_add_host_listener_to_listener_entry(resolver, host_name, listener)) {
             result = AWS_OP_ERR;
@@ -1436,7 +1443,7 @@ static struct aws_host_listener *default_add_host_listener(
     struct aws_host_resolver *resolver,
     const struct aws_host_listener_options *options) {
 
-    AWS_ASSERT(resolver);
+    AWS_PRECONDITION(resolver);
 
     if (options == NULL) {
         AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Cannot create host resolver listener; options structure is NULL.");
@@ -1486,8 +1493,8 @@ static int default_remove_host_listener(
     struct aws_host_resolver *host_resolver,
     struct aws_host_listener *listener_opaque) {
 
-    AWS_ASSERT(host_resolver);
-    AWS_ASSERT(listener_opaque);
+    AWS_PRECONDITION(host_resolver);
+    AWS_PRECONDITION(listener_opaque);
 
     struct host_listener *listener = (struct host_listener *)listener_opaque;
     struct default_host_resolver *default_host_resolver = host_resolver->impl;
@@ -1515,8 +1522,8 @@ static int default_remove_host_listener(
 
     /* If owned by the resolver thread, flag the listener as pending destroy, so that resolver thread knows to destroy
      * it. */
-    if (listener->owned_by_resolver_thread) {
-        listener->pending_destroy = true;
+    if (listener->synced_data.owned_by_resolver_thread) {
+        listener->synced_data.pending_destroy = true;
     } else {
         /* Else, remove the listener from the listener entry and clean it up once outside of the mutex. */
         s_remove_host_listener_from_entry(default_host_resolver, listener->host_name, listener);
@@ -1532,14 +1539,15 @@ static int default_remove_host_listener(
     return AWS_OP_SUCCESS;
 }
 
-/* Find or create listener entry on the host resolver. */
+/* Find listener entry on the host resolver, optionally creating it if it doesn't exist. */
+/* Assumes host resolver lock is held. */
 static struct host_listener_entry *s_find_host_listener_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
     uint32_t flags) {
 
-    AWS_ASSERT(resolver);
-    AWS_ASSERT(host_name);
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
 
     struct host_listener_entry *listener_entry = NULL;
     struct aws_string *host_string_copy = NULL;
@@ -1594,6 +1602,7 @@ static void s_host_listener_entry_destroy(void *listener_entry_void) {
 }
 
 /* Add a listener to the relevant host listener entry. */
+/* Assumes host resolver lock is held. */
 static int s_add_host_listener_to_listener_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -1610,10 +1619,11 @@ static int s_add_host_listener_to_listener_entry(
         return AWS_OP_ERR;
     }
 
-    aws_linked_list_push_back(&listener_entry->listeners, &listener->node);
+    aws_linked_list_push_back(&listener_entry->listeners, &listener->synced_data.node);
     return AWS_OP_SUCCESS;
 }
 
+/* Assumes host resolver lock is held. */
 static struct host_listener *s_pop_host_listener_from_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -1642,7 +1652,7 @@ static struct host_listener *s_pop_host_listener_from_entry(
 
     struct aws_linked_list_node *node = aws_linked_list_pop_back(&listener_entry->listeners);
 
-    struct host_listener *listener = AWS_CONTAINER_OF(node, struct host_listener, node);
+    struct host_listener *listener = AWS_CONTAINER_OF(node, struct host_listener, synced_data.node);
     AWS_FATAL_ASSERT(listener);
 
     /* If the listener list on the listener entry is now empty, remove it. */
@@ -1658,6 +1668,7 @@ static struct host_listener *s_pop_host_listener_from_entry(
     return listener;
 }
 
+/* Assumes host resolver lock is held. */
 static void s_remove_host_listener_from_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -1678,7 +1689,7 @@ static void s_remove_host_listener_from_entry(
      * should be cleaned up immediately. */
     AWS_ASSERT(!aws_linked_list_empty(&listener_entry->listeners));
 
-    aws_linked_list_remove(&listener->node);
+    aws_linked_list_remove(&listener->synced_data.node);
 
     /* If the listener list on the listener entry is now empty, remove it. */
     if (aws_linked_list_empty(&listener_entry->listeners)) {
