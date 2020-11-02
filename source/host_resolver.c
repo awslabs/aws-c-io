@@ -169,8 +169,8 @@ struct host_listener {
      * mutex is locked. */
     struct {
         struct aws_linked_list_node node;
-        uint8_t owned_by_resolver_thread : 1;
-        uint8_t pending_destroy : 1;
+        uint32_t owned_by_resolver_thread : 1;
+        uint32_t pending_destroy : 1;
     } synced_data;
 
     /* Threaded data that can only be used in the resolver thread. */
