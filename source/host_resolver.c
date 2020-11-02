@@ -1036,7 +1036,7 @@ static void resolver_thread_fn(void *arg) {
         /* Destroy any listeners in our destroy list. */
         s_resolver_thread_destroy_listeners(&listener_destroy_list);
 
-        /* Update listeners, removing any listeners pending destroy, and issuing callbacks for new addresses. */
+        /* Notify listeners of new addresses. */
         s_resolver_thread_notify_listeners(&new_address_list, &listener_list);
 
         s_clear_address_list(&new_address_list);
