@@ -167,14 +167,14 @@ struct host_listener {
     /* Synchronous data, requires host resolver lock to read/modify*/
     /* TODO Add a lock-synced-data function for the host resolver, replacing all current places where the host resolver
      * mutex is locked. */
-    struct {
+    struct host_listener_synced_data {
         struct aws_linked_list_node node;
         uint32_t owned_by_resolver_thread : 1;
         uint32_t pending_destroy : 1;
     } synced_data;
 
     /* Threaded data that can only be used in the resolver thread. */
-    struct {
+    struct host_listener_threaded_data {
         struct aws_linked_list_node node;
     } threaded_data;
 };
