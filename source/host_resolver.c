@@ -720,8 +720,7 @@ static bool s_host_entry_finished_pred(void *user_data) {
 }
 
 /* Move all of the listeners in the host-resolver-owned listener entry to the resolver thread owned list. */
-/* Assumes resolver_lock is held so that we can pop from the listener entry and check the listener's pending_destroy
- * flag. */
+/* Assumes resolver_lock is held so that we can pop from the listener entry and access the listener's synced_data. */
 static void s_resolver_thread_move_listeners_from_listener_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -747,7 +746,8 @@ static void s_resolver_thread_move_listeners_from_listener_entry(
 
 /* When the thread is ready to exit, we move all of the listeners back to the host-resolver-owned listener entry.  We
  * also move any listeners marked pending destroy into the destroy list. */
-/* Assumes resolver_lock is held so that we can write to the listener entry and read from the listener's synced_data. */
+/* Assumes resolver_lock is held so that we can write to the listener entry and read/write from the listener's
+ * synced_data. */
 static int s_resolver_thread_move_listeners_to_listener_entry(
     struct default_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -806,11 +806,10 @@ static void s_resolver_thread_cull_pending_destroy_listeners(
         /* Advance our node pointer early to allow for a removal. */
         listener_node = aws_linked_list_next(listener_node);
 
-        /* If listener is pending destroy, remove it from the local list, pushing it into the destroy list. */
+        /* If listener is pending destroy, remove it from the local list, and push it into the destroy list. */
         if (listener->synced_data.pending_destroy) {
             aws_linked_list_remove(&listener->threaded_data.node);
             aws_linked_list_push_back(listener_destroy_list, &listener->threaded_data.node);
-            continue;
         }
     }
 }
