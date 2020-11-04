@@ -15,6 +15,8 @@
 
 #include <aws/io/logging.h>
 
+#include <inttypes.h>
+
 const uint64_t NS_PER_SEC = 1000000000;
 
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
@@ -83,6 +85,32 @@ int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolv
     return resolver->vtable->record_connection_failure(resolver, address);
 }
 
+struct aws_host_listener *aws_host_resolver_add_host_listener(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_listener_options *options) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(resolver->vtable);
+
+    if (resolver->vtable->add_host_listener) {
+        return resolver->vtable->add_host_listener(resolver, options);
+    }
+
+    aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    return NULL;
+}
+
+int aws_host_resolver_remove_host_listener(struct aws_host_resolver *resolver, struct aws_host_listener *listener) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(resolver->vtable);
+
+    if (resolver->vtable->remove_host_listener) {
+        return resolver->vtable->remove_host_listener(resolver, listener);
+    }
+
+    aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    return AWS_OP_ERR;
+}
+
 /*
  * Used by both the resolver for its lifetime state as well as individual host entries for theirs.
  */
@@ -101,8 +129,17 @@ struct default_host_resolver {
      */
     struct aws_mutex resolver_lock;
 
-    /* host_entry->host_name (string) -> host_entry */
+    /* host_name (aws_string*) -> host_entry* */
     struct aws_hash_table host_entry_table;
+
+    /* Hash table of listener entries per host name. We keep this decoupled from the host entry table to allow for
+     * listeners to be added/removed regardless of whether or not a corresponding host entry exists.
+     *
+     * Any time the listener list in the listener entry becomes empty, we remove the entry from the table.  This
+     * includes when a resolver thread moves all of the available listeners to its local list.
+     */
+    /* host_name (aws_string*) -> host_listener_entry* */
+    struct aws_hash_table listener_entry_table;
 
     enum default_resolver_state state;
 
@@ -111,6 +148,55 @@ struct default_host_resolver {
      * callback.
      */
     uint32_t pending_host_entry_shutdown_completion_callbacks;
+};
+
+/* Default host resolver implementation for listener. */
+struct host_listener {
+
+    /* Reference to the host resolver that owns this listener */
+    struct aws_host_resolver *resolver;
+
+    /* String copy of the host name */
+    struct aws_string *host_name;
+
+    /* User-supplied callbacks/user_data */
+    aws_host_listener_resolved_address_fn *resolved_address_callback;
+    aws_host_listener_shutdown_fn *shutdown_callback;
+    void *user_data;
+
+    /* Synchronous data, requires host resolver lock to read/modify*/
+    /* TODO Add a lock-synced-data function for the host resolver, replacing all current places where the host resolver
+     * mutex is locked. */
+    struct host_listener_synced_data {
+        /* It's important that the node structure is always first, so that the HOST_LISTENER_FROM_SYNCED_NODE macro
+         * works properly.*/
+        struct aws_linked_list_node node;
+        uint32_t owned_by_resolver_thread : 1;
+        uint32_t pending_destroy : 1;
+    } synced_data;
+
+    /* Threaded data that can only be used in the resolver thread. */
+    struct host_listener_threaded_data {
+        /* It's important that the node structure is always first, so that the HOST_LISTENER_FROM_THREADED_NODE macro
+         * works properly.*/
+        struct aws_linked_list_node node;
+    } threaded_data;
+};
+
+/* AWS_CONTAINER_OF does not compile under Clang when using a member in a nested structure, ie, synced_data.node or
+ * threaded_data.node. To get around this, we define two local macros that rely on the node being the first member of
+ * the synced_data/threaded_data structures.*/
+#define HOST_LISTENER_FROM_SYNCED_NODE(listener_node)                                                                  \
+    AWS_CONTAINER_OF((listener_node), struct host_listener, synced_data)
+#define HOST_LISTENER_FROM_THREADED_NODE(listener_node)                                                                \
+    AWS_CONTAINER_OF((listener_node), struct host_listener, threaded_data)
+
+/* Structure for holding all listeners for a particular host name. */
+struct host_listener_entry {
+    struct default_host_resolver *resolver;
+
+    /* Linked list of struct host_listener */
+    struct aws_linked_list listeners;
 };
 
 struct host_entry {
@@ -141,6 +227,33 @@ static void s_shutdown_host_entry(struct host_entry *entry) {
     aws_mutex_unlock(&entry->entry_lock);
 }
 
+static struct aws_host_listener *default_add_host_listener(
+    struct aws_host_resolver *host_resolver,
+    const struct aws_host_listener_options *options);
+
+static int default_remove_host_listener(
+    struct aws_host_resolver *host_resolver,
+    struct aws_host_listener *listener_opaque);
+
+static void s_host_listener_entry_destroy(void *listener_entry_void);
+
+static struct host_listener *s_pop_host_listener_from_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener_entry **in_out_listener_entry);
+
+static int s_add_host_listener_to_listener_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener *listener);
+
+static void s_remove_host_listener_from_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener *listener);
+
+static void s_host_listener_destroy(struct host_listener *listener);
+
 /*
  * resolver lock must be held before calling this function
  */
@@ -168,6 +281,8 @@ static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
     aws_hash_table_clean_up(&default_host_resolver->host_entry_table);
+    aws_hash_table_clean_up(&default_host_resolver->listener_entry_table);
+
     aws_mutex_clean_up(&default_host_resolver->resolver_lock);
 
     aws_simple_completion_callback *shutdown_callback = resolver->shutdown_options.shutdown_callback_fn;
@@ -268,7 +383,7 @@ static void s_on_host_entry_shutdown_completion(void *user_data) {
 }
 
 /* this only ever gets called after resolution has already run. We expect that the entry's lock
-   has been aquired for writing before this function is called and released afterwards. */
+   has been acquired for writing before this function is called and released afterwards. */
 static inline void process_records(
     struct aws_allocator *allocator,
     struct aws_cache *records,
@@ -493,7 +608,12 @@ static void s_clear_address_list(struct aws_array_list *address_list) {
 static void s_update_address_cache(
     struct host_entry *host_entry,
     struct aws_array_list *address_list,
-    uint64_t new_expiration) {
+    uint64_t new_expiration,
+    struct aws_array_list *out_new_address_list) {
+
+    AWS_PRECONDITION(host_entry);
+    AWS_PRECONDITION(address_list);
+    AWS_PRECONDITION(out_new_address_list);
 
     for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
         struct aws_host_address *fresh_resolved_address = NULL;
@@ -513,21 +633,49 @@ static void s_update_address_cache(
         } else {
             address_to_cache = aws_mem_acquire(host_entry->allocator, sizeof(struct aws_host_address));
 
-            if (address_to_cache) {
-                aws_host_address_move(fresh_resolved_address, address_to_cache);
-                address_to_cache->expiry = new_expiration;
+            aws_host_address_move(fresh_resolved_address, address_to_cache);
+            address_to_cache->expiry = new_expiration;
 
-                struct aws_cache *address_table = address_to_cache->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA
-                                                      ? host_entry->aaaa_records
-                                                      : host_entry->a_records;
+            struct aws_cache *address_table = address_to_cache->record_type == AWS_ADDRESS_RECORD_TYPE_AAAA
+                                                  ? host_entry->aaaa_records
+                                                  : host_entry->a_records;
 
-                aws_cache_put(address_table, address_to_cache->address, address_to_cache);
-
-                AWS_LOGF_DEBUG(
+            if (aws_cache_put(address_table, address_to_cache->address, address_to_cache)) {
+                AWS_LOGF_ERROR(
                     AWS_LS_IO_DNS,
-                    "static: new address resolved %s for host %s caching",
-                    address_to_cache->address->bytes,
+                    "static: could not add new address to host entry cache for host '%s' in "
+                    "s_update_address_cache.",
                     host_entry->host_name->bytes);
+
+                continue;
+            }
+
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_DNS,
+                "static: new address resolved %s for host %s caching",
+                address_to_cache->address->bytes,
+                host_entry->host_name->bytes);
+
+            struct aws_host_address new_address_copy;
+
+            if (aws_host_address_copy(address_to_cache, &new_address_copy)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_DNS,
+                    "static: could not copy address for new-address list for host '%s' in s_update_address_cache.",
+                    host_entry->host_name->bytes);
+
+                continue;
+            }
+
+            if (aws_array_list_push_back(out_new_address_list, &new_address_copy)) {
+                aws_host_address_clean_up(&new_address_copy);
+
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_DNS,
+                    "static: could not push address to new-address list for host '%s' in s_update_address_cache.",
+                    host_entry->host_name->bytes);
+
+                continue;
             }
         }
     }
@@ -583,6 +731,137 @@ static bool s_host_entry_finished_pred(void *user_data) {
     return entry->state == DRS_SHUTTING_DOWN;
 }
 
+/* Move all of the listeners in the host-resolver-owned listener entry to the resolver thread owned list. */
+/* Assumes resolver_lock is held so that we can pop from the listener entry and access the listener's synced_data. */
+static void s_resolver_thread_move_listeners_from_listener_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct aws_linked_list *listener_list) {
+
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+    AWS_PRECONDITION(listener_list);
+
+    struct host_listener_entry *listener_entry = NULL;
+    struct host_listener *listener = s_pop_host_listener_from_entry(resolver, host_name, &listener_entry);
+
+    while (listener != NULL) {
+        /* Flag this listener as in-use by the resolver thread so that it can't be destroyed from outside of that
+         * thread. */
+        listener->synced_data.owned_by_resolver_thread = true;
+
+        aws_linked_list_push_back(listener_list, &listener->threaded_data.node);
+
+        listener = s_pop_host_listener_from_entry(resolver, host_name, &listener_entry);
+    }
+}
+
+/* When the thread is ready to exit, we move all of the listeners back to the host-resolver-owned listener entry.*/
+/* Assumes that we have already removed all pending_destroy listeners via
+ * s_resolver_thread_cull_pending_destroy_listeners. */
+/* Assumes resolver_lock is held so that we can write to the listener entry and read/write from the listener's
+ * synced_data. */
+static int s_resolver_thread_move_listeners_to_listener_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct aws_linked_list *listener_list) {
+
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+    AWS_PRECONDITION(listener_list);
+
+    int result = 0;
+    size_t num_listeners_not_moved = 0;
+
+    while (!aws_linked_list_empty(listener_list)) {
+        struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_list);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
+
+        /* Flag this listener as no longer in-use by the resolver thread. */
+        listener->synced_data.owned_by_resolver_thread = false;
+
+        AWS_ASSERT(!listener->synced_data.pending_destroy);
+
+        if (s_add_host_listener_to_listener_entry(resolver, host_name, listener)) {
+            result = AWS_OP_ERR;
+            ++num_listeners_not_moved;
+        }
+    }
+
+    if (result == AWS_OP_ERR) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_DNS,
+            "static: could not move %" PRIu64 " listeners back to listener entry",
+            (uint64_t)num_listeners_not_moved);
+    }
+
+    return result;
+}
+
+/* Remove the listeners from the resolver-thread-owned listener_list that are marked pending destroy, and move them into
+ * the destroy list. */
+/* Assumes resolver_lock is held. (This lock is necessary for reading from the listener's synced_data.) */
+static void s_resolver_thread_cull_pending_destroy_listeners(
+    struct aws_linked_list *listener_list,
+    struct aws_linked_list *listener_destroy_list) {
+
+    AWS_PRECONDITION(listener_list);
+    AWS_PRECONDITION(listener_destroy_list);
+
+    struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
+
+    /* Find all listeners in our current list that are marked for destroy. */
+    while (listener_node != aws_linked_list_end(listener_list)) {
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
+
+        /* Advance our node pointer early to allow for a removal. */
+        listener_node = aws_linked_list_next(listener_node);
+
+        /* If listener is pending destroy, remove it from the local list, and push it into the destroy list. */
+        if (listener->synced_data.pending_destroy) {
+            aws_linked_list_remove(&listener->threaded_data.node);
+            aws_linked_list_push_back(listener_destroy_list, &listener->threaded_data.node);
+        }
+    }
+}
+
+/* Destroys all of the listeners in the resolver thread's destroy list. */
+/* Assumes no lock is held.  (We don't want any lock held so that any shutdown callbacks happen outside of a lock.) */
+static void s_resolver_thread_destroy_listeners(struct aws_linked_list *listener_destroy_list) {
+
+    AWS_PRECONDITION(listener_destroy_list);
+
+    while (!aws_linked_list_empty(listener_destroy_list)) {
+        struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_destroy_list);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
+        s_host_listener_destroy(listener);
+    }
+}
+
+/* Notify all listeners with resolve address callbacks, and also clean up any that are waiting to be cleaned up. */
+/* Assumes no lock is held.  The listener_list is owned by the resolver thread, so no lock is necessary.  We also don't
+ * want a lock held when calling the resolver-address callback.*/
+static void s_resolver_thread_notify_listeners(
+    const struct aws_array_list *new_address_list,
+    struct aws_linked_list *listener_list) {
+
+    AWS_PRECONDITION(new_address_list);
+    AWS_PRECONDITION(listener_list);
+
+    /* Go through each listener in our list. */
+    for (struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
+         listener_node != aws_linked_list_end(listener_list);
+         listener_node = aws_linked_list_next(listener_node)) {
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
+
+        /* If we have new adddresses, notify the resolved-address callback if one exists */
+        if (aws_array_list_length(new_address_list) > 0 && listener->resolved_address_callback != NULL) {
+            listener->resolved_address_callback(
+                (struct aws_host_listener *)listener, new_address_list, listener->user_data);
+        }
+    }
+}
+
 static void resolver_thread_fn(void *arg) {
     struct host_entry *host_entry = arg;
 
@@ -598,6 +877,18 @@ static void resolver_thread_fn(void *arg) {
     if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
         return;
     }
+
+    struct aws_array_list new_address_list;
+    if (aws_array_list_init_dynamic(&new_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        aws_array_list_clean_up(&address_list);
+        return;
+    }
+
+    struct aws_linked_list listener_list;
+    aws_linked_list_init(&listener_list);
+
+    struct aws_linked_list listener_destroy_list;
+    aws_linked_list_init(&listener_destroy_list);
 
     bool keep_going = true;
     while (keep_going) {
@@ -627,7 +918,7 @@ static void resolver_thread_fn(void *arg) {
         aws_mutex_lock(&host_entry->entry_lock);
 
         if (!err_code) {
-            s_update_address_cache(host_entry, &address_list, new_expiry);
+            s_update_address_cache(host_entry, &address_list, new_expiry, &new_address_list);
         }
 
         /*
@@ -713,6 +1004,14 @@ static void resolver_thread_fn(void *arg) {
          */
         struct default_host_resolver *resolver = host_entry->resolver->impl;
         aws_mutex_lock(&resolver->resolver_lock);
+
+        /* Remove any listeners from our listener list that have been marked pending destroy, moving them into the
+         * destroy list. */
+        s_resolver_thread_cull_pending_destroy_listeners(&listener_list, &listener_destroy_list);
+
+        /* Grab any listeners on the listener entry, moving them into the local list. */
+        s_resolver_thread_move_listeners_from_listener_entry(resolver, host_entry->host_name, &listener_list);
+
         aws_mutex_lock(&host_entry->entry_lock);
 
         uint64_t now = 0;
@@ -739,10 +1038,23 @@ static void resolver_thread_fn(void *arg) {
         keep_going = host_entry->state == DRS_ACTIVE;
         if (!keep_going) {
             aws_hash_table_remove(&resolver->host_entry_table, host_entry->host_name, NULL, NULL);
+
+            /* Move any local listeners we have back to the listener entry */
+            if (s_resolver_thread_move_listeners_to_listener_entry(resolver, host_entry->host_name, &listener_list)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: could not clean up all listeners from resolver thread.");
+            }
         }
 
         aws_mutex_unlock(&host_entry->entry_lock);
         aws_mutex_unlock(&resolver->resolver_lock);
+
+        /* Destroy any listeners in our destroy list. */
+        s_resolver_thread_destroy_listeners(&listener_destroy_list);
+
+        /* Notify our local listeners of new addresses. */
+        s_resolver_thread_notify_listeners(&new_address_list, &listener_list);
+
+        s_clear_address_list(&new_address_list);
     }
 
     AWS_LOGF_DEBUG(
@@ -752,6 +1064,7 @@ static void resolver_thread_fn(void *arg) {
         host_entry->host_name->bytes)
 
     aws_array_list_clean_up(&address_list);
+    aws_array_list_clean_up(&new_address_list);
 
     /* please don't fail */
     aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry);
@@ -782,7 +1095,6 @@ static inline int create_and_init_host_entry(
     struct aws_host_resolution_config *config,
     uint64_t timestamp,
     void *user_data) {
-
     struct host_entry *new_host_entry = aws_mem_calloc(resolver->allocator, 1, sizeof(struct host_entry));
     if (!new_host_entry) {
         return AWS_OP_ERR;
@@ -897,7 +1209,6 @@ static int default_resolve_host(
     aws_on_host_resolved_result_fn *res,
     struct aws_host_resolution_config *config,
     void *user_data) {
-
     int result = AWS_OP_SUCCESS;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: Host resolution requested for %s", (void *)resolver, host_name->bytes);
@@ -1021,7 +1332,6 @@ static size_t default_get_host_address_count(
     struct aws_host_resolver *host_resolver,
     const struct aws_string *host_name,
     uint32_t flags) {
-
     struct default_host_resolver *default_host_resolver = host_resolver->impl;
     size_t address_count = 0;
 
@@ -1056,6 +1366,8 @@ static struct aws_host_resolver_vtable s_vtable = {
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
     .get_host_address_count = default_get_host_address_count,
+    .add_host_listener = default_add_host_listener,
+    .remove_host_listener = default_remove_host_listener,
     .destroy = resolver_destroy,
 };
 
@@ -1118,6 +1430,17 @@ struct aws_host_resolver *aws_host_resolver_new_default(
         goto on_error;
     }
 
+    if (aws_hash_table_init(
+            &default_host_resolver->listener_entry_table,
+            allocator,
+            max_entries,
+            aws_hash_string,
+            aws_hash_callback_string_eq,
+            aws_hash_callback_string_destroy,
+            s_host_listener_entry_destroy)) {
+        goto on_error;
+    }
+
     aws_ref_count_init(&resolver->ref_count, resolver, (aws_simple_completion_callback *)s_aws_host_resolver_destroy);
 
     if (shutdown_options != NULL) {
@@ -1153,3 +1476,297 @@ size_t aws_host_resolver_get_host_address_count(
     uint32_t flags) {
     return resolver->vtable->get_host_address_count(resolver, host_name, flags);
 }
+
+enum find_listener_entry_flags {
+    FIND_LISTENER_ENTRY_FLAGS_CREATE_IF_NOT_FOUND = 0x00000001,
+};
+
+static struct host_listener_entry *s_find_host_listener_entry(
+    struct default_host_resolver *default_resolver,
+    const struct aws_string *host_name,
+    uint32_t flags);
+
+static struct aws_host_listener *default_add_host_listener(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_listener_options *options) {
+    AWS_PRECONDITION(resolver);
+
+    if (options == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Cannot create host resolver listener; options structure is NULL.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
+    }
+
+    if (options->host_name.len == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Cannot create host resolver listener; invalid host name specified.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
+    }
+
+    /* Allocate and set up the listener. */
+    struct host_listener *listener = aws_mem_calloc(resolver->allocator, 1, sizeof(struct host_listener));
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_DNS,
+        "id=%p Adding listener %p for host name %s",
+        (void *)resolver,
+        (void *)listener,
+        (const char *)options->host_name.ptr);
+
+    aws_host_resolver_acquire(resolver);
+    listener->resolver = resolver;
+    listener->host_name = aws_string_new_from_cursor(resolver->allocator, &options->host_name);
+    listener->resolved_address_callback = options->resolved_address_callback;
+    listener->shutdown_callback = options->shutdown_callback;
+    listener->user_data = options->user_data;
+
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+
+    /* Add the listener to a host listener entry in the host listener entry table. */
+    aws_mutex_lock(&default_host_resolver->resolver_lock);
+
+    if (s_add_host_listener_to_listener_entry(default_host_resolver, listener->host_name, listener)) {
+        aws_mem_release(resolver->allocator, listener);
+        listener = NULL;
+    }
+
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+    return (struct aws_host_listener *)listener;
+}
+
+static int default_remove_host_listener(
+    struct aws_host_resolver *host_resolver,
+    struct aws_host_listener *listener_opaque) {
+    AWS_PRECONDITION(host_resolver);
+    AWS_PRECONDITION(listener_opaque);
+
+    struct host_listener *listener = (struct host_listener *)listener_opaque;
+    struct default_host_resolver *default_host_resolver = host_resolver->impl;
+
+    if (listener->resolver != host_resolver) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_DNS,
+            "id=%p Trying to remove listener from incorrect host resolver. Listener belongs to host resolver %p",
+            (void *)host_resolver,
+            (void *)listener->resolver);
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return AWS_OP_ERR;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_DNS,
+        "id=%p Removing listener %p for host name %s",
+        (void *)host_resolver,
+        (void *)listener,
+        (const char *)listener->host_name->bytes);
+
+    bool destroy_listener_immediate = false;
+
+    aws_mutex_lock(&default_host_resolver->resolver_lock);
+
+    /* If owned by the resolver thread, flag the listener as pending destroy, so that resolver thread knows to destroy
+     * it. */
+    if (listener->synced_data.owned_by_resolver_thread) {
+        listener->synced_data.pending_destroy = true;
+    } else {
+        /* Else, remove the listener from the listener entry and clean it up once outside of the mutex. */
+        s_remove_host_listener_from_entry(default_host_resolver, listener->host_name, listener);
+        destroy_listener_immediate = true;
+    }
+
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+    if (destroy_listener_immediate) {
+        s_host_listener_destroy(listener);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+/* Find listener entry on the host resolver, optionally creating it if it doesn't exist. */
+/* Assumes host resolver lock is held. */
+static struct host_listener_entry *s_find_host_listener_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    uint32_t flags) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+
+    struct host_listener_entry *listener_entry = NULL;
+    struct aws_string *host_string_copy = NULL;
+
+    struct aws_hash_element *listener_entry_hash_element = NULL;
+    bool create_if_not_found = (flags & FIND_LISTENER_ENTRY_FLAGS_CREATE_IF_NOT_FOUND) != 0;
+
+    if (aws_hash_table_find(&resolver->listener_entry_table, host_name, &listener_entry_hash_element)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_DNS, "static: error when trying to find a listener entry in the listener entry table.");
+        goto error_clean_up;
+    }
+
+    if (listener_entry_hash_element != NULL) {
+        listener_entry = listener_entry_hash_element->value;
+        AWS_FATAL_ASSERT(listener_entry);
+    } else if (create_if_not_found) {
+
+        listener_entry = aws_mem_calloc(resolver->allocator, 1, sizeof(struct host_listener_entry));
+        listener_entry->resolver = resolver;
+        aws_linked_list_init(&listener_entry->listeners);
+
+        host_string_copy = aws_string_new_from_string(resolver->allocator, host_name);
+
+        if (aws_hash_table_put(&resolver->listener_entry_table, host_string_copy, listener_entry, NULL)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: could not put new listener entry into listener entry table.");
+            goto error_clean_up;
+        }
+    }
+
+    return listener_entry;
+
+error_clean_up:
+
+    s_host_listener_entry_destroy(listener_entry);
+
+    aws_string_destroy(host_string_copy);
+
+    return NULL;
+}
+
+/* Destroy function for listener entries.  Takes a void* so that it can be used by the listener entry hash table. */
+static void s_host_listener_entry_destroy(void *listener_entry_void) {
+    if (listener_entry_void == NULL) {
+        return;
+    }
+
+    struct host_listener_entry *listener_entry = listener_entry_void;
+    struct default_host_resolver *resolver = listener_entry->resolver;
+
+    aws_mem_release(resolver->allocator, listener_entry);
+}
+
+/* Add a listener to the relevant host listener entry. */
+/* Assumes host resolver lock is held. */
+static int s_add_host_listener_to_listener_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener *listener) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+    AWS_PRECONDITION(listener);
+
+    struct host_listener_entry *listener_entry =
+        s_find_host_listener_entry(resolver, host_name, FIND_LISTENER_ENTRY_FLAGS_CREATE_IF_NOT_FOUND);
+
+    if (listener_entry == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    aws_linked_list_push_back(&listener_entry->listeners, &listener->synced_data.node);
+    return AWS_OP_SUCCESS;
+}
+
+/* Assumes host resolver lock is held. */
+static struct host_listener *s_pop_host_listener_from_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener_entry **in_out_listener_entry) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+
+    struct host_listener_entry *listener_entry = NULL;
+
+    if (in_out_listener_entry) {
+        listener_entry = *in_out_listener_entry;
+    }
+
+    if (listener_entry == NULL) {
+        listener_entry = s_find_host_listener_entry(resolver, host_name, 0);
+
+        if (listener_entry == NULL) {
+            return NULL;
+        }
+    }
+
+    /* We should never have a listener entry without any listeners.  Whenever a listener entry has no listeners, it
+     * should be cleaned up immediately. */
+    AWS_ASSERT(!aws_linked_list_empty(&listener_entry->listeners));
+
+    struct aws_linked_list_node *node = aws_linked_list_pop_back(&listener_entry->listeners);
+
+    struct host_listener *listener = HOST_LISTENER_FROM_SYNCED_NODE(node);
+    AWS_FATAL_ASSERT(listener);
+
+    /* If the listener list on the listener entry is now empty, remove it. */
+    if (aws_linked_list_empty(&listener_entry->listeners)) {
+        aws_hash_table_remove(&resolver->listener_entry_table, host_name, NULL, NULL);
+        listener_entry = NULL;
+    }
+
+    if (in_out_listener_entry) {
+        *in_out_listener_entry = listener_entry;
+    }
+
+    return listener;
+}
+
+/* Assumes host resolver lock is held. */
+static void s_remove_host_listener_from_entry(
+    struct default_host_resolver *resolver,
+    const struct aws_string *host_name,
+    struct host_listener *listener) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(host_name);
+    AWS_PRECONDITION(listener);
+
+    struct host_listener_entry *listener_entry = s_find_host_listener_entry(resolver, host_name, 0);
+
+    if (listener_entry == NULL) {
+        AWS_LOGF_WARN(AWS_LS_IO_DNS, "id=%p: Could not find listener entry for listener.", (void *)listener);
+        return;
+    }
+
+    /* We should never have a listener entry without any listeners.  Whenever a listener entry has no listeners, it
+     * should be cleaned up immediately. */
+    AWS_ASSERT(!aws_linked_list_empty(&listener_entry->listeners));
+
+    aws_linked_list_remove(&listener->synced_data.node);
+
+    /* If the listener list on the listener entry is now empty, remove it. */
+    if (aws_linked_list_empty(&listener_entry->listeners)) {
+        aws_hash_table_remove(&resolver->listener_entry_table, host_name, NULL, NULL);
+    }
+}
+
+/* Finish destroying a default resolver listener, releasing any remaining memory for it and triggering its shutdown
+ * callack.  Since a shutdown callback is triggered, no lock should be held when calling this function. */
+static void s_host_listener_destroy(struct host_listener *listener) {
+    if (listener == NULL) {
+        return;
+    }
+
+    AWS_LOGF_TRACE(AWS_LS_IO_DNS, "id=%p: Finishing clean up of host listener.", (void *)listener);
+
+    struct aws_host_resolver *host_resolver = listener->resolver;
+
+    aws_host_listener_shutdown_fn *shutdown_callback = listener->shutdown_callback;
+    void *shutdown_user_data = listener->user_data;
+
+    aws_string_destroy(listener->host_name);
+    listener->host_name = NULL;
+
+    aws_mem_release(host_resolver->allocator, listener);
+    listener = NULL;
+
+    if (shutdown_callback != NULL) {
+        shutdown_callback(shutdown_user_data);
+    }
+
+    if (host_resolver != NULL) {
+        aws_host_resolver_release(host_resolver);
+        host_resolver = NULL;
+    }
+}
+
+#undef HOST_LISTENER_FROM_SYNCED_NODE
+#undef HOST_LISTENER_FROM_THREADED_NODE
