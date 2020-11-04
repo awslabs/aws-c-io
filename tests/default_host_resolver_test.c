@@ -1443,16 +1443,16 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
     /* Setup listener before host is added */
     {
         struct aws_host_listener_options listener_options1 = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data1};
+                                                              .resolved_address_callback =
+                                                                  s_listener_resolved_address_callback,
+                                                              .user_data = &callback_data1};
 
         listener1 = aws_host_resolver_add_host_listener(resolver, &listener_options1);
 
         struct aws_host_listener_options listener_options2 = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data2};
+                                                              .resolved_address_callback =
+                                                                  s_listener_resolved_address_callback,
+                                                              .user_data = &callback_data2};
 
         listener2 = aws_host_resolver_add_host_listener(resolver, &listener_options2);
     }
