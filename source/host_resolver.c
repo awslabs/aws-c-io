@@ -168,6 +168,8 @@ struct host_listener {
     /* TODO Add a lock-synced-data function for the host resolver, replacing all current places where the host resolver
      * mutex is locked. */
     struct host_listener_synced_data {
+        /* It's important that the node structure is always first, so that the HOST_LISTENER_FROM_SYNCED_NODE macro
+         * works properly.*/
         struct aws_linked_list_node node;
         uint32_t owned_by_resolver_thread : 1;
         uint32_t pending_destroy : 1;
@@ -175,9 +177,19 @@ struct host_listener {
 
     /* Threaded data that can only be used in the resolver thread. */
     struct host_listener_threaded_data {
+        /* It's important that the node structure is always first, so that the HOST_LISTENER_FROM_THREADED_NODE macro
+         * works properly.*/
         struct aws_linked_list_node node;
     } threaded_data;
 };
+
+/* AWS_CONTAINER_OF does not compile under Clang when using a member in a nested structure, ie, synced_data.node or
+ * threaded_data.node. To get around this, we define two local macros that rely on the node being the first member of
+ * the synced_data/threaded_data structures.*/
+#define HOST_LISTENER_FROM_SYNCED_NODE(listener_node)                                                                  \
+    AWS_CONTAINER_OF((listener_node), struct host_listener, synced_data)
+#define HOST_LISTENER_FROM_THREADED_NODE(listener_node)                                                                \
+    AWS_CONTAINER_OF((listener_node), struct host_listener, threaded_data)
 
 /* Structure for holding all listeners for a particular host name. */
 struct host_listener_entry {
@@ -763,7 +775,7 @@ static int s_resolver_thread_move_listeners_to_listener_entry(
 
     while (!aws_linked_list_empty(listener_list)) {
         struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_list);
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, threaded_data);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
 
         /* Flag this listener as no longer in-use by the resolver thread. */
         listener->synced_data.owned_by_resolver_thread = false;
@@ -801,7 +813,7 @@ static void s_resolver_thread_cull_pending_destroy_listeners(
 
     /* Find all listeners in our current list that are marked for destroy. */
     while (listener_node != aws_linked_list_end(listener_list)) {
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, threaded_data);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
 
         /* Advance our node pointer early to allow for a removal. */
         listener_node = aws_linked_list_next(listener_node);
@@ -822,7 +834,7 @@ static void s_resolver_thread_destroy_listeners(struct aws_linked_list *listener
 
     while (!aws_linked_list_empty(listener_destroy_list)) {
         struct aws_linked_list_node *listener_node = aws_linked_list_pop_back(listener_destroy_list);
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, threaded_data);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
         s_host_listener_destroy(listener);
     }
 }
@@ -841,7 +853,7 @@ static void s_resolver_thread_notify_listeners(
     for (struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
          listener_node != aws_linked_list_end(listener_list);
          listener_node = aws_linked_list_next(listener_node)) {
-        struct host_listener *listener = AWS_CONTAINER_OF(listener_node, struct host_listener, threaded_data);
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
 
         /* If we have new adddresses, notify the resolved-address callback if one exists */
         if (aws_array_list_length(new_address_list) > 0 && listener->resolved_address_callback != NULL) {
@@ -1693,7 +1705,7 @@ static struct host_listener *s_pop_host_listener_from_entry(
 
     struct aws_linked_list_node *node = aws_linked_list_pop_back(&listener_entry->listeners);
 
-    struct host_listener *listener = AWS_CONTAINER_OF(node, struct host_listener, synced_data);
+    struct host_listener *listener = HOST_LISTENER_FROM_SYNCED_NODE(node);
     AWS_FATAL_ASSERT(listener);
 
     /* If the listener list on the listener entry is now empty, remove it. */
@@ -1766,3 +1778,6 @@ static void s_host_listener_destroy(struct host_listener *listener) {
         host_resolver = NULL;
     }
 }
+
+#undef HOST_LISTENER_FROM_SYNCED_NODE
+#undef HOST_LISTENER_FROM_THREADED_NODE
