@@ -93,6 +93,7 @@ add_test_case(test_resolver_ttl_refreshes_on_resolve)
 add_test_case(test_resolver_listener_create_destroy)
 add_test_case(test_resolver_add_listener_before_host)
 add_test_case(test_resolver_add_listener_after_host)
+add_test_case(test_resolver_add_multiple_listeners_fn)
 add_test_case(test_resolver_listener_host_re_add_fn)
 add_test_case(test_resolver_listener_multiple_results)
 

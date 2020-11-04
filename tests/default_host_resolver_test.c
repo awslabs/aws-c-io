@@ -1422,6 +1422,101 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
 
 AWS_TEST_CASE(test_resolver_add_listener_after_host, s_test_resolver_add_listener_after_host_fn)
 
+static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("s3.us-east-1.amazonaws.com");
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+    struct aws_host_listener *listener1 = NULL;
+    struct aws_host_listener *listener2 = NULL;
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct listener_test_callback_data callback_data1;
+    struct listener_test_callback_data callback_data2;
+
+    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data1);
+    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data2);
+
+    /* Setup listener before host is added */
+    {
+        struct aws_host_listener_options listener_options1 = {.host_name = host_name,
+                                                             .resolved_address_callback =
+                                                                 s_listener_resolved_address_callback,
+                                                             .user_data = &callback_data1};
+
+        listener1 = aws_host_resolver_add_host_listener(resolver, &listener_options1);
+
+        struct aws_host_listener_options listener_options2 = {.host_name = host_name,
+                                                             .resolved_address_callback =
+                                                                 s_listener_resolved_address_callback,
+                                                             .user_data = &callback_data2};
+
+        listener2 = aws_host_resolver_add_host_listener(resolver, &listener_options2);
+    }
+
+    /* Trigger resolve host */
+    {
+        struct aws_host_resolution_config config = {
+            .max_ttl = 1,
+            .impl = aws_default_dns_resolve,
+            .impl_data = NULL,
+        };
+
+        struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
+
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, host_name_str, s_listener_test_initial_resolved_callback_empty, &config, NULL));
+
+        aws_string_destroy(host_name_str);
+    }
+
+    /* Wait for listener to receive host resolved callback. */
+    {
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+        aws_condition_variable_wait_pred(
+            &callback_data1.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data1);
+
+        /* Reset flag for re-use */
+        callback_data1.invoked = false;
+
+        aws_condition_variable_wait_pred(
+            &callback_data2.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data2);
+
+        /* Reset flag for re-use */
+        callback_data2.invoked = false;
+
+        ASSERT_TRUE(aws_array_list_length(&callback_data1.address_list) > 0);
+        ASSERT_TRUE(aws_array_list_length(&callback_data2.address_list) > 0);
+
+        aws_mutex_unlock(&mutex);
+    }
+
+    aws_host_resolver_remove_host_listener(resolver, listener1);
+    listener1 = NULL;
+
+    aws_host_resolver_remove_host_listener(resolver, listener2);
+    listener2 = NULL;
+
+    aws_host_resolver_release(resolver);
+
+    s_listener_test_callback_data_clean_up(&callback_data1);
+    s_listener_test_callback_data_clean_up(&callback_data2);
+    aws_mutex_clean_up(&mutex);
+
+    aws_event_loop_group_release(el_group);
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_io_library_clean_up();
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_add_multiple_listeners_fn, s_test_resolver_add_multiple_listeners_fn)
+
 /* Test to make sure that a host listener still works even when a host entry is removed and re-added. */
 static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
