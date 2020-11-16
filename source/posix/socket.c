@@ -1083,12 +1083,13 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         AWS_LS_IO_SOCKET, "id=%p fd=%d: stopping accepting new connections", (void *)socket, socket->io_handle.data.fd);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
-        struct stop_accept_args args = {.mutex = AWS_MUTEX_INIT,
-                                        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                        .invoked = false,
-                                        .socket = socket,
-                                        .ret_code = AWS_OP_SUCCESS,
-                                        .task = {.fn = s_stop_accept_task}};
+        struct stop_accept_args args = {
+            .mutex = AWS_MUTEX_INIT,
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .invoked = false,
+            .socket = socket,
+            .ret_code = AWS_OP_SUCCESS,
+            .task = {.fn = s_stop_accept_task}};
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stopping accepting new connections from a different thread than "
@@ -1690,7 +1691,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
 
     int error = errno;
 
-    if (error == EAGAIN) {
+    if (error == EAGAIN || error == EWOULDBLOCK) {
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: read would block", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
@@ -1705,6 +1706,12 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
     }
 
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: read failed with error: %s",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        strerror(error));
     return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
