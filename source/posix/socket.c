@@ -1083,13 +1083,12 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         AWS_LS_IO_SOCKET, "id=%p fd=%d: stopping accepting new connections", (void *)socket, socket->io_handle.data.fd);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
-        struct stop_accept_args args = {
-            .mutex = AWS_MUTEX_INIT,
-            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-            .invoked = false,
-            .socket = socket,
-            .ret_code = AWS_OP_SUCCESS,
-            .task = {.fn = s_stop_accept_task}};
+        struct stop_accept_args args = {.mutex = AWS_MUTEX_INIT,
+                                        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+                                        .invoked = false,
+                                        .socket = socket,
+                                        .ret_code = AWS_OP_SUCCESS,
+                                        .task = {.fn = s_stop_accept_task}};
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stopping accepting new connections from a different thread than "
