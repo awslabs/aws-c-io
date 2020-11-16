@@ -1689,8 +1689,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     }
 
     int error = errno;
-
+#if defined(EWOULDBLOCK)
     if (error == EAGAIN || error == EWOULDBLOCK) {
+#else
+    if (error == EAGAIN) {
+#endif
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: read would block", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
