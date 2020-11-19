@@ -17,8 +17,6 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
-#include <aws/cal/cal.h>
-
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
