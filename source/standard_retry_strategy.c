@@ -50,7 +50,7 @@ static uint64_t s_hash_partition_id(const void *seated_partition_ptr) {
 static void s_destroy_standard_retry_bucket(void *retry_bucket) {
     struct retry_bucket *standard_retry_bucket = retry_bucket;
     aws_retry_strategy_release(standard_retry_bucket->owner);
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_retry_bucket->partition_lock) && "mutex unlock failed");
+    aws_mutex_clean_up(&standard_retry_bucket->partition_lock);
     aws_mem_release(standard_retry_bucket->allocator, standard_retry_bucket);
 }
 
@@ -227,7 +227,6 @@ static int s_standard_retry_strategy_schedule_retry(
 
     struct retry_bucket_token *impl = token->impl;
 
-    bool reject_retry = false;
     size_t capacity_consumed = 0;
 
     AWS_FATAL_ASSERT(!aws_mutex_lock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
@@ -247,15 +246,12 @@ static int s_standard_retry_strategy_schedule_retry(
 
     impl->original_user_data = user_data;
     impl->original_on_ready = retry_ready;
-    int err_code = AWS_OP_ERR;
 
-    if (!reject_retry) {
-        aws_retry_strategy_schedule_retry(
-            impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token);
-        if (!err_code) {
-            impl->last_retry_cost = capacity_consumed;
-            impl->strategy_bucket -= capacity_consumed;
-        }
+    int err_code = aws_retry_strategy_schedule_retry(
+        impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token);
+    if (!err_code) {
+        impl->last_retry_cost = capacity_consumed;
+        impl->strategy_bucket -= capacity_consumed;
     }
 
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
