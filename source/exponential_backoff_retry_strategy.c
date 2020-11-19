@@ -9,7 +9,6 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
-#include <aws/common/logging.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 
@@ -27,7 +26,7 @@ struct exponential_backoff_retry_token {
     size_t max_retries;
     uint64_t backoff_scale_factor_ns;
     enum aws_exponential_backoff_jitter_mode jitter_mode;
-    /* Let's not make this worst by constantly moving across threads if we can help it */
+    /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
     uint64_t (*generate_random)(void);
     struct aws_task retry_task;
@@ -42,7 +41,8 @@ struct exponential_backoff_retry_token {
 
 static void s_exponential_retry_destroy(struct aws_retry_strategy *retry_strategy) {
     if (retry_strategy) {
-        aws_mem_release(retry_strategy->allocator, retry_strategy);
+        struct exponential_backoff_retry_token *backoff_retry_token = retry_strategy->impl;
+        aws_mem_release(retry_strategy->allocator, backoff_retry_token);
     }
 }
 
@@ -335,7 +335,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     }
 
     if (!exponential_backoff_strategy->config.max_retries) {
-        exponential_backoff_strategy->config.max_retries = 10;
+        exponential_backoff_strategy->config.max_retries = 5;
     }
 
     if (!exponential_backoff_strategy->config.backoff_scale_factor_ms) {

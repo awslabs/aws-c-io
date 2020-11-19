@@ -109,6 +109,11 @@ struct aws_exponential_backoff_retry_options {
     uint64_t (*generate_random)(void);
 };
 
+struct aws_standard_retry_options {
+    struct aws_exponential_backoff_retry_options backoff_retry_options;
+    size_t initial_bucket_capacity;
+};
+
 AWS_EXTERN_C_BEGIN
 /**
  * Acquire a reference count on retry_strategy.
@@ -130,6 +135,7 @@ AWS_IO_API int aws_retry_strategy_acquire_retry_token(
     aws_retry_strategy_on_retry_token_acquired_fn *on_acquired,
     void *user_data,
     uint64_t timeout_ms);
+
 /**
  * Schedules a retry based on the backoff and token based strategies. retry_ready is invoked when the retry is either
  * ready for execution or if it has been canceled due to application shutdown.
@@ -163,6 +169,14 @@ AWS_IO_API void aws_retry_strategy_release_retry_token(struct aws_retry_token *t
 AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     struct aws_allocator *allocator,
     const struct aws_exponential_backoff_retry_options *config);
+
+/**
+ * Creates a retry strategy using the aws standard retry strategy with exponential backoff.
+ */
+AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
+    struct aws_allocator *allocator,
+    const struct aws_standard_retry_options *config);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CLIENT_RETRY_STRATEGY_H */
