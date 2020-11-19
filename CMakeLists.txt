@@ -161,7 +161,6 @@ if (NOT CUSTOM_TLS)
                 )
 
     	aws_use_package(s2n)
-        aws_use_package(aws-c-cal)
     endif ()
 endif ()
 
@@ -202,6 +201,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         $<INSTALL_INTERFACE:include>)
 
 aws_use_package(aws-c-common)
+aws_use_package(aws-c-cal)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
