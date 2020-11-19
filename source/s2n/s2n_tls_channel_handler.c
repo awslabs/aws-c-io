@@ -117,15 +117,12 @@ static const char *s_determine_default_pki_ca_file(void) {
 }
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
-
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
     s2n_init();
-
-    aws_cal_library_init(alloc);
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
@@ -137,7 +134,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 }
 
 void aws_tls_clean_up_static_state(void) {
-    aws_cal_library_clean_up();
     s2n_cleanup();
 }
 
