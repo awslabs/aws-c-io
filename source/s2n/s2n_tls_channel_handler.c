@@ -125,7 +125,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     setenv("S2N_DONT_MLOCK", "1", 1);
     s2n_init();
 
-    aws_cal_library_init();
+    aws_cal_library_init(alloc);
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
