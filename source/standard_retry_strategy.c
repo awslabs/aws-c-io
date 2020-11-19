@@ -66,6 +66,7 @@ static void s_standard_retry_destroy(struct aws_retry_strategy *retry_strategy) 
     if (retry_strategy) {
         struct standard_strategy *standard_strategy = retry_strategy->impl;
         aws_retry_strategy_release(standard_strategy->exponential_backoff_retry_strategy);
+        aws_hash_table_clean_up(&standard_strategy->token_buckets);
         aws_mutex_clean_up(&standard_strategy->lock);
         aws_mem_release(retry_strategy->allocator, standard_strategy);
     }
