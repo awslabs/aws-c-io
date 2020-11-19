@@ -50,7 +50,7 @@ function install_dep {
     mkdir -p dep-build
     cd dep-build
 
-    cmake -GNinja $cmake_args -DCMAKE_INSTALL_PREFIX=$install_prefix ..
+    cmake -GNinja $cmake_args -DCMAKE_PREFIX_PATH=$install_prefix -DCMAKE_INSTALL_PREFIX=$install_prefix ..
     cmake --build . --target all
     cmake --build . --target install
 
