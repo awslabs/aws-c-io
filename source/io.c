@@ -6,6 +6,8 @@
 
 #include <aws/io/logging.h>
 
+#include <aws/cal/cal.h>
+
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 /* clang-format off */
@@ -200,6 +202,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
     if (!s_io_library_initialized) {
         s_io_library_initialized = true;
         aws_common_library_init(allocator);
+        aws_cal_library_init(allocator);
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
         aws_tls_init_static_state(allocator);
@@ -212,6 +215,7 @@ void aws_io_library_clean_up(void) {
         aws_tls_clean_up_static_state();
         aws_unregister_error_info(&s_list);
         aws_unregister_log_subject_info_list(&s_io_log_subject_list);
+        aws_cal_library_clean_up();
         aws_common_library_clean_up();
     }
 }

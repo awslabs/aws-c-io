@@ -6,7 +6,8 @@
             "name": "s2n",
             "targets": ["linux", "android"],
             "revision": "v0.10.19"
-        }
+        },
+        { "name": "aws-c-cal" }
     ],
     "downstream": [
         { "name": "aws-c-mqtt" },
