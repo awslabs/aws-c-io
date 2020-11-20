@@ -184,7 +184,12 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
     DEFINE_LOG_SUBJECT_INFO(
         AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
         "exp-backoff-strategy",
-        "Subject for exponential backoff retry strategy")};
+        "Subject for exponential backoff retry strategy"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "standard-retry-strategy",
+        "Subject for standard retry strategy"),
+};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,

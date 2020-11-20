@@ -49,6 +49,11 @@ static uint64_t s_hash_partition_id(const void *seated_partition_ptr) {
 
 static void s_destroy_standard_retry_bucket(void *retry_bucket) {
     struct retry_bucket *standard_retry_bucket = retry_bucket;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: destroying bucket partition " PRInSTR,
+        (void *)standard_retry_bucket->owner,
+        AWS_BYTE_CURSOR_PRI(standard_retry_bucket->partition_id_cur));
     aws_retry_strategy_release(standard_retry_bucket->owner);
     aws_mutex_clean_up(&standard_retry_bucket->partition_lock);
     aws_mem_release(standard_retry_bucket->allocator, standard_retry_bucket);
@@ -64,22 +69,12 @@ struct standard_strategy {
 
 static void s_standard_retry_destroy(struct aws_retry_strategy *retry_strategy) {
     if (retry_strategy) {
+        AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: destroying self", (void *)retry_strategy);
         struct standard_strategy *standard_strategy = retry_strategy->impl;
         aws_retry_strategy_release(standard_strategy->exponential_backoff_retry_strategy);
         aws_hash_table_clean_up(&standard_strategy->token_buckets);
         aws_mutex_clean_up(&standard_strategy->lock);
         aws_mem_release(retry_strategy->allocator, standard_strategy);
-    }
-}
-
-static void s_retry_bucket_destroy(void *bucket) {
-    if (bucket) {
-        struct retry_bucket *retry_bucket = bucket;
-
-        aws_string_destroy(retry_bucket->partition_id);
-        aws_mutex_clean_up(&retry_bucket->partition_lock);
-        aws_retry_strategy_release(retry_bucket->owner);
-        aws_mem_release(retry_bucket->allocator, retry_bucket);
     }
 }
 
@@ -92,9 +87,21 @@ static void s_on_standard_retry_token_acquired(
     (void)token;
 
     struct retry_bucket_token *retry_token = user_data;
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: token acquired callback invoked with error %s with token %p and nested token %p",
+        (void *)retry_token->retry_token.retry_strategy,
+        aws_error_str(error_code),
+        (void *)&retry_token->retry_token,
+        (void *)token);
 
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: invoking on_retry_token_acquired callback",
+        (void *)retry_token->retry_token.retry_strategy);
     if (!error_code) {
         retry_token->exp_backoff_token = token;
+
         retry_token->original_on_acquired(
             retry_token->strategy_bucket->owner,
             error_code,
@@ -105,6 +112,10 @@ static void s_on_standard_retry_token_acquired(
             retry_token->strategy_bucket->owner, error_code, NULL, retry_token->original_user_data);
         aws_retry_strategy_release_retry_token(&retry_token->retry_token);
     }
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: on_retry_token_acquired callback completed",
+        (void *)retry_token->retry_token.retry_strategy);
 }
 
 static int s_standard_retry_acquire_token(
@@ -120,6 +131,12 @@ static int s_standard_retry_acquire_token(
     const struct aws_byte_cursor *partition_id_ptr =
         !partition_id || partition_id->len == 0 ? &s_empty_string_cur : partition_id;
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: attempting to acquire retry token for partition_id " PRInSTR,
+        (void *)retry_strategy,
+        AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
+
     struct retry_bucket_token *token = aws_mem_calloc(retry_strategy->allocator, 1, sizeof(struct retry_bucket_token));
     if (!token) {
         return AWS_OP_ERR;
@@ -131,9 +148,19 @@ static int s_standard_retry_acquire_token(
     struct aws_hash_element *element_ptr;
     struct retry_bucket *bucket_ptr;
     if (aws_hash_table_find(&standard_strategy->token_buckets, partition_id_ptr, &element_ptr)) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: bucket for partition_id " PRInSTR " does not exist, attempting to create one",
+            (void *)retry_strategy,
+            AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
         bucket_ptr = aws_mem_calloc(standard_strategy->base.allocator, 1, sizeof(struct retry_bucket));
 
         if (!bucket_ptr) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+                "id=%p: error when allocating bucket %s",
+                (void *)retry_strategy,
+                aws_error_debug_str(aws_last_error()));
             goto error;
         }
 
@@ -144,6 +171,11 @@ static int s_standard_retry_acquire_token(
                                        : (struct aws_string *)s_empty_string;
 
         if (!bucket_ptr->partition_id) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+                "id=%p: error when allocating partition_id %s",
+                (void *)retry_strategy,
+                aws_error_debug_str(aws_last_error()));
             goto error;
         }
 
@@ -152,13 +184,30 @@ static int s_standard_retry_acquire_token(
         bucket_ptr->owner = retry_strategy;
         aws_retry_strategy_acquire(retry_strategy);
         bucket_ptr->current_capacity = standard_strategy->max_capacity;
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: bucket %p for partition_id " PRInSTR " created",
+            (void *)retry_strategy,
+            (void *)bucket_ptr,
+            AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
 
         if (aws_hash_table_put(&standard_strategy->token_buckets, &bucket_ptr->partition_id_cur, bucket_ptr, NULL)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+                "id=%p: error when putting bucket to token_bucket table %s",
+                (void *)retry_strategy,
+                aws_error_debug_str(aws_last_error()));
             goto error;
         }
         bucket_needs_cleanup = false;
     } else {
         bucket_ptr = element_ptr->value;
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: bucket %p for partition_id " PRInSTR " found",
+            (void *)retry_strategy,
+            (void *)bucket_ptr,
+            AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
     }
 
     token->strategy_bucket = bucket_ptr;
@@ -167,18 +216,16 @@ static int s_standard_retry_acquire_token(
     token->retry_token.allocator = retry_strategy->allocator;
     token->retry_token.impl = token;
 
-    AWS_FATAL_ASSERT(!aws_mutex_lock(&bucket_ptr->partition_lock) && "mutex lock failed");
-    /* this will sometimes be stale due to the way we're using it here, but the goal is just to provide
-     * an early failure for the hot path, which this will do. */
-    if (bucket_ptr->current_capacity == 0) {
-        AWS_FATAL_ASSERT(!aws_mutex_unlock(&bucket_ptr->partition_lock) && "mutex unlock failed");
-        aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
-        goto table_updated;
-    }
-    bucket_ptr->current_capacity -= s_standard_no_retry_cost;
+    /* don't decrement the capacity counter, but add the retry payback, so making calls that succeed allows for a
+     * gradual recovery of the bucket capacity. Otherwise, we'd never recover from an outage. */
     token->last_retry_cost = s_standard_no_retry_cost;
 
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&bucket_ptr->partition_lock) && "mutex unlock failed");
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: allocated token %p for partition_id " PRInSTR,
+        (void *)retry_strategy,
+        (void *)&token->retry_token,
+        AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
 
     if (aws_retry_strategy_acquire_retry_token(
             standard_strategy->exponential_backoff_retry_strategy,
@@ -186,6 +233,12 @@ static int s_standard_retry_acquire_token(
             s_on_standard_retry_token_acquired,
             token,
             timeout_ms)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: error when acquiring retry token from backing retry strategy %p: %s",
+            (void *)retry_strategy,
+            (void *)standard_strategy->exponential_backoff_retry_strategy,
+            aws_error_debug_str(aws_last_error()));
         goto table_updated;
     }
 
@@ -198,7 +251,7 @@ table_updated:
 
 error:
     if (bucket_needs_cleanup) {
-        s_retry_bucket_destroy(bucket_ptr);
+        s_destroy_standard_retry_bucket(bucket_ptr);
     }
 
     aws_retry_strategy_release_retry_token(&token->retry_token);
@@ -212,7 +265,16 @@ void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int
 
     struct aws_retry_token *standard_retry_token = user_data;
     struct retry_bucket_token *impl = standard_retry_token->impl;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: invoking on_retry_ready callback with error %s, token %p, and nested token %p",
+        (void *)token->retry_strategy,
+        aws_error_str(error_code),
+        (void *)standard_retry_token,
+        (void *)token);
     impl->original_on_ready(standard_retry_token, error_code, impl->original_user_data);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: on_retry_ready callback completed", (void *)token->retry_strategy);
 }
 
 static int s_standard_retry_strategy_schedule_retry(
@@ -233,7 +295,11 @@ static int s_standard_retry_strategy_schedule_retry(
     size_t current_capacity = impl->strategy_bucket->current_capacity;
     if (current_capacity == 0) {
         AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
-        return aws_raise_error(AWS_IO_MAX_RETRIES_EXCEEDED);
+        AWS_LOGF_INFO(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "token_id=%p: requested to schedule retry but the bucket capacity is empty. Rejecting retry request.",
+            (void *)token);
+        return aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
     }
 
     if (error_type == AWS_RETRY_ERROR_TYPE_TRANSIENT) {
@@ -244,6 +310,12 @@ static int s_standard_retry_strategy_schedule_retry(
         capacity_consumed = aws_min_size(current_capacity, s_standard_retry_cost);
     }
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "token_id=%p: reducing retry capacity by %zu from %zu and scheduling retry.",
+        (void *)token,
+        capacity_consumed,
+        current_capacity);
     impl->original_user_data = user_data;
     impl->original_on_ready = retry_ready;
 
@@ -252,6 +324,12 @@ static int s_standard_retry_strategy_schedule_retry(
     if (!err_code) {
         impl->last_retry_cost = capacity_consumed;
         impl->strategy_bucket -= capacity_consumed;
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "token_id=%p: error occurred while scheduling retry: %s.",
+            (void *)token,
+            aws_error_debug_str(err_code));
     }
 
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
@@ -262,14 +340,31 @@ static int s_standard_retry_strategy_record_success(struct aws_retry_token *toke
     struct retry_bucket_token *impl = token->impl;
 
     AWS_FATAL_ASSERT(!aws_mutex_lock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
-    impl->strategy_bucket->current_capacity += impl->last_retry_cost;
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "token_id=%p: partition=" PRInSTR
+        ": recording successful operation and adding %zu units of capacity back to the bucket.",
+        (void *)token,
+        AWS_BYTE_CURSOR_PRI(impl->strategy_bucket->partition_id_cur),
+        impl->last_retry_cost);
+    size_t capacity_payback = impl->strategy_bucket->current_capacity + impl->last_retry_cost;
+    struct standard_strategy *standard_strategy = token->retry_strategy->impl;
+    impl->strategy_bucket->current_capacity =
+        capacity_payback < standard_strategy->max_capacity ? capacity_payback : standard_strategy->max_capacity;
     impl->last_retry_cost = 0;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "bucket_id=%p: partition=" PRInSTR " : new capacity is %zu.",
+        (void *)token,
+        AWS_BYTE_CURSOR_PRI(impl->strategy_bucket->partition_id_cur),
+        impl->strategy_bucket->current_capacity);
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
     return AWS_OP_SUCCESS;
 }
 
 static void s_standard_retry_strategy_release_token(struct aws_retry_token *token) {
     if (token) {
+        AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: releasing token", (void *)token);
         struct retry_bucket_token *impl = token->impl;
         if (impl->exp_backoff_token) {
             aws_retry_strategy_release_retry_token(impl->exp_backoff_token);
@@ -293,9 +388,11 @@ struct aws_retry_strategy *aws_retry_strategy_new_standard(
     AWS_PRECONDITION(allocator);
     AWS_PRECONDITION(config);
 
+    AWS_LOGF_INFO(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "static: creating new standard retry strategy");
     struct standard_strategy *standard_strategy = aws_mem_calloc(allocator, 1, sizeof(struct standard_strategy));
 
     if (!standard_strategy) {
+        AWS_LOGF_ERROR(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "static: allocation of new standard retry strategy failed");
         return NULL;
     }
 
@@ -308,10 +405,21 @@ struct aws_retry_strategy *aws_retry_strategy_new_standard(
         config_cpy.max_retries = 3;
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: creating backing exponential backoff strategy with max_retries of %zu",
+        (void *)&standard_strategy->base,
+        config_cpy.max_retries);
+
     standard_strategy->exponential_backoff_retry_strategy =
         aws_retry_strategy_new_exponential_backoff(allocator, &config_cpy);
 
     if (!standard_strategy->exponential_backoff_retry_strategy) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: allocation of new exponential backoff retry strategy failed: %s",
+            (void *)&standard_strategy->base,
+            aws_error_debug_str(aws_last_error()));
         goto error;
     }
 
@@ -323,12 +431,22 @@ struct aws_retry_strategy *aws_retry_strategy_new_standard(
             s_partition_id_equals_byte_cur,
             NULL,
             s_destroy_standard_retry_bucket)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: token bucket table creation failed: %s",
+            (void *)&standard_strategy->base,
+            aws_error_debug_str(aws_last_error()));
         goto error;
     }
 
     standard_strategy->max_capacity =
         config->initial_bucket_capacity ? config->initial_bucket_capacity : s_initial_retry_bucket_capacity;
 
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "id=%p: maximum bucket capacity set to %zu",
+        (void *)&standard_strategy->base,
+        standard_strategy->max_capacity);
     AWS_FATAL_ASSERT(!aws_mutex_init(&standard_strategy->lock) && "mutex init failed");
 
     standard_strategy->base.vtable = &s_standard_retry_vtable;
