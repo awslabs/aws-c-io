@@ -64,7 +64,7 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
         aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options) ==
         AWS_OP_SUCCESS);
 
-    aws_thread_clean_up(&cleanup_thread);
+    aws_thread_join(&cleanup_thread);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_new(
