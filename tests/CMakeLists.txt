@@ -185,6 +185,10 @@ add_test_case(test_exponential_backoff_retry_client_errors_do_not_count)
 add_test_case(test_exponential_backoff_retry_no_jitter_time_taken)
 add_test_case(test_exponential_backoff_retry_invalid_options)
 
+add_test_case(test_standard_retry_strategy_setup_shutdown)
+add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
+add_test_case(test_standard_retry_strategy_failure_recovers)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

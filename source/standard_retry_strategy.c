@@ -30,8 +30,8 @@ struct retry_bucket {
 };
 
 struct retry_bucket_token {
-    struct retry_bucket *strategy_bucket;
     struct aws_retry_token retry_token;
+    struct retry_bucket *strategy_bucket;
     struct aws_retry_token *exp_backoff_token;
     aws_retry_strategy_on_retry_token_acquired_fn *original_on_acquired;
     aws_retry_strategy_on_retry_ready_fn *original_on_ready;
@@ -54,7 +54,7 @@ static void s_destroy_standard_retry_bucket(void *retry_bucket) {
         "id=%p: destroying bucket partition " PRInSTR,
         (void *)standard_retry_bucket->owner,
         AWS_BYTE_CURSOR_PRI(standard_retry_bucket->partition_id_cur));
-    aws_retry_strategy_release(standard_retry_bucket->owner);
+    aws_string_destroy(standard_retry_bucket->partition_id);
     aws_mutex_clean_up(&standard_retry_bucket->partition_lock);
     aws_mem_release(standard_retry_bucket->allocator, standard_retry_bucket);
 }
@@ -68,14 +68,12 @@ struct standard_strategy {
 };
 
 static void s_standard_retry_destroy(struct aws_retry_strategy *retry_strategy) {
-    if (retry_strategy) {
-        AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: destroying self", (void *)retry_strategy);
-        struct standard_strategy *standard_strategy = retry_strategy->impl;
-        aws_retry_strategy_release(standard_strategy->exponential_backoff_retry_strategy);
-        aws_hash_table_clean_up(&standard_strategy->token_buckets);
-        aws_mutex_clean_up(&standard_strategy->lock);
-        aws_mem_release(retry_strategy->allocator, standard_strategy);
-    }
+    AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: destroying self", (void *)retry_strategy);
+    struct standard_strategy *standard_strategy = retry_strategy->impl;
+    aws_retry_strategy_release(standard_strategy->exponential_backoff_retry_strategy);
+    aws_hash_table_clean_up(&standard_strategy->token_buckets);
+    aws_mutex_clean_up(&standard_strategy->lock);
+    aws_mem_release(retry_strategy->allocator, standard_strategy);
 }
 
 static void s_on_standard_retry_token_acquired(
@@ -147,7 +145,8 @@ static int s_standard_retry_acquire_token(
 
     struct aws_hash_element *element_ptr;
     struct retry_bucket *bucket_ptr;
-    if (aws_hash_table_find(&standard_strategy->token_buckets, partition_id_ptr, &element_ptr)) {
+    aws_hash_table_find(&standard_strategy->token_buckets, partition_id_ptr, &element_ptr);
+    if (!element_ptr) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "id=%p: bucket for partition_id " PRInSTR " does not exist, attempting to create one",
@@ -182,7 +181,6 @@ static int s_standard_retry_acquire_token(
         bucket_ptr->partition_id_cur = aws_byte_cursor_from_string(bucket_ptr->partition_id);
         AWS_FATAL_ASSERT(!aws_mutex_init(&bucket_ptr->partition_lock) && "mutex init failed!");
         bucket_ptr->owner = retry_strategy;
-        aws_retry_strategy_acquire(retry_strategy);
         bucket_ptr->current_capacity = standard_strategy->max_capacity;
         AWS_LOGF_DEBUG(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
@@ -323,7 +321,7 @@ static int s_standard_retry_strategy_schedule_retry(
         impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token);
     if (!err_code) {
         impl->last_retry_cost = capacity_consumed;
-        impl->strategy_bucket -= capacity_consumed;
+        impl->strategy_bucket->current_capacity -= capacity_consumed;
     } else {
         AWS_LOGF_ERROR(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
@@ -370,7 +368,7 @@ static void s_standard_retry_strategy_release_token(struct aws_retry_token *toke
             aws_retry_strategy_release_retry_token(impl->exp_backoff_token);
         }
         aws_retry_strategy_release(token->retry_strategy);
-        aws_mem_release(token->allocator, token);
+        aws_mem_release(token->allocator, impl);
     }
 }
 
@@ -449,7 +447,9 @@ struct aws_retry_strategy *aws_retry_strategy_new_standard(
         standard_strategy->max_capacity);
     AWS_FATAL_ASSERT(!aws_mutex_init(&standard_strategy->lock) && "mutex init failed");
 
+    standard_strategy->base.allocator = allocator;
     standard_strategy->base.vtable = &s_standard_retry_vtable;
+    standard_strategy->base.impl = standard_strategy;
     return &standard_strategy->base;
 
 error:

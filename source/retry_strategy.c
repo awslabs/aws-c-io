@@ -9,10 +9,12 @@ void aws_retry_strategy_acquire(struct aws_retry_strategy *retry_strategy) {
 }
 
 void aws_retry_strategy_release(struct aws_retry_strategy *retry_strategy) {
-    size_t ref_count = aws_atomic_fetch_sub_explicit(&retry_strategy->ref_count, 1, aws_memory_order_seq_cst);
+    if (retry_strategy) {
+        size_t ref_count = aws_atomic_fetch_sub_explicit(&retry_strategy->ref_count, 1, aws_memory_order_seq_cst);
 
-    if (ref_count == 1) {
-        retry_strategy->vtable->destroy(retry_strategy);
+        if (ref_count == 1) {
+            retry_strategy->vtable->destroy(retry_strategy);
+        }
     }
 }
 
