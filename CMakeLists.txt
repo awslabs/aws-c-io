@@ -161,11 +161,6 @@ if (NOT CUSTOM_TLS)
                 )
 
     	aws_use_package(s2n)
-        #this following usage of LibCrypto is because it's actually a direct dependency
-	# of aws-c-io due to use setting the locking callbacks.
-	list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules")
-	find_package(LibCrypto REQUIRED)
-	set(PLATFORM_LIBS LibCrypto::Crypto)
     endif ()
 endif ()
 
@@ -206,6 +201,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         $<INSTALL_INTERFACE:include>)
 
 aws_use_package(aws-c-common)
+aws_use_package(aws-c-cal)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
@@ -231,10 +227,6 @@ configure_file("cmake/${PROJECT_NAME}-config.cmake"
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
-        COMPONENT Development)
-
-install(FILES "cmake/modules/FindLibCrypto.cmake"
-        DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/modules/"
         COMPONENT Development)
 
 if (NOT CMAKE_CROSSCOMPILING)
