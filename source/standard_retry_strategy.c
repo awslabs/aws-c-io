@@ -292,7 +292,7 @@ static int s_standard_retry_strategy_schedule_retry(
     AWS_FATAL_ASSERT(!aws_mutex_lock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
     size_t current_capacity = impl->strategy_bucket->current_capacity;
     if (current_capacity == 0) {
-        AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
+        AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
         AWS_LOGF_INFO(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "token_id=%p: requested to schedule retry but the bucket capacity is empty. Rejecting retry request.",

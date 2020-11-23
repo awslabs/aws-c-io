@@ -11,7 +11,7 @@
 
 #include <aws/io/event_loop.h>
 
-struct standard_retry_test_data {
+struct exponential_backoff_test_data {
     size_t retry_count;
     size_t client_error_count;
     int failure_error_code;
@@ -22,7 +22,7 @@ struct standard_retry_test_data {
 static void s_too_many_retries_test_on_retry_ready(struct aws_retry_token *token, int error_code, void *user_data) {
     (void)error_code;
 
-    struct standard_retry_test_data *test_data = user_data;
+    struct exponential_backoff_test_data *test_data = user_data;
     enum aws_retry_error_type error_type = AWS_RETRY_ERROR_TYPE_SERVER_ERROR;
 
     aws_mutex_lock(&test_data->mutex);
@@ -56,7 +56,7 @@ static void s_too_many_retries_test_token_acquired(
 }
 
 static bool s_retry_has_failed(void *arg) {
-    struct standard_retry_test_data *test_data = arg;
+    struct exponential_backoff_test_data *test_data = arg;
     return test_data->failure_error_code != AWS_OP_SUCCESS;
 }
 
@@ -76,7 +76,7 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
 
-    struct standard_retry_test_data test_data = {
+    struct exponential_backoff_test_data test_data = {
         .retry_count = 0,
         .failure_error_code = 0,
         .mutex = AWS_MUTEX_INIT,
@@ -167,7 +167,7 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
 
-    struct standard_retry_test_data test_data = {
+    struct exponential_backoff_test_data test_data = {
         .retry_count = 0,
         .failure_error_code = 0,
         .mutex = AWS_MUTEX_INIT,
@@ -213,7 +213,7 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
     ASSERT_NOT_NULL(retry_strategy);
 
-    struct standard_retry_test_data test_data = {
+    struct exponential_backoff_test_data test_data = {
         .retry_count = 0,
         .failure_error_code = 0,
         .mutex = AWS_MUTEX_INIT,

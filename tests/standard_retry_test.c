@@ -11,7 +11,7 @@
 
 #include <aws/io/event_loop.h>
 
-struct standard_retry_test_data {
+struct exponential_backoff_test_data {
     size_t retry_count;
     size_t client_error_count;
     struct aws_event_loop_group *el_group;
@@ -22,13 +22,13 @@ struct standard_retry_test_data {
     bool el_group_shutdown;
 };
 
-static struct standard_retry_test_data s_fixture_test_data = {
+static struct exponential_backoff_test_data s_fixture_test_data = {
     .cvar = AWS_CONDITION_VARIABLE_INIT,
     .mutex = AWS_MUTEX_INIT,
 };
 
 static void s_el_group_completion_callback(void *arg) {
-    struct standard_retry_test_data *test_data = arg;
+    struct exponential_backoff_test_data *test_data = arg;
 
     aws_mutex_lock(&test_data->mutex);
     test_data->el_group_shutdown = true;
@@ -37,13 +37,13 @@ static void s_el_group_completion_callback(void *arg) {
 }
 
 static bool s_el_group_shutdown_predicate(void *arg) {
-    struct standard_retry_test_data *test_data = arg;
+    struct exponential_backoff_test_data *test_data = arg;
     return test_data->el_group_shutdown;
 }
 
 static int s_fixture_setup(struct aws_allocator *allocator, void *ctx) {
     aws_io_library_init(allocator);
-    struct standard_retry_test_data *test_data = ctx;
+    struct exponential_backoff_test_data *test_data = ctx;
     struct aws_shutdown_callback_options shutdown_options = {
         .shutdown_callback_fn = s_el_group_completion_callback,
         .shutdown_callback_user_data = ctx,
@@ -68,7 +68,7 @@ static int s_fixture_shutdown(struct aws_allocator *allocator, int setup_error_c
     (void)allocator;
 
     if (!setup_error_code) {
-        struct standard_retry_test_data *test_data = ctx;
+        struct exponential_backoff_test_data *test_data = ctx;
 
         aws_mutex_lock(&test_data->mutex);
         aws_retry_strategy_release(test_data->retry_strategy);
@@ -141,7 +141,7 @@ static void s_on_retry_ready(struct aws_retry_token *token, int error_code, void
 static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
 
-    struct standard_retry_test_data *test_data = ctx;
+    struct exponential_backoff_test_data *test_data = ctx;
 
     struct retry_data retry_data = {
         .mutex = AWS_MUTEX_INIT,
@@ -269,7 +269,7 @@ AWS_TEST_CASE_FIXTURE(
 static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
 
-    struct standard_retry_test_data *test_data = ctx;
+    struct exponential_backoff_test_data *test_data = ctx;
 
     struct retry_data retry_data = {
         .mutex = AWS_MUTEX_INIT,
