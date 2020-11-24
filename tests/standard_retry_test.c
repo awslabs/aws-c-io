@@ -165,6 +165,7 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
     ASSERT_NOT_NULL(retry_data.retry_token);
     ASSERT_INT_EQUALS(AWS_ERROR_SUCCESS, retry_data.token_acquisition_error_code);
 
+    aws_mutex_unlock(&retry_data.mutex);
     /* do a duplicate partition, this should take a different path since the bucket already exists. */
     ASSERT_SUCCESS(aws_mutex_lock(&retry_data_dup_same_partition.mutex));
     ASSERT_SUCCESS(aws_retry_strategy_acquire_retry_token(
@@ -178,8 +179,10 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
     ASSERT_PTR_EQUALS(test_data->retry_strategy, retry_data_dup_same_partition.retry_strategy);
     ASSERT_NOT_NULL(retry_data_dup_same_partition.retry_token);
     ASSERT_INT_EQUALS(AWS_ERROR_SUCCESS, retry_data_dup_same_partition.token_acquisition_error_code);
+    aws_mutex_unlock(&retry_data_dup_same_partition.mutex);
 
     /* should deduct 10 from capacity */
+    aws_mutex_lock(&retry_data.mutex);
     ASSERT_SUCCESS(aws_retry_strategy_schedule_retry(
         retry_data.retry_token, AWS_RETRY_ERROR_TYPE_TRANSIENT, s_on_retry_ready, &retry_data));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -190,7 +193,10 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
     retry_data.schedule_retry_error_code = 0;
     retry_data.schedule_token_value = NULL;
 
+    aws_mutex_unlock(&retry_data.mutex);
+
     /* should deduct 5 from capacity from a different token but the same partition */
+    aws_mutex_lock(&retry_data_dup_same_partition.mutex);
     ASSERT_SUCCESS(aws_retry_strategy_schedule_retry(
         retry_data_dup_same_partition.retry_token,
         AWS_RETRY_ERROR_TYPE_SERVER_ERROR,
@@ -223,11 +229,10 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
             s_on_retry_ready,
             &retry_data_dup_same_partition));
 
-    aws_retry_strategy_release_retry_token(retry_data.retry_token);
     aws_retry_strategy_release_retry_token(retry_data_dup_same_partition.retry_token);
+    aws_retry_strategy_release_retry_token(retry_data.retry_token);
 
     ASSERT_SUCCESS(aws_mutex_unlock(&retry_data_dup_same_partition.mutex));
-    ASSERT_SUCCESS(aws_mutex_unlock(&retry_data.mutex));
 
     /* verify it doesn't affect other partitions */
     struct retry_data separate_partition = {
