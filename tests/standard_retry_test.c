@@ -226,8 +226,8 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
     aws_retry_strategy_release_retry_token(retry_data.retry_token);
     aws_retry_strategy_release_retry_token(retry_data_dup_same_partition.retry_token);
 
-    ASSERT_SUCCESS(aws_mutex_unlock(&retry_data.mutex));
     ASSERT_SUCCESS(aws_mutex_unlock(&retry_data_dup_same_partition.mutex));
+    ASSERT_SUCCESS(aws_mutex_unlock(&retry_data.mutex));
 
     /* verify it doesn't affect other partitions */
     struct retry_data separate_partition = {
