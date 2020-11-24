@@ -318,21 +318,29 @@ static int s_standard_retry_strategy_schedule_retry(
     impl->original_user_data = user_data;
     impl->original_on_ready = retry_ready;
 
-    int err_code = aws_retry_strategy_schedule_retry(
-        impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token);
-    if (!err_code) {
-        impl->last_retry_cost = capacity_consumed;
-        impl->strategy_bucket->current_capacity -= capacity_consumed;
-    } else {
+    impl->last_retry_cost = capacity_consumed;
+    impl->strategy_bucket->current_capacity -= capacity_consumed;
+    size_t previous_cost = impl->last_retry_cost;
+    size_t previous_capacity = impl->strategy_bucket->current_capacity;
+    AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
+
+    if (aws_retry_strategy_schedule_retry(
+            impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "token_id=%p: error occurred while scheduling retry: %s.",
             (void *)token,
-            aws_error_debug_str(err_code));
+            aws_error_debug_str(aws_last_error()));
+        /* roll it back. */
+        AWS_FATAL_ASSERT(!aws_mutex_lock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
+        impl->last_retry_cost = previous_cost;
+        impl->strategy_bucket->current_capacity = previous_capacity;
+        AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
+
+        return AWS_OP_ERR;
     }
 
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
-    return err_code;
+    return AWS_OP_SUCCESS;
 }
 
 static int s_standard_retry_strategy_record_success(struct aws_retry_token *token) {
