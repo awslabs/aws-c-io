@@ -105,15 +105,19 @@ static void s_on_standard_retry_token_acquired(
             error_code,
             &retry_token->retry_token,
             retry_token->original_user_data);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: on_retry_token_acquired callback completed",
+            (void *)retry_token->retry_token.retry_strategy);
     } else {
         retry_token->original_on_acquired(
             retry_token->strategy_bucket->owner, error_code, NULL, retry_token->original_user_data);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+            "id=%p: on_retry_token_acquired callback completed",
+            (void *)retry_token->retry_token.retry_strategy);
         aws_retry_strategy_release_retry_token(&retry_token->retry_token);
     }
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
-        "id=%p: on_retry_token_acquired callback completed",
-        (void *)retry_token->retry_token.retry_strategy);
 }
 
 static int s_standard_retry_acquire_token(
