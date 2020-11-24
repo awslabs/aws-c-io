@@ -123,7 +123,6 @@ static int s_standard_retry_acquire_token(
     void *user_data,
     uint64_t timeout_ms) {
     struct standard_strategy *standard_strategy = retry_strategy->impl;
-    AWS_FATAL_ASSERT(!aws_mutex_lock(&standard_strategy->lock) && "Lock acquisition failed.");
     bool bucket_needs_cleanup = false;
 
     const struct aws_byte_cursor *partition_id_ptr =
@@ -145,6 +144,7 @@ static int s_standard_retry_acquire_token(
 
     struct aws_hash_element *element_ptr;
     struct retry_bucket *bucket_ptr;
+    AWS_FATAL_ASSERT(!aws_mutex_lock(&standard_strategy->lock) && "Lock acquisition failed.");
     aws_hash_table_find(&standard_strategy->token_buckets, partition_id_ptr, &element_ptr);
     if (!element_ptr) {
         AWS_LOGF_DEBUG(
@@ -160,7 +160,7 @@ static int s_standard_retry_acquire_token(
                 "id=%p: error when allocating bucket %s",
                 (void *)retry_strategy,
                 aws_error_debug_str(aws_last_error()));
-            goto error;
+            goto table_locked;
         }
 
         bucket_needs_cleanup = true;
@@ -175,7 +175,7 @@ static int s_standard_retry_acquire_token(
                 "id=%p: error when allocating partition_id %s",
                 (void *)retry_strategy,
                 aws_error_debug_str(aws_last_error()));
-            goto error;
+            goto table_locked;
         }
 
         bucket_ptr->partition_id_cur = aws_byte_cursor_from_string(bucket_ptr->partition_id);
@@ -195,7 +195,7 @@ static int s_standard_retry_acquire_token(
                 "id=%p: error when putting bucket to token_bucket table %s",
                 (void *)retry_strategy,
                 aws_error_debug_str(aws_last_error()));
-            goto error;
+            goto table_locked;
         }
         bucket_needs_cleanup = false;
     } else {
@@ -207,6 +207,7 @@ static int s_standard_retry_acquire_token(
             (void *)bucket_ptr,
             AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
     }
+    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
 
     token->strategy_bucket = bucket_ptr;
     token->retry_token.retry_strategy = retry_strategy;
@@ -240,20 +241,20 @@ static int s_standard_retry_acquire_token(
         goto table_updated;
     }
 
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
     return AWS_OP_SUCCESS;
 
 table_updated:
     aws_hash_table_remove(&standard_strategy->token_buckets, &bucket_ptr->partition_id_cur, NULL, NULL);
     bucket_needs_cleanup = false;
 
-error:
+table_locked:
+    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
+
     if (bucket_needs_cleanup) {
         s_destroy_standard_retry_bucket(bucket_ptr);
     }
 
     aws_retry_strategy_release_retry_token(&token->retry_token);
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
 
     return AWS_OP_ERR;
 }
