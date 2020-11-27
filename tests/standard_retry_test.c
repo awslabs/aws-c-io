@@ -120,8 +120,8 @@ static void s_on_retry_token_acquired(
     retry_data->retry_token = token;
     retry_data->token_acquisition_error_code = error_code;
     retry_data->retry_strategy = retry_strategy;
-    aws_mutex_unlock(&retry_data->mutex);
     aws_condition_variable_notify_one(&retry_data->cvar);
+    aws_mutex_unlock(&retry_data->mutex);
 }
 
 static bool s_retry_ready_completion_predicate(void *arg) {
@@ -134,8 +134,8 @@ static void s_on_retry_ready(struct aws_retry_token *token, int error_code, void
     aws_mutex_lock(&retry_data->mutex);
     retry_data->schedule_retry_error_code = error_code;
     retry_data->schedule_token_value = token;
-    aws_mutex_unlock(&retry_data->mutex);
     aws_condition_variable_notify_one(&retry_data->cvar);
+    aws_mutex_unlock(&retry_data->mutex);
 }
 
 static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_allocator *allocator, void *ctx) {
@@ -327,6 +327,7 @@ static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator 
     int i = 0;
     /* pay back 5 of them */
     while (i < 5) {
+        retry_data.token_acquisition_error_code = 0;
         retry_data.schedule_retry_error_code = 0;
         retry_data.schedule_token_value = NULL;
         retry_data.retry_token = NULL;
@@ -342,6 +343,7 @@ static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator 
         i++;
     }
 
+    retry_data.token_acquisition_error_code = 0;
     retry_data.schedule_retry_error_code = 0;
     retry_data.schedule_token_value = NULL;
     retry_data.retry_token = NULL;
