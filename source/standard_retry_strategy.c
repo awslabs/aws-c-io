@@ -128,6 +128,7 @@ static int s_standard_retry_acquire_token(
     uint64_t timeout_ms) {
     struct standard_strategy *standard_strategy = retry_strategy->impl;
     bool bucket_needs_cleanup = false;
+    bool mutex_needs_unlock = false;
 
     const struct aws_byte_cursor *partition_id_ptr =
         !partition_id || partition_id->len == 0 ? &s_empty_string_cur : partition_id;
@@ -149,6 +150,7 @@ static int s_standard_retry_acquire_token(
     struct aws_hash_element *element_ptr;
     struct retry_bucket *bucket_ptr;
     AWS_FATAL_ASSERT(!aws_mutex_lock(&standard_strategy->lock) && "Lock acquisition failed.");
+    mutex_needs_unlock = true;
     aws_hash_table_find(&standard_strategy->token_buckets, partition_id_ptr, &element_ptr);
     if (!element_ptr) {
         AWS_LOGF_DEBUG(
@@ -212,6 +214,7 @@ static int s_standard_retry_acquire_token(
             AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
     }
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
+    mutex_needs_unlock = false;
 
     token->strategy_bucket = bucket_ptr;
     token->retry_token.retry_strategy = retry_strategy;
@@ -252,7 +255,9 @@ table_updated:
     bucket_needs_cleanup = false;
 
 table_locked:
-    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
+    if (mutex_needs_unlock) {
+        AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->lock) && "Mutex unlock failed");
+    }
 
     if (bucket_needs_cleanup) {
         s_destroy_standard_retry_bucket(bucket_ptr);
@@ -322,10 +327,9 @@ static int s_standard_retry_strategy_schedule_retry(
     impl->original_user_data = user_data;
     impl->original_on_ready = retry_ready;
 
+    size_t previous_cost = impl->last_retry_cost;
     impl->last_retry_cost = capacity_consumed;
     impl->strategy_bucket->current_capacity -= capacity_consumed;
-    size_t previous_cost = impl->last_retry_cost;
-    size_t previous_capacity = impl->strategy_bucket->current_capacity;
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
 
     if (aws_retry_strategy_schedule_retry(
@@ -338,7 +342,10 @@ static int s_standard_retry_strategy_schedule_retry(
         /* roll it back. */
         AWS_FATAL_ASSERT(!aws_mutex_lock(&impl->strategy_bucket->partition_lock) && "mutex lock failed");
         impl->last_retry_cost = previous_cost;
-        impl->strategy_bucket->current_capacity = previous_capacity;
+        size_t desired_capacity = impl->strategy_bucket->current_capacity + capacity_consumed;
+        struct standard_strategy *strategy_impl = token->retry_strategy->impl;
+        impl->strategy_bucket->current_capacity =
+            desired_capacity < strategy_impl->max_capacity ? desired_capacity : strategy_impl->max_capacity;
         AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->partition_lock) && "mutex unlock failed");
 
         return AWS_OP_ERR;
