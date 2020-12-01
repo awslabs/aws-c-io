@@ -317,7 +317,11 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
     sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, tls_c_tester->el_group);
+
+    struct aws_server_bootstrap_options server_bootstrap_options = {
+        .event_loop_group = tls_c_tester->el_group,
+    };
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &server_bootstrap_options);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {

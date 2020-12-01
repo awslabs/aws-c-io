@@ -839,8 +839,15 @@ error:
 
 void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
+    aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
+    void *user_data = bootstrap->user_data;
+
     aws_event_loop_group_release(bootstrap->event_loop_group);
     aws_mem_release(bootstrap->allocator, bootstrap);
+
+    if (on_shutdown_complete != NULL) {
+        on_shutdown_complete(user_data);
+    }
 }
 
 struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap) {
@@ -863,9 +870,10 @@ void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap) {
 
 struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group) {
+    struct aws_server_bootstrap_options *options) {
     AWS_ASSERT(allocator);
-    AWS_ASSERT(el_group);
+    AWS_ASSERT(options);
+    AWS_ASSERT(options->event_loop_group);
 
     struct aws_server_bootstrap *bootstrap = aws_mem_calloc(allocator, 1, sizeof(struct aws_server_bootstrap));
     if (!bootstrap) {
@@ -876,13 +884,16 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: Initializing server bootstrap with event-loop group %p",
         (void *)bootstrap,
-        (void *)el_group);
+        (void *)options->event_loop_group);
 
     bootstrap->allocator = allocator;
-    bootstrap->event_loop_group = aws_event_loop_group_acquire(el_group);
+    bootstrap->event_loop_group = aws_event_loop_group_acquire(options->event_loop_group);
     bootstrap->on_protocol_negotiated = NULL;
     aws_ref_count_init(
         &bootstrap->ref_count, bootstrap, (aws_simple_completion_callback *)s_server_bootstrap_destroy_impl);
+
+    bootstrap->on_shutdown_complete = options->on_shutdown_complete;
+    bootstrap->user_data = options->user_data;
 
     return bootstrap;
 }

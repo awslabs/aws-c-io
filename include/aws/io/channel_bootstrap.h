@@ -139,6 +139,11 @@ typedef void(
     aws_server_bootstrap_on_server_listener_destroy_fn)(struct aws_server_bootstrap *bootstrap, void *user_data);
 
 /**
+ * Called after server bootstrap has been completely cleaned up, after its last refcount is released.
+ */
+typedef void aws_server_bootstrap_shutdown_complete_fn(void *user_data);
+
+/**
  * aws_server_bootstrap manages listening sockets, creating and setting up channels to handle each incoming connection.
  */
 struct aws_server_bootstrap {
@@ -146,6 +151,23 @@ struct aws_server_bootstrap {
     struct aws_event_loop_group *event_loop_group;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     struct aws_ref_count ref_count;
+    aws_server_bootstrap_shutdown_complete_fn *on_shutdown_complete;
+    void *user_data;
+};
+
+/**
+ * aws_server_bootstrap creation options.
+ */
+struct aws_server_bootstrap_options {
+
+    /* Required. Must outlive the client bootstrap. */
+    struct aws_event_loop_group *event_loop_group;
+
+    /* Optional. If provided, callback is invoked when client bootstrap has completely shut down. */
+    aws_server_bootstrap_shutdown_complete_fn *on_shutdown_complete;
+
+    /* Optional. Passed to callbacks */
+    void *user_data;
 };
 
 /**
@@ -249,7 +271,7 @@ AWS_IO_API int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel
  */
 AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_allocator *allocator,
-    struct aws_event_loop_group *el_group);
+    struct aws_server_bootstrap_options *options);
 
 /**
  * Increments a server bootstrap's ref count, allowing the caller to take a reference to it.

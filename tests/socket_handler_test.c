@@ -293,7 +293,11 @@ static int s_local_server_tester_init(
         sizeof(tester->endpoint.address),
         LOCAL_SOCK_TEST_PATTERN,
         (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
+
+    struct aws_server_bootstrap_options server_bootstrap_options = {
+        .event_loop_group = s_c_tester->el_group,
+    };
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &server_bootstrap_options);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
