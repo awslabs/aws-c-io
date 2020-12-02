@@ -132,7 +132,6 @@ static int s_standard_retry_acquire_token(
     uint64_t timeout_ms) {
     struct standard_strategy *standard_strategy = retry_strategy->impl;
     bool bucket_needs_cleanup = false;
-    bool mutex_needs_unlock = false;
 
     const struct aws_byte_cursor *partition_id_ptr =
         !partition_id || partition_id->len == 0 ? &s_empty_string_cur : partition_id;
@@ -154,7 +153,6 @@ static int s_standard_retry_acquire_token(
     struct aws_hash_element *element_ptr;
     struct retry_bucket *bucket_ptr;
     AWS_FATAL_ASSERT(!aws_mutex_lock(&standard_strategy->synced_data.lock) && "Lock acquisition failed.");
-    mutex_needs_unlock = true;
     aws_hash_table_find(&standard_strategy->synced_data.token_buckets, partition_id_ptr, &element_ptr);
     if (!element_ptr) {
         AWS_LOGF_DEBUG(
@@ -219,7 +217,6 @@ static int s_standard_retry_acquire_token(
             AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
     }
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->synced_data.lock) && "Mutex unlock failed");
-    mutex_needs_unlock = false;
 
     token->strategy_bucket = bucket_ptr;
     token->retry_token.retry_strategy = retry_strategy;
@@ -256,13 +253,12 @@ static int s_standard_retry_acquire_token(
     return AWS_OP_SUCCESS;
 
 table_updated:
+    AWS_FATAL_ASSERT(!aws_mutex_lock(&standard_strategy->synced_data.lock) && "Mutex lock failed");
     aws_hash_table_remove(&standard_strategy->synced_data.token_buckets, &bucket_ptr->partition_id_cur, NULL, NULL);
     bucket_needs_cleanup = false;
 
 table_locked:
-    if (mutex_needs_unlock) {
-        AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->synced_data.lock) && "Mutex unlock failed");
-    }
+    AWS_FATAL_ASSERT(!aws_mutex_unlock(&standard_strategy->synced_data.lock) && "Mutex unlock failed");
 
     if (bucket_needs_cleanup) {
         s_destroy_standard_retry_bucket(bucket_ptr);
