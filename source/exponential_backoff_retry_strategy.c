@@ -72,6 +72,7 @@ static void s_exponential_retry_task(struct aws_task *task, void *arg, enum aws_
             !aws_mutex_unlock(&backoff_retry_token->thread_data.mutex) && "Retry token mutex release failed");
     } /**** END CRITICAL SECTION ***********/
 
+    aws_retry_token_acquire(&backoff_retry_token->base);
     if (acquired_fn) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
@@ -86,7 +87,10 @@ static void s_exponential_retry_task(struct aws_task *task, void *arg, enum aws_
             (void *)backoff_retry_token->base.retry_strategy,
             (void *)&backoff_retry_token->base);
         retry_ready_fn(&backoff_retry_token->base, error_code, user_data);
+        /* it's acquired before being scheduled for retry */
+        aws_retry_token_release(&backoff_retry_token->base);
     }
+    aws_retry_token_release(&backoff_retry_token->base);
 }
 
 static int s_exponential_retry_acquire_token(
@@ -114,6 +118,7 @@ static int s_exponential_retry_acquire_token(
 
     backoff_retry_token->base.allocator = retry_strategy->allocator;
     backoff_retry_token->base.retry_strategy = retry_strategy;
+    aws_atomic_init_int(&backoff_retry_token->base.ref_count, 1u);
     aws_retry_strategy_acquire(retry_strategy);
     backoff_retry_token->base.impl = backoff_retry_token;
 
@@ -222,7 +227,7 @@ static int s_exponential_retry_schedule_retry(
         aws_event_loop_current_clock_time(backoff_retry_token->bound_loop, &current_time);
         schedule_at = backoff + current_time;
         aws_atomic_init_int(&backoff_retry_token->last_backoff, (size_t)backoff);
-        aws_atomic_fetch_add(&backoff_retry_token->current_retry_count, 1);
+        aws_atomic_fetch_add(&backoff_retry_token->current_retry_count, 1u);
         AWS_LOGF_DEBUG(
             AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
             "id=%p: Computed backoff value of %" PRIu64 "ns on token %p",
@@ -242,6 +247,8 @@ static int s_exponential_retry_schedule_retry(
         } else {
             backoff_retry_token->thread_data.retry_ready_fn = retry_ready;
             backoff_retry_token->thread_data.user_data = user_data;
+            /* acquire to hold until the task runs. */
+            aws_retry_token_acquire(token);
             aws_task_init(
                 &backoff_retry_token->retry_task,
                 s_exponential_retry_task,

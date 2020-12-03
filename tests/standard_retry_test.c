@@ -73,8 +73,8 @@ static int s_fixture_shutdown(struct aws_allocator *allocator, int setup_error_c
         aws_mutex_lock(&test_data->mutex);
         aws_retry_strategy_release(test_data->retry_strategy);
         aws_event_loop_group_release(test_data->el_group);
-        aws_condition_variable_wait_pred(&test_data->cvar, &test_data->mutex, s_el_group_shutdown_predicate, ctx);
         aws_mutex_unlock(&test_data->mutex);
+        aws_condition_variable_wait_pred(&test_data->cvar, &test_data->mutex, s_el_group_shutdown_predicate, ctx);
     }
     aws_io_library_clean_up();
 
@@ -120,8 +120,8 @@ static void s_on_retry_token_acquired(
     retry_data->retry_token = token;
     retry_data->token_acquisition_error_code = error_code;
     retry_data->retry_strategy = retry_strategy;
-    aws_condition_variable_notify_one(&retry_data->cvar);
     aws_mutex_unlock(&retry_data->mutex);
+    aws_condition_variable_notify_one(&retry_data->cvar);
 }
 
 static bool s_retry_ready_completion_predicate(void *arg) {
@@ -134,8 +134,8 @@ static void s_on_retry_ready(struct aws_retry_token *token, int error_code, void
     aws_mutex_lock(&retry_data->mutex);
     retry_data->schedule_retry_error_code = error_code;
     retry_data->schedule_token_value = token;
-    aws_condition_variable_notify_one(&retry_data->cvar);
     aws_mutex_unlock(&retry_data->mutex);
+    aws_condition_variable_notify_one(&retry_data->cvar);
 }
 
 static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_allocator *allocator, void *ctx) {
@@ -229,8 +229,8 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
             s_on_retry_ready,
             &retry_data_dup_same_partition));
 
-    aws_retry_strategy_release_retry_token(retry_data_dup_same_partition.retry_token);
-    aws_retry_strategy_release_retry_token(retry_data.retry_token);
+    aws_retry_token_release(retry_data_dup_same_partition.retry_token);
+    aws_retry_token_release(retry_data.retry_token);
 
     ASSERT_SUCCESS(aws_mutex_unlock(&retry_data_dup_same_partition.mutex));
 
@@ -258,7 +258,7 @@ static int s_test_standard_retry_strategy_failure_exhausts_bucket(struct aws_all
     ASSERT_PTR_EQUALS(separate_partition.retry_token, separate_partition.schedule_token_value);
     ASSERT_UINT_EQUALS(AWS_ERROR_SUCCESS, separate_partition.schedule_retry_error_code);
 
-    aws_retry_strategy_release_retry_token(separate_partition.retry_token);
+    aws_retry_token_release(separate_partition.retry_token);
 
     ASSERT_SUCCESS(aws_mutex_unlock(&separate_partition.mutex));
 
@@ -322,7 +322,7 @@ static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator 
         aws_retry_strategy_schedule_retry(
             retry_data.retry_token, AWS_RETRY_ERROR_TYPE_SERVER_ERROR, s_on_retry_ready, &retry_data));
 
-    aws_retry_strategy_release_retry_token(retry_data.retry_token);
+    aws_retry_token_release(retry_data.retry_token);
 
     int i = 0;
     /* pay back 5 of them */
@@ -338,8 +338,8 @@ static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator 
         ASSERT_SUCCESS(aws_condition_variable_wait_pred(
             &retry_data.cvar, &retry_data.mutex, s_retry_token_acquisition_completed, &retry_data));
 
-        ASSERT_SUCCESS(aws_retry_strategy_token_record_success(retry_data.retry_token));
-        aws_retry_strategy_release_retry_token(retry_data.retry_token);
+        ASSERT_SUCCESS(aws_retry_token_record_success(retry_data.retry_token));
+        aws_retry_token_release(retry_data.retry_token);
         i++;
     }
 
@@ -366,7 +366,7 @@ static int s_test_standard_retry_strategy_failure_recovers(struct aws_allocator 
         aws_retry_strategy_schedule_retry(
             retry_data.retry_token, AWS_RETRY_ERROR_TYPE_SERVER_ERROR, s_on_retry_ready, &retry_data));
 
-    aws_retry_strategy_release_retry_token(retry_data.retry_token);
+    aws_retry_token_release(retry_data.retry_token);
     ASSERT_SUCCESS(aws_mutex_unlock(&retry_data.mutex));
 
     return AWS_OP_SUCCESS;

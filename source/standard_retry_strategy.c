@@ -101,6 +101,8 @@ static void s_on_standard_retry_token_acquired(
         AWS_LS_IO_STANDARD_RETRY_STRATEGY,
         "id=%p: invoking on_retry_token_acquired callback",
         (void *)retry_token->retry_token.retry_strategy);
+
+    aws_retry_token_acquire(&retry_token->retry_token);
     if (!error_code) {
         retry_token->exp_backoff_token = token;
 
@@ -113,6 +115,7 @@ static void s_on_standard_retry_token_acquired(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "id=%p: on_retry_token_acquired callback completed",
             (void *)retry_token->retry_token.retry_strategy);
+
     } else {
         retry_token->original_on_acquired(
             retry_token->strategy_bucket->owner, error_code, NULL, retry_token->original_user_data);
@@ -120,8 +123,8 @@ static void s_on_standard_retry_token_acquired(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "id=%p: on_retry_token_acquired callback completed",
             (void *)retry_token->retry_token.retry_strategy);
-        aws_retry_strategy_release_retry_token(&retry_token->retry_token);
     }
+    aws_retry_token_release(&retry_token->retry_token);
 }
 
 static int s_standard_retry_acquire_token(
@@ -220,6 +223,7 @@ static int s_standard_retry_acquire_token(
 
     token->strategy_bucket = bucket_ptr;
     token->retry_token.retry_strategy = retry_strategy;
+    aws_atomic_init_int(&token->retry_token.ref_count, 1u);
     aws_retry_strategy_acquire(retry_strategy);
     token->retry_token.allocator = retry_strategy->allocator;
     token->retry_token.impl = token;
@@ -264,7 +268,7 @@ table_locked:
         s_destroy_standard_retry_bucket(bucket_ptr);
     }
 
-    aws_retry_strategy_release_retry_token(&token->retry_token);
+    aws_retry_token_release(&token->retry_token);
 
     return AWS_OP_ERR;
 }
@@ -282,9 +286,14 @@ void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int
         (void *)standard_retry_token,
         (void *)token);
     struct aws_retry_strategy *retry_strategy = token->retry_strategy;
+    aws_retry_token_acquire(standard_retry_token);
     impl->original_on_ready(standard_retry_token, error_code, impl->original_user_data);
     AWS_LOGF_TRACE(
         AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: on_retry_ready callback completed", (void *)retry_strategy);
+    /* this is to release the acquire we did before scheduling the retry. Release it now. */
+    aws_retry_token_release(standard_retry_token);
+
+    aws_retry_token_release(standard_retry_token);
 }
 
 static int s_standard_retry_strategy_schedule_retry(
@@ -335,8 +344,12 @@ static int s_standard_retry_strategy_schedule_retry(
     impl->strategy_bucket->synced_data.current_capacity -= capacity_consumed;
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&impl->strategy_bucket->synced_data.partition_lock) && "mutex unlock failed");
 
+    /* acquire before scheduling to prevent clean up before the callback runs. */
+    aws_retry_token_acquire(&impl->retry_token);
     if (aws_retry_strategy_schedule_retry(
             impl->exp_backoff_token, error_type, s_standard_retry_strategy_on_retry_ready, token)) {
+        /* release for the above acquire */
+        aws_retry_token_release(&impl->retry_token);
         AWS_LOGF_ERROR(
             AWS_LS_IO_STANDARD_RETRY_STRATEGY,
             "token_id=%p: error occurred while scheduling retry: %s.",
@@ -389,7 +402,7 @@ static void s_standard_retry_strategy_release_token(struct aws_retry_token *toke
         AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: releasing token", (void *)token);
         struct retry_bucket_token *impl = token->impl;
         if (impl->exp_backoff_token) {
-            aws_retry_strategy_release_retry_token(impl->exp_backoff_token);
+            aws_retry_token_release(impl->exp_backoff_token);
         }
         aws_retry_strategy_release(token->retry_strategy);
         aws_mem_release(token->allocator, impl);

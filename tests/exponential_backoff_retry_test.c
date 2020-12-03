@@ -38,7 +38,7 @@ static void s_too_many_retries_test_on_retry_ready(struct aws_retry_token *token
         aws_mutex_lock(&test_data->mutex);
         test_data->failure_error_code = aws_last_error();
         aws_mutex_unlock(&test_data->mutex);
-        aws_retry_strategy_release_retry_token(token);
+        aws_retry_token_release(token);
         aws_condition_variable_notify_all(&test_data->cvar);
     }
 }

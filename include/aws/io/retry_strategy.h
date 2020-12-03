@@ -16,7 +16,9 @@ struct aws_event_loop_group;
 /**
  * Invoked upon the acquisition, or failure to acquire a retry token. This function will always be invoked if and only
  * if aws_retry_strategy_acquire_retry_token() returns AWS_OP_SUCCESS. It will never be invoked synchronously from
- * aws_retry_strategy_acquire_retry_token(). Token will always be NULL if error_code is non-zero, and vice-versa.
+ * aws_retry_strategy_acquire_retry_token(). Token will always be NULL if error_code is non-zero, and vice-versa. If
+ * token is non-null, it will have a reference count of 1, and you must call aws_retry_token_release() on it later. See
+ * the comments for aws_retry_strategy_on_retry_ready_fn for more info.
  */
 typedef void(aws_retry_strategy_on_retry_token_acquired_fn)(
     struct aws_retry_strategy *retry_strategy,
@@ -28,8 +30,8 @@ typedef void(aws_retry_strategy_on_retry_token_acquired_fn)(
  * Invoked after a successful call to aws_retry_strategy_schedule_retry(). This function will always be invoked if and
  * only if aws_retry_strategy_schedule_retry() returns AWS_OP_SUCCESS. It will never be invoked synchronously from
  * aws_retry_strategy_schedule_retry(). After attempting the operation, either call aws_retry_strategy_schedule_retry()
- * with an aws_retry_error_type or call aws_retry_strategy_token_record_success() and then release the token via.
- * aws_retry_strategy_release_retry_token().
+ * with an aws_retry_error_type or call aws_retry_token_record_success() and then release the token via.
+ * aws_retry_token_release().
  */
 typedef void(aws_retry_strategy_on_retry_ready_fn)(struct aws_retry_token *token, int error_code, void *user_data);
 
@@ -74,6 +76,7 @@ struct aws_retry_strategy {
 struct aws_retry_token {
     struct aws_allocator *allocator;
     struct aws_retry_strategy *retry_strategy;
+    struct aws_atomic_var ref_count;
     void *impl;
 };
 
@@ -156,12 +159,18 @@ AWS_IO_API int aws_retry_strategy_schedule_retry(
  * some strategies such as exponential backoff will ignore this, but you should always call it after a successful
  * operation or your system will never recover during an outage.
  */
-AWS_IO_API int aws_retry_strategy_token_record_success(struct aws_retry_token *token);
+AWS_IO_API int aws_retry_token_record_success(struct aws_retry_token *token);
+
+/**
+ * Increments reference count for token. This should be called any time you seat the token to a pointer you own.
+ */
+AWS_IO_API void aws_retry_token_acquire(struct aws_retry_token *token);
+
 /**
  * Releases the reference count for token. This should always be invoked after either calling
- * aws_retry_strategy_schedule_retry() and failing, or after calling aws_retry_strategy_token_record_success().
+ * aws_retry_strategy_schedule_retry() and failing, or after calling aws_retry_token_record_success().
  */
-AWS_IO_API void aws_retry_strategy_release_retry_token(struct aws_retry_token *token);
+AWS_IO_API void aws_retry_token_release(struct aws_retry_token *token);
 /**
  * Creates a retry strategy using exponential backoff. This strategy does not perform any bookkeeping on error types and
  * success. There is no circuit breaker functionality in here. See the comments above for
