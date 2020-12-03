@@ -73,8 +73,8 @@ static int s_fixture_shutdown(struct aws_allocator *allocator, int setup_error_c
         aws_mutex_lock(&test_data->mutex);
         aws_retry_strategy_release(test_data->retry_strategy);
         aws_event_loop_group_release(test_data->el_group);
-        aws_mutex_unlock(&test_data->mutex);
         aws_condition_variable_wait_pred(&test_data->cvar, &test_data->mutex, s_el_group_shutdown_predicate, ctx);
+        aws_mutex_unlock(&test_data->mutex);
     }
     aws_io_library_clean_up();
 
