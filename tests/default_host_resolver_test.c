@@ -85,7 +85,12 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -151,7 +156,12 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
     ASSERT_NOT_NULL(host_name);
@@ -217,7 +227,12 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
     const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
@@ -321,7 +336,12 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -495,7 +515,12 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -682,7 +707,12 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
 
@@ -857,7 +887,12 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
     ASSERT_NOT_NULL(host_name);
@@ -915,7 +950,12 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "::1");
     ASSERT_NOT_NULL(host_name);
@@ -967,25 +1007,53 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
 }
 AWS_TEST_CASE(test_resolver_ipv6_address_lookup, s_test_resolver_ipv6_address_lookup_fn)
 
-struct listener_test_callback_data {
+struct listener_test_callback_type_data {
     struct aws_allocator *allocator;
-    struct aws_condition_variable condition_variable;
-    bool invoked;
+    bool callback_invoked;
     uint32_t error_code;
     uint32_t expected_num_addresses;
     struct aws_array_list address_list;
-    struct aws_mutex *mutex;
 };
 
-static bool s_listener_invoked_predicate(void *data) {
+struct listener_test_callback_data {
+    struct aws_allocator *allocator;
+    struct aws_condition_variable condition_variable;
+    struct aws_mutex *mutex;
+
+    bool shutdown_invoked;
+    struct listener_test_callback_type_data new_address_callback_data;
+    struct listener_test_callback_type_data expired_address_callback_data;
+};
+
+static bool s_listener_new_address_invoked_predicate(void *data) {
     struct listener_test_callback_data *callback_data = data;
-    return callback_data->invoked;
+    return callback_data->new_address_callback_data.callback_invoked;
+}
+
+static bool s_listener_expired_address_invoked_predicate(void *data) {
+    struct listener_test_callback_data *callback_data = data;
+    return callback_data->expired_address_callback_data.callback_invoked;
+}
+
+static bool s_listener_shutdown_invoked_predicate(void *data) {
+    struct listener_test_callback_data *callback_data = data;
+    return callback_data->shutdown_invoked;
+}
+
+static void s_listener_test_callback_type_data_init(
+    struct listener_test_callback_type_data *callback_data,
+    struct aws_allocator *allocator,
+    uint32_t expected_num_addresses) {
+    callback_data->expected_num_addresses = expected_num_addresses;
+
+    aws_array_list_init_dynamic(&callback_data->address_list, allocator, 4, sizeof(struct aws_host_address *));
 }
 
 static void s_listener_test_callback_data_init(
     struct aws_allocator *allocator,
     struct aws_mutex *mutex,
-    uint32_t expected_num_addresses,
+    uint32_t expected_new_addresses,
+    uint32_t expected_expired_addresses,
     struct listener_test_callback_data *callback_data) {
 
     AWS_ZERO_STRUCT(*callback_data);
@@ -993,71 +1061,102 @@ static void s_listener_test_callback_data_init(
     callback_data->allocator = allocator;
     aws_condition_variable_init(&callback_data->condition_variable);
     callback_data->mutex = mutex;
-    callback_data->expected_num_addresses = expected_num_addresses;
 
-    aws_array_list_init_dynamic(&callback_data->address_list, allocator, 4, sizeof(struct aws_host_address *));
+    s_listener_test_callback_type_data_init(
+        &callback_data->new_address_callback_data, allocator, expected_new_addresses);
+    s_listener_test_callback_type_data_init(
+        &callback_data->expired_address_callback_data, allocator, expected_expired_addresses);
 }
 
-static void s_clear_host_address_array_list(
-    struct aws_allocator *allocator,
-    struct aws_array_list *host_address_array_list) {
+static void s_clear_host_address_array_list(struct aws_array_list *host_address_array_list) {
 
     for (size_t i = 0; i < aws_array_list_length(host_address_array_list); ++i) {
         struct aws_host_address *host_address = NULL;
         aws_array_list_get_at(host_address_array_list, &host_address, i);
-        aws_host_address_clean_up(host_address);
-        aws_mem_release(allocator, host_address);
+
+        if (host_address != NULL) {
+            struct aws_allocator *allocator = host_address->allocator;
+
+            aws_host_address_clean_up(host_address);
+            aws_mem_release(allocator, host_address);
+        }
     }
 
     aws_array_list_clear(host_address_array_list);
 }
 
-static void s_listener_test_callback_data_clean_up(struct listener_test_callback_data *callback_data) {
-    s_clear_host_address_array_list(callback_data->allocator, &callback_data->address_list);
+static void s_listener_test_callback_type_data_clean_up(struct listener_test_callback_type_data *callback_data) {
+    s_clear_host_address_array_list(&callback_data->address_list);
     aws_array_list_clean_up(&callback_data->address_list);
 }
 
-static void s_listener_resolved_address_callback(
-    struct aws_host_listener *listener,
-    const struct aws_array_list *new_address_list,
-    void *user_data) {
-    (void)listener;
-    (void)new_address_list;
+static void s_listener_test_callback_data_clean_up(struct listener_test_callback_data *callback_data) {
+    s_listener_test_callback_type_data_clean_up(&callback_data->new_address_callback_data);
+    s_listener_test_callback_type_data_clean_up(&callback_data->expired_address_callback_data);
+}
 
-    struct listener_test_callback_data *callback_data = user_data;
+static void s_listener_address_callback(
+    struct listener_test_callback_data *callback_data,
+    struct listener_test_callback_type_data *callback_type_data,
+    const struct aws_array_list *address_list) {
 
     bool expected_num_addresses_received = false;
 
     aws_mutex_lock(callback_data->mutex);
-    callback_data->invoked = true;
+    callback_type_data->callback_invoked = true;
 
-    for (size_t address_index = 0; address_index < aws_array_list_length(new_address_list); ++address_index) {
+    size_t address_count = aws_array_list_length(address_list);
+    for (size_t address_index = 0; address_index < address_count; ++address_index) {
         struct aws_host_address *host_address = NULL;
 
-        aws_array_list_get_at_ptr(new_address_list, (void **)&host_address, address_index);
+        aws_array_list_get_at_ptr(address_list, (void **)&host_address, address_index);
 
         struct aws_host_address *host_address_copy =
             aws_mem_acquire(callback_data->allocator, sizeof(struct aws_host_address));
 
         aws_host_address_copy(host_address, host_address_copy);
 
-        aws_array_list_push_back(&callback_data->address_list, &host_address_copy);
+        aws_array_list_push_back(&callback_type_data->address_list, &host_address_copy);
     }
 
     expected_num_addresses_received =
-        aws_array_list_length(&callback_data->address_list) == callback_data->expected_num_addresses;
+        aws_array_list_length(&callback_type_data->address_list) == callback_type_data->expected_num_addresses;
 
     AWS_LOGF_INFO(
         AWS_LS_IO_DNS,
         "Listener received callback for %d of %d addresses.",
-        (uint32_t)aws_array_list_length(&callback_data->address_list),
-        (uint32_t)callback_data->expected_num_addresses);
+        (uint32_t)address_count,
+        (uint32_t)callback_type_data->expected_num_addresses);
 
     aws_mutex_unlock(callback_data->mutex);
 
     if (expected_num_addresses_received) {
         aws_condition_variable_notify_one(&callback_data->condition_variable);
     }
+}
+
+static void s_listener_new_address_callback(
+    struct aws_host_listener *listener,
+    const struct aws_array_list *new_address_list,
+    void *user_data) {
+    (void)listener;
+
+    struct listener_test_callback_data *callback_data = user_data;
+    struct listener_test_callback_type_data *callback_type_data = &callback_data->new_address_callback_data;
+
+    s_listener_address_callback(callback_data, callback_type_data, new_address_list);
+}
+
+static void s_listener_expired_address_callback(
+    struct aws_host_listener *listener,
+    const struct aws_array_list *expired_address_list,
+    void *user_data) {
+    (void)listener;
+
+    struct listener_test_callback_data *callback_data = user_data;
+    struct listener_test_callback_type_data *callback_type_data = &callback_data->expired_address_callback_data;
+
+    s_listener_address_callback(callback_data, callback_type_data, expired_address_list);
 }
 
 /* For test cases where we don't care at all about the result of the initial non-listener resolver callback. */
@@ -1190,10 +1289,19 @@ static void s_listener_shutdown_callback(void *user_data) {
     struct listener_test_callback_data *callback_data = user_data;
 
     aws_mutex_lock(callback_data->mutex);
-    callback_data->invoked = true;
+    callback_data->shutdown_invoked = true;
     aws_mutex_unlock(callback_data->mutex);
 
     aws_condition_variable_notify_one(&callback_data->condition_variable);
+}
+
+static void s_wait_on_listener_shutdown(struct listener_test_callback_data *callback_data) {
+    aws_mutex_lock(callback_data->mutex);
+
+    aws_condition_variable_wait_pred(
+        &callback_data->condition_variable, callback_data->mutex, s_listener_shutdown_invoked_predicate, callback_data);
+
+    aws_mutex_unlock(callback_data->mutex);
 }
 
 static int s_test_resolver_listener_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
@@ -1203,32 +1311,32 @@ static int s_test_resolver_listener_create_destroy_fn(struct aws_allocator *allo
 
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener = NULL;
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct listener_test_callback_data callback_data;
-    s_listener_test_callback_data_init(allocator, &mutex, 0, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, 0, 0, &callback_data);
 
     /* Setup listener and then release the listener */
     {
         struct aws_host_listener_options listener_options = {
-            .host_name = host_name, .shutdown_callback = s_listener_shutdown_callback, .user_data = &callback_data};
+            .host_name = host_name,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
 
         listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
         aws_host_resolver_remove_host_listener(resolver, listener);
         listener = NULL;
     }
 
-    /* Wait for listener to shutdown */
-    {
-        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-
-        aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
-
-        aws_mutex_unlock(&mutex);
-    }
+    s_wait_on_listener_shutdown(&callback_data);
 
     aws_host_resolver_release(resolver);
 
@@ -1251,20 +1359,27 @@ static int s_test_resolver_add_listener_before_host_fn(struct aws_allocator *all
 
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("s3.us-east-1.amazonaws.com");
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener = NULL;
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct listener_test_callback_data callback_data;
 
-    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, 1, 0, &callback_data);
 
     /* Setup listener before host is added */
     {
-        struct aws_host_listener_options listener_options = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data};
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
 
         listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
     }
@@ -1290,18 +1405,20 @@ static int s_test_resolver_add_listener_before_host_fn(struct aws_allocator *all
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
         /* Reset flag for re-use */
-        callback_data.invoked = false;
+        callback_data.new_address_callback_data.callback_invoked = false;
 
-        ASSERT_TRUE(aws_array_list_length(&callback_data.address_list) > 0);
+        ASSERT_TRUE(aws_array_list_length(&callback_data.new_address_callback_data.address_list) > 0);
 
         aws_mutex_unlock(&mutex);
     }
 
     aws_host_resolver_remove_host_listener(resolver, listener);
     listener = NULL;
+
+    s_wait_on_listener_shutdown(&callback_data);
 
     aws_host_resolver_release(resolver);
 
@@ -1334,7 +1451,7 @@ void s_listener_test_initial_resolved_callback_wait(
     struct listener_test_callback_data *callback_data = user_data;
 
     aws_mutex_lock(callback_data->mutex);
-    callback_data->invoked = true;
+    callback_data->new_address_callback_data.callback_invoked = true;
     aws_mutex_unlock(callback_data->mutex);
 
     aws_condition_variable_notify_one(&callback_data->condition_variable);
@@ -1348,12 +1465,17 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("s3.us-east-1.amazonaws.com");
     struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener = NULL;
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct listener_test_callback_data callback_data;
-    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, 1, 0, &callback_data);
 
     /* Trigger resolve host */
     {
@@ -1369,10 +1491,10 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
         /* Reset flag for re-use */
-        callback_data.invoked = false;
+        callback_data.new_address_callback_data.callback_invoked = false;
 
         aws_mutex_unlock(&mutex);
     }
@@ -1380,10 +1502,12 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
     /* Setup listener after host is added */
     {
 
-        struct aws_host_listener_options listener_options = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data};
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
 
         listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
     }
@@ -1393,18 +1517,20 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
         /* Reset flag for re-use */
-        callback_data.invoked = false;
+        callback_data.new_address_callback_data.callback_invoked = false;
 
-        ASSERT_TRUE(aws_array_list_length(&callback_data.address_list) > 0);
+        ASSERT_TRUE(aws_array_list_length(&callback_data.new_address_callback_data.address_list) > 0);
 
         aws_mutex_unlock(&mutex);
     }
 
     aws_host_resolver_remove_host_listener(resolver, listener);
     listener = NULL;
+
+    s_wait_on_listener_shutdown(&callback_data);
 
     aws_host_resolver_release(resolver);
 
@@ -1429,7 +1555,12 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
 
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("s3.us-east-1.amazonaws.com");
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener1 = NULL;
     struct aws_host_listener *listener2 = NULL;
 
@@ -1437,22 +1568,26 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
     struct listener_test_callback_data callback_data1;
     struct listener_test_callback_data callback_data2;
 
-    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data1);
-    s_listener_test_callback_data_init(allocator, &mutex, 1, &callback_data2);
+    s_listener_test_callback_data_init(allocator, &mutex, 1, 0, &callback_data1);
+    s_listener_test_callback_data_init(allocator, &mutex, 1, 0, &callback_data2);
 
     /* Setup listener before host is added */
     {
-        struct aws_host_listener_options listener_options1 = {.host_name = host_name,
-                                                              .resolved_address_callback =
-                                                                  s_listener_resolved_address_callback,
-                                                              .user_data = &callback_data1};
+        struct aws_host_listener_options listener_options1 = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data1,
+        };
 
         listener1 = aws_host_resolver_add_host_listener(resolver, &listener_options1);
 
-        struct aws_host_listener_options listener_options2 = {.host_name = host_name,
-                                                              .resolved_address_callback =
-                                                                  s_listener_resolved_address_callback,
-                                                              .user_data = &callback_data2};
+        struct aws_host_listener_options listener_options2 = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data2,
+        };
 
         listener2 = aws_host_resolver_add_host_listener(resolver, &listener_options2);
     }
@@ -1478,19 +1613,19 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data1.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data1);
+            &callback_data1.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data1);
 
         /* Reset flag for re-use */
-        callback_data1.invoked = false;
+        callback_data1.new_address_callback_data.callback_invoked = false;
 
         aws_condition_variable_wait_pred(
-            &callback_data2.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data2);
+            &callback_data2.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data2);
 
         /* Reset flag for re-use */
-        callback_data2.invoked = false;
+        callback_data2.new_address_callback_data.callback_invoked = false;
 
-        ASSERT_TRUE(aws_array_list_length(&callback_data1.address_list) > 0);
-        ASSERT_TRUE(aws_array_list_length(&callback_data2.address_list) > 0);
+        ASSERT_TRUE(aws_array_list_length(&callback_data1.new_address_callback_data.address_list) > 0);
+        ASSERT_TRUE(aws_array_list_length(&callback_data2.new_address_callback_data.address_list) > 0);
 
         aws_mutex_unlock(&mutex);
     }
@@ -1500,6 +1635,9 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
 
     aws_host_resolver_remove_host_listener(resolver, listener2);
     listener2 = NULL;
+
+    s_wait_on_listener_shutdown(&callback_data1);
+    s_wait_on_listener_shutdown(&callback_data2);
 
     aws_host_resolver_release(resolver);
 
@@ -1530,20 +1668,27 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
     struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener = NULL;
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct listener_test_callback_data callback_data;
 
-    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, 0, &callback_data);
 
     /* Setup listener before host is added */
     {
-        struct aws_host_listener_options listener_options = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data};
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
 
         listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
     }
@@ -1565,17 +1710,18 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
     aws_condition_variable_wait_pred(
-        &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+        &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
     /* Reset flag for re-use */
-    callback_data.invoked = false;
+    callback_data.new_address_callback_data.callback_invoked = false;
 
-    ASSERT_SUCCESS(s_verify_mock_address_list(&callback_data.address_list, num_ipv4, num_ipv6));
+    ASSERT_SUCCESS(
+        s_verify_mock_address_list(&callback_data.new_address_callback_data.address_list, num_ipv4, num_ipv6));
 
     aws_mutex_unlock(&mutex);
 
     s_listener_test_callback_data_clean_up(&callback_data);
-    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, 0, &callback_data);
 
     /* Wait for TTL + half a second so that the host gets completely removed. */
     {
@@ -1613,12 +1759,13 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
         /* Reset flag for re-use */
-        callback_data.invoked = false;
+        callback_data.new_address_callback_data.callback_invoked = false;
 
-        ASSERT_SUCCESS(s_verify_mock_address_list(&callback_data.address_list, num_ipv4, num_ipv6));
+        ASSERT_SUCCESS(
+            s_verify_mock_address_list(&callback_data.new_address_callback_data.address_list, num_ipv4, num_ipv6));
 
         aws_mutex_unlock(&mutex);
     }
@@ -1626,6 +1773,8 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
     s_listener_test_callback_data_clean_up(&callback_data);
     aws_host_resolver_remove_host_listener(resolver, listener);
     listener = NULL;
+
+    s_wait_on_listener_shutdown(&callback_data);
 
     mock_dns_resolver_clean_up(&mock_resolver_0);
     mock_dns_resolver_clean_up(&mock_resolver_1);
@@ -1656,7 +1805,12 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
     struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 10, el_group, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
     struct aws_host_listener *listener = NULL;
 
     struct mock_dns_resolver mock_resolver;
@@ -1666,14 +1820,16 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct listener_test_callback_data callback_data;
 
-    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, &callback_data);
+    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, 0, &callback_data);
 
     /* Setup listener before host is added */
     {
-        struct aws_host_listener_options listener_options = {.host_name = host_name,
-                                                             .resolved_address_callback =
-                                                                 s_listener_resolved_address_callback,
-                                                             .user_data = &callback_data};
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
 
         listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
     }
@@ -1695,12 +1851,13 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
 
         aws_condition_variable_wait_pred(
-            &callback_data.condition_variable, &mutex, s_listener_invoked_predicate, &callback_data);
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
 
         /* Reset flag for re-use */
-        callback_data.invoked = false;
+        callback_data.new_address_callback_data.callback_invoked = false;
 
-        ASSERT_SUCCESS(s_verify_mock_address_list(&callback_data.address_list, num_ipv4, num_ipv6));
+        ASSERT_SUCCESS(
+            s_verify_mock_address_list(&callback_data.new_address_callback_data.address_list, num_ipv4, num_ipv6));
 
         aws_mutex_unlock(&mutex);
     }
@@ -1708,6 +1865,8 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
     s_listener_test_callback_data_clean_up(&callback_data);
     aws_host_resolver_remove_host_listener(resolver, listener);
     listener = NULL;
+
+    s_wait_on_listener_shutdown(&callback_data);
 
     mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
@@ -1724,3 +1883,138 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
 }
 
 AWS_TEST_CASE(test_resolver_listener_multiple_results, s_test_resolver_listener_multiple_results_fn)
+
+static uint64_t s_mocked_time = 0;
+static struct aws_mutex s_mocked_time_lock = AWS_MUTEX_INIT;
+
+int s_get_mock_system_clock(uint64_t *timestamp) {
+    aws_mutex_lock(&s_mocked_time_lock);
+    *timestamp = s_mocked_time;
+    aws_mutex_unlock(&s_mocked_time_lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+void s_set_mock_system_clock(uint64_t timestamp) {
+    aws_mutex_lock(&s_mocked_time_lock);
+    s_mocked_time = timestamp;
+    aws_mutex_unlock(&s_mocked_time_lock);
+}
+
+static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    const uint32_t num_ipv4 = 4;
+    const uint32_t num_ipv6 = 4;
+    const uint32_t max_num_resolves = 1;
+
+    struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
+    struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+        .system_clock_override_fn = s_get_mock_system_clock,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+    struct aws_host_listener *listener = NULL;
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(
+        s_setup_mock_host(allocator, resolver, &mock_resolver, host_name_str, num_ipv4, num_ipv6, max_num_resolves));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct listener_test_callback_data callback_data;
+
+    /*
+     * Internal default resolver detail: we don't expire the last remaining address, so we expect to see
+     * everything but one in each of the a and aaaa lists expire.
+     */
+    size_t expected_expirations = num_ipv4 + num_ipv6 - 2;
+    s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, expected_expirations, &callback_data);
+
+    /* Setup listener before host is added */
+    {
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .expired_address_callback = s_listener_expired_address_callback,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+        };
+
+        listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
+    }
+
+    /* Trigger resolve host */
+    {
+        struct aws_host_resolution_config config = {
+            .max_ttl = 30,
+            .impl = mock_dns_resolve,
+            .impl_data = &mock_resolver,
+        };
+
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, host_name_str, s_listener_test_initial_resolved_callback_empty, &config, NULL));
+    }
+
+    /* Wait for listener to receive host resolved callback. */
+    {
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+        aws_condition_variable_wait_pred(
+            &callback_data.condition_variable, &mutex, s_listener_new_address_invoked_predicate, &callback_data);
+
+        /* Reset flag for re-use */
+        callback_data.new_address_callback_data.callback_invoked = false;
+
+        ASSERT_SUCCESS(
+            s_verify_mock_address_list(&callback_data.new_address_callback_data.address_list, num_ipv4, num_ipv6));
+        ASSERT_INT_EQUALS(0, aws_array_list_length(&callback_data.expired_address_callback_data.address_list));
+
+        aws_mutex_unlock(&mutex);
+    }
+
+    /* advance time far enough that the addresses should expire */
+    uint64_t expiration_time = aws_timestamp_convert(30, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL) + 1;
+    s_set_mock_system_clock(expiration_time);
+
+    /* Wait for listener to receive address expired callback */
+    {
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+        aws_condition_variable_wait_pred(
+            &callback_data.condition_variable, &mutex, s_listener_expired_address_invoked_predicate, &callback_data);
+
+        /* Reset flag for re-use */
+        callback_data.expired_address_callback_data.callback_invoked = false;
+
+        ASSERT_SUCCESS(s_verify_mock_address_list(
+            &callback_data.expired_address_callback_data.address_list, num_ipv4 - 1, num_ipv6 - 1));
+
+        aws_mutex_unlock(&mutex);
+    }
+
+    s_listener_test_callback_data_clean_up(&callback_data);
+    aws_host_resolver_remove_host_listener(resolver, listener);
+    listener = NULL;
+    s_wait_on_listener_shutdown(&callback_data);
+
+    mock_dns_resolver_clean_up(&mock_resolver);
+    aws_host_resolver_release(resolver);
+
+    aws_mutex_clean_up(&mutex);
+    aws_string_destroy(host_name_str);
+
+    aws_event_loop_group_release(el_group);
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_io_library_clean_up();
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_listener_address_expired_fn, s_test_resolver_listener_address_expired_fn)

@@ -148,6 +148,11 @@ struct default_host_resolver {
      * callback.
      */
     uint32_t pending_host_entry_shutdown_completion_callbacks;
+
+    /*
+     * Function to use to query current time.  Overridable in construction options.
+     */
+    aws_io_clock_fn *system_clock_fn;
 };
 
 /* Default host resolver implementation for listener. */
@@ -161,6 +166,7 @@ struct host_listener {
 
     /* User-supplied callbacks/user_data */
     aws_host_listener_resolved_address_fn *resolved_address_callback;
+    aws_host_listener_expired_address_fn *expired_address_callback;
     aws_host_listener_shutdown_fn *shutdown_callback;
     void *user_data;
 
@@ -382,14 +388,56 @@ static void s_on_host_entry_shutdown_completion(void *user_data) {
     }
 }
 
+static int s_copy_address_into_array_list(struct aws_host_address *address, struct aws_array_list *address_list) {
+
+    /*
+     * This is the worst.
+     *
+     * We have to copy the cache address while we still have a write lock.  Otherwise, connection failures
+     * can sneak in and destroy our address by moving the address to/from the various lru caches.
+     *
+     * But there's no nice copy construction into an array list, so we get to
+     *   (1) Push a zeroed dummy element onto the array list
+     *   (2) Get its pointer
+     *   (3) Call aws_host_address_copy onto it.  If that fails, pop the dummy element.
+     */
+    struct aws_host_address dummy;
+    AWS_ZERO_STRUCT(dummy);
+
+    if (aws_array_list_push_back(address_list, &dummy)) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_host_address *dest_copy = NULL;
+    aws_array_list_get_at_ptr(address_list, (void **)&dest_copy, aws_array_list_length(address_list) - 1);
+    AWS_FATAL_ASSERT(dest_copy != NULL);
+
+    if (aws_host_address_copy(address, dest_copy)) {
+        aws_array_list_pop_back(address_list);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static uint64_t s_get_system_time_for_default_resolver(struct aws_host_resolver *resolver) {
+    struct default_host_resolver *default_resolver = resolver->impl;
+
+    uint64_t timestamp = 0;
+    (*default_resolver->system_clock_fn)(&timestamp);
+
+    return timestamp;
+}
+
 /* this only ever gets called after resolution has already run. We expect that the entry's lock
    has been acquired for writing before this function is called and released afterwards. */
 static inline void process_records(
     struct aws_allocator *allocator,
+    struct aws_host_resolver *resolver,
     struct aws_cache *records,
-    struct aws_cache *failed_records) {
-    uint64_t timestamp = 0;
-    aws_sys_clock_get_ticks(&timestamp);
+    struct aws_cache *failed_records,
+    struct aws_array_list *expired_record_list) {
+    uint64_t timestamp = s_get_system_time_for_default_resolver(resolver);
 
     size_t record_count = aws_cache_get_element_count(records);
     size_t expired_records = 0;
@@ -406,6 +454,9 @@ static inline void process_records(
                 lru_element->address->bytes,
                 lru_element->host->bytes);
             expired_records++;
+
+            s_copy_address_into_array_list(lru_element, expired_record_list);
+
             aws_cache_remove(records, lru_element->address);
         }
     }
@@ -686,36 +737,17 @@ static void s_copy_address_into_callback_set(
     struct aws_array_list *callback_addresses,
     const struct aws_string *host_name) {
 
-    if (address) {
+    if (address != NULL) {
+        if (s_copy_address_into_array_list(address, callback_addresses)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_DNS,
+                "static: failed to vend address %s for host %s to caller",
+                address->address->bytes,
+                host_name->bytes);
+            return;
+        }
+
         address->use_count += 1;
-
-        /*
-         * This is the worst.
-         *
-         * We have to copy the cache address while we still have a write lock.  Otherwise, connection failures
-         * can sneak in and destroy our address by moving the address to/from the various lru caches.
-         *
-         * But there's no nice copy construction into an array list, so we get to
-         *   (1) Push a zeroed dummy element onto the array list
-         *   (2) Get its pointer
-         *   (3) Call aws_host_address_copy onto it.  If that fails, pop the dummy element.
-         */
-        struct aws_host_address dummy;
-        AWS_ZERO_STRUCT(dummy);
-
-        if (aws_array_list_push_back(callback_addresses, &dummy)) {
-            return;
-        }
-
-        struct aws_host_address *dest_copy = NULL;
-        aws_array_list_get_at_ptr(
-            callback_addresses, (void **)&dest_copy, aws_array_list_length(callback_addresses) - 1);
-        AWS_FATAL_ASSERT(dest_copy != NULL);
-
-        if (aws_host_address_copy(address, dest_copy)) {
-            aws_array_list_pop_back(callback_addresses);
-            return;
-        }
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_DNS,
@@ -842,11 +874,13 @@ static void s_resolver_thread_destroy_listeners(struct aws_linked_list *listener
 /* Assumes no lock is held.  The listener_list is owned by the resolver thread, so no lock is necessary.  We also don't
  * want a lock held when calling the resolver-address callback.*/
 static void s_resolver_thread_notify_listeners(
+    struct aws_linked_list *listener_list,
     const struct aws_array_list *new_address_list,
-    struct aws_linked_list *listener_list) {
+    const struct aws_array_list *expired_address_list) {
 
     AWS_PRECONDITION(new_address_list);
     AWS_PRECONDITION(listener_list);
+    AWS_PRECONDITION(expired_address_list);
 
     /* Go through each listener in our list. */
     for (struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
@@ -858,6 +892,12 @@ static void s_resolver_thread_notify_listeners(
         if (aws_array_list_length(new_address_list) > 0 && listener->resolved_address_callback != NULL) {
             listener->resolved_address_callback(
                 (struct aws_host_listener *)listener, new_address_list, listener->user_data);
+        }
+
+        /* If we have expired adddresses, notify the expired-address callback if one exists */
+        if (aws_array_list_length(expired_address_list) > 0 && listener->expired_address_callback != NULL) {
+            listener->expired_address_callback(
+                (struct aws_host_listener *)listener, expired_address_list, listener->user_data);
         }
     }
 }
@@ -873,17 +913,6 @@ static void resolver_thread_fn(void *arg) {
     uint64_t max_no_solicitation_interval =
         aws_timestamp_convert(unsolicited_resolve_max, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
-    struct aws_array_list address_list;
-    if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
-        return;
-    }
-
-    struct aws_array_list new_address_list;
-    if (aws_array_list_init_dynamic(&new_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
-        aws_array_list_clean_up(&address_list);
-        return;
-    }
-
     struct aws_linked_list listener_list;
     aws_linked_list_init(&listener_list);
 
@@ -891,6 +920,26 @@ static void resolver_thread_fn(void *arg) {
     aws_linked_list_init(&listener_destroy_list);
 
     bool keep_going = true;
+
+    struct aws_array_list address_list;
+    AWS_ZERO_STRUCT(address_list);
+    struct aws_array_list new_address_list;
+    AWS_ZERO_STRUCT(new_address_list);
+    struct aws_array_list expired_address_list;
+    AWS_ZERO_STRUCT(expired_address_list);
+
+    if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        goto done;
+    }
+
+    if (aws_array_list_init_dynamic(&new_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        goto done;
+    }
+
+    if (aws_array_list_init_dynamic(&expired_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        goto done;
+    }
+
     while (keep_going) {
 
         AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static, resolving %s", aws_string_c_str(host_entry->host_name));
@@ -902,8 +951,7 @@ static void resolver_thread_fn(void *arg) {
 
             err_code = aws_last_error();
         }
-        uint64_t timestamp = 0;
-        aws_sys_clock_get_ticks(&timestamp);
+        uint64_t timestamp = s_get_system_time_for_default_resolver(host_entry->resolver);
         uint64_t new_expiry = timestamp + (host_entry->resolution_config.max_ttl * NS_PER_SEC);
 
         struct aws_linked_list pending_resolve_copy;
@@ -925,8 +973,18 @@ static void resolver_thread_fn(void *arg) {
          * process and clean_up records in the entry. occasionally, failed connect records will be upgraded
          * for retry.
          */
-        process_records(host_entry->allocator, host_entry->aaaa_records, host_entry->failed_connection_aaaa_records);
-        process_records(host_entry->allocator, host_entry->a_records, host_entry->failed_connection_a_records);
+        process_records(
+            host_entry->allocator,
+            host_entry->resolver,
+            host_entry->aaaa_records,
+            host_entry->failed_connection_aaaa_records,
+            &expired_address_list);
+        process_records(
+            host_entry->allocator,
+            host_entry->resolver,
+            host_entry->a_records,
+            host_entry->failed_connection_a_records,
+            &expired_address_list);
 
         aws_linked_list_swap_contents(&pending_resolve_copy, &host_entry->pending_resolution_callbacks);
 
@@ -1014,8 +1072,7 @@ static void resolver_thread_fn(void *arg) {
 
         aws_mutex_lock(&host_entry->entry_lock);
 
-        uint64_t now = 0;
-        aws_sys_clock_get_ticks(&now);
+        uint64_t now = s_get_system_time_for_default_resolver(host_entry->resolver);
 
         /*
          * Ideally this should just be time-based, but given the non-determinism of waits (and spurious wake ups) and
@@ -1052,9 +1109,10 @@ static void resolver_thread_fn(void *arg) {
         s_resolver_thread_destroy_listeners(&listener_destroy_list);
 
         /* Notify our local listeners of new addresses. */
-        s_resolver_thread_notify_listeners(&new_address_list, &listener_list);
+        s_resolver_thread_notify_listeners(&listener_list, &new_address_list, &expired_address_list);
 
         s_clear_address_list(&new_address_list);
+        s_clear_address_list(&expired_address_list);
     }
 
     AWS_LOGF_DEBUG(
@@ -1063,8 +1121,15 @@ static void resolver_thread_fn(void *arg) {
         "of the ttl, or this thread is being forcibly shutdown. Killing thread.",
         host_entry->host_name->bytes)
 
+done:
+
+    AWS_FATAL_ASSERT(aws_array_list_length(&address_list) == 0);
+    AWS_FATAL_ASSERT(aws_array_list_length(&new_address_list) == 0);
+    AWS_FATAL_ASSERT(aws_array_list_length(&expired_address_list) == 0);
+
     aws_array_list_clean_up(&address_list);
     aws_array_list_clean_up(&new_address_list);
+    aws_array_list_clean_up(&expired_address_list);
 
     /* please don't fail */
     aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry);
@@ -1213,8 +1278,7 @@ static int default_resolve_host(
 
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "id=%p: Host resolution requested for %s", (void *)resolver, host_name->bytes);
 
-    uint64_t timestamp = 0;
-    aws_sys_clock_get_ticks(&timestamp);
+    uint64_t timestamp = s_get_system_time_for_default_resolver(resolver);
 
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
@@ -1378,14 +1442,13 @@ static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
 
 struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
-    size_t max_entries,
-    struct aws_event_loop_group *el_group,
-    const struct aws_shutdown_callback_options *shutdown_options) {
+    struct aws_host_resolver_default_options *options) {
+    AWS_FATAL_ASSERT(options != NULL);
+
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
       don't want host resolvers getting cleaned up after el_groups; this will force that
       in bindings, and encourage it in C land. */
-    (void)el_group;
-    AWS_ASSERT(el_group);
+    AWS_ASSERT(options->el_group);
 
     struct aws_host_resolver *resolver = NULL;
     struct default_host_resolver *default_host_resolver = NULL;
@@ -1406,7 +1469,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
         AWS_LS_IO_DNS,
         "id=%p: Initializing default host resolver with %llu max host entries.",
         (void *)resolver,
-        (unsigned long long)max_entries);
+        (unsigned long long)options->max_entries);
 
     resolver->vtable = &s_vtable;
     resolver->allocator = allocator;
@@ -1422,7 +1485,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     if (aws_hash_table_init(
             &default_host_resolver->host_entry_table,
             allocator,
-            max_entries,
+            options->max_entries,
             aws_hash_string,
             aws_hash_callback_string_eq,
             NULL,
@@ -1433,7 +1496,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     if (aws_hash_table_init(
             &default_host_resolver->listener_entry_table,
             allocator,
-            max_entries,
+            options->max_entries,
             aws_hash_string,
             aws_hash_callback_string_eq,
             aws_hash_callback_string_destroy,
@@ -1443,8 +1506,14 @@ struct aws_host_resolver *aws_host_resolver_new_default(
 
     aws_ref_count_init(&resolver->ref_count, resolver, (aws_simple_completion_callback *)s_aws_host_resolver_destroy);
 
-    if (shutdown_options != NULL) {
-        resolver->shutdown_options = *shutdown_options;
+    if (options->shutdown_options != NULL) {
+        resolver->shutdown_options = *options->shutdown_options;
+    }
+
+    if (options->system_clock_override_fn != NULL) {
+        default_host_resolver->system_clock_fn = options->system_clock_override_fn;
+    } else {
+        default_host_resolver->system_clock_fn = aws_sys_clock_get_ticks;
     }
 
     return resolver;
@@ -1517,6 +1586,7 @@ static struct aws_host_listener *default_add_host_listener(
     listener->resolver = resolver;
     listener->host_name = aws_string_new_from_cursor(resolver->allocator, &options->host_name);
     listener->resolved_address_callback = options->resolved_address_callback;
+    listener->expired_address_callback = options->expired_address_callback;
     listener->shutdown_callback = options->shutdown_callback;
     listener->user_data = options->user_data;
 
@@ -1526,6 +1596,7 @@ static struct aws_host_listener *default_add_host_listener(
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     if (s_add_host_listener_to_listener_entry(default_host_resolver, listener->host_name, listener)) {
+        /* this is incorrect and leaks memory */
         aws_mem_release(resolver->allocator, listener);
         listener = NULL;
     }
