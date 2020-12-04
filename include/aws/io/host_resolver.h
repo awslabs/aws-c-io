@@ -254,7 +254,7 @@ typedef void(aws_host_listener_expired_address_fn)(
      * struct aws_host_address *host_address = NULL;
      * aws_array_list_get_at_ptr(new_address_list, (void **)&host_address, address_index);
      * */
-    const struct aws_array_list *new_address_list,
+    const struct aws_array_list *expired_address_list,
 
     /* User data that was specified when adding the listener. */
     void *user_data);
@@ -270,7 +270,7 @@ struct aws_host_listener_options {
     /* Callback for when an address is resolved for the specified host. */
     aws_host_listener_resolved_address_fn *resolved_address_callback;
 
-    /* Callback for when an address is resolved for the specified host. */
+    /* Callback for when a resolved address expires for the specified host. */
     aws_host_listener_expired_address_fn *expired_address_callback;
 
     /* Callback for when a listener has completely shutdown. */
