@@ -1933,7 +1933,7 @@ static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *all
      * Internal default resolver detail: we don't expire the last remaining address, so we expect to see
      * everything but one in each of the a and aaaa lists expire.
      */
-    size_t expected_expirations = num_ipv4 + num_ipv6 - 2;
+    uint32_t expected_expirations = num_ipv4 + num_ipv6 - 2;
     s_listener_test_callback_data_init(allocator, &mutex, num_ipv4 + num_ipv6, expected_expirations, &callback_data);
 
     /* Setup listener before host is added */
