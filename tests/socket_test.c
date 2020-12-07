@@ -553,7 +553,11 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group, NULL);
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 2,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -631,7 +635,11 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group, NULL);
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 2,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
@@ -979,7 +987,11 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, 2, el_group, NULL);
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 2,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_host_resolution_config resolution_config = {
         .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};

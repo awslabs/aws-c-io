@@ -96,6 +96,7 @@ add_net_test_case(test_resolver_add_listener_after_host)
 add_net_test_case(test_resolver_add_multiple_listeners_fn)
 add_net_test_case(test_resolver_listener_host_re_add_fn)
 add_net_test_case(test_resolver_listener_multiple_results)
+add_net_test_case(test_resolver_listener_address_expired_fn)
 
 add_test_case(test_pem_single_cert_parse)
 add_test_case(test_pem_private_key_parse)
