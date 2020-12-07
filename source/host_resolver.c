@@ -888,13 +888,13 @@ static void s_resolver_thread_notify_listeners(
          listener_node = aws_linked_list_next(listener_node)) {
         struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
 
-        /* If we have new adddresses, notify the resolved-address callback if one exists */
+        /* If we have new addresses, notify the resolved-address callback if one exists */
         if (aws_array_list_length(new_address_list) > 0 && listener->resolved_address_callback != NULL) {
             listener->resolved_address_callback(
                 (struct aws_host_listener *)listener, new_address_list, listener->user_data);
         }
 
-        /* If we have expired adddresses, notify the expired-address callback if one exists */
+        /* If we have expired addresses, notify the expired-address callback if one exists */
         if (aws_array_list_length(expired_address_list) > 0 && listener->expired_address_callback != NULL) {
             listener->expired_address_callback(
                 (struct aws_host_listener *)listener, expired_address_list, listener->user_data);
