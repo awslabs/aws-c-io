@@ -1583,6 +1583,8 @@ static struct aws_host_listener *default_add_host_listener(
         (void *)listener,
         (const char *)options->host_name.ptr);
 
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+
     listener->resolver = aws_host_resolver_acquire(resolver);
     listener->host_name = aws_string_new_from_cursor(resolver->allocator, &options->host_name);
     if (listener->host_name == NULL) {
@@ -1592,8 +1594,6 @@ static struct aws_host_listener *default_add_host_listener(
     listener->resolved_address_callback = options->resolved_address_callback;
     listener->expired_address_callback = options->expired_address_callback;
     listener->user_data = options->user_data;
-
-    struct default_host_resolver *default_host_resolver = resolver->impl;
 
     /* Add the listener to a host listener entry in the host listener entry table. */
     aws_mutex_lock(&default_host_resolver->resolver_lock);
