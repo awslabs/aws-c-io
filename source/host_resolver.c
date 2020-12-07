@@ -1560,6 +1560,7 @@ static struct aws_host_listener *default_add_host_listener(
     const struct aws_host_listener_options *options) {
     AWS_PRECONDITION(resolver);
 
+    bool success = false;
     if (options == NULL) {
         AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Cannot create host resolver listener; options structure is NULL.");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -1582,12 +1583,14 @@ static struct aws_host_listener *default_add_host_listener(
         (void *)listener,
         (const char *)options->host_name.ptr);
 
-    aws_host_resolver_acquire(resolver);
-    listener->resolver = resolver;
+    listener->resolver = aws_host_resolver_acquire(resolver);
     listener->host_name = aws_string_new_from_cursor(resolver->allocator, &options->host_name);
+    if (listener->host_name == NULL) {
+        goto done;
+    }
+
     listener->resolved_address_callback = options->resolved_address_callback;
     listener->expired_address_callback = options->expired_address_callback;
-    listener->shutdown_callback = options->shutdown_callback;
     listener->user_data = options->user_data;
 
     struct default_host_resolver *default_host_resolver = resolver->impl;
@@ -1596,12 +1599,20 @@ static struct aws_host_listener *default_add_host_listener(
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     if (s_add_host_listener_to_listener_entry(default_host_resolver, listener->host_name, listener)) {
-        /* this is incorrect and leaks memory */
-        aws_mem_release(resolver->allocator, listener);
-        listener = NULL;
+        goto done;
     }
 
+    success = true;
+    listener->shutdown_callback = options->shutdown_callback;
+
+done:
+
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+    if (!success) {
+        s_host_listener_destroy(listener);
+        listener = NULL;
+    }
 
     return (struct aws_host_listener *)listener;
 }
