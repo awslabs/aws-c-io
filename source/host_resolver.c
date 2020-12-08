@@ -973,7 +973,7 @@ static void resolver_thread_fn(void *arg) {
                 aws_string_c_str(host_entry->host_name),
                 (int)aws_array_list_length(&address_list));
         } else {
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_WARN(
                 AWS_LS_IO_DNS,
                 "static, resolving host %s failed, ec %d (%s)",
                 aws_string_c_str(host_entry->host_name),
@@ -1050,13 +1050,13 @@ static void resolver_thread_fn(void *arg) {
                 host_entry->host_name);
             aws_mutex_unlock(&host_entry->entry_lock);
 
-            size_t callback_list_size = aws_array_list_length(&callback_address_list);
-            if (callback_list_size > 0) {
+            size_t callback_address_list_size = aws_array_list_length(&callback_address_list);
+            if (callback_address_list_size > 0) {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_DNS,
                     "static, invoking resolution callback for host %s with %d addresses",
                     aws_string_c_str(host_entry->host_name),
-                    (int)callback_list_size);
+                    (int)callback_address_list_size);
             } else {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_DNS,
@@ -1064,7 +1064,7 @@ static void resolver_thread_fn(void *arg) {
                     aws_string_c_str(host_entry->host_name));
             }
 
-            if (callback_list_size > 0) {
+            if (callback_address_list_size > 0) {
                 pending_callback->callback(
                     host_entry->resolver,
                     host_entry->host_name,
