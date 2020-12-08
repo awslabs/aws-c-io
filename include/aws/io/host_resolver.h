@@ -278,6 +278,9 @@ struct aws_host_listener_options {
 
     /* User data to be passed into each callback. */
     void *user_data;
+
+    /* flags/bitfield instead? */
+    bool pin_host_entry;
 };
 
 /* Create and add a listener to the host resolver using the specified options. */
