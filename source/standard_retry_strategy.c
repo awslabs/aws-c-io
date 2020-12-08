@@ -286,13 +286,12 @@ void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int
         (void *)standard_retry_token,
         (void *)token);
     struct aws_retry_strategy *retry_strategy = token->retry_strategy;
-    aws_retry_token_acquire(standard_retry_token);
+    /* we already hold a reference count here due to the previous acquire before scheduling, so don't worry
+     * about incrementing standard_retry_token here */
     impl->original_on_ready(standard_retry_token, error_code, impl->original_user_data);
     AWS_LOGF_TRACE(
         AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: on_retry_ready callback completed", (void *)retry_strategy);
     /* this is to release the acquire we did before scheduling the retry. Release it now. */
-    aws_retry_token_release(standard_retry_token);
-
     aws_retry_token_release(standard_retry_token);
 }
 
@@ -401,9 +400,7 @@ static void s_standard_retry_strategy_release_token(struct aws_retry_token *toke
     if (token) {
         AWS_LOGF_TRACE(AWS_LS_IO_STANDARD_RETRY_STRATEGY, "id=%p: releasing token", (void *)token);
         struct retry_bucket_token *impl = token->impl;
-        if (impl->exp_backoff_token) {
-            aws_retry_token_release(impl->exp_backoff_token);
-        }
+        aws_retry_token_release(impl->exp_backoff_token);
         aws_retry_strategy_release(token->retry_strategy);
         aws_mem_release(token->allocator, impl);
     }
