@@ -1016,7 +1016,6 @@ struct listener_test_callback_type_data {
     uint32_t error_code;
     uint32_t expected_num_addresses;
     struct aws_array_list address_list;
-    aws_thread_id_t callback_thread_id;
 };
 
 struct listener_test_callback_data {
@@ -1108,7 +1107,6 @@ static void s_listener_address_callback(
 
     aws_mutex_lock(callback_data->mutex);
     callback_type_data->callback_invoked = true;
-    callback_type_data->callback_thread_id = aws_thread_current_thread_id();
 
     size_t address_count = aws_array_list_length(address_list);
     for (size_t address_index = 0; address_index < address_count; ++address_index) {
