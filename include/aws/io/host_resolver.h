@@ -279,7 +279,7 @@ struct aws_host_listener_options {
     /* User data to be passed into each callback. */
     void *user_data;
 
-    /* flags/bitfield instead? */
+    /* Lets the resolver know to keep the resolution thread alive for as long as this listener is attached */
     bool pin_host_entry;
 };
 
