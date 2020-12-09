@@ -41,8 +41,10 @@ struct exponential_backoff_retry_token {
 
 static void s_exponential_retry_destroy(struct aws_retry_strategy *retry_strategy) {
     if (retry_strategy) {
-        struct exponential_backoff_retry_token *backoff_retry_token = retry_strategy->impl;
-        aws_mem_release(retry_strategy->allocator, backoff_retry_token);
+        struct exponential_backoff_strategy *exponential_strategy = retry_strategy->impl;
+        struct aws_event_loop_group *el_group = exponential_strategy->config.el_group;
+        aws_mem_release(retry_strategy->allocator, exponential_strategy);
+        aws_ref_count_release(&el_group->ref_count);
     }
 }
 
@@ -336,6 +338,8 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     exponential_backoff_strategy->base.vtable = &s_exponential_retry_vtable;
     aws_atomic_init_int(&exponential_backoff_strategy->base.ref_count, 1);
     exponential_backoff_strategy->config = *config;
+    exponential_backoff_strategy->config.el_group =
+        aws_ref_count_acquire(&exponential_backoff_strategy->config.el_group->ref_count);
 
     if (!exponential_backoff_strategy->config.generate_random) {
         exponential_backoff_strategy->config.generate_random = s_default_gen_rand;
