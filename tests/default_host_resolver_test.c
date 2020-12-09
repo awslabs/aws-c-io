@@ -26,6 +26,7 @@ struct default_host_callback_data {
     struct aws_condition_variable condition_variable;
     bool invoked;
     struct aws_mutex *mutex;
+    aws_thread_id_t callback_thread_id;
 };
 
 static bool s_default_host_resolved_predicate(void *arg) {
@@ -75,6 +76,8 @@ static void s_default_host_resolved_test_callback(
     }
 
     callback_data->invoked = true;
+    callback_data->callback_thread_id = aws_thread_current_thread_id();
+
     aws_mutex_unlock(callback_data->mutex);
     aws_condition_variable_notify_one(&callback_data->condition_variable);
 }
@@ -2018,3 +2021,157 @@ static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *all
 }
 
 AWS_TEST_CASE(test_resolver_listener_address_expired_fn, s_test_resolver_listener_address_expired_fn)
+
+/*
+ * This test works on the following assumption:
+ *
+ * Failed resolves will always generate a callback from the host's resolution thread (not true for successful
+ * resolves, and new/expired callbacks are unreliable to generate on a pinned resolver).  So we can test
+ * whether or not a host entry is successfully pinned by making two failure-bound resolution calls inbetween
+ * a wait that is substantially longer than the TTL of the resolution and then checking the thread ids captured
+ * in the two callbacks.  If they're different, we know that the resolution thread was destroyed and remade; if
+ * they're the same, we know the resolution thread was successfully pinned.
+ */
+static int s_test_host_entry_pinning(struct aws_allocator *allocator, bool pin_host_entry) {
+    aws_io_library_init(allocator);
+
+    struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
+    struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+    struct aws_host_listener *listener = NULL;
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(s_setup_mock_host(allocator, resolver, &mock_resolver, host_name_str, 0, 0, 0));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct listener_test_callback_data callback_data;
+    s_listener_test_callback_data_init(allocator, &mutex, 0, 0, &callback_data);
+
+    struct default_host_callback_data resolve_callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+        .mutex = &mutex,
+    };
+
+    /* Setup listener before host is added */
+    {
+        struct aws_host_listener_options listener_options = {
+            .host_name = host_name,
+            .shutdown_callback = s_listener_shutdown_callback,
+            .user_data = &callback_data,
+            .pin_host_entry = pin_host_entry,
+        };
+
+        listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
+    }
+
+    aws_thread_id_t first_thread_id;
+
+    /* Trigger resolve host */
+    {
+        struct aws_host_resolution_config config = {
+            .max_ttl = 1,
+            .impl = mock_dns_resolve,
+            .impl_data = &mock_resolver,
+        };
+
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, host_name_str, s_default_host_resolved_test_callback, &config, &resolve_callback_data));
+    }
+
+    /* Wait for listener to receive (failed) host resolved callback. */
+    {
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+        aws_condition_variable_wait_pred(
+            &resolve_callback_data.condition_variable,
+            &mutex,
+            s_default_host_resolved_predicate,
+            &resolve_callback_data);
+
+        first_thread_id = resolve_callback_data.callback_thread_id;
+        resolve_callback_data.invoked = false;
+
+        aws_mutex_unlock(&mutex);
+    }
+
+    aws_thread_current_sleep(aws_timestamp_convert(3, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+    aws_thread_id_t second_thread_id;
+
+    /* Trigger resolve host */
+    {
+        struct aws_host_resolution_config config = {
+            .max_ttl = 1,
+            .impl = mock_dns_resolve,
+            .impl_data = &mock_resolver,
+        };
+
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, host_name_str, s_default_host_resolved_test_callback, &config, &resolve_callback_data));
+    }
+
+    /* Wait for listener to receive (failed) host resolved callback. */
+    {
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+        aws_condition_variable_wait_pred(
+            &resolve_callback_data.condition_variable,
+            &mutex,
+            s_default_host_resolved_predicate,
+            &resolve_callback_data);
+
+        second_thread_id = resolve_callback_data.callback_thread_id;
+
+        aws_mutex_unlock(&mutex);
+    }
+
+    /* compare the two thread ids */
+    ASSERT_TRUE(aws_thread_thread_id_equal(first_thread_id, second_thread_id) == pin_host_entry);
+
+    s_listener_test_callback_data_clean_up(&callback_data);
+    aws_host_resolver_remove_host_listener(resolver, listener);
+    listener = NULL;
+    s_wait_on_listener_shutdown(&callback_data);
+
+    mock_dns_resolver_clean_up(&mock_resolver);
+    aws_host_resolver_release(resolver);
+
+    aws_mutex_clean_up(&mutex);
+    aws_string_destroy(host_name_str);
+
+    aws_event_loop_group_release(el_group);
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_resolver_pinned_host_entry(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_test_host_entry_pinning(allocator, true));
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_pinned_host_entry, s_test_resolver_pinned_host_entry)
+
+static int s_test_resolver_unpinned_host_entry(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_test_host_entry_pinning(allocator, false));
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_unpinned_host_entry, s_test_resolver_unpinned_host_entry)

@@ -186,6 +186,7 @@ struct host_listener {
         /* It's important that the node structure is always first, so that the HOST_LISTENER_FROM_THREADED_NODE macro
          * works properly.*/
         struct aws_linked_list_node node;
+        bool pin_host_entry;
     } threaded_data;
 };
 
@@ -902,6 +903,21 @@ static void s_resolver_thread_notify_listeners(
     }
 }
 
+static bool s_is_host_entry_pinned_by_listener(struct aws_linked_list *listener_list) {
+    AWS_PRECONDITION(listener_list);
+
+    for (struct aws_linked_list_node *listener_node = aws_linked_list_begin(listener_list);
+         listener_node != aws_linked_list_end(listener_list);
+         listener_node = aws_linked_list_next(listener_node)) {
+        struct host_listener *listener = HOST_LISTENER_FROM_THREADED_NODE(listener_node);
+        if (listener->threaded_data.pin_host_entry) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void resolver_thread_fn(void *arg) {
     struct host_entry *host_entry = arg;
 
@@ -942,8 +958,6 @@ static void resolver_thread_fn(void *arg) {
 
     while (keep_going) {
 
-        AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static, resolving %s", aws_string_c_str(host_entry->host_name));
-
         /* resolve and then process each record */
         int err_code = AWS_ERROR_SUCCESS;
         if (host_entry->resolution_config.impl(
@@ -951,6 +965,22 @@ static void resolver_thread_fn(void *arg) {
 
             err_code = aws_last_error();
         }
+
+        if (err_code == AWS_ERROR_SUCCESS) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_DNS,
+                "static, resolving host %s successful, returned %d addresses",
+                aws_string_c_str(host_entry->host_name),
+                (int)aws_array_list_length(&address_list));
+        } else {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_DNS,
+                "static, resolving host %s failed, ec %d (%s)",
+                aws_string_c_str(host_entry->host_name),
+                err_code,
+                aws_error_debug_str(err_code));
+        }
+
         uint64_t timestamp = s_get_system_time_for_default_resolver(host_entry->resolver);
         uint64_t new_expiry = timestamp + (host_entry->resolution_config.max_ttl * NS_PER_SEC);
 
@@ -1020,9 +1050,21 @@ static void resolver_thread_fn(void *arg) {
                 host_entry->host_name);
             aws_mutex_unlock(&host_entry->entry_lock);
 
-            AWS_ASSERT(err_code != AWS_ERROR_SUCCESS || aws_array_list_length(&callback_address_list) > 0);
+            size_t callback_address_list_size = aws_array_list_length(&callback_address_list);
+            if (callback_address_list_size > 0) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_DNS,
+                    "static, invoking resolution callback for host %s with %d addresses",
+                    aws_string_c_str(host_entry->host_name),
+                    (int)callback_address_list_size);
+            } else {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_DNS,
+                    "static, invoking resolution callback for host %s with failure",
+                    aws_string_c_str(host_entry->host_name));
+            }
 
-            if (aws_array_list_length(&callback_address_list) > 0) {
+            if (callback_address_list_size > 0) {
                 pending_callback->callback(
                     host_entry->resolver,
                     host_entry->host_name,
@@ -1031,8 +1073,9 @@ static void resolver_thread_fn(void *arg) {
                     pending_callback->user_data);
 
             } else {
+                int error_code = (err_code != AWS_ERROR_SUCCESS) ? err_code : AWS_IO_DNS_QUERY_FAILED;
                 pending_callback->callback(
-                    host_entry->resolver, host_entry->host_name, err_code, NULL, pending_callback->user_data);
+                    host_entry->resolver, host_entry->host_name, error_code, NULL, pending_callback->user_data);
             }
 
             s_clear_address_list(&callback_address_list);
@@ -1073,6 +1116,7 @@ static void resolver_thread_fn(void *arg) {
         aws_mutex_lock(&host_entry->entry_lock);
 
         uint64_t now = s_get_system_time_for_default_resolver(host_entry->resolver);
+        bool pinned = s_is_host_entry_pinned_by_listener(&listener_list);
 
         /*
          * Ideally this should just be time-based, but given the non-determinism of waits (and spurious wake ups) and
@@ -1088,7 +1132,7 @@ static void resolver_thread_fn(void *arg) {
          * final clean up of this entry.
          */
         if (host_entry->resolves_since_last_request > unsolicited_resolve_max &&
-            host_entry->last_resolve_request_timestamp_ns + max_no_solicitation_interval < now) {
+            host_entry->last_resolve_request_timestamp_ns + max_no_solicitation_interval < now && !pinned) {
             host_entry->state = DRS_SHUTTING_DOWN;
         }
 
@@ -1594,6 +1638,7 @@ static struct aws_host_listener *default_add_host_listener(
     listener->resolved_address_callback = options->resolved_address_callback;
     listener->expired_address_callback = options->expired_address_callback;
     listener->user_data = options->user_data;
+    listener->threaded_data.pin_host_entry = options->pin_host_entry;
 
     /* Add the listener to a host listener entry in the host listener entry table. */
     aws_mutex_lock(&default_host_resolver->resolver_lock);
