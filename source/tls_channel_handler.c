@@ -131,7 +131,8 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     return AWS_OP_SUCCESS;
 }
 
-#endif /* AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
+
 
 #ifdef _WIN32
 void aws_tls_ctx_options_init_client_mtls_from_system_path(
