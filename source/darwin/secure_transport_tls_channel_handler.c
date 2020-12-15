@@ -1026,7 +1026,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 secure_transport_ctx->wrapped_allocator,
                 &cert_chain_cur,
                 &private_key_cur,
-                &secure_transport_ctx->certs)) {
+                &secure_transport_ctx->certs,
+                options->keychain_path)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;

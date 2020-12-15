@@ -130,9 +130,63 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 
     return AWS_OP_SUCCESS;
 }
+#    if defined(__APPLE__)
+int aws_tls_ctx_options_init_client_mtls_custom_keychain(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_byte_cursor *cert,
+    const struct aws_byte_cursor *pkey,
+    const char *keychain_path) {
+    AWS_ZERO_STRUCT(*options);
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
+    options->verify_peer = true;
+    options->allocator = allocator;
+    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    options->keychain_path = keychain_path;
+
+    /* s2n relies on null terminated c_strings, so we need to make sure we're properly
+     * terminated, but we don't want length to reflect the terminator because
+     * Apple and Windows will fail hard if you use a null terminator. */
+    if (s_load_null_terminated_buffer_from_cursor(&options->certificate, allocator, cert)) {
+        return AWS_OP_ERR;
+    }
+
+    if (s_load_null_terminated_buffer_from_cursor(&options->private_key, allocator, pkey)) {
+        aws_byte_buf_clean_up(&options->certificate);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+int aws_tls_ctx_options_init_client_mtls_from_path_custom_keychain(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_path,
+    const char *pkey_path,
+    const char *keychain_path) {
+    AWS_ZERO_STRUCT(*options);
+    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
+    options->verify_peer = true;
+    options->allocator = allocator;
+    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    options->keychain_path = keychain_path;
+
+    if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_byte_buf_init_from_file(&options->private_key, allocator, pkey_path)) {
+        aws_byte_buf_clean_up(&options->certificate);
+        return AWS_OP_ERR;
+    }
+    return AWS_OP_SUCCESS;
+}
+#    endif /* __APPLE__ */
 
 #endif /* !AWS_OS_IOS */
-
 
 #ifdef _WIN32
 void aws_tls_ctx_options_init_client_mtls_from_system_path(
