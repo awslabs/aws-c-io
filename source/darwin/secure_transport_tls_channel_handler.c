@@ -162,7 +162,7 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
     size_t processed = 0;
     while (processed < buf.len) {
         const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
-        const size_t message_size_hint = buf.len - processed + overhead;
+        const size_t message_size_hint = (buf.len - processed) + overhead;
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 

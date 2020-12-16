@@ -208,7 +208,7 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
     size_t processed = 0;
     while (processed < buf->len) {
         const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
-        const size_t message_size_hint = buf->len - processed + overhead;
+        const size_t message_size_hint = (buf->len - processed) + overhead;
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
