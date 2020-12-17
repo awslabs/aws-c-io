@@ -23,7 +23,7 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
-    const char *keychain_path) {
+    const struct aws_string *keychain_path) {
 
     int result = AWS_OP_ERR;
 
@@ -48,12 +48,12 @@ int aws_import_public_and_private_keys_to_identity(
     SecKeychainRef import_keychain = NULL;
 
     if (keychain_path) {
-        OSStatus keychain_status = SecKeychainOpen(keychain_path, &import_keychain);
+        OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(options->alpn_list), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: error opening keychain \"%s\" with OSStatus %d",
-                keychain_path,
+                aws_string_c_str(keychain_path),
                 keychain_status);
             return AWS_OP_ERR;
         }
@@ -62,7 +62,7 @@ int aws_import_public_and_private_keys_to_identity(
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: error unlocking keychain \"%s\" with OSStatus %d",
-                keychain_path,
+                aws_string_c_str(keychain_path),
                 keychain_status);
             return AWS_OP_ERR;
         }

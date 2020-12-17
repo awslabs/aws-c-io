@@ -46,6 +46,12 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     if (options->pkcs12_password.len) {
         aws_byte_buf_clean_up_secure(&options->pkcs12_password);
     }
+
+#    if !defined(AWS_OS_IOS)
+    if (options->keychain_path) {
+        aws_string_destroy(options->keychain_path);
+    }
+#    endif
 #endif
 
     if (options->alpn_list) {
@@ -143,7 +149,11 @@ int aws_tls_ctx_options_init_client_mtls_custom_keychain(
     options->verify_peer = true;
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
-    options->keychain_path = keychain_path;
+
+    options->keychain_path = aws_string_new_from_c_str(options->allocator, keychain_path);
+    if (!options->keychain_path) {
+        return AWS_OP_ERR;
+    }
 
     /* s2n relies on null terminated c_strings, so we need to make sure we're properly
      * terminated, but we don't want length to reflect the terminator because
@@ -172,7 +182,11 @@ int aws_tls_ctx_options_init_client_mtls_from_path_custom_keychain(
     options->verify_peer = true;
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
-    options->keychain_path = keychain_path;
+
+    options->keychain_path = aws_string_new_from_c_str(options->allocator, keychain_path);
+    if (!options->keychain_path) {
+        return AWS_OP_ERR;
+    }
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
         return AWS_OP_ERR;

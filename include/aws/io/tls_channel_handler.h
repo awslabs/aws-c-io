@@ -165,7 +165,7 @@ struct aws_tls_ctx_options {
      * On Apple OS you can also use a custom keychain instead of
      * the default keychain of the account.
      */
-    const char *keychain_path;
+    struct aws_string *keychain_path;
 #    endif
 
 #endif
