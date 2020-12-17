@@ -245,33 +245,10 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 
 #    ifdef __APPLE__
 /**
- * Initializes options for use with mutual tls in client mode.
- * cert_path and pkey_path are paths to files on disk. cert_path
- * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
- * from disk and stored in buffers internally. Instead of using the
- * default keychain, the custom keychain keychain_path is used for
- * storing the certificate and the private key.
+ * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
  */
-AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path_custom_keychain(
-    struct aws_tls_ctx_options *options,
-    struct aws_allocator *allocator,
-    const char *cert_path,
-    const char *pkey_path,
-    const char *keychain_path);
-
-/**
- * Initializes options for use with mutual tls in client mode.
- * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
- * armored. Instead of using the default keychain, the custom keychain
- * keychain_path is used for storing the certificate and the private key.
- */
-AWS_IO_API int aws_tls_ctx_options_init_client_mtls_custom_keychain(
-    struct aws_tls_ctx_options *options,
-    struct aws_allocator *allocator,
-    const struct aws_byte_cursor *cert,
-    const struct aws_byte_cursor *pkey,
-    const char *keychain_path);
-#    endif /* __APPLE__ */
+AWS_IO_API int aws_tls_ctx_options_set_keychain_path(struct aws_tls_ctx_options *options, const char *keychain_path);
+#    endif
 
 /**
  * Initializes options for use with in server mode.
