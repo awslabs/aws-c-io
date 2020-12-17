@@ -57,7 +57,7 @@ int aws_import_public_and_private_keys_to_identity(
                 keychain_status);
             return AWS_OP_ERR;
         }
-        keychain_status = SecKeychainUnlock(import_keychain, 0, "", TRUE);
+        keychain_status = SecKeychainUnlock(import_keychain, 0, "", true);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
