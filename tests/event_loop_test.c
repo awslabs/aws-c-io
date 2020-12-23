@@ -1044,14 +1044,14 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
         el_count++;
     }
 
-    ASSERT_INT_EQUALS(cpu_count, el_count);
+    ASSERT_INT_EQUALS(cpu_count / 2, el_count);
     el_count = 1;
     /* now do it again to make sure the counter turns over. */
     while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
-    ASSERT_INT_EQUALS(cpu_count, el_count);
+    ASSERT_INT_EQUALS(cpu_count / 2, el_count);
 
     aws_event_loop_group_release(event_loop_group);
 
@@ -1063,6 +1063,62 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 }
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
+
+static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
+
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    uint16_t group_count = aws_get_cpu_group_count();
+    size_t cpus_for_group = aws_get_cpu_count_for_group(group_count);
+    size_t el_count = 1;
+
+    /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
+     * than hw cpus available */
+    struct aws_event_loop_group *event_loop_group =
+        aws_event_loop_group_new_default_pinned_to_cpu_group(allocator, UINT16_MAX, 0, NULL);
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+    struct aws_event_loop *first_loop = event_loop;
+
+    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
+        ASSERT_NOT_NULL(event_loop);
+        el_count++;
+    }
+
+    size_t hw_thread_count = 0;
+    struct aws_cpu_info *cpu_info = aws_mem_calloc(allocator, cpus_for_group, sizeof(struct aws_cpu_info));
+    ASSERT_NOT_NULL(cpu_info);
+
+    aws_get_cpu_ids_for_group(0, cpu_info, cpus_for_group);
+
+    for (size_t i = 0; i < cpus_for_group; ++i) {
+        if (!cpu_info[i].suspected_hyper_thread) {
+            hw_thread_count++;
+        }
+    }
+
+    aws_mem_release(allocator, cpu_info);
+
+    ASSERT_INT_EQUALS(hw_thread_count, el_count);
+    el_count = 1;
+    /* now do it again to make sure the counter turns over. */
+    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
+        ASSERT_NOT_NULL(event_loop);
+        el_count++;
+    }
+    ASSERT_INT_EQUALS(hw_thread_count, el_count);
+
+    aws_event_loop_group_release(event_loop_group);
+
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(numa_aware_event_loop_group_setup_and_shutdown, test_numa_aware_event_loop_group_setup_and_shutdown)
 
 static void s_async_shutdown_complete_callback(void *user_data) {
 
