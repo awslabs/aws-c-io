@@ -1069,8 +1069,7 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    uint16_t group_count = aws_get_cpu_group_count();
-    size_t cpus_for_group = aws_get_cpu_count_for_group(group_count);
+    size_t cpus_for_group = aws_get_cpu_count_for_group(0);
     size_t el_count = 1;
 
     /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
