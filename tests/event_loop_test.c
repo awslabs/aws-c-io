@@ -1044,14 +1044,20 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
         el_count++;
     }
 
-    ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+    if (cpu_count > 1) {
+        ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+    }
+
     el_count = 1;
     /* now do it again to make sure the counter turns over. */
     while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
         ASSERT_NOT_NULL(event_loop);
         el_count++;
     }
-    ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+
+    if (cpu_count > 1) {
+        ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+    }
 
     aws_event_loop_group_release(event_loop_group);
 

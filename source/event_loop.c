@@ -87,24 +87,24 @@ static struct aws_event_loop_group *s_event_loop_group_new(
     const struct aws_shutdown_callback_options *shutdown_options) {
     AWS_ASSERT(new_loop_fn);
 
-    size_t group_cpus = 0;
+    size_t group_cpu_count = 0;
     struct aws_cpu_info *usable_cpus = NULL;
 
     if (pin_threads) {
-        group_cpus = aws_get_cpu_count_for_group(cpu_group);
+        group_cpu_count = aws_get_cpu_count_for_group(cpu_group);
 
-        if (!group_cpus) {
+        if (!group_cpu_count) {
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             return NULL;
         }
 
-        usable_cpus = aws_mem_calloc(alloc, group_cpus, sizeof(struct aws_cpu_info));
+        usable_cpus = aws_mem_calloc(alloc, group_cpu_count, sizeof(struct aws_cpu_info));
 
         if (usable_cpus == NULL) {
             return NULL;
         }
 
-        aws_get_cpu_ids_for_group(cpu_group, usable_cpus, group_cpus);
+        aws_get_cpu_ids_for_group(cpu_group, usable_cpus, group_cpu_count);
     }
 
     struct aws_event_loop_group *el_group = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop_group));
@@ -123,7 +123,7 @@ static struct aws_event_loop_group *s_event_loop_group_new(
 
     for (uint16_t i = 0; i < el_count; ++i) {
         /* Don't pin to hyper-threads if a user cared enough to specify a NUMA node */
-        if (!pin_threads || (i < group_cpus && !usable_cpus[i].suspected_hyper_thread)) {
+        if (!pin_threads || (i < group_cpu_count && !usable_cpus[i].suspected_hyper_thread)) {
             struct aws_thread_options thread_options = *aws_default_thread_options();
 
             struct aws_event_loop_options options = {
@@ -201,8 +201,9 @@ struct aws_event_loop_group *aws_event_loop_group_new_default(
     uint16_t max_threads,
     const struct aws_shutdown_callback_options *shutdown_options) {
     if (!max_threads) {
+        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
         /* cut them in half to avoid using hyper threads for the IO work. */
-        max_threads = (uint16_t)aws_system_info_processor_count() / 2;
+        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
     }
 
     return aws_event_loop_group_new(
@@ -231,8 +232,9 @@ struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_grou
     const struct aws_shutdown_callback_options *shutdown_options) {
 
     if (!max_threads) {
+        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
         /* cut them in half to avoid using hyper threads for the IO work. */
-        max_threads = (uint16_t)aws_system_info_processor_count() / 2;
+        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
     }
 
     return aws_event_loop_group_new_pinned_to_cpu_group(

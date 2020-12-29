@@ -373,8 +373,9 @@ struct aws_event_loop_group *aws_event_loop_group_new_default(
 
 /** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
  * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
- * If el_count exceeds the number of hw threads in the cpu_group it will be ignored on the assumption that if you
- * care about NUMA, you don't want hyper-threads doing your IO and you especially don't want IO on a different node.
+ * If el_count exceeds the number of hw threads in the cpu_group it will be clamped to the number of hw threads
+ * on the assumption that if you care about NUMA, you don't want hyper-threads doing your IO and you especially
+ * don't want IO on a different node.
  *
  * If max_threads == 0, then the
  * loop count will be the number of available processors in the cpu_group / 2 (to exclude hyper-threads)
