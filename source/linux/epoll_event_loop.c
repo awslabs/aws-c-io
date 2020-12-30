@@ -79,6 +79,7 @@ static struct aws_event_loop_vtable s_vtable = {
 struct epoll_loop {
     struct aws_task_scheduler scheduler;
     struct aws_thread thread_created_on;
+    struct aws_thread_options thread_options;
     aws_thread_id_t thread_joined_to;
     struct aws_atomic_var running_thread_id;
     struct aws_io_handle read_task_handle;
@@ -110,20 +111,31 @@ enum {
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    AWS_PRECONDITION(options);
+    AWS_PRECONDITION(options->clock);
+
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
     if (!loop) {
         return NULL;
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered epoll", (void *)loop);
-    if (aws_event_loop_init_base(loop, alloc, clock)) {
+    if (aws_event_loop_init_base(loop, alloc, options->clock)) {
         goto clean_up_loop;
     }
 
     struct epoll_loop *epoll_loop = aws_mem_calloc(alloc, 1, sizeof(struct epoll_loop));
     if (!epoll_loop) {
         goto cleanup_base_loop;
+    }
+
+    if (options->thread_options) {
+        epoll_loop->thread_options = *options->thread_options;
+    } else {
+        epoll_loop->thread_options = *aws_default_thread_options();
     }
 
     /* initialize thread id to NULL, it should be updated when the event loop thread starts. */
@@ -259,7 +271,7 @@ static int s_run(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
     epoll_loop->should_continue = true;
-    if (aws_thread_launch(&epoll_loop->thread_created_on, &s_main_loop, event_loop, NULL)) {
+    if (aws_thread_launch(&epoll_loop->thread_created_on, &s_main_loop, event_loop, &epoll_loop->thread_options)) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
