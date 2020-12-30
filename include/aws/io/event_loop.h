@@ -87,6 +87,7 @@ struct aws_event_loop {
     struct aws_allocator *alloc;
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
+    struct aws_atomic_var current_load_factor;
     void *impl_data;
 };
 
@@ -112,7 +113,6 @@ typedef struct aws_event_loop *(aws_new_event_loop_fn)(
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
     struct aws_array_list event_loops;
-    struct aws_atomic_var current_index;
     struct aws_ref_count ref_count;
     struct aws_shutdown_callback_options shutdown_options;
 };
@@ -223,6 +223,20 @@ int aws_event_loop_run(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_stop(struct aws_event_loop *event_loop);
+
+/**
+ * Update the load factor that's used for returning the next available event loop. This is usually called from
+ * event-loop implementations on some interval to give the rest of the load-balancing system information necessary
+ * to decide which loop to vend to a user.
+ */
+AWS_IO_API
+void aws_event_loop_update_load_factor(struct aws_event_loop *event_loop, size_t load_factor);
+
+/**
+ * Fetches the current load factor.
+ */
+AWS_IO_API
+size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
 
 /**
  * Blocks until the event loop stops completely.
@@ -410,8 +424,8 @@ size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group
 
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
- * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
- * style.
+ * this load balancing is done as it is subject to change in the future. Currently it uses the "best-of-two" algorithm
+ * based on the load factor of each loop.
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);

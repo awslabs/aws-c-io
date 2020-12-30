@@ -6,6 +6,7 @@
 #include <aws/io/event_loop.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/device_random.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
@@ -115,7 +116,6 @@ static struct aws_event_loop_group *s_event_loop_group_new(
     el_group->allocator = alloc;
     aws_ref_count_init(
         &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
-    aws_atomic_init_int(&el_group->current_index, 0);
 
     if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
         goto on_error;
@@ -272,19 +272,30 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
         return NULL;
     }
 
-    /* thread safety: atomic CAS to ensure we got the best loop, and that the index is within bounds */
-    size_t old_index = 0;
-    size_t new_index = 0;
-    do {
-        old_index = aws_atomic_load_int(&el_group->current_index);
-        new_index = (old_index + 1) % loop_count;
-    } while (!aws_atomic_compare_exchange_int(&el_group->current_index, &old_index, new_index));
+    /* use the best of two algorithm to select the loop with the lowest load.
+     * If we find device random is too hard on the kernel, we can seed it and use another random
+     * number generator. */
+    uint16_t random_num_a = 0;
+    aws_device_random_u16(&random_num_a);
+    random_num_a = random_num_a % loop_count;
 
-    struct aws_event_loop *loop = NULL;
+    uint16_t random_num_b = 1;
+    aws_device_random_u16(&random_num_b);
+    random_num_b = random_num_b % loop_count;
 
-    /* if the fetch fails, we don't really care since loop will be NULL and error code will already be set. */
-    aws_array_list_get_at(&el_group->event_loops, &loop, old_index);
-    return loop;
+    struct aws_event_loop *random_loop_a = NULL;
+    struct aws_event_loop *random_loop_b = NULL;
+    aws_array_list_get_at(&el_group->event_loops, &random_loop_a, random_num_a);
+    aws_array_list_get_at(&el_group->event_loops, &random_loop_b, random_num_b);
+
+    if (!random_loop_a || !random_loop_b) {
+        return NULL;
+    }
+
+    size_t load_a = aws_event_loop_get_load_factor(random_loop_a);
+    size_t load_b = aws_event_loop_get_load_factor(random_loop_b);
+
+    return load_a < load_b ? random_loop_a : random_loop_b;
 }
 
 static void s_object_removed(void *value) {
@@ -299,6 +310,7 @@ int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_alloc
 
     event_loop->alloc = alloc;
     event_loop->clock = clock;
+    aws_atomic_init_int(&event_loop->current_load_factor, 0u);
 
     if (aws_hash_table_init(&event_loop->local_data, alloc, 20, aws_hash_ptr, aws_ptr_eq, NULL, s_object_removed)) {
         return AWS_OP_ERR;
@@ -309,6 +321,14 @@ int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_alloc
 
 void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
     aws_hash_table_clean_up(&event_loop->local_data);
+}
+
+void aws_event_loop_update_load_factor(struct aws_event_loop *event_loop, size_t load_factor) {
+    aws_atomic_store_int(&event_loop->current_load_factor, load_factor);
+}
+
+size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
+    return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {

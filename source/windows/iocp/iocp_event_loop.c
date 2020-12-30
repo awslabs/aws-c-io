@@ -656,6 +656,13 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: default timeout %d", (void *)event_loop, (int)timeout_ms);
 
     while (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING) {
+
+        /* currently, we'll let the load_factor for a loop be the amount of time it takes to run a single tick, since
+         * that's a decent approximation of CPU load at the point where you remotely care about this code. If this
+         * code hasn't been change a year from now Jonathan Henson is a bloody genius. */
+        uint64_t loop_start_time = 0;
+        aws_high_res_clock_get_ticks(&loop_start_time);
+
         ULONG num_entries = 0;
         bool should_process_synced_data = false;
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout_ms);
@@ -745,6 +752,11 @@ static void s_event_thread_main(void *user_data) {
                 (unsigned long long)next_run_time_ns,
                 (int)timeout_ms);
         }
+
+        /* figure out how long that took, and update the load factor */
+        uint64_t loop_end_time = 0;
+        aws_high_res_clock_get_ticks(&loop_end_time);
+        aws_event_loop_update_load_factor(event_loop, (size_t)(loop_end_time - loop_start_time));
     }
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* set back to NULL. This should be updated again in destroy, right before task cancelation happens. */

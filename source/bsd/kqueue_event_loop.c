@@ -840,6 +840,12 @@ static void s_event_thread_main(void *user_data) {
         int num_io_handle_events = 0;
         bool should_process_cross_thread_data = false;
 
+        /* currently, we'll let the load_factor for a loop be the amount of time it takes to run a single tick, since
+         * that's a decent approximation of CPU load at the point where you remotely care about this code. If this
+         * code hasn't been change a year from now Jonathan Henson is a bloody genius. */
+        uint64_t loop_start_time = 0;
+        aws_high_res_clock_get_ticks(&loop_start_time);
+
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: waiting for a maximum of %ds %lluns",
@@ -967,6 +973,11 @@ static void s_event_thread_main(void *user_data) {
             timeout.tv_sec = (time_t)(timeout_sec);
             timeout.tv_nsec = (long)(timeout_remainder_ns);
         }
+
+        /* figure out how long that took, and update the load factor */
+        uint64_t loop_end_time = 0;
+        aws_high_res_clock_get_ticks(&loop_end_time);
+        aws_event_loop_update_load_factor(event_loop, (size_t)(loop_end_time - loop_start_time));
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
