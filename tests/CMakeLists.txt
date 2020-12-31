@@ -130,6 +130,7 @@ add_net_test_case(tls_server_multiple_connections)
 add_net_test_case(tls_server_hangup_during_negotiation)
 add_net_test_case(tls_client_channel_no_verify)
 add_net_test_case(test_tls_negotiation_timeout)
+add_net_test_case(tls_double_channel)
 add_test_case(tls_destroy_null_context)
 
 add_net_test_case(alpn_successfully_negotiates)
