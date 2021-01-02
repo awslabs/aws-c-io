@@ -323,8 +323,24 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
     aws_hash_table_clean_up(&event_loop->local_data);
 }
 
-void aws_event_loop_update_load_factor(struct aws_event_loop *event_loop, size_t load_factor) {
-    aws_atomic_store_int(&event_loop->current_load_factor, load_factor);
+
+void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop) {
+    aws_high_res_clock_get_ticks(&event_loop->latest_tick_start);
+}
+
+void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
+    uint64_t end_tick = 0;
+    aws_high_res_clock_get_ticks(&end_tick);
+
+    event_loop->current_tick_latency_sum += end_tick - event_loop->latest_tick_start;
+    event_loop->latest_tick_start = 0;
+
+    if (end_tick < event_loop->next_flush_time) {
+        aws_atomic_store_int(&event_loop->current_load_factor, event_loop->current_tick_latency_sum);
+        event_loop->current_tick_latency_sum = 0;
+        /* run again in a second */
+        event_loop->next_flush_time = end_tick + AWS_TIMESTAMP_NANOS;
+    }
 }
 
 size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {

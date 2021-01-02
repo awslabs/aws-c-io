@@ -88,6 +88,9 @@ struct aws_event_loop {
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
     struct aws_atomic_var current_load_factor;
+    uint64_t latest_tick_start;
+    size_t current_tick_latency_sum;
+    uint64_t next_flush_time;
     void *impl_data;
 };
 
@@ -224,17 +227,12 @@ int aws_event_loop_run(struct aws_event_loop *event_loop);
 AWS_IO_API
 int aws_event_loop_stop(struct aws_event_loop *event_loop);
 
-/**
- * Update the load factor that's used for returning the next available event loop. This is usually called from
- * event-loop implementations on some interval to give the rest of the load-balancing system information necessary
- * to decide which loop to vend to a user.
- */
 AWS_IO_API
-void aws_event_loop_update_load_factor(struct aws_event_loop *event_loop, size_t load_factor);
+void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
 
-/**
- * Fetches the current load factor.
- */
+AWS_IO_API
+void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
+
 AWS_IO_API
 size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
 
