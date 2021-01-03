@@ -323,18 +323,20 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop) {
     aws_hash_table_clean_up(&event_loop->local_data);
 }
 
-
 void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop) {
     aws_high_res_clock_get_ticks(&event_loop->latest_tick_start);
 }
 
 void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
+    /* increment the timestamp diff counter (this should always be called from the same thread), the concurrency
+     * work happens during the flush. */
     uint64_t end_tick = 0;
     aws_high_res_clock_get_ticks(&end_tick);
 
     event_loop->current_tick_latency_sum += end_tick - event_loop->latest_tick_start;
     event_loop->latest_tick_start = 0;
 
+    /* if a second has passed, flush the load-factor. */
     if (end_tick > event_loop->next_flush_time) {
         aws_atomic_store_int(&event_loop->current_load_factor, event_loop->current_tick_latency_sum);
         event_loop->current_tick_latency_sum = 0;

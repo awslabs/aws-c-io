@@ -227,12 +227,28 @@ int aws_event_loop_run(struct aws_event_loop *event_loop);
 AWS_IO_API
 int aws_event_loop_stop(struct aws_event_loop *event_loop);
 
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the beginning of your event-loop tick: after wake-up, but before processing any IO or tasks.
+ */
 AWS_IO_API
 void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
 
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the end of your event-loop tick: after processing IO and tasks.
+ */
 AWS_IO_API
 void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
 
+/**
+ * Returns the current load factor (however that may be calculated). If the event-loop is not invoking
+ * aws_event_loop_register_tick_start() and aws_event_loop_register_tick_end(), this value will always be 0.
+ */
 AWS_IO_API
 size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
 

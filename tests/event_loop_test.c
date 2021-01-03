@@ -1086,10 +1086,7 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
     struct aws_event_loop *first_loop = event_loop;
 
-    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
-        ASSERT_NOT_NULL(event_loop);
-        el_count++;
-    }
+    size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);
 
     size_t hw_thread_count = 0;
     struct aws_cpu_info *cpu_info = aws_mem_calloc(allocator, cpus_for_group, sizeof(struct aws_cpu_info));
@@ -1105,13 +1102,6 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
 
     aws_mem_release(allocator, cpu_info);
 
-    ASSERT_INT_EQUALS(hw_thread_count, el_count);
-    el_count = 1;
-    /* now do it again to make sure the counter turns over. */
-    while ((event_loop = aws_event_loop_group_get_next_loop(event_loop_group)) != first_loop) {
-        ASSERT_NOT_NULL(event_loop);
-        el_count++;
-    }
     ASSERT_INT_EQUALS(hw_thread_count, el_count);
 
     aws_event_loop_group_release(event_loop_group);
