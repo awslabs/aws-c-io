@@ -840,8 +840,6 @@ static void s_event_thread_main(void *user_data) {
         int num_io_handle_events = 0;
         bool should_process_cross_thread_data = false;
 
-        aws_event_loop_register_tick_start(event_loop);
-
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: waiting for a maximum of %ds %lluns",
@@ -853,6 +851,7 @@ static void s_event_thread_main(void *user_data) {
         int num_kevents = kevent(
             impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
+        aws_event_loop_register_tick_start(event_loop);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, num_kevents);
         if (num_kevents == -1) {

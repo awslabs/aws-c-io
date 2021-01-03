@@ -656,9 +656,6 @@ static void s_event_thread_main(void *user_data) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: default timeout %d", (void *)event_loop, (int)timeout_ms);
 
     while (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING) {
-
-        aws_event_loop_register_tick_start(event_loop);
-
         ULONG num_entries = 0;
         bool should_process_synced_data = false;
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout_ms);
@@ -669,6 +666,8 @@ static void s_event_thread_main(void *user_data) {
             &num_entries,                    /* Out: number of entries removed */
             timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
             false);                          /* fAlertable */
+
+        aws_event_loop_register_tick_start(event_loop);
 
         if (has_completion_entries) {
             AWS_LOGF_TRACE(

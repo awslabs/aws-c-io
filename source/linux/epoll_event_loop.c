@@ -581,10 +581,9 @@ static void s_main_loop(void *args) {
      */
     while (epoll_loop->should_continue) {
 
-        aws_event_loop_register_tick_start(event_loop);
-
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout);
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
+        aws_event_loop_register_tick_start(event_loop);
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
