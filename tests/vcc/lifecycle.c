@@ -23,6 +23,7 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
     struct aws_event_loop *event_loop = args;
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    /* now okay to reschedule stop tasks. */
     _(unwrap &epoll_loop->stop_task_ptr)
     aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
     _(wrap &epoll_loop->stop_task_ptr)
@@ -98,7 +99,7 @@ static int s_run(struct aws_event_loop *event_loop _(ghost \claim(c_mutex))) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
     epoll_loop->should_continue = true;
-    if (aws_thread_launch(&epoll_loop->thread_created_on, /*&s_main_loop*/&dummy_main_loop, event_loop, NULL)) {
+    if (aws_thread_launch(&epoll_loop->thread_created_on, /*&s_main_loop*/&dummy_main_loop, event_loop, &epoll_loop->thread_options)) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
