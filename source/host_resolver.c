@@ -695,7 +695,6 @@ static void s_update_address_cache(
 
     AWS_PRECONDITION(host_entry);
     AWS_PRECONDITION(address_list);
-    AWS_PRECONDITION(out_new_address_list);
 
     for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
         struct aws_host_address *fresh_resolved_address = NULL;
