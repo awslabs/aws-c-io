@@ -337,17 +337,19 @@ void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
     uint64_t end_tick = 0;
     aws_high_res_clock_get_ticks(&end_tick);
 
-    aws_add_size_saturating(event_loop->current_tick_latency_sum, end_tick - event_loop->latest_tick_start);
+    event_loop->current_tick_latency_sum =
+        aws_add_size_saturating(event_loop->current_tick_latency_sum, end_tick - event_loop->latest_tick_start);
     event_loop->latest_tick_start = 0;
 
     size_t next_flush_time_secs = aws_atomic_load_int(&event_loop->next_flush_time);
+    /* store as seconds because we can't make a 64-bit integer reliably atomic across platforms. */
     uint64_t end_tick_secs = aws_timestamp_convert(end_tick, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL);
+
     /* if a second has passed, flush the load-factor. */
     if (end_tick_secs > next_flush_time_secs) {
-        /* store as seconds because we can't make a 64-bit integer reliably atomic across platforms. */
         aws_atomic_store_int(&event_loop->current_load_factor, event_loop->current_tick_latency_sum);
         event_loop->current_tick_latency_sum = 0;
-        /* run again in a second */
+        /* run again in a second. */
         aws_atomic_store_int(&event_loop->next_flush_time, (size_t)(end_tick_secs + 1));
     }
 }
