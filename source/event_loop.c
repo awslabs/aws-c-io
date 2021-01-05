@@ -348,7 +348,7 @@ void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
         aws_atomic_store_int(&event_loop->current_load_factor, event_loop->current_tick_latency_sum);
         event_loop->current_tick_latency_sum = 0;
         /* run again in a second */
-        aws_atomic_store_int(&event_loop->next_flush_time, (size_t)(next_flush_time_secs + 1));
+        aws_atomic_store_int(&event_loop->next_flush_time, (size_t)(end_tick_secs + 1));
     }
 }
 
