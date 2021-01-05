@@ -141,7 +141,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
 
