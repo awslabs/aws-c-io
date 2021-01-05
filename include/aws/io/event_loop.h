@@ -90,7 +90,7 @@ struct aws_event_loop {
     struct aws_atomic_var current_load_factor;
     uint64_t latest_tick_start;
     size_t current_tick_latency_sum;
-    uint64_t next_flush_time;
+    struct aws_atomic_var next_flush_time;
     void *impl_data;
 };
 

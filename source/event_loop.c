@@ -272,15 +272,19 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
         return NULL;
     }
 
+    /* do one call to get 32 random bits because this hits an actual entropy source and it's not cheap */
+    uint32_t random_32_bit_num = 0;
+    aws_device_random_u32(&random_32_bit_num);
+
     /* use the best of two algorithm to select the loop with the lowest load.
      * If we find device random is too hard on the kernel, we can seed it and use another random
      * number generator. */
-    uint16_t random_num_a = 0;
-    aws_device_random_u16(&random_num_a);
+
+    /* it's fine and intentional, the case will throw off the top 16 bits and that's what we want. */
+    uint16_t random_num_a = (uint16_t)random_32_bit_num;
     random_num_a = random_num_a % loop_count;
 
-    uint16_t random_num_b = 1;
-    aws_device_random_u16(&random_num_b);
+    uint16_t random_num_b = (uint16_t)(random_32_bit_num >> 16);
     random_num_b = random_num_b % loop_count;
 
     struct aws_event_loop *random_loop_a = NULL;
@@ -288,9 +292,8 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
     aws_array_list_get_at(&el_group->event_loops, &random_loop_a, random_num_a);
     aws_array_list_get_at(&el_group->event_loops, &random_loop_b, random_num_b);
 
-    if (!random_loop_a || !random_loop_b) {
-        return NULL;
-    }
+    /* there's no logical reason why this should ever be possible. It's just best to die if it happens. */
+    AWS_FATAL_ASSERT((random_loop_a && random_loop_b) && "random_loop_a or random_loop_b is NULL.");
 
     size_t load_a = aws_event_loop_get_load_factor(random_loop_a);
     size_t load_b = aws_event_loop_get_load_factor(random_loop_b);
@@ -311,6 +314,7 @@ int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_alloc
     event_loop->alloc = alloc;
     event_loop->clock = clock;
     aws_atomic_init_int(&event_loop->current_load_factor, 0u);
+    aws_atomic_init_int(&event_loop->next_flush_time, 0u);
 
     if (aws_hash_table_init(&event_loop->local_data, alloc, 20, aws_hash_ptr, aws_ptr_eq, NULL, s_object_removed)) {
         return AWS_OP_ERR;
@@ -333,19 +337,37 @@ void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
     uint64_t end_tick = 0;
     aws_high_res_clock_get_ticks(&end_tick);
 
-    event_loop->current_tick_latency_sum += end_tick - event_loop->latest_tick_start;
+    aws_add_size_saturating(event_loop->current_tick_latency_sum, end_tick - event_loop->latest_tick_start);
     event_loop->latest_tick_start = 0;
 
+    size_t next_flush_time_secs = aws_atomic_load_int(&event_loop->next_flush_time);
+    uint64_t end_tick_secs = aws_timestamp_convert(end_tick, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL);
     /* if a second has passed, flush the load-factor. */
-    if (end_tick > event_loop->next_flush_time) {
+    if (end_tick_secs > next_flush_time_secs) {
+        /* store as seconds because we can't make a 64-bit integer reliably atomic across platforms. */
         aws_atomic_store_int(&event_loop->current_load_factor, event_loop->current_tick_latency_sum);
         event_loop->current_tick_latency_sum = 0;
         /* run again in a second */
-        event_loop->next_flush_time = end_tick + AWS_TIMESTAMP_NANOS;
+        aws_atomic_store_int(&event_loop->next_flush_time, (size_t)(next_flush_time_secs + 1));
     }
 }
 
 size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
+    uint64_t current_time = 0;
+    aws_high_res_clock_get_ticks(&current_time);
+
+    uint64_t current_time_secs = aws_timestamp_convert(current_time, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL);
+    size_t next_flush_time_secs = aws_atomic_load_int(&event_loop->next_flush_time);
+
+    /* safety valve just in case an event-loop had heavy load and then went completely idle. If we haven't
+     * had an update from the event-loop in 10 seconds, just assume idle. Also, yes this is racy, but it should
+     * be good enough because an active loop will be updating its counter frequently ( more than once per 10 seconds
+     * for sure ), in the case where we hit the technical race condition, we don't care anyways and returning 0
+     * is the desired behavior. */
+    if (current_time_secs > next_flush_time_secs + 10) {
+        return 0;
+    }
+
     return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
