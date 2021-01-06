@@ -851,6 +851,7 @@ static void s_event_thread_main(void *user_data) {
         int num_kevents = kevent(
             impl->kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, &timeout);
 
+        aws_event_loop_register_tick_start(event_loop);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, num_kevents);
         if (num_kevents == -1) {
@@ -967,6 +968,8 @@ static void s_event_thread_main(void *user_data) {
             timeout.tv_sec = (time_t)(timeout_sec);
             timeout.tv_nsec = (long)(timeout_remainder_ns);
         }
+
+        aws_event_loop_register_tick_end(event_loop);
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
