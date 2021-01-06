@@ -2221,9 +2221,10 @@ AWS_TEST_CASE(test_resolver_unpinned_host_entry, s_test_resolver_unpinned_host_e
 
 /*
  * A variant of the connect_failure_recording test that checks to see if failed addresses that are
- * re-promoted to good end up invoking the new address listener callback.
+ * re-promoted to good end up invoking the new address listener callback.  Also checks that failed
+ * addresses invoke the expiration callback
  */
-static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_test_resolver_address_promote_demote_listener_callbacks_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
@@ -2333,8 +2334,6 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
         .mutex = &mutex,
     };
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 1");
-
     /*
      * Resolve #1
      * Wait on new_address listener callback, should get 4 new addresses
@@ -2349,8 +2348,6 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
         &mutex,
         s_listener_new_address_invoked_predicate,
         &listener_callback_data);
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 2");
 
     /* Check new address data */
     ASSERT_INT_EQUALS(4, aws_array_list_length(&listener_callback_data.new_address_callback_data.address_list));
@@ -2389,8 +2386,6 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
     aws_condition_variable_wait_pred(
         &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 3");
-
     aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
     aws_host_address_clean_up(&resolve_callback_data.a_address);
     resolve_callback_data.invoked = false;
@@ -2421,13 +2416,12 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
      */
     aws_condition_variable_wait_pred(
         &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 4");
+
     aws_condition_variable_wait_pred(
         &listener_callback_data.condition_variable,
         &mutex,
         s_listener_expired_address_invoked_predicate,
         &listener_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 5");
 
     aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
     aws_host_address_clean_up(&resolve_callback_data.a_address);
@@ -2482,19 +2476,18 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
      */
     aws_condition_variable_wait_pred(
         &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 6");
+
     aws_condition_variable_wait_pred(
         &listener_callback_data.condition_variable,
         &mutex,
         s_listener_new_address_complete_set_predicate,
         &listener_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 7");
+
     aws_condition_variable_wait_pred(
         &listener_callback_data.condition_variable,
         &mutex,
         s_listener_expired_address_complete_set_predicate,
         &listener_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 8");
 
     aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
     aws_host_address_clean_up(&resolve_callback_data.a_address);
@@ -2502,7 +2495,7 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
     /*
      * Check new address callback data
      */
-    ASSERT_TRUE(2 <= aws_array_list_length(&listener_callback_data.new_address_callback_data.address_list));
+    ASSERT_TRUE(2 == aws_array_list_length(&listener_callback_data.new_address_callback_data.address_list));
     ASSERT_SUCCESS(s_verify_address_in_list(
         &listener_callback_data.new_address_callback_data.address_list,
         aws_byte_cursor_from_string(addr1_ipv4),
@@ -2515,7 +2508,7 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
     /*
      * Check expired address callback data
      */
-    ASSERT_TRUE(2 <= aws_array_list_length(&listener_callback_data.expired_address_callback_data.address_list));
+    ASSERT_TRUE(2 == aws_array_list_length(&listener_callback_data.expired_address_callback_data.address_list));
     ASSERT_SUCCESS(s_verify_address_in_list(
         &listener_callback_data.expired_address_callback_data.address_list,
         aws_byte_cursor_from_string(addr2_ipv4),
@@ -2531,7 +2524,6 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
     aws_host_resolver_remove_host_listener(resolver, listener);
     listener = NULL;
     s_wait_on_listener_shutdown(&listener_callback_data);
-    AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "Step 9");
 
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
@@ -2546,5 +2538,5 @@ static int s_test_resolver_restored_failed_connection_is_new_address_fn(struct a
 }
 
 AWS_TEST_CASE(
-    test_resolver_restored_failed_connection_is_new_address,
-    s_test_resolver_restored_failed_connection_is_new_address_fn)
+    test_resolver_address_promote_demote_listener_callbacks,
+    s_test_resolver_address_promote_demote_listener_callbacks_fn)
