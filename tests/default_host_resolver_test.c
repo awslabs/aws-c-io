@@ -1041,14 +1041,14 @@ static bool s_listener_expired_address_invoked_predicate(void *data) {
 static bool s_listener_new_address_complete_set_predicate(void *data) {
     struct listener_test_callback_data *callback_data = data;
     return callback_data->new_address_callback_data.callback_invoked &&
-           aws_array_list_length(&callback_data->new_address_callback_data.address_list) >=
+           aws_array_list_length(&callback_data->new_address_callback_data.address_list) ==
                callback_data->new_address_callback_data.expected_num_addresses;
 }
 
 static bool s_listener_expired_address_complete_set_predicate(void *data) {
     struct listener_test_callback_data *callback_data = data;
     return callback_data->expired_address_callback_data.callback_invoked &&
-           aws_array_list_length(&callback_data->expired_address_callback_data.address_list) >=
+           aws_array_list_length(&callback_data->expired_address_callback_data.address_list) ==
                callback_data->expired_address_callback_data.expected_num_addresses;
 }
 
@@ -1137,7 +1137,7 @@ static void s_listener_address_callback(
     }
 
     expected_num_addresses_received =
-        aws_array_list_length(&callback_type_data->address_list) >= callback_type_data->expected_num_addresses;
+        aws_array_list_length(&callback_type_data->address_list) == callback_type_data->expected_num_addresses;
 
     AWS_LOGF_INFO(
         AWS_LS_IO_DNS,

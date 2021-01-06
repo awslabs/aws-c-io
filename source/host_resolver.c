@@ -969,8 +969,20 @@ static void resolver_thread_fn(void *arg) {
 
     struct aws_array_list address_list;
     AWS_ZERO_STRUCT(address_list);
+    struct aws_array_list new_address_list;
+    AWS_ZERO_STRUCT(new_address_list);
+    struct aws_array_list expired_address_list;
+    AWS_ZERO_STRUCT(expired_address_list);
 
     if (aws_array_list_init_dynamic(&address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        goto done;
+    }
+
+    if (aws_array_list_init_dynamic(&new_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
+        goto done;
+    }
+
+    if (aws_array_list_init_dynamic(&expired_address_list, host_entry->allocator, 4, sizeof(struct aws_host_address))) {
         goto done;
     }
 
@@ -1154,6 +1166,9 @@ static void resolver_thread_fn(void *arg) {
             }
         }
 
+        aws_array_list_swap_contents(&host_entry->new_addresses, &new_address_list);
+        aws_array_list_swap_contents(&host_entry->expired_addresses, &expired_address_list);
+
         aws_mutex_unlock(&host_entry->entry_lock);
         aws_mutex_unlock(&resolver->resolver_lock);
 
@@ -1161,10 +1176,10 @@ static void resolver_thread_fn(void *arg) {
         s_resolver_thread_destroy_listeners(&listener_destroy_list);
 
         /* Notify our local listeners of new addresses. */
-        s_resolver_thread_notify_listeners(&listener_list, &host_entry->new_addresses, &host_entry->expired_addresses);
+        s_resolver_thread_notify_listeners(&listener_list, &new_address_list, &expired_address_list);
 
-        s_clear_address_list(&host_entry->new_addresses);
-        s_clear_address_list(&host_entry->expired_addresses);
+        s_clear_address_list(&new_address_list);
+        s_clear_address_list(&expired_address_list);
     }
 
     AWS_LOGF_DEBUG(
@@ -1178,6 +1193,12 @@ done:
     AWS_FATAL_ASSERT(aws_array_list_length(&address_list) == 0);
 
     aws_array_list_clean_up(&address_list);
+
+    AWS_FATAL_ASSERT(aws_array_list_length(&new_address_list) == 0);
+    aws_array_list_clean_up(&new_address_list);
+
+    AWS_FATAL_ASSERT(aws_array_list_length(&expired_address_list) == 0);
+    aws_array_list_clean_up(&expired_address_list);
 
     /* please don't fail */
     aws_thread_current_at_exit(s_on_host_entry_shutdown_completion, host_entry);
