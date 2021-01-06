@@ -87,6 +87,10 @@ struct aws_event_loop {
     struct aws_allocator *alloc;
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
+    struct aws_atomic_var current_load_factor;
+    uint64_t latest_tick_start;
+    size_t current_tick_latency_sum;
+    struct aws_atomic_var next_flush_time;
     void *impl_data;
 };
 
@@ -112,7 +116,6 @@ typedef struct aws_event_loop *(aws_new_event_loop_fn)(
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
     struct aws_array_list event_loops;
-    struct aws_atomic_var current_index;
     struct aws_ref_count ref_count;
     struct aws_shutdown_callback_options shutdown_options;
 };
@@ -223,6 +226,31 @@ int aws_event_loop_run(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_stop(struct aws_event_loop *event_loop);
+
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the beginning of your event-loop tick: after wake-up, but before processing any IO or tasks.
+ */
+AWS_IO_API
+void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
+
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the end of your event-loop tick: after processing IO and tasks.
+ */
+AWS_IO_API
+void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
+
+/**
+ * Returns the current load factor (however that may be calculated). If the event-loop is not invoking
+ * aws_event_loop_register_tick_start() and aws_event_loop_register_tick_end(), this value will always be 0.
+ */
+AWS_IO_API
+size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
 
 /**
  * Blocks until the event loop stops completely.
@@ -410,8 +438,8 @@ size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group
 
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
- * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
- * style.
+ * this load balancing is done as it is subject to change in the future. Currently it uses the "best-of-two" algorithm
+ * based on the load factor of each loop.
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);

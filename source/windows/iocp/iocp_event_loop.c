@@ -141,7 +141,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
 
@@ -667,6 +666,8 @@ static void s_event_thread_main(void *user_data) {
             timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
             false);                          /* fAlertable */
 
+        aws_event_loop_register_tick_start(event_loop);
+
         if (has_completion_entries) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
@@ -745,6 +746,8 @@ static void s_event_thread_main(void *user_data) {
                 (unsigned long long)next_run_time_ns,
                 (int)timeout_ms);
         }
+
+        aws_event_loop_register_tick_end(event_loop);
     }
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* set back to NULL. This should be updated again in destroy, right before task cancelation happens. */

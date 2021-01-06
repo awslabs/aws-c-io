@@ -2,7 +2,7 @@
 
 Verification tool: VCC (code-level proof)
 
-Proofs: tests/vcc/
+Proofs: `tests/vcc/`
 
 Implementation: Linux event loop (`source/linux/epoll_event_loop.c`)
 
