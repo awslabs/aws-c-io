@@ -1161,6 +1161,8 @@ static void s_listener_new_address_callback(
     struct listener_test_callback_data *callback_data = user_data;
     struct listener_test_callback_type_data *callback_type_data = &callback_data->new_address_callback_data;
 
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "Listener new address callback.");
+
     s_listener_address_callback(callback_data, callback_type_data, new_address_list);
 }
 
@@ -1172,6 +1174,8 @@ static void s_listener_expired_address_callback(
 
     struct listener_test_callback_data *callback_data = user_data;
     struct listener_test_callback_type_data *callback_type_data = &callback_data->expired_address_callback_data;
+
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "Listener expired address callback.");
 
     s_listener_address_callback(callback_data, callback_type_data, expired_address_list);
 }
