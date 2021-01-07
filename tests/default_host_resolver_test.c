@@ -1311,7 +1311,7 @@ static int s_verify_address_in_list(
     struct aws_byte_cursor address,
     enum aws_address_record_type address_type) {
 
-    /* Make sure we have the expected number of ipv4 and ipv6 addresses. */
+    /* Check for address in list */
     for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
         struct aws_host_address *host_address = NULL;
         ASSERT_SUCCESS(aws_array_list_get_at(address_list, &host_address, i));
