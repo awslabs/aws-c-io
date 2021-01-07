@@ -1769,7 +1769,12 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
 /*
- * A variant of the backpressure-echo test, but this time using nested tls handlers and no backpressure
+ * A variant of the basic tls test, but this time using nested tls handlers on the client.
+ *
+ * We use two servers, each configured with tls.  The first server, on handshake success, then makes a plain (non-tls)
+ * socket connection to the second, and adds a pass-through handler for data coming to and from.  In this way, the
+ * client, with its nested tls handlers, will then drive tls negotiation with the second server directly, making for a
+ * very simple proxy simulation.
  */
 static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
