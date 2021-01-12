@@ -1959,6 +1959,8 @@ static void s_proxy_to_endpoint_client_shutdown_callback(
 }
 
 static void s_c2p_relay_to_client(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+
     if (status != AWS_TASK_STATUS_RUN_READY) {
         return;
     }
@@ -1993,6 +1995,8 @@ static void s_c2p_relay_to_client(struct aws_channel_task *channel_task, void *a
 }
 
 static void s_p2e_relay_to_endpoint(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+
     if (status != AWS_TASK_STATUS_RUN_READY) {
         return;
     }
