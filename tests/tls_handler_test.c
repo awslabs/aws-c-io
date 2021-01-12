@@ -7,6 +7,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/host_resolver.h>
+#include <aws/io/logging.h>
 #include <aws/io/socket.h>
 #include <aws/io/tls_channel_handler.h>
 
@@ -2176,6 +2177,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     proxy_channel_context.to_endpoint_bootstrap_options = &proxy_to_endpoint_channel_options;
     proxy_channel_context.c2p_server_test_args = &proxy_server_test_state;
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 1* starting initial connection");
+
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_to_proxy_channel_options));
 
     /* wait for both ends to setup */
@@ -2183,6 +2186,9 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &endpoint_server_test_state));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 2* initial channel setup ");
+
     ASSERT_FALSE(endpoint_server_test_state.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
@@ -2205,6 +2211,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(2, client_test_state.tls_levels_negotiated);
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
     ASSERT_FALSE(client_test_state.error_invoked);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 3* Full circuit negotiated ");
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
 #ifndef __MACH__
@@ -2229,6 +2237,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &client_channel_context));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 4* App data received ");
+
     ASSERT_INT_EQUALS(1, client_channel_context.read_invocations);
     ASSERT_INT_EQUALS(1, endpoint_channel_context.read_invocations);
 
@@ -2244,6 +2254,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &proxy_server_test_state));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 5* Server channel shutdowns complete ");
+
     /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
@@ -2254,6 +2266,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &client_test_state));
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 6* Client channel shutdowns complete ");
+
     aws_server_bootstrap_destroy_socket_listener(
         endpoint_server_tester.server_bootstrap, endpoint_server_tester.listener);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -2262,6 +2276,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     aws_server_bootstrap_destroy_socket_listener(proxy_server_tester.server_bootstrap, proxy_server_tester.listener);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &proxy_server_test_state));
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 7* Server listener shutdowns complete ");
 
     aws_mutex_unlock(&c_tester.mutex);
 
@@ -2273,6 +2289,8 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&endpoint_server_tester));
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&proxy_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 8* All thread shutdowns complete ");
 
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
 
