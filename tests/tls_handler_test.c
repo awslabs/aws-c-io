@@ -250,16 +250,16 @@ static void s_tls_handler_test_client_setup_callback(
     struct tls_test_args *setup_test_args = user_data;
     aws_mutex_lock(setup_test_args->mutex);
 
+    setup_test_args->setup_callback_invoked = true;
+
     if (!error_code) {
         setup_test_args->channel = channel;
+        s_aws_check_for_user_handler_setup(setup_test_args);
+        s_on_channel_setup_next_tls_handler(setup_test_args);
     } else {
         setup_test_args->error_invoked = true;
         setup_test_args->last_error_code = error_code;
     }
-
-    setup_test_args->setup_callback_invoked = true;
-    s_aws_check_for_user_handler_setup(setup_test_args);
-    s_on_channel_setup_next_tls_handler(setup_test_args);
 
     aws_mutex_unlock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
@@ -276,6 +276,7 @@ static void s_tls_handler_test_server_setup_callback(
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
     aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->setup_callback_invoked = true;
     if (!error_code) {
         setup_test_args->channel = channel;
     } else {
@@ -283,7 +284,6 @@ static void s_tls_handler_test_server_setup_callback(
         setup_test_args->last_error_code = error_code;
     }
 
-    setup_test_args->setup_callback_invoked = true;
     s_aws_check_for_user_handler_setup(setup_test_args);
 
     aws_mutex_unlock(setup_test_args->mutex);
