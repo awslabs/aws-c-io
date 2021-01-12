@@ -541,7 +541,7 @@ static struct aws_byte_buf s_client_to_proxy_server_handle_read(
         AWS_FATAL_ASSERT(proxy_context->c2p_server_channel != NULL);
         proxy_context->state = TPTS_CONNECTING;
         aws_client_bootstrap_new_socket_channel(proxy_context->to_endpoint_bootstrap_options);
-    } else if (proxy_context->state == TPTS_CONNECTED) {
+    } else if (proxy_context->state == TPTS_CONNECTED && !proxy_context->endpoint_shutdown_finished) {
         /* schedule a task to send data to the endpoint */
         if (!proxy_context->relay_to_endpoint_scheduled) {
             proxy_context->relay_to_endpoint_scheduled = true;

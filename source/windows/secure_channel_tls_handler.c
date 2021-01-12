@@ -1262,8 +1262,8 @@ static int s_process_write_message(
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS, "id=%p: processing message fragment of size %zu", (void *)handler, message_cursor.len);
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
-            size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot) +
-                                       sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
+            size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
+            upstream_overhead += sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
             size_t requested_length = message_cursor.len + upstream_overhead;
             size_t to_write = sc_handler->stream_sizes.cbMaximumMessage < requested_length
                                   ? sc_handler->stream_sizes.cbMaximumMessage
@@ -1271,7 +1271,7 @@ static int s_process_write_message(
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
 
-            if (!outgoing_message || message->message_data.capacity <= upstream_overhead) {
+            if (!outgoing_message || outgoing_message->message_data.capacity <= upstream_overhead) {
                 return AWS_OP_ERR;
             }
 
@@ -1489,6 +1489,7 @@ static int s_handler_shutdown(
                     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
+                outgoing_message->message_data.len = output_buffer.cbBuffer;
 
                 /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
