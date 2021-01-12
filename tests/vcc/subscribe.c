@@ -26,6 +26,7 @@ static int s_subscribe_to_io_events(
 ) {
     _(assert \always_by_claim(c_event_loop, event_loop))
 
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
     struct epoll_event_data *epoll_event_data = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct epoll_event_data));
     _(unwrap handle)
     handle->additional_data = epoll_event_data;

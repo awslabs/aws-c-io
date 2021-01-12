@@ -44,6 +44,7 @@ add_test_case(event_loop_stop_then_restart)
 add_test_case(event_loop_multiple_stops)
 add_test_case(event_loop_group_setup_and_shutdown)
 add_test_case(event_loop_group_setup_and_shutdown_async)
+add_test_case(numa_aware_event_loop_group_setup_and_shutdown)
 
 add_test_case(io_testing_channel)
 
@@ -99,6 +100,7 @@ add_net_test_case(test_resolver_listener_multiple_results)
 add_net_test_case(test_resolver_listener_address_expired_fn)
 add_net_test_case(test_resolver_pinned_host_entry)
 add_net_test_case(test_resolver_unpinned_host_entry)
+add_net_test_case(test_resolver_address_promote_demote_listener_callbacks)
 
 add_test_case(test_pem_single_cert_parse)
 add_test_case(test_pem_private_key_parse)

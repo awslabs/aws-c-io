@@ -1038,6 +1038,20 @@ static bool s_listener_expired_address_invoked_predicate(void *data) {
     return callback_data->expired_address_callback_data.callback_invoked;
 }
 
+static bool s_listener_new_address_complete_set_predicate(void *data) {
+    struct listener_test_callback_data *callback_data = data;
+    return callback_data->new_address_callback_data.callback_invoked &&
+           aws_array_list_length(&callback_data->new_address_callback_data.address_list) ==
+               callback_data->new_address_callback_data.expected_num_addresses;
+}
+
+static bool s_listener_expired_address_complete_set_predicate(void *data) {
+    struct listener_test_callback_data *callback_data = data;
+    return callback_data->expired_address_callback_data.callback_invoked &&
+           aws_array_list_length(&callback_data->expired_address_callback_data.address_list) ==
+               callback_data->expired_address_callback_data.expected_num_addresses;
+}
+
 static bool s_listener_shutdown_invoked_predicate(void *data) {
     struct listener_test_callback_data *callback_data = data;
     return callback_data->shutdown_invoked;
@@ -1147,6 +1161,8 @@ static void s_listener_new_address_callback(
     struct listener_test_callback_data *callback_data = user_data;
     struct listener_test_callback_type_data *callback_type_data = &callback_data->new_address_callback_data;
 
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "Listener new address callback.");
+
     s_listener_address_callback(callback_data, callback_type_data, new_address_list);
 }
 
@@ -1158,6 +1174,8 @@ static void s_listener_expired_address_callback(
 
     struct listener_test_callback_data *callback_data = user_data;
     struct listener_test_callback_type_data *callback_type_data = &callback_data->expired_address_callback_data;
+
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "Listener expired address callback.");
 
     s_listener_address_callback(callback_data, callback_type_data, expired_address_list);
 }
@@ -1286,6 +1304,31 @@ static int s_verify_mock_address_list(
     }
 
     return AWS_OP_SUCCESS;
+}
+
+static int s_verify_address_in_list(
+    struct aws_array_list *address_list,
+    struct aws_byte_cursor address,
+    enum aws_address_record_type address_type) {
+
+    /* Check for address in list */
+    for (size_t i = 0; i < aws_array_list_length(address_list); ++i) {
+        struct aws_host_address *host_address = NULL;
+        ASSERT_SUCCESS(aws_array_list_get_at(address_list, &host_address, i));
+
+        if (host_address->record_type != address_type) {
+            continue;
+        }
+
+        struct aws_byte_cursor record_address = aws_byte_cursor_from_string(host_address->address);
+        if (!aws_byte_cursor_eq(&address, &record_address)) {
+            continue;
+        }
+
+        return AWS_OP_SUCCESS;
+    }
+
+    return AWS_OP_ERR;
 }
 
 static void s_listener_shutdown_callback(void *user_data) {
@@ -2175,3 +2218,325 @@ static int s_test_resolver_unpinned_host_entry(struct aws_allocator *allocator, 
 }
 
 AWS_TEST_CASE(test_resolver_unpinned_host_entry, s_test_resolver_unpinned_host_entry)
+
+/*
+ * A variant of the connect_failure_recording test that checks to see if failed addresses that are
+ * re-promoted to good end up invoking the new address listener callback.  Also checks that failed
+ * addresses invoke the expiration callback
+ */
+static int s_test_resolver_address_promote_demote_listener_callbacks_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
+
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+    const struct aws_string *addr1_ipv6 = aws_string_new_from_c_str(allocator, "address1ipv6");
+
+    const struct aws_string *addr2_ipv4 = aws_string_new_from_c_str(allocator, "address2ipv4");
+    const struct aws_string *addr2_ipv6 = aws_string_new_from_c_str(allocator, "address2ipv6");
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(mock_dns_resolver_init(&mock_resolver, 1000, allocator));
+
+    struct aws_host_resolution_config config = {
+        .max_ttl = 30,
+        .impl = mock_dns_resolve,
+        .impl_data = &mock_resolver,
+    };
+
+    struct aws_host_address host_address_1_ipv4 = {
+        .address = addr1_ipv4,
+        .allocator = allocator,
+        .expiry = 0,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_host_address host_address_1_ipv6 = {
+        .address = addr1_ipv6,
+        .allocator = allocator,
+        .expiry = 0,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_host_address host_address_2_ipv4 = {
+        .address = addr2_ipv4,
+        .allocator = allocator,
+        .expiry = 0,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_host_address host_address_2_ipv6 = {
+        .address = addr2_ipv6,
+        .allocator = allocator,
+        .expiry = 0,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_AAAA,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_array_list address_list_1;
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&address_list_1, allocator, 2, sizeof(struct aws_host_address)));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_2_ipv6));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv4));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_2_ipv4));
+
+    ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_resolver, &address_list_1));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct listener_test_callback_data listener_callback_data;
+    s_listener_test_callback_data_init(allocator, &mutex, 4, 2, &listener_callback_data);
+    struct aws_host_listener *listener = NULL;
+
+    /* Setup listener before host is added */
+    {
+        struct aws_host_listener_options listener_options = {
+            .host_name = aws_byte_cursor_from_string(host_name),
+            .shutdown_callback = s_listener_shutdown_callback,
+            .resolved_address_callback = s_listener_new_address_callback,
+            .expired_address_callback = s_listener_expired_address_callback,
+            .user_data = &listener_callback_data,
+            .pin_host_entry = true,
+        };
+
+        listener = aws_host_resolver_add_host_listener(resolver, &listener_options);
+    }
+
+    struct default_host_callback_data resolve_callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+        .mutex = &mutex,
+    };
+
+    /*
+     * Resolve #1
+     * Wait on new_address listener callback, should get 4 new addresses
+     */
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_listener_test_initial_resolved_callback_empty, &config, NULL));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+
+    aws_condition_variable_wait_pred(
+        &listener_callback_data.condition_variable,
+        &mutex,
+        s_listener_new_address_invoked_predicate,
+        &listener_callback_data);
+
+    /* Check new address data */
+    ASSERT_INT_EQUALS(4, aws_array_list_length(&listener_callback_data.new_address_callback_data.address_list));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv4),
+        AWS_ADDRESS_RECORD_TYPE_A));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv6),
+        AWS_ADDRESS_RECORD_TYPE_AAAA));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr2_ipv4),
+        AWS_ADDRESS_RECORD_TYPE_A));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr2_ipv6),
+        AWS_ADDRESS_RECORD_TYPE_AAAA));
+
+    /* Reset new address data */
+    s_clear_host_address_array_list(&listener_callback_data.new_address_callback_data.address_list);
+    listener_callback_data.new_address_callback_data.callback_invoked = false;
+
+    aws_mutex_unlock(&mutex);
+
+    /*
+     * Resolve #2
+     * Wait on resolver callback (will be a previously seen address)
+     * Then fail address 1 both ipv6 and ipv4
+     */
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &resolve_callback_data));
+
+    aws_mutex_lock(&mutex);
+    aws_condition_variable_wait_pred(
+        &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
+
+    aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
+    aws_host_address_clean_up(&resolve_callback_data.a_address);
+    resolve_callback_data.invoked = false;
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv4));
+
+    /* should not see any new or expired addresses at this point */
+    ASSERT_FALSE(listener_callback_data.new_address_callback_data.callback_invoked);
+    ASSERT_FALSE(listener_callback_data.expired_address_callback_data.callback_invoked);
+
+    aws_mutex_unlock(&mutex);
+
+    /*
+     * Resolve #3
+     * Following the LRU policy, address 1 should be what gets returned here, however we marked it as failed, so it
+     * should be skipped and address 2 should be returned.
+     *
+     * We should also get expiration notices for the two failed addresses
+     */
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &resolve_callback_data));
+
+    aws_mutex_lock(&mutex);
+
+    /*
+     * Wait for both expiration and resolution completion
+     */
+    aws_condition_variable_wait_pred(
+        &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
+
+    aws_condition_variable_wait_pred(
+        &listener_callback_data.condition_variable,
+        &mutex,
+        s_listener_expired_address_invoked_predicate,
+        &listener_callback_data);
+
+    aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
+    aws_host_address_clean_up(&resolve_callback_data.a_address);
+    resolve_callback_data.invoked = false;
+
+    /*
+     * Check listener callback data.  We expect two expired addresses due to failure and no new addresses.
+     */
+    ASSERT_INT_EQUALS(2, aws_array_list_length(&listener_callback_data.expired_address_callback_data.address_list));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.expired_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv4),
+        AWS_ADDRESS_RECORD_TYPE_A));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.expired_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv6),
+        AWS_ADDRESS_RECORD_TYPE_AAAA));
+
+    ASSERT_FALSE(listener_callback_data.new_address_callback_data.callback_invoked);
+
+    listener_callback_data.expired_address_callback_data.callback_invoked = false;
+    s_clear_host_address_array_list(&listener_callback_data.expired_address_callback_data.address_list);
+
+    /*
+     * Prep for the new address callbacks which we should receive when the failed ones get promoted
+     * next resolve.
+     */
+    listener_callback_data.new_address_callback_data.callback_invoked = false;
+    listener_callback_data.new_address_callback_data.expected_num_addresses = 2;
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_2_ipv6));
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_2_ipv4));
+
+    aws_mutex_unlock(&mutex);
+
+    /*
+     * Resolve #4
+     * By failing address2 previously, all addresses should now be failed.  In response, the resolver should
+     * promote address 1 back to a good state.  So we should see
+     *   (1) 2 expired addresses (from the fail calls above)
+     *   (2) 2 new addresses (previously failed addresses promoted out of desperation)
+     */
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &resolve_callback_data));
+
+    /* here address 1 should be returned since it is now the least recently used address and all of them have failed..
+     */
+    aws_mutex_lock(&mutex);
+
+    /*
+     * Wait for resolution, expiration, and new listener callbacks
+     */
+    aws_condition_variable_wait_pred(
+        &resolve_callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &resolve_callback_data);
+
+    aws_condition_variable_wait_pred(
+        &listener_callback_data.condition_variable,
+        &mutex,
+        s_listener_new_address_complete_set_predicate,
+        &listener_callback_data);
+
+    aws_condition_variable_wait_pred(
+        &listener_callback_data.condition_variable,
+        &mutex,
+        s_listener_expired_address_complete_set_predicate,
+        &listener_callback_data);
+
+    aws_host_address_clean_up(&resolve_callback_data.aaaa_address);
+    aws_host_address_clean_up(&resolve_callback_data.a_address);
+
+    /*
+     * Check new address callback data
+     */
+    ASSERT_TRUE(2 == aws_array_list_length(&listener_callback_data.new_address_callback_data.address_list));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv4),
+        AWS_ADDRESS_RECORD_TYPE_A));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.new_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr1_ipv6),
+        AWS_ADDRESS_RECORD_TYPE_AAAA));
+
+    /*
+     * Check expired address callback data
+     */
+    ASSERT_TRUE(2 == aws_array_list_length(&listener_callback_data.expired_address_callback_data.address_list));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.expired_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr2_ipv4),
+        AWS_ADDRESS_RECORD_TYPE_A));
+    ASSERT_SUCCESS(s_verify_address_in_list(
+        &listener_callback_data.expired_address_callback_data.address_list,
+        aws_byte_cursor_from_string(addr2_ipv6),
+        AWS_ADDRESS_RECORD_TYPE_AAAA));
+
+    aws_mutex_unlock(&mutex);
+
+    s_listener_test_callback_data_clean_up(&listener_callback_data);
+    aws_host_resolver_remove_host_listener(resolver, listener);
+    listener = NULL;
+    s_wait_on_listener_shutdown(&listener_callback_data);
+
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
+    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_string_destroy((void *)host_name);
+    mock_dns_resolver_clean_up(&mock_resolver);
+
+    aws_io_library_clean_up();
+
+    return 0;
+}
+
+AWS_TEST_CASE(
+    test_resolver_address_promote_demote_listener_callbacks,
+    s_test_resolver_address_promote_demote_listener_callbacks_fn)
