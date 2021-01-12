@@ -2248,7 +2248,11 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &endpoint_server_test_state));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
-    aws_channel_shutdown(proxy_server_test_state.channel, AWS_OP_SUCCESS);
+    /*
+     * It turns out we only need to explicitly shut down the proxy-to-endpoint server channel since that will break
+     * the tls circuit all the way to client, which in turn causes both client channels to go away which in turn
+     * casues the client-to-proxy server channel to go away.
+     */
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &proxy_server_test_state));
