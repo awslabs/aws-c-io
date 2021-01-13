@@ -1709,7 +1709,7 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
 
     const uint32_t num_ipv4 = 1;
     const uint32_t num_ipv6 = 1;
-    const uint64_t max_ttl_seconds = 1;
+    const size_t max_ttl_seconds = 1;
 
     struct aws_byte_cursor host_name = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("test_host");
     struct aws_string *host_name_str = aws_string_new_from_c_str(allocator, (const char *)host_name.ptr);
