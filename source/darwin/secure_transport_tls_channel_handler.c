@@ -161,19 +161,18 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
 
     size_t processed = 0;
     while (processed < buf.len) {
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
+        const size_t message_size_hint = (buf.len - processed) + overhead;
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-            handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf.len - processed);
+            handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message) {
+        if (!message || message->message_data.capacity <= overhead) {
             return errSecMemoryError;
         }
 
-        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
-        const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
-
-        const size_t to_write = message->message_data.capacity > available_msg_write_capacity
-                                    ? available_msg_write_capacity
-                                    : message->message_data.capacity;
+        const size_t available_msg_write_capacity = message->message_data.capacity - overhead;
+        const size_t to_write =
+            available_msg_write_capacity >= buffer_cursor.len ? buffer_cursor.len : available_msg_write_capacity;
 
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
         if (aws_byte_buf_append(&message->message_data, &chunk)) {
