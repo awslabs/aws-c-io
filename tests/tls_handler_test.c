@@ -2027,7 +2027,7 @@ static void s_p2e_relay_to_endpoint(struct aws_channel_task *channel_task, void 
     aws_mutex_unlock(proxy_context->lock);
 
     if (message != NULL && slot != NULL) {
-        AWS_FATAL_ASSERT(AWS_ERROR_SUCCESS == aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE));
+        aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
     }
 }
 
