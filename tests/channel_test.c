@@ -796,7 +796,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     mock_dns_resolver_clean_up(&mock_dns_resolver);
     aws_event_loop_group_release(event_loop_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+    aws_thread_join_all_managed();
 
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);

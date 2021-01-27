@@ -76,6 +76,9 @@ static int s_fixture_shutdown(struct aws_allocator *allocator, int setup_error_c
         aws_condition_variable_wait_pred(&test_data->cvar, &test_data->mutex, s_el_group_shutdown_predicate, ctx);
         aws_mutex_unlock(&test_data->mutex);
     }
+
+    aws_thread_join_all_managed();
+
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;

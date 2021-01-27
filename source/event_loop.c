@@ -30,8 +30,6 @@ static void s_event_loop_group_thread_exit(void *user_data) {
     if (completion_callback != NULL) {
         completion_callback(completion_user_data);
     }
-
-    aws_global_thread_creator_decrement();
 }
 
 static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
@@ -69,6 +67,7 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
 
     struct aws_thread_options thread_options;
     AWS_ZERO_STRUCT(thread_options);
+    thread_options.join_strategy = AWS_TJS_MANAGED;
 
     AWS_FATAL_ASSERT(
         aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options) ==
@@ -155,8 +154,6 @@ static struct aws_event_loop_group *s_event_loop_group_new(
     if (shutdown_options != NULL) {
         el_group->shutdown_options = *shutdown_options;
     }
-
-    aws_global_thread_creator_increment();
 
     if (pin_threads) {
         aws_mem_release(alloc, usable_cpus);

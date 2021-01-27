@@ -1049,7 +1049,7 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     aws_event_loop_group_release(event_loop_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+    aws_thread_join_all_managed();
 
     aws_io_library_clean_up();
 
@@ -1091,7 +1091,7 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
 
     aws_event_loop_group_release(event_loop_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+    aws_thread_join_all_managed();
 
     aws_io_library_clean_up();
 
@@ -1172,6 +1172,8 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     while (!aws_atomic_load_int(&task_args.thread_complete)) {
         aws_thread_current_sleep(15);
     }
+
+    aws_thread_join_all_managed();
 
     aws_io_library_clean_up();
 
