@@ -83,28 +83,27 @@ static void s_write_complete_task(struct aws_channel_task *task, void *arg, aws_
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         for (size_t i = 0; i < aws_array_list_length(&args->pending_write_complete_args); ++i) {
-            struct socket_write_complete_arg arg;
-            AWS_ZERO_STRUCT(arg);
-            aws_array_list_get_at(&args->pending_write_complete_args, &arg, i);
+            struct socket_write_complete_arg complete_arg;
+            AWS_ZERO_STRUCT(complete_arg);
+            aws_array_list_get_at(&args->pending_write_complete_args, &complete_arg, i);
             struct aws_io_message *message = arg.message;
             struct aws_channel *channel = message->owning_channel;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET_HANDLER,
                 "static: write of size %llu, completed on channel %p",
-                (unsigned long long)arg.amount_written,
+                (unsigned long long)complete_arg.amount_written,
                 (void *)channel);
 
             if (message->on_completion) {
-                message->on_completion(channel, message, arg.error_code, message->user_data);
+                message->on_completion(channel, message, complete_arg.error_code, message->user_data);
             }
 
             if (socket && socket->handler) {
-                struct socket_handler *socket_handler = socket->handler->impl;
-                socket_handler->stats.bytes_written += arg.amount_written;
+                socket_handler->stats.bytes_written += complete_arg.amount_written;
             }
 
-            if (arg.error_code) {
-                aws_channel_shutdown(channel, arg.error_code);
+            if (complete_arg.error_code) {
+                aws_channel_shutdown(channel, complete_arg.error_code);
             }
         }
     }
