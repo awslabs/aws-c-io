@@ -118,34 +118,51 @@ static void s_on_socket_write_complete(
     void *user_data) {
 
     AWS_PRECONDITION(aws_event_loop_thread_is_callers_thread(socket->event_loop));
-    struct socket_handler *socket_handler = socket->handler->impl;
     /* Task is scheduled in the same thread, no lock needed */
     if (user_data) {
-        struct socket_write_complete_arg arg = {
-            .amount_written = amount_written,
-            .error_code = error_code,
-            .message = user_data,
-        };
-        if (socket_handler->write_complete_scheduled) {
-            struct socket_write_complete_task_args *args = socket_handler->write_complete_task_storage.arg;
-            aws_array_list_push_back(&args->pending_write_complete_args, &arg);
+        if (socket && socket->handler) {
+            struct socket_write_complete_arg arg = {
+                .amount_written = amount_written,
+                .error_code = error_code,
+                .message = user_data,
+            };
+            struct socket_handler *socket_handler = socket->handler->impl;
+            if (socket_handler->write_complete_scheduled) {
+                struct socket_write_complete_task_args *args = socket_handler->write_complete_task_storage.arg;
+                aws_array_list_push_back(&args->pending_write_complete_args, &arg);
+            } else {
+                struct socket_write_complete_task_args *args =
+                    aws_mem_calloc(socket->handler->alloc, 1, sizeof(struct socket_write_complete_task_args));
+                args->socket = socket;
+                aws_array_list_init_dynamic(
+                    &args->pending_write_complete_args,
+                    socket->handler->alloc,
+                    1,
+                    sizeof(struct socket_write_complete_arg));
+                aws_array_list_push_back(&args->pending_write_complete_args, &arg);
+                aws_channel_task_init(
+                    &socket_handler->write_complete_task_storage,
+                    s_write_complete_task,
+                    args,
+                    "socket_handler_write_complete");
+                socket_handler->write_complete_scheduled = true;
+                aws_channel_schedule_task_now(
+                    socket->handler->slot->channel, &socket_handler->write_complete_task_storage);
+            }
         } else {
-            struct socket_write_complete_task_args *args =
-                aws_mem_calloc(socket->handler->alloc, 1, sizeof(struct socket_write_complete_task_args));
-            args->socket = socket;
-            aws_array_list_init_dynamic(
-                &args->pending_write_complete_args,
-                socket->handler->alloc,
-                1,
-                sizeof(struct socket_write_complete_arg));
-            aws_array_list_push_back(&args->pending_write_complete_args, &arg);
-            aws_channel_task_init(
-                &socket_handler->write_complete_task_storage,
-                s_write_complete_task,
-                args,
-                "socket_handler_write_complete");
-            socket_handler->write_complete_scheduled = true;
-            aws_channel_schedule_task_now(socket->handler->slot->channel, &socket_handler->write_complete_task_storage);
+            /* socket has gone, just invoked the callback and clean it up */
+            struct aws_io_message *message = complete_arg.message;
+            struct aws_channel *channel = message->owning_channel;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_SOCKET_HANDLER,
+                "static: write of size %llu, completed on channel %p",
+                (unsigned long long)complete_arg.amount_written,
+                (void *)channel);
+
+            if (message->on_completion) {
+                message->on_completion(channel, message, complete_arg.error_code, message->user_data);
+            }
+            aws_mem_release(message->allocator, message);
         }
     }
 }
