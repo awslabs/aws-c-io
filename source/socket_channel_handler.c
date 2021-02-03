@@ -151,16 +151,16 @@ static void s_on_socket_write_complete(
             }
         } else {
             /* socket has gone, just invoked the callback and clean it up */
-            struct aws_io_message *message = complete_arg.message;
+            struct aws_io_message *message = user_data;
             struct aws_channel *channel = message->owning_channel;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET_HANDLER,
                 "static: write of size %llu, completed on channel %p",
-                (unsigned long long)complete_arg.amount_written,
+                (unsigned long long)amount_written,
                 (void *)channel);
 
             if (message->on_completion) {
-                message->on_completion(channel, message, complete_arg.error_code, message->user_data);
+                message->on_completion(channel, message, error_code, message->user_data);
             }
             aws_mem_release(message->allocator, message);
         }
