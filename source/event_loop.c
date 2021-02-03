@@ -337,8 +337,8 @@ void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop) {
     uint64_t end_tick = 0;
     aws_high_res_clock_get_ticks(&end_tick);
 
-    event_loop->current_tick_latency_sum =
-        aws_add_size_saturating(event_loop->current_tick_latency_sum, end_tick - event_loop->latest_tick_start);
+    size_t elapsed = (size_t)aws_min_u64(end_tick - event_loop->latest_tick_start, SIZE_MAX);
+    event_loop->current_tick_latency_sum = aws_add_size_saturating(event_loop->current_tick_latency_sum, elapsed);
     event_loop->latest_tick_start = 0;
 
     size_t next_flush_time_secs = aws_atomic_load_int(&event_loop->next_flush_time);
