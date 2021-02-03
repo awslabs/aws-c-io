@@ -86,7 +86,7 @@ static void s_write_complete_task(struct aws_channel_task *task, void *arg, aws_
             struct socket_write_complete_arg complete_arg;
             AWS_ZERO_STRUCT(complete_arg);
             aws_array_list_get_at(&args->pending_write_complete_args, &complete_arg, i);
-            struct aws_io_message *message = arg.message;
+            struct aws_io_message *message = complete_arg.message;
             struct aws_channel *channel = message->owning_channel;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET_HANDLER,
