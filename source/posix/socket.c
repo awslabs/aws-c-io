@@ -225,9 +225,12 @@ void aws_socket_clean_up(struct aws_socket *socket) {
         /* protect from double clean */
         return;
     }
+
+    int fd = socket->io_handle.data.fd; /* cached for logging */
+    (void)fd;
+
     if (aws_socket_is_open(socket)) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, socket->io_handle.data.fd);
+        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, fd);
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
@@ -239,7 +242,7 @@ void aws_socket_clean_up(struct aws_socket *socket) {
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: is still pending io letting it dangle and cleaning up later.",
             (void *)socket,
-            socket->io_handle.data.fd);
+            fd);
     }
 
     AWS_ZERO_STRUCT(*socket);
@@ -1088,7 +1091,8 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
             .invoked = false,
             .socket = socket,
             .ret_code = AWS_OP_SUCCESS,
-            .task = {.fn = s_stop_accept_task}};
+            .task = {.fn = s_stop_accept_task},
+        };
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stopping accepting new connections from a different thread than "
@@ -1264,7 +1268,9 @@ static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status 
 
 int aws_socket_close(struct aws_socket *socket) {
     struct posix_socket *socket_impl = socket->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, socket->io_handle.data.fd);
+    int fd = socket->io_handle.data.fd; /* cached for logging */
+    (void)fd;
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, fd);
     struct aws_event_loop *event_loop = socket->event_loop;
     if (socket->event_loop) {
         /* don't freak out on me, this almost never happens, and never occurs inside a channel
@@ -1275,7 +1281,7 @@ int aws_socket_close(struct aws_socket *socket) {
                 "id=%p fd=%d: closing from a different thread than "
                 "the socket is running from. Blocking until it closes down.",
                 (void *)socket,
-                socket->io_handle.data.fd);
+                fd);
             /* the only time we allow this kind of thing is when you're a listener.*/
             if (socket->state != LISTENING) {
                 return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
@@ -1298,8 +1304,7 @@ int aws_socket_close(struct aws_socket *socket) {
             aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
             aws_mutex_unlock(&args.mutex);
-            AWS_LOGF_INFO(
-                AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, socket->io_handle.data.fd);
+            AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd);
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
             }
@@ -1429,9 +1434,6 @@ static void s_written_task(struct aws_task *task, void *arg, enum aws_task_statu
  * 2nd scenario, the event loop notified us that the socket went writable. In this case `parent_request` is NULL */
 static int s_process_write_requests(struct aws_socket *socket, struct write_request *parent_request) {
     struct posix_socket *socket_impl = socket->impl;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p fd=%d: processing write requests.", (void *)socket, socket->io_handle.data.fd);
 
     if (parent_request) {
         AWS_LOGF_TRACE(
