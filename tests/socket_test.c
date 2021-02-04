@@ -1384,7 +1384,8 @@ static void s_async_read_task(struct aws_task *task, void *args, enum aws_task_s
 }
 
 static void s_async_write_completion(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data) {
-    enum async_role role = (enum async_role)(int)user_data;
+    enum async_role role = *(enum async_role *)user_data;
+    aws_mem_release(socket->allocator, user_data);
 
     /* ensure callback is not firing synchronously from within aws_socket_write() */
     AWS_FATAL_ASSERT(!g_async_tester.currently_writing);
@@ -1399,12 +1400,9 @@ static void s_async_write_completion(struct aws_socket *socket, int error_code, 
             AWS_FATAL_ASSERT(1 == bytes_written);
             g_async_tester.currently_writing = true;
             struct aws_byte_cursor data = aws_byte_cursor_from_c_str("D");
-            AWS_FATAL_ASSERT(
-                0 == aws_socket_write(
-                         socket,
-                         &data,
-                         s_async_write_completion,
-                         (void *)ASYNC_ROLE_D_GOT_WRITTEN_VIA_CALLBACK));
+            enum async_role *d_role = aws_mem_acquire(socket->allocator, sizeof(enum async_role));
+            *d_role = ASYNC_ROLE_D_GOT_WRITTEN_VIA_CALLBACK;
+            AWS_FATAL_ASSERT(0 == aws_socket_write(socket, &data, s_async_write_completion, d_role));
             g_async_tester.currently_writing = false;
             break;
         }
@@ -1432,29 +1430,24 @@ static void s_async_write_task(struct aws_task *task, void *args, enum aws_task_
     (void)task;
     (void)args;
     (void)status;
+    struct aws_allocator *allocator = g_async_tester.read_socket->allocator;
 
     g_async_tester.currently_writing = true;
 
     struct aws_byte_cursor data = aws_byte_cursor_from_c_str("A");
-    AWS_FATAL_ASSERT(
-        0 == aws_socket_write(
-                 g_async_tester.write_socket, &data, s_async_write_completion, (void *)ASYNC_ROLE_A_CALLBACK_WRITES_D));
+    enum async_role *role = aws_mem_acquire(allocator, sizeof(role));
+    *role = ASYNC_ROLE_A_CALLBACK_WRITES_D;
+    AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
     data = aws_byte_cursor_from_c_str("B");
-    AWS_FATAL_ASSERT(
-        0 == aws_socket_write(
-                 g_async_tester.write_socket,
-                 &data,
-                 s_async_write_completion,
-                 (void *)ASYNC_ROLE_B_CALLBACK_CLEANS_UP_SOCKET));
+    role = aws_mem_acquire(allocator, sizeof(role));
+    *role = ASYNC_ROLE_B_CALLBACK_CLEANS_UP_SOCKET;
+    AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
     data = aws_byte_cursor_from_c_str("C");
-    AWS_FATAL_ASSERT(
-        0 == aws_socket_write(
-                 g_async_tester.write_socket,
-                 &data,
-                 s_async_write_completion,
-                 (void *)ASYNC_ROLE_C_IS_LAST_FROM_INITIAL_BATCH_OF_WRITES));
+    role = aws_mem_acquire(allocator, sizeof(role));
+    *role = ASYNC_ROLE_C_IS_LAST_FROM_INITIAL_BATCH_OF_WRITES;
+    AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
     g_async_tester.currently_writing = false;
 }
