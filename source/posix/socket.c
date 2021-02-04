@@ -1265,6 +1265,7 @@ static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status 
 int aws_socket_close(struct aws_socket *socket) {
     struct posix_socket *socket_impl = socket->impl;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, socket->io_handle.data.fd);
+    struct aws_event_loop *event_loop = socket->event_loop;
     if (socket->event_loop) {
         /* don't freak out on me, this almost never happens, and never occurs inside a channel
          * it only gets hit from a listening socket shutting down or from a unit test. */
@@ -1338,7 +1339,7 @@ int aws_socket_close(struct aws_socket *socket) {
         /* ensure callbacks for pending writes fire (in order) before this close function returns */
 
         if (socket_impl->written_task_scheduled) {
-            aws_event_loop_cancel_task(socket->event_loop, &socket_impl->written_task);
+            aws_event_loop_cancel_task(event_loop, &socket_impl->written_task);
         }
 
         while (!aws_linked_list_empty(&socket_impl->written_queue)) {
