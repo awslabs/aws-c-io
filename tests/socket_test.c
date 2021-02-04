@@ -1349,6 +1349,7 @@ static struct {
 } g_async_tester;
 
 static bool s_async_tasks_complete_pred(void *arg) {
+    (void)arg;
     return g_async_tester.write_tasks_complete && g_async_tester.read_tasks_complete;
 }
 
@@ -1383,7 +1384,7 @@ static void s_async_read_task(struct aws_task *task, void *args, enum aws_task_s
 }
 
 static void s_async_write_completion(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data) {
-    enum async_role role = (enum async_role)user_data;
+    enum async_role role = (enum async_role)(int)user_data;
 
     /* ensure callback is not firing synchronously from within aws_socket_write() */
     AWS_FATAL_ASSERT(!g_async_tester.currently_writing);
@@ -1400,7 +1401,7 @@ static void s_async_write_completion(struct aws_socket *socket, int error_code, 
             struct aws_byte_cursor data = aws_byte_cursor_from_c_str("D");
             AWS_FATAL_ASSERT(
                 0 == aws_socket_write(
-                         g_async_tester.write_socket,
+                         socket,
                          &data,
                          s_async_write_completion,
                          (void *)ASYNC_ROLE_D_GOT_WRITTEN_VIA_CALLBACK));
@@ -1410,7 +1411,7 @@ static void s_async_write_completion(struct aws_socket *socket, int error_code, 
         case ASYNC_ROLE_B_CALLBACK_CLEANS_UP_SOCKET:
             AWS_FATAL_ASSERT(0 == error_code);
             AWS_FATAL_ASSERT(1 == bytes_written);
-            aws_socket_clean_up(g_async_tester.write_socket);
+            aws_socket_clean_up(socket);
             break;
         case ASYNC_ROLE_C_IS_LAST_FROM_INITIAL_BATCH_OF_WRITES:
             /* C might succeed or fail (since socket killed after B completes), either is valid */
