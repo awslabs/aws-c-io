@@ -2354,7 +2354,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
     }
 
     void *handle = socket->io_handle.data.handle; /* cached for logging */
-    (void)handler;
+    (void)handle;
 
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
