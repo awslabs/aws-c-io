@@ -163,12 +163,22 @@ struct posix_socket {
     struct aws_linked_list written_queue;
     struct aws_task written_task;
     struct posix_socket_connect_args *connect_args;
-    int internal_refcount;
+    /* Note that only the posix_socket impl part is refcounted.
+     * The public aws_socket can be a stack variable and cleaned up synchronously
+     * (by blocking until the event-loop cleans up the impl part).
+     * In hindsight, aws_socket should have been heap-allocated and refcounted, but alas */
+    struct aws_ref_count internal_refcount;
+    struct aws_allocator *allocator;
     bool written_task_scheduled;
     bool currently_subscribed;
     bool continue_accept;
     bool *close_happened;
 };
+
+static void s_socket_destroy_impl(void *user_data) {
+    struct posix_socket *socket_impl = user_data;
+    aws_mem_release(socket_impl->allocator, socket_impl);
+}
 
 static int s_socket_init(
     struct aws_socket *socket,
@@ -208,7 +218,8 @@ static int s_socket_init(
     aws_linked_list_init(&posix_socket->written_queue);
     posix_socket->currently_subscribed = false;
     posix_socket->continue_accept = false;
-    posix_socket->internal_refcount = 1;
+    aws_ref_count_init(&posix_socket->internal_refcount, posix_socket, s_socket_destroy_impl);
+    posix_socket->allocator = alloc;
     posix_socket->connect_args = NULL;
     posix_socket->close_happened = NULL;
     socket->impl = posix_socket;
@@ -226,23 +237,21 @@ void aws_socket_clean_up(struct aws_socket *socket) {
         return;
     }
 
-    int fd = socket->io_handle.data.fd; /* cached for logging */
-    (void)fd;
+    int fd_for_logging = socket->io_handle.data.fd; /* socket's fd gets reset before final log */
+    (void)fd_for_logging;
 
     if (aws_socket_is_open(socket)) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, fd);
+        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, fd_for_logging);
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
 
-    if (--socket_impl->internal_refcount == 0) {
-        aws_mem_release(socket->allocator, socket->impl);
-    } else {
+    if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: is still pending io letting it dangle and cleaning up later.",
             (void *)socket,
-            fd);
+            fd_for_logging);
     }
 
     AWS_ZERO_STRUCT(*socket);
@@ -1268,9 +1277,7 @@ static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status 
 
 int aws_socket_close(struct aws_socket *socket) {
     struct posix_socket *socket_impl = socket->impl;
-    int fd = socket->io_handle.data.fd; /* cached for logging */
-    (void)fd;
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, fd);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, socket->io_handle.data.fd);
     struct aws_event_loop *event_loop = socket->event_loop;
     if (socket->event_loop) {
         /* don't freak out on me, this almost never happens, and never occurs inside a channel
@@ -1281,7 +1288,7 @@ int aws_socket_close(struct aws_socket *socket) {
                 "id=%p fd=%d: closing from a different thread than "
                 "the socket is running from. Blocking until it closes down.",
                 (void *)socket,
-                fd);
+                socket->io_handle.data.fd);
             /* the only time we allow this kind of thing is when you're a listener.*/
             if (socket->state != LISTENING) {
                 return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
@@ -1300,11 +1307,14 @@ int aws_socket_close(struct aws_socket *socket) {
                 .arg = &args,
             };
 
+            int fd_for_logging = socket->io_handle.data.fd; /* socket's fd gets reset before final log */
+            (void)fd_for_logging;
+
             aws_mutex_lock(&args.mutex);
             aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
             aws_mutex_unlock(&args.mutex);
-            AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd);
+            AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd_for_logging);
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
             }
@@ -1389,19 +1399,19 @@ static void s_written_task(struct aws_task *task, void *arg, enum aws_task_statu
     (void)task;
     (void)status;
 
+    struct aws_socket *socket = arg;
+    struct posix_socket *socket_impl = socket->impl;
+
+    socket_impl->written_task_scheduled = false;
+
     /* this is to handle a race condition when a callback kicks off a cleanup, or the user decides
      * to close the socket based on something they read (SSL validation failed for example).
      * if clean_up happens when internal_refcount > 0, socket_impl is kept dangling */
-    struct aws_socket *socket = arg;
-    struct aws_allocator *allocator = socket->allocator;
-    struct posix_socket *socket_impl = socket->impl;
-    ++socket_impl->internal_refcount;
-    socket_impl->written_task_scheduled = false;
+    aws_ref_count_acquire(&socket_impl->internal_refcount);
 
     /* Notes about weird loop:
-     * 1) Use `stop_after` node so we only process the initial contents of queue.
-     *    More nodes may be added to written_queue if user calls write() from the callback.
-     *    We DO NOT want to process those new nodes until the next time the task runs.
+     * 1) Only process the initial contents of queue when this task is run,
+     *    ignoring any writes queued during delivery.
      *    If we simply looped until the queue was empty, we could get into a
      *    synchronous loop of completing and writing and completing and writing...
      *    and it would be tough for multiple sockets to share an event-loop fairly.
@@ -1416,16 +1426,14 @@ static void s_written_task(struct aws_task *task, void *arg, enum aws_task_statu
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
             size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
             write_request->written_fn(socket, write_request->error_code, bytes_written, write_request->write_user_data);
-            aws_mem_release(allocator, write_request);
+            aws_mem_release(socket_impl->allocator, write_request);
             if (node == stop_after) {
                 break;
             }
         } while (!aws_linked_list_empty(&socket_impl->written_queue));
     }
 
-    if (--socket_impl->internal_refcount == 0) {
-        aws_mem_release(allocator, socket_impl);
-    }
+    aws_ref_count_release(&socket_impl->internal_refcount);
 }
 
 /* this gets called in two scenarios.
@@ -1570,15 +1578,14 @@ static void s_on_socket_io_event(
     void *user_data) {
     (void)event_loop;
     (void)handle;
+    struct aws_socket *socket = user_data;
+    struct posix_socket *socket_impl = socket->impl;
+
     /* this is to handle a race condition when an error kicks off a cleanup, or the user decides
      * to close the socket based on something they read (SSL validation failed for example).
      * if clean_up happens when internal_refcount > 0, socket_impl is kept dangling but currently
      * subscribed is set to false. */
-    struct aws_socket *socket = user_data;
-    struct posix_socket *socket_impl = socket->impl;
-    struct aws_allocator *allocator = socket->allocator;
-
-    ++socket_impl->internal_refcount;
+    aws_ref_count_acquire(&socket_impl->internal_refcount);
 
     if (events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP || events & AWS_IO_EVENT_TYPE_CLOSED) {
         aws_raise_error(AWS_IO_SOCKET_CLOSED);
@@ -1614,9 +1621,7 @@ static void s_on_socket_io_event(
     }
 
 end_check:
-    if (--socket_impl->internal_refcount == 0) {
-        aws_mem_release(allocator, socket_impl);
-    }
+    aws_ref_count_release(&socket_impl->internal_refcount);
 }
 
 int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop) {

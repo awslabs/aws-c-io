@@ -1434,17 +1434,17 @@ static void s_async_write_task(struct aws_task *task, void *args, enum aws_task_
     g_async_tester.currently_writing = true;
 
     struct aws_byte_cursor data = aws_byte_cursor_from_c_str("A");
-    enum async_role *role = aws_mem_acquire(g_async_tester.allocator, sizeof(role));
+    enum async_role *role = aws_mem_acquire(g_async_tester.allocator, sizeof(enum async_role));
     *role = ASYNC_ROLE_A_CALLBACK_WRITES_D;
     AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
     data = aws_byte_cursor_from_c_str("B");
-    role = aws_mem_acquire(g_async_tester.allocator, sizeof(role));
+    role = aws_mem_acquire(g_async_tester.allocator, sizeof(enum async_role));
     *role = ASYNC_ROLE_B_CALLBACK_CLEANS_UP_SOCKET;
     AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
     data = aws_byte_cursor_from_c_str("C");
-    role = aws_mem_acquire(g_async_tester.allocator, sizeof(role));
+    role = aws_mem_acquire(g_async_tester.allocator, sizeof(enum async_role));
     *role = ASYNC_ROLE_C_IS_LAST_FROM_INITIAL_BATCH_OF_WRITES;
     AWS_FATAL_ASSERT(0 == aws_socket_write(g_async_tester.write_socket, &data, s_async_write_completion, role));
 
