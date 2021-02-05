@@ -2353,12 +2353,15 @@ static int s_wait_on_close(struct aws_socket *socket) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
+    void *handle_for_logging = socket->io_handle.data.handle; /* socket's handle gets reset before final log */
+    (void)handle_for_logging;
+
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: closing from a different thread than "
         "the socket is running from. Blocking until it closes down.",
         (void *)socket,
-        (void *)socket->io_handle.data.handle);
+        handle_for_logging);
 
     struct close_args args = {
         .mutex = AWS_MUTEX_INIT,
@@ -2376,11 +2379,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
     aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
     aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_close_predicate, &args);
     aws_mutex_unlock(&args.mutex);
-    AWS_LOGF_INFO(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: close task completed.",
-        (void *)socket,
-        (void *)socket->io_handle.data.handle);
+    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p handle=%p: close task completed.", (void *)socket, handle_for_logging);
 
     if (args.ret_code) {
         return aws_raise_error(args.ret_code);
