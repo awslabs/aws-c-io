@@ -20,7 +20,7 @@ This library is licensed under the Apache 2.0 License.
 
 #### Building s2n (Linux Only)
 
-If you are building on Linux, you will need to build s2n before being able to build aws-c-io.  For our CRT's, we build s2n at a specific commit, and recommend doing the same when using it with this library.  That commit hash can be found [here](https://github.com/awslabs/aws-crt-cpp/tree/main/crt).  The commands below will build s2n using OpenSSL 1.1.1.  For using other versions of OpenSSL, there is additional information in the [s2n Usage Guide](https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md).
+If you are building on Linux, you will need to build s2n before being able to build aws-c-io.  For our CRT's, we build s2n at a specific commit, and recommend doing the same when using it with this library.  That commit hash can be found [here](https://github.com/awslabs/aws-crt-cpp/tree/main/crt).  The commands below will build s2n using [AWS-LC](https://github.com/awslabs/aws-lc).  For using other versions of libcrypto, there is additional information in the [s2n Usage Guide](https://github.com/awslabs/s2n/blob/main/docs/USAGE-GUIDE.md).
 
 ```
 git clone git@github.com:awslabs/s2n.git
@@ -30,23 +30,14 @@ git checkout <s2n-commit-hash-used-by-aws-crt-cpp>
 # We keep the build artifacts in the -build directory
 cd libcrypto-build
 
-# Download the latest version of OpenSSL
-curl -LO https://www.openssl.org/source/openssl-1.1.1-latest.tar.gz
-tar -xzvf openssl-1.1.1-latest.tar.gz
+# Get the latest version of AWS-LC
+git clone git@github.com:awslabs/aws-lc.git
 
-# Build openssl libcrypto.  Note that the install path specified here must be absolute.
-cd `tar ztf openssl-1.1.1-latest.tar.gz | head -n1 | cut -f1 -d/`
-./config -fPIC no-shared              \
-         no-md2 no-rc5 no-rfc3779 no-sctp no-ssl-trace no-zlib     \
-         no-hw no-mdc2 no-seed no-idea enable-ec_nistp_64_gcc_128 no-camellia\
-         no-bf no-ripemd no-dsa no-ssl2 no-ssl3 no-capieng                  \
-         -DSSL_FORBID_ENULL -DOPENSSL_NO_DTLS1 -DOPENSSL_NO_HEARTBEATS      \
-         --prefix=<absolute-install-path>
-make
-make install
+# Build aws-lc libcrypto
+cmake -DCMAKE_INSTALL_PREFIX=<install-path> -S aws-lc -B aws-lc/build
+cmake --build aws-lc/build --target install
 
 # Build s2n
-cd ../../../
 cmake -DCMAKE_PREFIX_PATH=<install-path> -DCMAKE_INSTALL_PREFIX=<install-path> -S s2n -B s2n/build
 cmake --build s2n/build --target install
 ```
