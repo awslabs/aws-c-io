@@ -66,7 +66,6 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
 
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
     aws_event_loop_group_release(tester->el_group);
-    aws_thread_join_all_managed();
 
     aws_mutex_clean_up(&tester->mutex);
 
