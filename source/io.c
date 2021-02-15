@@ -217,6 +217,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
 void aws_io_library_clean_up(void) {
     if (s_io_library_initialized) {
         s_io_library_initialized = false;
+        aws_thread_join_all_managed();
         aws_tls_clean_up_static_state();
         aws_unregister_error_info(&s_list);
         aws_unregister_log_subject_info_list(&s_io_log_subject_list);
