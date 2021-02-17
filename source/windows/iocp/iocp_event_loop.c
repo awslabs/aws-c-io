@@ -350,8 +350,10 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
+    aws_thread_increment_unjoined_count();
     int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, event_loop, &impl->thread_options);
     if (err) {
+        aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
     }
@@ -400,6 +402,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 #endif
 
     int err = aws_thread_join(&impl->thread_created_on);
+    aws_thread_decrement_unjoined_count();
     if (err) {
         return AWS_OP_ERR;
     }

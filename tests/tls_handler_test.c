@@ -167,7 +167,8 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
 static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_io_library_clean_up();
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
@@ -774,7 +775,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
+
     return AWS_OP_SUCCESS;
 }
 
@@ -874,7 +875,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     aws_tls_ctx_release(client_ctx);
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
+
     return AWS_OP_SUCCESS;
 }
 
@@ -1013,7 +1014,6 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
 
     s_tls_opt_tester_clean_up(&client_tls_opt_tester);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
@@ -1116,7 +1116,6 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
-    aws_io_library_clean_up();
     return AWS_OP_SUCCESS;
 }
 
@@ -1275,7 +1274,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(tls_server_multiple_connections, s_tls_server_multiple_connections_fn)
@@ -1379,7 +1378,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&local_server_tester.server_tls_opt_tester));
     aws_server_bootstrap_release(local_server_tester.server_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(tls_server_hangup_during_negotiation, s_tls_server_hangup_during_negotiation_fn)
@@ -1584,7 +1583,7 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-    aws_io_library_clean_up();
+
     return AWS_OP_SUCCESS;
 }
 
@@ -2027,7 +2026,7 @@ static void s_p2e_relay_to_endpoint(struct aws_channel_task *channel_task, void 
     aws_mutex_unlock(proxy_context->lock);
 
     if (message != NULL && slot != NULL) {
-        AWS_FATAL_ASSERT(AWS_ERROR_SUCCESS == aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE));
+        aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
     }
 }
 
@@ -2298,7 +2297,6 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
 
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
 
-    aws_io_library_clean_up();
     return AWS_OP_SUCCESS;
 }
 

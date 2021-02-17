@@ -271,7 +271,9 @@ static int s_run(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
     epoll_loop->should_continue = true;
+    aws_thread_increment_unjoined_count();
     if (aws_thread_launch(&epoll_loop->thread_created_on, &s_main_loop, event_loop, &epoll_loop->thread_options)) {
+        aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;
@@ -315,7 +317,9 @@ static int s_stop(struct aws_event_loop *event_loop) {
 
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
-    return aws_thread_join(&epoll_loop->thread_created_on);
+    int result = aws_thread_join(&epoll_loop->thread_created_on);
+    aws_thread_decrement_unjoined_count();
+    return result;
 }
 
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {

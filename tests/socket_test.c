@@ -608,8 +608,6 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     aws_socket_clean_up(&outgoing);
     aws_event_loop_group_release(el_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
-
     aws_io_library_clean_up();
 
     return 0;
@@ -683,7 +681,8 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
+
+    aws_thread_join_all_managed();
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
     aws_socket_clean_up(&outgoing);
@@ -1052,7 +1051,6 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     ASSERT_FALSE(outgoing_args.error_invoked);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 

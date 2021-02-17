@@ -1049,8 +1049,6 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
     aws_event_loop_group_release(event_loop_group);
 
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
-
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
@@ -1090,8 +1088,6 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     ASSERT_INT_EQUALS(hw_thread_count, el_count);
 
     aws_event_loop_group_release(event_loop_group);
-
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 

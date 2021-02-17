@@ -143,7 +143,6 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -207,7 +206,6 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -324,7 +322,6 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     aws_string_destroy((void *)host_name_2);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -503,7 +500,6 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -695,7 +691,6 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -875,7 +870,6 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -939,7 +933,6 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1002,7 +995,6 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1389,7 +1381,6 @@ static int s_test_resolver_listener_create_destroy_fn(struct aws_allocator *allo
     s_listener_test_callback_data_clean_up(&callback_data);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1472,7 +1463,6 @@ static int s_test_resolver_add_listener_before_host_fn(struct aws_allocator *all
     aws_mutex_clean_up(&mutex);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1585,7 +1575,6 @@ static int s_test_resolver_add_listener_after_host_fn(struct aws_allocator *allo
     aws_string_destroy(host_name_str);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1692,7 +1681,6 @@ static int s_test_resolver_add_multiple_listeners_fn(struct aws_allocator *alloc
     aws_mutex_clean_up(&mutex);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1830,7 +1818,6 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
     aws_string_destroy(host_name_str);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -1921,7 +1908,6 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
     aws_string_destroy(host_name_str);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -2056,7 +2042,6 @@ static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *all
     aws_string_destroy(host_name_str);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -2192,7 +2177,6 @@ static int s_test_host_entry_pinning(struct aws_allocator *allocator, bool pin_h
     aws_string_destroy(host_name_str);
 
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_io_library_clean_up();
 
@@ -2527,7 +2511,6 @@ static int s_test_resolver_address_promote_demote_listener_callbacks_fn(struct a
 
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_string_destroy((void *)host_name);
     mock_dns_resolver_clean_up(&mock_resolver);

@@ -326,8 +326,6 @@ static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
     if (shutdown_callback != NULL) {
         shutdown_callback(shutdown_completion_user_data);
     }
-
-    aws_global_thread_creator_decrement();
 }
 
 static void resolver_destroy(struct aws_host_resolver *resolver) {
@@ -1359,7 +1357,10 @@ static inline int create_and_init_host_entry(
         goto setup_host_entry_error;
     }
 
-    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, NULL);
+    struct aws_thread_options thread_options = *aws_default_thread_options();
+    thread_options.join_strategy = AWS_TJS_MANAGED;
+
+    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
     return AWS_OP_SUCCESS;
@@ -1589,8 +1590,6 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     default_host_resolver->pending_host_entry_shutdown_completion_callbacks = 0;
     default_host_resolver->state = DRS_ACTIVE;
     aws_mutex_init(&default_host_resolver->resolver_lock);
-
-    aws_global_thread_creator_increment();
 
     if (aws_hash_table_init(
             &default_host_resolver->host_entry_table,
