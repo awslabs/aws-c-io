@@ -37,6 +37,8 @@ include(CTest)
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
         OFF)
+option(BYO_CRYPTO "Don't build a tls implementation or link against a crypto interface. This feature is only for unix builds currently."
+        OFF)
 
 file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
@@ -58,6 +60,8 @@ file(GLOB AWS_IO_PRIV_HEADERS
 file(GLOB AWS_IO_SRC
         "source/*.c"
         )
+
+set(USE_S2N OFF)
 
 if (WIN32)
     option(USE_IO_COMPLETION_PORTS
@@ -92,8 +96,6 @@ if (WIN32)
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
     #Also note, you don't get a choice on TLS implementation for Windows.
     set(PLATFORM_LIBS Secur32 Crypt32 Shlwapi)
-    set(TLS_STACK_DETERMINED ON)
-
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
     option(USE_VSOCK
 	    "Build in support for VSOCK sockets"
@@ -109,6 +111,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Androi
     set(PLATFORM_LIBS "")
 
     set(EVENT_LOOP_DEFINE "EPOLL")
+    set(USE_S2N ON)
 
 elseif (APPLE)
 
@@ -128,8 +131,6 @@ elseif (APPLE)
 
     #No choice on TLS for apple, darwinssl will always be used.
     set(PLATFORM_LIBS ${SECURITY_LIB})
-    set(TLS_STACK_DETERMINED ON)
-
     set(EVENT_LOOP_DEFINE "KQUEUE")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
@@ -142,27 +143,20 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             )
 
     set(EVENT_LOOP_DEFINE "KQUEUE")
+    set(USE_S2N ON)
 
 endif()
 
-if (NOT CUSTOM_TLS)
-    if (USE_S2N)
-        set(TLS_STACK_DETERMINED ON)
-    endif ()
-    if (NOT TLS_STACK_DETERMINED)
-        if (NOT WIN32 AND NOT APPLE)
-            set(USE_S2N ON)
-        endif ()
-    endif ()
+if (NOT BYO_CRYPTO AND USE_S2N)
+    file(GLOB AWS_IO_TLS_SRC
+            "source/s2n/*.c"
+            )
+    aws_use_package(s2n)
+endif()
 
-    if (USE_S2N)
-        file(GLOB AWS_IO_TLS_SRC
-                "source/s2n/*.c"
-                )
-
-    	aws_use_package(s2n)
-    endif ()
-endif ()
+if (BYO_CRYPTO AND (APPLE OR WIN32))
+    message(FATAL_ERROR "BYO_CRYPTO is only for use with unix systems. It cannot be used on your current platform target")
+endif()
 
 file(GLOB IO_HEADERS
         ${AWS_IO_HEADERS}
@@ -187,6 +181,10 @@ aws_add_sanitizers(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
+
+if (BYO_CRYPTO)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "-DBYO_CRYPTO")
+endif()
 
 if (BUILD_RELOCATABLE_BINARIES)
     target_compile_definitions(${PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")

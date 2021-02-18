@@ -174,6 +174,12 @@ struct aws_tls_ctx_options {
      * If you set this in server mode, it enforces client authentication.
      */
     bool verify_peer;
+
+    /**
+     * For use when adding BYO_CRYPTO implementations. You can set extra data in here for use with your TLS
+     * implementation.
+     */
+    void *ctx_options_extension;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -194,6 +200,23 @@ enum aws_tls_negotiation_status {
     AWS_TLS_NEGOTIATION_STATUS_SUCCESS,
     AWS_TLS_NEGOTIATION_STATUS_FAILURE
 };
+
+#ifdef BYO_CRYPTO
+/**
+ * Callback for createing a TLS handler. If you're using this you're using BYO_CRYPTO. This function should return
+ * a fully implemented aws_channel_handler instance for TLS.
+ */
+typedef struct aws_channel_handler *(aws_tls_handler_new_fn)(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot);
+
+/**
+ * Invoked when it's time to start TLS negotiation
+ */
+typedef int(aws_tls_client_handler_start_negotiation_fn)(struct aws_channel_handler *handler);
+
+#endif /* BYO_CRYPTO */
 
 AWS_EXTERN_C_BEGIN
 
@@ -367,6 +390,12 @@ AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_from_path(
     const char *ca_file);
 
 /**
+ * When implementing BYO_CRYPTO, if you need extra data to pass to your tls implementation, set it here. The lifetime of
+ * extension_data must outlive the options object and be cleaned up after options is cleaned up.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options, void *extension_data);
+
+/**
  * Initializes default connection options from an instance ot aws_tls_ctx.
  */
 AWS_IO_API void aws_tls_connection_options_init_from_ctx(
@@ -450,6 +479,23 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 
+#ifdef BYO_CRYPTO
+/**
+ * If using BYO_CRYPTO, you need to call this function prior to creating any client channels in the application.
+ */
+AWS_IO_API void aws_tls_client_handler_new_set_callback(aws_tls_handler_new_fn *client_handler_new_fn);
+/**
+ * If using BYO_CRYPTO, you need to call this function prior to creating any server channels in the application.
+ */
+AWS_IO_API void aws_tls_server_handler_new_set_callback(aws_tls_handler_new_fn *server_handler_new_fn);
+/**
+ * If using client mode, this callback needs to be set prior to creating any client channels in the application.
+ */
+AWS_IO_API void aws_tls_client_handler_set_start_negotiation_callback(
+    aws_tls_client_handler_start_negotiation_fn *start_negotiation_fn);
+
+#endif /* BYO_CRYPTO */
+
 /**
  * Creates a channel handler, for client or server mode, that handles alpn. This isn't necessarily required
  * since you can always call aws_tls_handler_protocol in the aws_tls_on_negotiation_result_fn callback, but
@@ -466,6 +512,7 @@ AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(
  */
 AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
 
+#ifndef BYO_CRYPTO
 /**
  * Creates a new server ctx. This ctx can be used for the lifetime of the application assuming you want the same
  * options for every incoming connection. Options will be copied.
@@ -481,6 +528,7 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_server_ctx_new(
 AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options);
+#endif /* BYO_CRYPTO */
 
 /**
  * Increments the reference count on the tls context, allowing the caller to take a reference to it.
