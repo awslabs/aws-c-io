@@ -404,6 +404,10 @@ _(pure) bool aws_thread_thread_id_equal(aws_thread_id_t t1, aws_thread_id_t t2)
   _(ensures \result == (t1 == t2))
 ;
 
+/* Pure from point-of-view of the event loop since the following functions lock and mutate private aws-c-common state */
+_(pure) void aws_thread_increment_unjoined_count();
+_(pure) void aws_thread_decrement_unjoined_count();
+
 /* Definitions from aws/io/io.h */
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
