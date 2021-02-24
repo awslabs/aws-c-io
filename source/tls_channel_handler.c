@@ -383,6 +383,12 @@ int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *server_name) {
+
+    if (conn_options->server_name != NULL) {
+        aws_string_destroy(conn_options->server_name);
+        conn_options->server_name = NULL;
+    }
+
     conn_options->server_name = aws_string_new_from_cursor(allocator, server_name);
     if (!conn_options->server_name) {
         return AWS_OP_ERR;
@@ -395,6 +401,11 @@ int aws_tls_connection_options_set_alpn_list(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
     const char *alpn_list) {
+
+    if (conn_options->alpn_list != NULL) {
+        aws_string_destroy(conn_options->alpn_list);
+        conn_options->alpn_list = NULL;
+    }
 
     conn_options->alpn_list = aws_string_new_from_c_str(allocator, alpn_list);
     if (!conn_options->alpn_list) {
