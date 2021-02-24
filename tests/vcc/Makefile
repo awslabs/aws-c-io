@@ -1,7 +1,7 @@
 VCC?=vcc
 VCC_ARGS+=/sm
 GIT?=git
-NO_CHANGE_EXPECTED_HASH=735ba3d6c
+NO_CHANGE_EXPECTED_HASH=754ba168f
 NO_CHANGE_FILE=source/linux/epoll_event_loop.c
 
 # The VCC proofs in this directory are based on a snapshot of
