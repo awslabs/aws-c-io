@@ -45,7 +45,7 @@ assumptions due to limitations in VCC. More precisely, the proofs assume:
         aws_task_init
         aws_task_scheduler_schedule_{now, future}
         aws_task_scheduler_{init, run_all, clean_up, cancel_tasks, has_tasks}
-        aws_thread_{init, current_thread_id, launch, join, clean_up, thread_id_equal}
+        aws_thread_{clean_up, current_thread_id, decrement_unjoined_count, increment_unjoined_count, init, join, launch, thread_id_equal}
 
     and similarly for the AWS C-IO functions:
 
