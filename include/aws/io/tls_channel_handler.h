@@ -209,12 +209,20 @@ enum aws_tls_negotiation_status {
 typedef struct aws_channel_handler *(aws_tls_handler_new_fn)(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot);
+    struct aws_channel_slot *slot,
+    void *user_data);
 
 /**
  * Invoked when it's time to start TLS negotiation
  */
-typedef int(aws_tls_client_handler_start_negotiation_fn)(struct aws_channel_handler *handler);
+typedef int(aws_tls_client_handler_start_negotiation_fn)(struct aws_channel_handler *handler, void *user_data);
+
+struct aws_tls_byo_crypto_setup_options {
+    aws_tls_handler_new_fn *new_handler_fn;
+    /* ignored for server implementations, required for clients. */
+    aws_tls_client_handler_start_negotiation_fn *start_negotiation_fn;
+    void *user_data;
+};
 
 #endif /* BYO_CRYPTO */
 
@@ -483,16 +491,11 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
 /**
  * If using BYO_CRYPTO, you need to call this function prior to creating any client channels in the application.
  */
-AWS_IO_API void aws_tls_client_handler_new_set_callback(aws_tls_handler_new_fn *client_handler_new_fn);
+AWS_IO_API void aws_tls_byo_crypto_set_client_setup_options(const aws_tls_byo_crypto_setup_options *options);
 /**
  * If using BYO_CRYPTO, you need to call this function prior to creating any server channels in the application.
  */
-AWS_IO_API void aws_tls_server_handler_new_set_callback(aws_tls_handler_new_fn *server_handler_new_fn);
-/**
- * If using client mode, this callback needs to be set prior to creating any client channels in the application.
- */
-AWS_IO_API void aws_tls_client_handler_set_start_negotiation_callback(
-    aws_tls_client_handler_start_negotiation_fn *start_negotiation_fn);
+AWS_IO_API void aws_tls_byo_crypto_set_server_setup_options(const aws_tls_byo_crypto_setup_options *options);
 
 #endif /* BYO_CRYPTO */
 

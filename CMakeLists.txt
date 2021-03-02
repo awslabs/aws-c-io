@@ -183,7 +183,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
 
 if (BYO_CRYPTO)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE "-DBYO_CRYPTO")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
 
 if (BUILD_RELOCATABLE_BINARIES)

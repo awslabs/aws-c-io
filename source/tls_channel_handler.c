@@ -438,6 +438,11 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
 }
 
 static aws_tls_handler_new_fn *s_client_handler_new = NULL;
+static aws_tls_client_handler_start_negotiation_fn *s_start_negotiation_fn = NULL;
+static void *s_client_user_data = NULL;
+
+static aws_tls_handler_new_fn *s_server_handler_new = NULL;
+static void *s_server_user_data = NULL;
 
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
@@ -446,10 +451,8 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     AWS_FATAL_ASSERT(
         s_client_handler_new &&
         "For BYO_CRYPTO, you must call aws_tls_client_handler_new_set_callback() with a non-null value.");
-    return s_client_handler_new(allocator, options, slot);
+    return s_client_handler_new(allocator, options, slot, s_client_user_data);
 }
-
-static aws_tls_handler_new_fn *s_server_handler_new = NULL;
 
 struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
@@ -458,29 +461,32 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     AWS_FATAL_ASSERT(
         s_client_handler_new &&
         "For BYO_CRYPTO, you must call aws_tls_server_handler_new_set_callback() with a non-null value.")
-    return s_server_handler_new(allocator, options, slot);
+    return s_server_handler_new(allocator, options, slot, s_server_user_data);
 }
 
-void aws_tls_client_handler_new_set_callback(aws_tls_handler_new_fn *client_handler_new_fn) {
-    s_client_handler_new = client_handler_new_fn;
+void aws_tls_byo_crypto_set_client_setup_options(const aws_tls_byo_crypto_setup_options *options) {
+    AWS_FATAL_ASSERT(options);
+    AWS_FATAL_ASSERT(options->new_handler_fn);
+    AWS_FATAL_ASSERT(options->start_negotiation_fn);
+
+    s_client_handler_new = options->new_handler_fn;
+    s_start_negotiation_fn = options->start_negotiation_fn;
+    s_client_user_data = options->user_data;
 }
 
-void aws_tls_server_handler_new_set_callback(aws_tls_handler_new_fn *server_handler_new_fn) {
-    s_server_handler_new = server_handler_new_fn;
-}
+void aws_tls_byo_crypto_set_server_setup_options(const aws_tls_byo_crypto_setup_options *options) {
+    AWS_FATAL_ASSERT(options);
+    AWS_FATAL_ASSERT(options->new_handler_fn);
 
-static aws_tls_client_handler_start_negotiation_fn *s_start_negotiation_fn = NULL;
-
-void aws_tls_client_handler_set_start_negotiation_callback(
-    aws_tls_client_handler_start_negotiation_fn *start_negotiation_fn) {
-    s_start_negotiation_fn = start_negotiation_fn;
+    s_server_handler_new = options->new_handler_fn;
+    s_server_user_data = options->user_data;
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     AWS_FATAL_ASSERT(
         s_start_negotiation_fn &&
         "For BYO_CRYPTO, you must call aws_tls_client_handler_set_start_negotiation_callback() with a non-null value.")
-    return s_start_negotiation_fn(handler);
+    return s_start_negotiation_fn(handler, s_client_user_data);
 }
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
