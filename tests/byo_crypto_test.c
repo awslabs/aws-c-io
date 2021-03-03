@@ -33,6 +33,8 @@ struct byo_crypto_test_args {
     struct aws_channel *channel;
     struct aws_channel_handler *rw_handler;
     struct aws_channel_slot *rw_slot;
+    struct aws_tls_ctx tls_ctx;
+    struct aws_tls_connection_options tls_options;
     int error_code;
     bool shutdown_invoked;
     bool listener_destroyed;
@@ -51,7 +53,6 @@ static struct byo_crypto_common_tester c_tester;
 static int s_byo_crypto_common_tester_init(struct aws_allocator *allocator, struct byo_crypto_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
-
     tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -275,6 +276,8 @@ static int s_local_server_tester_init(
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
+    args->tls_options.ctx = &args->tls_ctx;
+
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
         .bootstrap = tester->server_bootstrap,
         .enable_read_back_pressure = enable_back_pressure,
@@ -284,6 +287,7 @@ static int s_local_server_tester_init(
         .incoming_callback = s_byo_crypto_test_server_setup_callback,
         .shutdown_callback = s_byo_crypto_test_server_shutdown_callback,
         .destroy_callback = s_byo_crypto_test_server_listener_destroy_callback,
+        .tls_options = &args->tls_options,
         .user_data = args,
     };
     tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
@@ -357,7 +361,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
         .user_data = &incoming_rw_args,
     };
 
-    aws_tls_byo_crypto_set_server_setup_options(&client_setup_options);
+    aws_tls_byo_crypto_set_server_setup_options(&server_setup_options);
 
     /* doesn't matter what these are, I'm turning back pressure off anyways. */
     static size_t s_outgoing_initial_read_window = 128;
@@ -389,10 +393,13 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
 
+    outgoing_args.tls_options.ctx = &outgoing_args.tls_ctx;
+
     struct aws_client_bootstrap_options bootstrap_options = {
         .event_loop_group = c_tester.el_group,
         .host_resolver = NULL,
     };
+
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
@@ -405,6 +412,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     channel_options.setup_callback = s_byo_crypto_test_client_setup_callback;
     channel_options.shutdown_callback = s_byo_crypto_test_client_shutdown_callback;
     channel_options.user_data = &outgoing_args;
+    channel_options.tls_options = &outgoing_args.tls_options;
     channel_options.enable_read_back_pressure = false;
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
