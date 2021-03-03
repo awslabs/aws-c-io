@@ -107,11 +107,6 @@ static void s_byo_crypto_test_client_setup_callback(
     struct byo_crypto_test_args *setup_test_args = user_data;
 
     setup_test_args->channel = channel;
-
-    setup_test_args->rw_slot = aws_channel_slot_new(channel);
-    aws_channel_slot_insert_end(channel, setup_test_args->rw_slot);
-
-    aws_channel_slot_set_handler(setup_test_args->rw_slot, setup_test_args->rw_handler);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
@@ -302,7 +297,7 @@ static const char *s_write_tag = "I'm a big teapot";
 static int s_start_negotiation_fn(struct aws_channel_handler *handler, void *user_data) {
     struct byo_crypto_test_args *test_args = user_data;
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str(s_write_tag);
-    rw_handler_write(handler, test_args->rw_slot, &write_tag);
+    rw_handler_write(handler, handler->slot, &write_tag);
     return AWS_OP_SUCCESS;
 }
 
