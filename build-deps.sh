@@ -21,8 +21,6 @@ install_prefix=$deps_dir/install
 # the same parent directory as this repo
 prefer_local_deps=0
 
-cmake_args=""
-
 function install_dep {
     local dep=$1
     local commit_or_branch=$2
@@ -50,6 +48,7 @@ function install_dep {
     mkdir -p dep-build
     cd dep-build
 
+    export CFLAGS=-Wno-unknown-warning-option
     cmake -GNinja $cmake_args -DCMAKE_PREFIX_PATH=$install_prefix -DCMAKE_INSTALL_PREFIX=$install_prefix ..
     cmake --build . --target all
     cmake --build . --target install
@@ -57,7 +56,7 @@ function install_dep {
     popd
 }
 
-cmake_args=()
+cmake_args=(-DCMAKE_POSITION_INDEPENDENT_CODE=1)
 while [[ $# -gt 0 ]]
 do
     arg="$1"
@@ -89,6 +88,7 @@ fi
 mkdir -p $deps_dir
 
 install_dep aws-c-common
+install_dep aws-lc
 install_dep aws-c-cal
 if [[ $OSTYPE != darwin* ]]; then
     install_dep s2n
