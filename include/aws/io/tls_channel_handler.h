@@ -491,11 +491,11 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
 /**
  * If using BYO_CRYPTO, you need to call this function prior to creating any client channels in the application.
  */
-AWS_IO_API void aws_tls_byo_crypto_set_client_setup_options(const aws_tls_byo_crypto_setup_options *options);
+AWS_IO_API void aws_tls_byo_crypto_set_client_setup_options(const struct aws_tls_byo_crypto_setup_options *options);
 /**
  * If using BYO_CRYPTO, you need to call this function prior to creating any server channels in the application.
  */
-AWS_IO_API void aws_tls_byo_crypto_set_server_setup_options(const aws_tls_byo_crypto_setup_options *options);
+AWS_IO_API void aws_tls_byo_crypto_set_server_setup_options(const struct aws_tls_byo_crypto_setup_options *options);
 
 #endif /* BYO_CRYPTO */
 

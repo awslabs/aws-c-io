@@ -464,7 +464,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_server_handler_new(allocator, options, slot, s_server_user_data);
 }
 
-void aws_tls_byo_crypto_set_client_setup_options(const aws_tls_byo_crypto_setup_options *options) {
+void aws_tls_byo_crypto_set_client_setup_options(const struct aws_tls_byo_crypto_setup_options *options) {
     AWS_FATAL_ASSERT(options);
     AWS_FATAL_ASSERT(options->new_handler_fn);
     AWS_FATAL_ASSERT(options->start_negotiation_fn);
@@ -474,7 +474,7 @@ void aws_tls_byo_crypto_set_client_setup_options(const aws_tls_byo_crypto_setup_
     s_client_user_data = options->user_data;
 }
 
-void aws_tls_byo_crypto_set_server_setup_options(const aws_tls_byo_crypto_setup_options *options) {
+void aws_tls_byo_crypto_set_server_setup_options(const struct aws_tls_byo_crypto_setup_options *options) {
     AWS_FATAL_ASSERT(options);
     AWS_FATAL_ASSERT(options->new_handler_fn);
 
