@@ -89,6 +89,7 @@ fi
 mkdir -p $deps_dir
 
 install_dep aws-c-common
+install_dep aws-lc
 install_dep aws-c-cal
 if [[ $OSTYPE != darwin* ]]; then
     install_dep s2n
