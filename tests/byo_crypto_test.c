@@ -295,7 +295,7 @@ static int s_local_server_tester_clean_up(struct local_server_tester *tester) {
 static const char *s_write_tag = "I'm a big teapot";
 
 static int s_start_negotiation_fn(struct aws_channel_handler *handler, void *user_data) {
-    struct byo_crypto_test_args *test_args = user_data;
+    (void)user_data;
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str(s_write_tag);
     rw_handler_write(handler, handler->slot, &write_tag);
     return AWS_OP_SUCCESS;
