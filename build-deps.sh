@@ -21,7 +21,7 @@ install_prefix=$deps_dir/install
 # the same parent directory as this repo
 prefer_local_deps=0
 
-cmake_args=""
+cmake_args="-DCMAKE_POSITION_INDEPENDENT_CODE=1"
 
 function install_dep {
     local dep=$1
