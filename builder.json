@@ -4,8 +4,7 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"],
-            "revision": "v0.10.26"
+            "targets": ["linux", "android"]
         },
         { "name": "aws-c-cal" }
     ],
