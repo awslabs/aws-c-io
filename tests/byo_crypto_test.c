@@ -128,10 +128,10 @@ static void s_byo_crypto_test_server_setup_callback(
 
     setup_test_args->channel = channel;
 
-    struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
-    aws_channel_slot_insert_end(channel, rw_slot);
+    setup_test_args->rw_slot = aws_channel_slot_new(channel);
+    aws_channel_slot_insert_end(channel, setup_test_args->rw_slot);
 
-    aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+    aws_channel_slot_set_handler(setup_test_args->rw_slot, setup_test_args->rw_handler);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
