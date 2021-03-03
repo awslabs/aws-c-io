@@ -385,9 +385,8 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     };
 
     aws_tls_byo_crypto_set_server_setup_options(&server_setup_options);
-    0
 
-        struct local_server_tester local_server_tester;
+    struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
 
     outgoing_args.tls_options.ctx = &outgoing_args.tls_ctx;
