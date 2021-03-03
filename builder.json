@@ -5,7 +5,7 @@
         {
             "name": "s2n",
             "targets": ["linux", "android"],
-            "revision": "v0.10.19"
+            "revision": "v0.10.26"
         },
         { "name": "aws-c-cal" }
     ],
