@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+/* these tests only get built and run with the BYO_CRYPTO compiler define. */
 #ifdef BYO_CRYPTO
 
 #    include <aws/io/channel_bootstrap.h>
