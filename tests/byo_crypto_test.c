@@ -127,11 +127,6 @@ static void s_byo_crypto_test_server_setup_callback(
     struct byo_crypto_test_args *setup_test_args = user_data;
 
     setup_test_args->channel = channel;
-
-    setup_test_args->rw_slot = aws_channel_slot_new(channel);
-    aws_channel_slot_insert_end(channel, setup_test_args->rw_slot);
-
-    aws_channel_slot_set_handler(setup_test_args->rw_slot, setup_test_args->rw_handler);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
@@ -349,21 +344,6 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
         aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message)),
         (int)read_tag.len));
 
-    struct aws_tls_byo_crypto_setup_options client_setup_options = {
-        .new_handler_fn = s_tls_handler_new,
-        .start_negotiation_fn = s_start_negotiation_fn,
-        .user_data = &outgoing_rw_args,
-    };
-
-    aws_tls_byo_crypto_set_client_setup_options(&client_setup_options);
-
-    struct aws_tls_byo_crypto_setup_options server_setup_options = {
-        .new_handler_fn = s_tls_handler_new,
-        .user_data = &incoming_rw_args,
-    };
-
-    aws_tls_byo_crypto_set_server_setup_options(&server_setup_options);
-
     /* doesn't matter what these are, I'm turning back pressure off anyways. */
     static size_t s_outgoing_initial_read_window = 128;
     static size_t s_incoming_initial_read_window = 128;
@@ -391,7 +371,23 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     struct byo_crypto_test_args outgoing_args;
     ASSERT_SUCCESS(s_byo_crypto_test_args_init(&outgoing_args, &c_tester, outgoing_rw_handler));
 
-    struct local_server_tester local_server_tester;
+    struct aws_tls_byo_crypto_setup_options client_setup_options = {
+        .new_handler_fn = s_tls_handler_new,
+        .start_negotiation_fn = s_start_negotiation_fn,
+        .user_data = &outgoing_args,
+    };
+
+    aws_tls_byo_crypto_set_client_setup_options(&client_setup_options);
+
+    struct aws_tls_byo_crypto_setup_options server_setup_options = {
+        .new_handler_fn = s_tls_handler_new,
+        .user_data = &incoming_args,
+    };
+
+    aws_tls_byo_crypto_set_server_setup_options(&server_setup_options);
+    0
+
+        struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
 
     outgoing_args.tls_options.ctx = &outgoing_args.tls_ctx;
