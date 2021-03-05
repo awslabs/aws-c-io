@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifdef _MSVC_VER
+#ifdef _MSC_VER
+/* allow this file to be empty */
 #    pragma warning(disable : 4206)
 #endif /* MSVC_VER */
 
