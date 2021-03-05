@@ -40,6 +40,8 @@ struct byo_crypto_test_args {
     struct aws_channel_slot *rw_slot;
     struct aws_tls_ctx tls_ctx;
     struct aws_tls_connection_options tls_options;
+    aws_tls_on_negotiation_result_fn *negotiation_result_fn;
+    void *cb_data;
     int error_code;
     bool shutdown_invoked;
     bool listener_destroyed;
@@ -110,7 +112,10 @@ static void s_byo_crypto_test_client_setup_callback(
 
     struct byo_crypto_test_args *setup_test_args = user_data;
 
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->channel = channel;
+    setup_test_args->setup_completed = true;
+    aws_mutex_unlock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
@@ -125,7 +130,10 @@ static void s_byo_crypto_test_server_setup_callback(
 
     struct byo_crypto_test_args *setup_test_args = user_data;
 
+    aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->channel = channel;
+    setup_test_args->setup_completed = true;
+    aws_mutex_unlock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
@@ -170,6 +178,7 @@ struct byo_crypto_test_rw_args {
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
     struct aws_byte_buf received_message;
+    struct byo_crypto_test_args *test_args;
     bool invocation_happened;
     bool shutdown_finished;
 };
@@ -196,6 +205,10 @@ static struct aws_byte_buf s_byo_crypto_test_handle_read(
     rw_args->invocation_happened = true;
     aws_condition_variable_notify_one(rw_args->condition_variable);
     aws_mutex_unlock(rw_args->mutex);
+    if (rw_args->test_args->negotiation_result_fn) {
+        rw_args->test_args->negotiation_result_fn(handler, slot, AWS_ERROR_SUCCESS, rw_args->test_args->cb_data);
+        rw_args->test_args->negotiation_result_fn = NULL;
+    }
 
     return rw_args->received_message;
 }
@@ -271,6 +284,8 @@ static int s_local_server_tester_init(
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
+    aws_atomic_init_int((volatile struct aws_atomic_var *)&args->tls_ctx.ref_count, 1u);
+
     args->tls_options.ctx = &args->tls_ctx;
 
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
@@ -299,9 +314,15 @@ static int s_local_server_tester_clean_up(struct local_server_tester *tester) {
 static const char *s_write_tag = "I'm a big teapot";
 
 static int s_start_negotiation_fn(struct aws_channel_handler *handler, void *user_data) {
-    (void)user_data;
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str(s_write_tag);
     rw_handler_write(handler, handler->slot, &write_tag);
+
+    struct byo_crypto_test_args *test_args = user_data;
+    if (test_args->negotiation_result_fn) {
+        test_args->negotiation_result_fn(handler, handler->slot, AWS_ERROR_SUCCESS, test_args->cb_data);
+        test_args->negotiation_result_fn = NULL;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -315,6 +336,8 @@ struct aws_channel_handler *s_tls_handler_new(
     (void)slot;
 
     struct byo_crypto_test_args *test_args = user_data;
+    test_args->negotiation_result_fn = options->on_negotiation_result;
+    test_args->cb_data = options->user_data;
     return test_args->rw_handler;
 }
 
@@ -366,9 +389,11 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
 
     struct byo_crypto_test_args incoming_args;
     ASSERT_SUCCESS(s_byo_crypto_test_args_init(&incoming_args, &c_tester, incoming_rw_handler));
+    incoming_rw_args.test_args = &incoming_args;
 
     struct byo_crypto_test_args outgoing_args;
     ASSERT_SUCCESS(s_byo_crypto_test_args_init(&outgoing_args, &c_tester, outgoing_rw_handler));
+    outgoing_rw_args.test_args = &outgoing_args;
 
     struct aws_tls_byo_crypto_setup_options client_setup_options = {
         .new_handler_fn = s_tls_handler_new,
@@ -388,6 +413,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
 
+    aws_atomic_init_int((volatile struct aws_atomic_var *)&outgoing_args.tls_ctx.ref_count, 1u);
     outgoing_args.tls_options.ctx = &outgoing_args.tls_ctx;
 
     struct aws_client_bootstrap_options bootstrap_options = {
@@ -422,7 +448,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_byo_crypto_test_predicate, &incoming_rw_args));
 
-    rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+    rw_handler_write(incoming_args.rw_handler, incoming_args.rw_handler->slot, &read_tag);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_byo_crypto_test_predicate, &outgoing_rw_args));
     incoming_rw_args.invocation_happened = false;
