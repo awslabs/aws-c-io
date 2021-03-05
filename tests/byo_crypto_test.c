@@ -3,6 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#ifdef _MSVC_VER
+#    pragma warning(disable : 4206)
+#endif /* MSVC_VER */
+
 /* these tests only get built and run with the BYO_CRYPTO compiler define. */
 #ifdef BYO_CRYPTO
 
