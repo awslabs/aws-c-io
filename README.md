@@ -46,7 +46,7 @@ cmake -S aws-c-cal -B aws-c-cal/build -DCMAKE_INSTALL_PREFIX=<install-path> -DCM
 cmake --build aws-c-cal/build --target install
 
 git clone git@github.com:awslabs/aws-c-io.git
-cmake -S aws-c-io -B aws-c-io/build --DCMAKE_INSTALL_PREFIX=<install-path> DCMAKE_PREFIX_PATH=<install-path>
+cmake -S aws-c-io -B aws-c-io/build --DCMAKE_INSTALL_PREFIX=<install-path> -DCMAKE_PREFIX_PATH=<install-path>
 cmake --build aws-c-io/build --target install
 ```
 
