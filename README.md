@@ -230,7 +230,10 @@ BSD Variants | s2n
 Apple Devices | Security Framework/ Secure Transport. See https://developer.apple.com/documentation/security/secure_transport
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
 
-In addition, you can always write your own handler around your favorite implementation and use that.
+In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
+TLS implementation, you must build this library with the cmake argument `-DBYO_CRYPTO=ON`. You will no longer need s2n or
+libcrypto once you do this. Instead, your application provides an implementation of `aws_tls_ctx`, and `aws_channel_handler`.
+At startup time, you must invoke the functions: `aws_tls_byo_crypto_set_client_setup_options()` and `aws_tls_byo_crypto_set_server_setup_options()`.
 
 ### Typical Channel
 ![Typical Channel Diagram](docs/images/typical_channel.png)
