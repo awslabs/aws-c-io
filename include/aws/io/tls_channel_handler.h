@@ -203,7 +203,7 @@ enum aws_tls_negotiation_status {
 
 #ifdef BYO_CRYPTO
 /**
- * Callback for createing a TLS handler. If you're using this you're using BYO_CRYPTO. This function should return
+ * Callback for creating a TLS handler. If you're using this you're using BYO_CRYPTO. This function should return
  * a fully implemented aws_channel_handler instance for TLS. Note: the aws_tls_options passed to your
  * aws_tls_handler_new_fn contains multiple callbacks. Namely: aws_tls_on_negotiation_result_fn. You are responsible for
  * invoking this function when TLs session negotiation has completed.
@@ -217,7 +217,7 @@ typedef struct aws_channel_handler *(aws_tls_handler_new_fn)(
 /**
  * Invoked when it's time to start TLS negotiation. Note: the aws_tls_options passed to your aws_tls_handler_new_fn
  * contains multiple callbacks. Namely: aws_tls_on_negotiation_result_fn. You are responsible for invoking this function
- * when TLs session negotiation has completed.
+ * when TLS session negotiation has completed.
  */
 typedef int(aws_tls_client_handler_start_negotiation_fn)(struct aws_channel_handler *handler, void *user_data);
 

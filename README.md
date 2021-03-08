@@ -233,8 +233,7 @@ Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/d
 In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
 TLS implementation, you must build this library with the cmake argument `-DBYO_CRYPTO=ON`. You will no longer need s2n or
 libcrypto once you do this. Instead, your application provides an implementation of `aws_tls_ctx`, and `aws_channel_handler`.
-At startup time, you must invoke the functions: `aws_tls_client_handler_new_set_callback()`, `aws_tls_server_handler_new_set_callback()`,
-and `aws_tls_client_handler_set_start_negotiation_callback()`.
+At startup time, you must invoke the functions: `aws_tls_byo_crypto_set_client_setup_options()` and `aws_tls_byo_crypto_set_server_setup_options()`.
 
 ### Typical Channel
 ![Typical Channel Diagram](docs/images/typical_channel.png)
