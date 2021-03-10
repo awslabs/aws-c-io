@@ -3,33 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/channel_bootstrap.h>
-#include <aws/io/event_loop.h>
-#include <aws/io/file_utils.h>
-#include <aws/io/host_resolver.h>
-#include <aws/io/logging.h>
-#include <aws/io/socket.h>
-#include <aws/io/tls_channel_handler.h>
+#ifndef BYO_CRYPTO
 
-#include <aws/common/clock.h>
-#include <aws/common/condition_variable.h>
-#include <aws/common/thread.h>
+#    include <aws/io/channel_bootstrap.h>
+#    include <aws/io/event_loop.h>
+#    include <aws/io/file_utils.h>
+#    include <aws/io/host_resolver.h>
+#    include <aws/io/logging.h>
+#    include <aws/io/socket.h>
+#    include <aws/io/tls_channel_handler.h>
 
-#include <aws/testing/aws_test_harness.h>
+#    include <aws/common/clock.h>
+#    include <aws/common/condition_variable.h>
+#    include <aws/common/thread.h>
 
-#include <aws/common/string.h>
-#include <read_write_test_handler.h>
-#include <statistics_handler_test.h>
+#    include <aws/testing/aws_test_harness.h>
 
-#if _MSC_VER
-#    pragma warning(disable : 4996) /* sprintf */
-#endif
+#    include <aws/common/string.h>
+#    include <read_write_test_handler.h>
+#    include <statistics_handler_test.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu_%d.sock"
-#endif
+#    if _MSC_VER
+#        pragma warning(disable : 4996) /* sprintf */
+#    endif
+
+#    ifdef _WIN32
+#        define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
+#    else
+#        define LOCAL_SOCK_TEST_PATTERN "testsock%llu_%d.sock"
+#    endif
 
 struct tls_test_args {
     struct aws_allocator *allocator;
@@ -64,14 +66,14 @@ struct tls_opt_tester {
 
 static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
 
-#ifdef __APPLE__
+#    ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
-#else
+#    else
     ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
         &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
-#endif /* __APPLE__ */
+#    endif /* __APPLE__ */
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
     ASSERT_NOT_NULL(tester->ctx);
@@ -685,7 +687,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_FALSE(incoming_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#ifndef __APPLE__
+#    ifndef __APPLE__
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
 
     /* check ALPN and SNI was properly negotiated */
@@ -696,7 +698,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
             incoming_args.negotiated_protocol.buffer,
             incoming_args.negotiated_protocol.len);
     }
-#endif
+#    endif
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -705,7 +707,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_FALSE(outgoing_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#ifndef __MACH__
+#    ifndef __MACH__
     if (aws_tls_is_alpn_available()) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
@@ -713,7 +715,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
             outgoing_args.negotiated_protocol.buffer,
             outgoing_args.negotiated_protocol.len);
     }
-#endif
+#    endif
 
     ASSERT_FALSE(outgoing_args.error_invoked);
 
@@ -1796,7 +1798,7 @@ struct import_info {
 
 static void s_import_cert(void *ctx) {
     (void)ctx;
-#if !defined(AWS_OS_IOS)
+#    if !defined(AWS_OS_IOS)
     struct import_info *import = ctx;
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
@@ -1809,17 +1811,17 @@ static void s_import_cert(void *ctx) {
     AWS_FATAL_ASSERT(import->tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#endif /* !AWS_OS_IOS */
+#    endif /* !AWS_OS_IOS */
 }
 
-#define NUM_PAIRS 1
+#    define NUM_PAIRS 1
 static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* temporarily disable this on apple until we can fix importing to be more robust */
     /* temporarily disable this on linux until we can make CRYPTO_zalloc behave and stop angering ASan */
-#if defined(__APPLE__) || defined(__linux__)
+#    if defined(__APPLE__) || defined(__linux__)
     return AWS_OP_SUCCESS;
-#endif
+#    endif
 
     aws_io_library_init(allocator);
 
@@ -2191,7 +2193,7 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     ASSERT_FALSE(endpoint_server_test_state.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#ifndef __APPLE__
+#    ifndef __APPLE__
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
 
     /* check ALPN and SNI was properly negotiated */
@@ -2202,7 +2204,7 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
             endpoint_server_test_state.negotiated_protocol.buffer,
             endpoint_server_test_state.negotiated_protocol.len);
     }
-#endif
+#    endif
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -2214,7 +2216,7 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 3* Full circuit negotiated ");
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#ifndef __MACH__
+#    ifndef __MACH__
     if (aws_tls_is_alpn_available()) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
@@ -2222,7 +2224,7 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
             client_test_state.negotiated_protocol.buffer,
             client_test_state.negotiated_protocol.len);
     }
-#endif
+#    endif
 
     ASSERT_FALSE(client_test_state.error_invoked);
 
@@ -2301,3 +2303,5 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(tls_double_channel, s_tls_double_channel_fn)
+
+#endif /* BYO_CRYPTO */

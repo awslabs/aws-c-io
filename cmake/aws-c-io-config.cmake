@@ -1,6 +1,6 @@
 include(CMakeFindDependencyMacro)
 
-if (UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE AND NOT BYO_CRYPTO)
     find_dependency(s2n)
 endif()
 
