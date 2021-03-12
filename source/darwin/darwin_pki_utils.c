@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/pki_utils.h>
 
@@ -24,6 +14,8 @@
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
+
+#if !defined(AWS_OS_IOS)
 
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
@@ -83,7 +75,12 @@ int aws_import_public_and_private_keys_to_identity(
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
     if (cert_status == errSecDuplicateItem) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: certificate has already been imported, loading from keychain.");
+        /* The text for this log is also in the README for each CRT and v2 IoT SDK.  If changed, please also change
+         * where it is referenced. */
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI,
+            "static: certificate has an existing certificate-key pair that was previously imported into the Keychain.  "
+            "Using key from Keychain instead of the one provided.");
         struct aws_array_list cert_chain_list;
 
         if (aws_array_list_init_dynamic(&cert_chain_list, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -145,6 +142,8 @@ done:
 
     return result;
 }
+
+#endif /* AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,

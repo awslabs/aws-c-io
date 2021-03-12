@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/common/atomics.h>
@@ -30,9 +20,9 @@
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    struct aws_atomic_var setup_completed;
-    struct aws_atomic_var shutdown_completed;
-    int error_code; /* protected by mutex */
+    bool setup_completed;    /* protected by mutex */
+    bool shutdown_completed; /* protected by mutex */
+    int error_code;          /* protected by mutex */
     enum aws_task_status task_status;
 };
 
@@ -42,25 +32,24 @@ static void s_channel_setup_test_on_setup_completed(struct aws_channel *channel,
 
     aws_mutex_lock(&setup_test_args->mutex);
     setup_test_args->error_code |= error_code;
+    setup_test_args->setup_completed = true;
     aws_mutex_unlock(&setup_test_args->mutex);
-    aws_atomic_store_int(&setup_test_args->setup_completed, true);
     aws_condition_variable_notify_one(&setup_test_args->condition_variable);
 }
 
 static bool s_channel_setup_test_setup_completed_predicate(void *arg) {
     struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)arg;
-    return aws_atomic_load_int(&setup_test_args->setup_completed);
+    return setup_test_args->setup_completed;
 }
 
 /* Create a new channel and wait until its setup completes */
 static int s_channel_setup_create_and_wait(
     struct aws_allocator *allocator,
-    struct aws_event_loop *event_loop,
-    struct aws_channel_creation_callbacks *callbacks,
+    struct aws_channel_options *args,
     struct channel_setup_test_args *test_args,
     struct aws_channel **returned_channel) {
     ASSERT_NULL(*returned_channel);
-    *returned_channel = aws_channel_new(allocator, event_loop, callbacks);
+    *returned_channel = aws_channel_new(allocator, args);
     ASSERT_NOT_NULL(*returned_channel);
     ASSERT_SUCCESS(aws_mutex_lock(&test_args->mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -84,19 +73,20 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = NULL,
         .shutdown_user_data = NULL,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel_1));
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel_2));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel_1));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel_2));
 
     aws_channel_destroy(channel_1);
     aws_channel_destroy(channel_2);
@@ -120,18 +110,19 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = NULL,
         .shutdown_user_data = NULL,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     struct aws_channel_slot *slot;
     slot = aws_channel_slot_new(channel);
@@ -158,18 +149,19 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = NULL,
         .shutdown_user_data = NULL,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     struct aws_channel_slot *slot_1, *slot_2, *slot_3, *slot_4, *slot_5;
     slot_1 = aws_channel_slot_new(channel);
@@ -256,19 +248,20 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = NULL,
         .shutdown_user_data = NULL,
+        .event_loop = event_loop,
     };
 
     struct aws_channel *channel = NULL;
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     /* Add handler to channel */
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
@@ -316,203 +309,6 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
 }
 AWS_TEST_CASE(channel_refcount_delays_clean_up, s_test_channel_refcount)
 
-struct channel_rw_test_args {
-    struct aws_byte_buf read_tag;
-    struct aws_byte_buf write_tag;
-    struct aws_byte_buf latest_message;
-    struct aws_atomic_var shutdown_completed;
-    bool write_on_read;
-    struct aws_condition_variable *condition_variable;
-};
-
-static bool s_rw_test_shutdown_predicate(void *arg) {
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)arg;
-    return aws_atomic_load_int(&rw_test_args->shutdown_completed);
-}
-
-static void s_rw_test_on_shutdown_completed(struct aws_channel *channel, int error_code, void *user_data) {
-    (void)channel;
-    (void)error_code;
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
-
-    aws_atomic_store_int(&rw_test_args->shutdown_completed, true);
-
-    if (rw_test_args->condition_variable) {
-        aws_condition_variable_notify_one(rw_test_args->condition_variable);
-    }
-}
-
-static struct aws_byte_buf s_channel_rw_test_on_write(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data);
-
-static struct aws_byte_buf s_channel_rw_test_on_read(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data) {
-
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
-
-    if (data_read) {
-        memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
-        memcpy(
-            rw_test_args->latest_message.buffer + data_read->len,
-            rw_test_args->read_tag.buffer,
-            rw_test_args->read_tag.len);
-        rw_test_args->latest_message.len = data_read->len + rw_test_args->read_tag.len;
-    } else {
-        return rw_test_args->read_tag;
-    }
-
-    if (rw_test_args->write_on_read) {
-        struct aws_byte_buf write_data =
-            s_channel_rw_test_on_write(handler, slot, &rw_test_args->latest_message, user_data);
-        rw_handler_write(handler, slot, &write_data);
-    }
-
-    return rw_test_args->latest_message;
-}
-
-static struct aws_byte_buf s_channel_rw_test_on_write(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data) {
-
-    (void)handler;
-    (void)slot;
-    struct channel_rw_test_args *rw_test_args = (struct channel_rw_test_args *)user_data;
-
-    memcpy(rw_test_args->latest_message.buffer, data_read->buffer, data_read->len);
-    memcpy(
-        rw_test_args->latest_message.buffer + data_read->len,
-        rw_test_args->write_tag.buffer,
-        rw_test_args->write_tag.len);
-    rw_test_args->latest_message.len = data_read->len + rw_test_args->write_tag.len;
-
-    return rw_test_args->latest_message;
-}
-
-static int s_test_channel_message_passing(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-
-    struct channel_setup_test_args test_args = {
-        .error_code = 0,
-        .mutex = AWS_MUTEX_INIT,
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-    };
-
-    uint8_t handler_1_latest_message[128] = {0};
-    uint8_t handler_2_latest_message[128] = {0};
-    uint8_t handler_3_latest_message[128] = {0};
-
-    struct aws_condition_variable shutdown_condition = AWS_CONDITION_VARIABLE_INIT;
-    struct aws_mutex shutdown_mutex = AWS_MUTEX_INIT;
-
-    struct channel_rw_test_args handler_1_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_1_latest_message, sizeof(handler_1_latest_message)),
-
-        .read_tag = aws_byte_buf_from_c_str("handler 1 read, "),
-        .write_tag = aws_byte_buf_from_c_str("handler 1 written, "),
-
-        .write_on_read = false,
-        .condition_variable = &shutdown_condition,
-    };
-
-    struct channel_rw_test_args handler_3_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_3_latest_message, sizeof(handler_1_latest_message)),
-        .read_tag = aws_byte_buf_from_c_str("handler 3 read, "),
-        .write_tag = aws_byte_buf_from_c_str("handler 3 written, "),
-
-        .write_on_read = true,
-        .condition_variable = NULL,
-    };
-
-    struct aws_channel_creation_callbacks callbacks = {
-        .on_setup_completed = s_channel_setup_test_on_setup_completed,
-        .setup_user_data = &test_args,
-        .on_shutdown_completed = s_rw_test_on_shutdown_completed,
-        .shutdown_user_data = &handler_1_args,
-    };
-
-    struct aws_channel *channel = NULL;
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
-
-    struct aws_channel_slot *slot_1, *slot_2, *slot_3;
-    slot_1 = aws_channel_slot_new(channel);
-    slot_2 = aws_channel_slot_new(channel);
-    slot_3 = aws_channel_slot_new(channel);
-
-    ASSERT_NOT_NULL(slot_1);
-    ASSERT_NOT_NULL(slot_2);
-    ASSERT_NOT_NULL(slot_3);
-
-    ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_1, slot_2));
-    ASSERT_SUCCESS(aws_channel_slot_insert_right(slot_2, slot_3));
-
-    struct aws_channel_handler *handler_1 =
-        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_1_args);
-    ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_1, handler_1));
-
-    struct channel_rw_test_args handler_2_args = {
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
-        .latest_message = aws_byte_buf_from_array(handler_2_latest_message, sizeof(handler_1_latest_message)),
-        .read_tag = aws_byte_buf_from_c_str("handler 2 read, "),
-        .write_tag = aws_byte_buf_from_c_str("handler 2 written, "),
-
-        .write_on_read = false,
-        .condition_variable = NULL,
-    };
-
-    struct aws_channel_handler *handler_2 =
-        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_2_args);
-    ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_2, handler_2));
-
-    struct aws_channel_handler *handler_3 =
-        rw_handler_new(allocator, s_channel_rw_test_on_read, s_channel_rw_test_on_write, false, 10000, &handler_3_args);
-    ASSERT_SUCCESS(aws_channel_slot_set_handler(slot_3, handler_3));
-
-    rw_handler_trigger_read(handler_1, slot_1);
-    struct aws_byte_buf final_message = handler_1_args.latest_message;
-
-    struct aws_byte_buf expected = aws_byte_buf_from_c_str("handler 1 read, handler 2 read, handler 3 read, "
-
-                                                           "handler 3 written, handler 2 written, handler 1 written, ");
-    ASSERT_BIN_ARRAYS_EQUALS(expected.buffer, expected.len, final_message.buffer, final_message.len);
-
-    aws_channel_shutdown(channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_mutex_lock(&shutdown_mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &shutdown_condition, &shutdown_mutex, s_rw_test_shutdown_predicate, &handler_1_args));
-    ASSERT_SUCCESS(aws_mutex_unlock(&shutdown_mutex));
-
-    ASSERT_TRUE(aws_atomic_load_int(&handler_1_args.shutdown_completed));
-
-    ASSERT_TRUE(rw_handler_shutdown_called(handler_1));
-    ASSERT_TRUE(rw_handler_shutdown_called(handler_2));
-    ASSERT_TRUE(rw_handler_shutdown_called(handler_3));
-    ASSERT_TRUE(rw_handler_increment_read_window_called(handler_1));
-    ASSERT_TRUE(rw_handler_increment_read_window_called(handler_2));
-
-    aws_channel_destroy(channel);
-    aws_event_loop_destroy(event_loop);
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(channel_message_passing, s_test_channel_message_passing)
-
 static void s_channel_post_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
@@ -525,13 +321,15 @@ static void s_channel_test_shutdown(struct aws_channel *channel, int error_code,
     (void)error_code;
 
     struct channel_setup_test_args *test_args = user_data;
-    aws_atomic_store_int(&test_args->shutdown_completed, true);
+    aws_mutex_lock(&test_args->mutex);
+    test_args->shutdown_completed = true;
+    aws_mutex_unlock(&test_args->mutex);
     aws_condition_variable_notify_one(&test_args->condition_variable);
 }
 
 static bool s_channel_test_shutdown_predicate(void *arg) {
     struct channel_setup_test_args *test_args = (struct channel_setup_test_args *)arg;
-    return aws_atomic_load_int(&test_args->shutdown_completed);
+    return test_args->shutdown_completed;
 }
 
 enum tasks_run_id {
@@ -594,19 +392,20 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_channel_test_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     /* Set up tasks */
     AWS_ZERO_STRUCT(s_tasks_run_data);
@@ -661,19 +460,20 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_channel_test_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
@@ -707,19 +507,20 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
         .task_status = 100,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_channel_test_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     struct aws_channel_task task;
     aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args, "channel_post_shutdown_cancellation");
@@ -757,18 +558,19 @@ static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, vo
         .error_code = 0,
         .mutex = AWS_MUTEX_INIT,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .setup_completed = AWS_ATOMIC_INIT_INT(false),
-        .shutdown_completed = AWS_ATOMIC_INIT_INT(false),
+        .setup_completed = false,
+        .shutdown_completed = false,
     };
 
-    struct aws_channel_creation_callbacks callbacks = {
+    struct aws_channel_options args = {
         .on_setup_completed = s_channel_setup_test_on_setup_completed,
         .setup_user_data = &test_args,
         .on_shutdown_completed = s_channel_test_shutdown,
         .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
     };
 
-    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, event_loop, &callbacks, &test_args, &channel));
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
 
     ASSERT_SUCCESS(aws_channel_shutdown(channel, AWS_ERROR_SUCCESS));
     ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
@@ -843,10 +645,18 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 1));
-
     struct aws_mutex mutex = AWS_MUTEX_INIT;
+
+    struct channel_connect_test_args callback_data = {
+        .mutex = &mutex,
+        .cv = AWS_CONDITION_VARIABLE_INIT,
+        .error_code = 0,
+        .channel = NULL,
+        .setup = false,
+        .shutdown = false,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;
@@ -932,12 +742,15 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 8, &event_loop_group));
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = event_loop_group,
+        .max_entries = 8,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &event_loop_group,
-        .host_resolver = &resolver,
+        .event_loop_group = event_loop_group,
+        .host_resolver = resolver,
         .host_resolution_config = &mock_resolver_config,
     };
 
@@ -948,15 +761,6 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
-
-    struct channel_connect_test_args callback_data = {
-        .mutex = &mutex,
-        .cv = AWS_CONDITION_VARIABLE_INIT,
-        .error_code = 0,
-        .channel = NULL,
-        .setup = false,
-        .shutdown = false,
-    };
 
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
@@ -988,9 +792,10 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     /* clean up */
     aws_client_bootstrap_release(bootstrap);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
-    aws_event_loop_group_clean_up(&event_loop_group);
+    aws_event_loop_group_release(event_loop_group);
+
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);
         aws_host_address_clean_up(resolved_s3_address);

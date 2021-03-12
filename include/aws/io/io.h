@@ -1,19 +1,9 @@
 #ifndef AWS_IO_IO_H
 #define AWS_IO_IO_H
 
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/byte_buf.h>
 #include <aws/common/common.h>
@@ -141,6 +131,9 @@ enum aws_io_errors {
     AWS_IO_SHARED_LIBRARY_LOAD_FAILURE,
     AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
     AWS_IO_TLS_NEGOTIATION_TIMEOUT,
+    AWS_IO_TLS_ALERT_NOT_GRACEFUL,
+    AWS_IO_MAX_RETRIES_EXCEEDED,
+    AWS_IO_RETRY_PERMISSION_DENIED,
 
     AWS_IO_ERROR_END_RANGE = AWS_ERROR_ENUM_END_RANGE(AWS_C_IO_PACKAGE_ID)
 };

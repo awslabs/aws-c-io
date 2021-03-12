@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/socket.h>
@@ -25,9 +15,9 @@
 
 #include <arpa/inet.h>
 #include <aws/io/io.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netinet/tcp.h>
-#include <sys/errno.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -47,6 +37,14 @@
  */
 #ifndef O_CLOEXEC
 #    define O_CLOEXEC 02000000
+#endif
+
+#ifdef USE_VSOCK
+#    if defined(__linux__) && defined(AF_VSOCK)
+#        include <linux/vm_sockets.h>
+#    else
+#        error "USE_VSOCK not supported on current platform"
+#    endif
 #endif
 
 /* other than CONNECTED_READ | CONNECTED_WRITE
@@ -71,6 +69,10 @@ static int s_convert_domain(enum aws_socket_domain domain) {
             return AF_INET6;
         case AWS_SOCKET_LOCAL:
             return AF_UNIX;
+#ifdef USE_VSOCK
+        case AWS_SOCKET_VSOCK:
+            return AF_VSOCK;
+#endif
         default:
             AWS_ASSERT(0);
             return AF_INET;
@@ -158,14 +160,25 @@ struct posix_socket_connect_args {
 
 struct posix_socket {
     struct aws_linked_list write_queue;
+    struct aws_linked_list written_queue;
+    struct aws_task written_task;
     struct posix_socket_connect_args *connect_args;
-    bool write_in_progress;
+    /* Note that only the posix_socket impl part is refcounted.
+     * The public aws_socket can be a stack variable and cleaned up synchronously
+     * (by blocking until the event-loop cleans up the impl part).
+     * In hindsight, aws_socket should have been heap-allocated and refcounted, but alas */
+    struct aws_ref_count internal_refcount;
+    struct aws_allocator *allocator;
+    bool written_task_scheduled;
     bool currently_subscribed;
     bool continue_accept;
-    bool currently_in_event;
-    bool clean_yourself_up;
     bool *close_happened;
 };
+
+static void s_socket_destroy_impl(void *user_data) {
+    struct posix_socket *socket_impl = user_data;
+    aws_mem_release(socket_impl->allocator, socket_impl);
+}
 
 static int s_socket_init(
     struct aws_socket *socket,
@@ -202,11 +215,11 @@ static int s_socket_init(
     }
 
     aws_linked_list_init(&posix_socket->write_queue);
-    posix_socket->write_in_progress = false;
+    aws_linked_list_init(&posix_socket->written_queue);
     posix_socket->currently_subscribed = false;
     posix_socket->continue_accept = false;
-    posix_socket->currently_in_event = false;
-    posix_socket->clean_yourself_up = false;
+    aws_ref_count_init(&posix_socket->internal_refcount, posix_socket, s_socket_destroy_impl);
+    posix_socket->allocator = alloc;
     posix_socket->connect_args = NULL;
     posix_socket->close_happened = NULL;
     socket->impl = posix_socket;
@@ -223,22 +236,22 @@ void aws_socket_clean_up(struct aws_socket *socket) {
         /* protect from double clean */
         return;
     }
+
+    int fd_for_logging = socket->io_handle.data.fd; /* socket's fd gets reset before final log */
+    (void)fd_for_logging;
+
     if (aws_socket_is_open(socket)) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, socket->io_handle.data.fd);
+        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: is still open, closing...", (void *)socket, fd_for_logging);
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
 
-    if (!socket_impl->currently_in_event) {
-        aws_mem_release(socket->allocator, socket->impl);
-    } else {
+    if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: is still pending io letting it dangle and cleaning up later.",
             (void *)socket,
-            socket->io_handle.data.fd);
-        socket_impl->clean_yourself_up = true;
+            fd_for_logging);
     }
 
     AWS_ZERO_STRUCT(*socket);
@@ -508,8 +521,45 @@ struct socket_address {
         struct sockaddr_in addr_in;
         struct sockaddr_in6 addr_in6;
         struct sockaddr_un un_addr;
+#ifdef USE_VSOCK
+        struct sockaddr_vm vm_addr;
+#endif
     } sock_addr_types;
 };
+
+#ifdef USE_VSOCK
+/** Convert a string to a VSOCK CID. Respects the calling convetion of inet_pton:
+ * 0 on error, 1 on success. */
+static int parse_cid(const char *cid_str, unsigned int *value) {
+    if (cid_str == NULL || value == NULL) {
+        errno = EINVAL;
+        return 0;
+    }
+    /* strtoll returns 0 as both error and correct value */
+    errno = 0;
+    /* unsigned long long to handle edge cases in convention explicitly */
+    long long cid = strtoll(cid_str, NULL, 10);
+    if (errno != 0) {
+        return 0;
+    }
+
+    /* -1U means any, so it's a valid value, but it needs to be converted to
+     * unsigned int. */
+    if (cid == -1) {
+        *value = VMADDR_CID_ANY;
+        return 1;
+    }
+
+    if (cid < 0 || cid > UINT_MAX) {
+        errno = ERANGE;
+        return 0;
+    }
+
+    /* cast is safe here, edge cases already checked */
+    *value = (unsigned int)cid;
+    return 1;
+}
+#endif
 
 int aws_socket_connect(
     struct aws_socket *socket,
@@ -526,12 +576,16 @@ int aws_socket_connect(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (socket->state != INIT) {
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
+        if (socket->state != INIT) {
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
+    } else { /* UDP socket */
+        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        if (socket->state != CONNECTED_READ && socket->state != INIT) {
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
     }
 
     size_t address_strlen;
@@ -557,6 +611,13 @@ int aws_socket_connect(
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
+#ifdef USE_VSOCK
+    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
+        pton_err = parse_cid(remote_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
+        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
+        address.sock_addr_types.vm_addr.svm_port = (unsigned int)remote_endpoint->port;
+        sock_size = sizeof(address.sock_addr_types.vm_addr);
+#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -724,6 +785,13 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
+#ifdef USE_VSOCK
+    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
+        pton_err = parse_cid(local_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
+        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
+        address.sock_addr_types.vm_addr.svm_port = (unsigned int)local_endpoint->port;
+        sock_size = sizeof(address.sock_addr_types.vm_addr);
+#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -1026,12 +1094,14 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         AWS_LS_IO_SOCKET, "id=%p fd=%d: stopping accepting new connections", (void *)socket, socket->io_handle.data.fd);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
-        struct stop_accept_args args = {.mutex = AWS_MUTEX_INIT,
-                                        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                        .invoked = false,
-                                        .socket = socket,
-                                        .ret_code = AWS_OP_SUCCESS,
-                                        .task = {.fn = s_stop_accept_task}};
+        struct stop_accept_args args = {
+            .mutex = AWS_MUTEX_INIT,
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .invoked = false,
+            .socket = socket,
+            .ret_code = AWS_OP_SUCCESS,
+            .task = {.fn = s_stop_accept_task},
+        };
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stopping accepting new connections from a different thread than "
@@ -1045,6 +1115,7 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
         aws_mutex_lock(&args.mutex);
         aws_event_loop_schedule_task_now(socket->event_loop, &args.task);
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_stop_accept_pred, &args);
+        aws_mutex_unlock(&args.mutex);
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: stop accept task finished running.",
@@ -1171,6 +1242,7 @@ struct write_request {
     void *write_user_data;
     struct aws_linked_list_node node;
     size_t original_buffer_len;
+    int error_code;
 };
 
 struct posix_socket_close_args {
@@ -1206,6 +1278,7 @@ static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status 
 int aws_socket_close(struct aws_socket *socket) {
     struct posix_socket *socket_impl = socket->impl;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: closing", (void *)socket, socket->io_handle.data.fd);
+    struct aws_event_loop *event_loop = socket->event_loop;
     if (socket->event_loop) {
         /* don't freak out on me, this almost never happens, and never occurs inside a channel
          * it only gets hit from a listening socket shutting down or from a unit test. */
@@ -1234,11 +1307,14 @@ int aws_socket_close(struct aws_socket *socket) {
                 .arg = &args,
             };
 
+            int fd_for_logging = socket->io_handle.data.fd; /* socket's fd gets reset before final log */
+            (void)fd_for_logging;
+
             aws_mutex_lock(&args.mutex);
             aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
-            AWS_LOGF_INFO(
-                AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, socket->io_handle.data.fd);
+            aws_mutex_unlock(&args.mutex);
+            AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd_for_logging);
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
             }
@@ -1275,14 +1351,25 @@ int aws_socket_close(struct aws_socket *socket) {
         socket->io_handle.data.fd = -1;
         socket->state = CLOSED;
 
-        /* after close, just go ahead and clear out the pending writes queue
-         * and tell the user they were cancelled. */
+        /* ensure callbacks for pending writes fire (in order) before this close function returns */
+
+        if (socket_impl->written_task_scheduled) {
+            aws_event_loop_cancel_task(event_loop, &socket_impl->written_task);
+        }
+
+        while (!aws_linked_list_empty(&socket_impl->written_queue)) {
+            struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->written_queue);
+            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
+            write_request->written_fn(socket, write_request->error_code, bytes_written, write_request->write_user_data);
+            aws_mem_release(socket->allocator, write_request);
+        }
+
         while (!aws_linked_list_empty(&socket_impl->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
             struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
-
-            write_request->written_fn(
-                socket, AWS_IO_SOCKET_CLOSED, write_request->original_buffer_len, write_request->write_user_data);
+            size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
+            write_request->written_fn(socket, AWS_IO_SOCKET_CLOSED, bytes_written, write_request->write_user_data);
             aws_mem_release(socket->allocator, write_request);
         }
     }
@@ -1308,21 +1395,53 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
     return AWS_OP_SUCCESS;
 }
 
+static void s_written_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct aws_socket *socket = arg;
+    struct posix_socket *socket_impl = socket->impl;
+
+    socket_impl->written_task_scheduled = false;
+
+    /* this is to handle a race condition when a callback kicks off a cleanup, or the user decides
+     * to close the socket based on something they read (SSL validation failed for example).
+     * if clean_up happens when internal_refcount > 0, socket_impl is kept dangling */
+    aws_ref_count_acquire(&socket_impl->internal_refcount);
+
+    /* Notes about weird loop:
+     * 1) Only process the initial contents of queue when this task is run,
+     *    ignoring any writes queued during delivery.
+     *    If we simply looped until the queue was empty, we could get into a
+     *    synchronous loop of completing and writing and completing and writing...
+     *    and it would be tough for multiple sockets to share an event-loop fairly.
+     * 2) Check if queue is empty with each iteration.
+     *    If user calls close() from the callback, close() will process all
+     *    nodes in the written_queue, and the queue will be empty when the
+     *    callstack gets back to here. */
+    if (!aws_linked_list_empty(&socket_impl->written_queue)) {
+        struct aws_linked_list_node *stop_after = aws_linked_list_back(&socket_impl->written_queue);
+        do {
+            struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->written_queue);
+            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
+            write_request->written_fn(socket, write_request->error_code, bytes_written, write_request->write_user_data);
+            aws_mem_release(socket_impl->allocator, write_request);
+            if (node == stop_after) {
+                break;
+            }
+        } while (!aws_linked_list_empty(&socket_impl->written_queue));
+    }
+
+    aws_ref_count_release(&socket_impl->internal_refcount);
+}
+
 /* this gets called in two scenarios.
  * 1st scenario, someone called aws_socket_write() and we want to try writing now, so an error can be returned
  * immediately if something bad has happened to the socket. In this case, `parent_request` is set.
  * 2nd scenario, the event loop notified us that the socket went writable. In this case `parent_request` is NULL */
 static int s_process_write_requests(struct aws_socket *socket, struct write_request *parent_request) {
     struct posix_socket *socket_impl = socket->impl;
-    struct aws_allocator *allocator = socket->allocator;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, "id=%p fd=%d: processing write requests.", (void *)socket, socket->io_handle.data.fd);
-
-    /* there's a potential deadlock where we notify the user that we wrote some data, the user
-     * says, "cool, now I can write more and then immediately calls aws_socket_write(). We need to make sure
-     * that we don't allow reentrancy in that case. */
-    socket_impl->write_in_progress = true;
 
     if (parent_request) {
         AWS_LOGF_TRACE(
@@ -1330,7 +1449,6 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
             "id=%p fd=%d: processing write requests, called from aws_socket_write",
             (void *)socket,
             socket->io_handle.data.fd);
-        socket_impl->currently_in_event = true;
     } else {
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
@@ -1342,6 +1460,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
     bool purge = false;
     int aws_error = AWS_OP_SUCCESS;
     bool parent_request_failed = false;
+    bool pushed_to_written_queue = false;
 
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
     while (!aws_linked_list_empty(&socket_impl->write_queue)) {
@@ -1413,9 +1532,9 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
                 AWS_LS_IO_SOCKET, "id=%p fd=%d: write request completed", (void *)socket, socket->io_handle.data.fd);
 
             aws_linked_list_remove(node);
-            write_request->written_fn(
-                socket, AWS_OP_SUCCESS, write_request->original_buffer_len, write_request->write_user_data);
-            aws_mem_release(allocator, write_request);
+            write_request->error_code = AWS_ERROR_SUCCESS;
+            aws_linked_list_push_back(&socket_impl->written_queue, node);
+            pushed_to_written_queue = true;
         }
     }
 
@@ -1428,22 +1547,19 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
              * as the user will be able to rely on the return value from aws_socket_write() */
             if (write_request == parent_request) {
                 parent_request_failed = true;
+                aws_mem_release(socket->allocator, write_request);
             } else {
-                write_request->written_fn(socket, aws_error, 0, write_request->write_user_data);
+                write_request->error_code = aws_error;
+                aws_linked_list_push_back(&socket_impl->written_queue, node);
+                pushed_to_written_queue = true;
             }
-
-            aws_mem_release(socket->allocator, write_request);
         }
     }
 
-    socket_impl->write_in_progress = false;
-
-    if (parent_request) {
-        socket_impl->currently_in_event = false;
-    }
-
-    if (socket_impl->clean_yourself_up) {
-        aws_mem_release(allocator, socket_impl);
+    if (pushed_to_written_queue && !socket_impl->written_task_scheduled) {
+        socket_impl->written_task_scheduled = true;
+        aws_task_init(&socket_impl->written_task, s_written_task, socket, "socket_written_task");
+        aws_event_loop_schedule_task_now(socket->event_loop, &socket_impl->written_task);
     }
 
     /* Only report error if aws_socket_write() invoked this function and its write_request failed */
@@ -1462,15 +1578,14 @@ static void s_on_socket_io_event(
     void *user_data) {
     (void)event_loop;
     (void)handle;
-    /* this is to handle a race condition when an error kicks off a cleanup, or the user decides
-     * to close the socket based on something they read (SSL validation failed for example).
-     * if clean_up happens when currently_in_event is true, socket_impl is kept dangling but currently
-     * subscribed is set to false. */
     struct aws_socket *socket = user_data;
     struct posix_socket *socket_impl = socket->impl;
-    struct aws_allocator *allocator = socket->allocator;
 
-    socket_impl->currently_in_event = true;
+    /* this is to handle a race condition when an error kicks off a cleanup, or the user decides
+     * to close the socket based on something they read (SSL validation failed for example).
+     * if clean_up happens when internal_refcount > 0, socket_impl is kept dangling but currently
+     * subscribed is set to false. */
+    aws_ref_count_acquire(&socket_impl->internal_refcount);
 
     if (events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP || events & AWS_IO_EVENT_TYPE_CLOSED) {
         aws_raise_error(AWS_IO_SOCKET_CLOSED);
@@ -1506,11 +1621,7 @@ static void s_on_socket_io_event(
     }
 
 end_check:
-    socket_impl->currently_in_event = false;
-
-    if (socket_impl->clean_yourself_up) {
-        aws_mem_release(allocator, socket_impl);
-    }
+    aws_ref_count_release(&socket_impl->internal_refcount);
 }
 
 int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop) {
@@ -1630,8 +1741,11 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     }
 
     int error = errno;
-
+#if defined(EWOULDBLOCK)
+    if (error == EAGAIN || error == EWOULDBLOCK) {
+#else
     if (error == EAGAIN) {
+#endif
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: read would block", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
@@ -1646,6 +1760,12 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_SOCKET_TIMEOUT);
     }
 
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: read failed with error: %s",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        strerror(error));
     return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
@@ -1681,12 +1801,7 @@ int aws_socket_write(
     write_request->cursor_cpy = *cursor;
     aws_linked_list_push_back(&socket_impl->write_queue, &write_request->node);
 
-    /* avoid reentrancy when a user calls write after receiving their completion callback. */
-    if (!socket_impl->write_in_progress) {
-        return s_process_write_requests(socket, write_request);
-    }
-
-    return AWS_OP_SUCCESS;
+    return s_process_write_requests(socket, write_request);
 }
 
 int aws_socket_get_error(struct aws_socket *socket) {

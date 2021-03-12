@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include "mock_dns_resolver.h"
 
@@ -54,18 +44,18 @@ int mock_dns_resolve(
     struct mock_dns_resolver *mock_resolver = user_data;
 
     if (mock_resolver->resolve_count == mock_resolver->max_resolves) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
     }
 
     struct aws_array_list *iteration_list = NULL;
     if (aws_array_list_get_at_ptr(&mock_resolver->address_list, (void **)&iteration_list, mock_resolver->index)) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_UNKNOWN);
     }
     mock_resolver->index = (mock_resolver->index + 1) % aws_array_list_length(&mock_resolver->address_list);
     mock_resolver->resolve_count += 1;
 
     if (aws_array_list_length(iteration_list) == 0) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
     }
 
     for (size_t i = 0; i < aws_array_list_length(iteration_list); ++i) {

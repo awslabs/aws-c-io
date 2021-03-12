@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/host_resolver.h>
@@ -37,10 +27,13 @@ int aws_default_dns_resolve(
     socklen_t max_len = INET6_ADDRSTRLEN;
     char address_buffer[max_len];
 
-    size_t hostname_len = host_name->len;
     const char *hostname_cstr = aws_string_c_str(host_name);
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
+    /* Android would prefer NO HINTS IF YOU DON'T MIND, SIR */
+#ifdef ANDROID
+    int err_code = getaddrinfo(hostname_cstr, NULL, NULL, &result);
+#else
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
     hints.ai_family = AF_UNSPEC;
@@ -48,6 +41,7 @@ int aws_default_dns_resolve(
     hints.ai_flags = AI_ALL | AI_V4MAPPED;
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
+#endif
 
     if (err_code) {
         AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", err_code);
@@ -75,8 +69,7 @@ int aws_default_dns_resolve(
             goto clean_up;
         }
 
-        const struct aws_string *host_cpy =
-            aws_string_new_from_array(allocator, (const uint8_t *)hostname_cstr, hostname_len);
+        const struct aws_string *host_cpy = aws_string_new_from_string(allocator, host_name);
 
         if (!host_cpy) {
             aws_string_destroy((void *)address);

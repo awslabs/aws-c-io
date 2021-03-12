@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/stream.h>
@@ -170,7 +160,7 @@ static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, 
     }
 
     if (!aws_byte_buf_write(dest, impl->current_cursor.ptr, actually_read)) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_STREAM_READ_FAILED);
     }
 
     aws_byte_cursor_advance(&impl->current_cursor, actually_read);
@@ -195,7 +185,7 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
 #if SIZE_MAX > INT64_MAX
     size_t length = impl->original_cursor.len;
     if (length > INT64_MAX) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_ERROR_OVERFLOW_DETECTED);
     }
 #endif
 

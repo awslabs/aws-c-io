@@ -1,18 +1,8 @@
 #ifndef AWS_IO_SOCKET_H
 #define AWS_IO_SOCKET_H
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/io/channel.h>
@@ -23,6 +13,8 @@ enum aws_socket_domain {
     AWS_SOCKET_IPV6,
     /* Unix domain sockets (or at least something like them) */
     AWS_SOCKET_LOCAL,
+    /* VSOCK used in inter-VM communication */
+    AWS_SOCKET_VSOCK,
 };
 
 enum aws_socket_type {
@@ -32,7 +24,7 @@ enum aws_socket_type {
     AWS_SOCKET_STREAM,
     /* A datagram socket is connectionless and sends unreliable messages.
      * This means UDP when used with IPV4/6.
-     * LOCAL sockets are not compatible with DGRAM.*/
+     * LOCAL and VSOCK sockets are not compatible with DGRAM.*/
     AWS_SOCKET_DGRAM,
 };
 
@@ -162,7 +154,7 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * Connects to a remote endpoint. In UDP, this simply binds the socket to a remote address for use with
  * `aws_socket_write()`, and if the operation is successful, the socket can immediately be used for write operations.
  *
- * In TCP amd LOCAL, this function will not block. If the return value is successful, then you must wait on the
+ * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
@@ -185,12 +177,12 @@ AWS_IO_API int aws_socket_connect(
 AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 /**
- * TCP and LOCAL only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
+ * TCP, LOCAL and VSOCK only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
  */
 AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 
 /**
- * TCP and LOCAL only. The socket will begin accepting new connections. This is an asynchronous operation. New
+ * TCP, LOCAL and VSOCK only. The socket will begin accepting new connections. This is an asynchronous operation. New
  * connections or errors will arrive via the `on_accept_result` callback.
  *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
@@ -202,7 +194,7 @@ AWS_IO_API int aws_socket_start_accept(
     void *user_data);
 
 /**
- * TCP and LOCAL only. The listening socket will stop accepting new connections.
+ * TCP, LOCAL and VSOCK only. The listening socket will stop accepting new connections.
  * It is safe to call `aws_socket_start_accept()` again after
  * this operation. This can be called from any thread but be aware,
  * on some platforms, if you call this from outside of the current event loop's thread, it will block

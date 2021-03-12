@@ -1,21 +1,11 @@
 #ifndef AWS_IO_CHANNEL_BOOTSTRAP_H
 #define AWS_IO_CHANNEL_BOOTSTRAP_H
 
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/atomics.h>
+#include <aws/common/ref_count.h>
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
 
@@ -73,7 +63,7 @@ struct aws_client_bootstrap {
     struct aws_host_resolver *host_resolver;
     struct aws_host_resolution_config host_resolver_config;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
     void *user_data;
 };
@@ -155,7 +145,7 @@ struct aws_server_bootstrap {
     struct aws_allocator *allocator;
     struct aws_event_loop_group *event_loop_group;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    struct aws_atomic_var ref_count;
+    struct aws_ref_count ref_count;
 };
 
 /**
@@ -187,6 +177,35 @@ struct aws_socket_channel_bootstrap_options {
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
     aws_client_bootstrap_on_channel_event_fn *setup_callback;
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
+    bool enable_read_back_pressure;
+    void *user_data;
+};
+
+/**
+ * Arguments to setup a server socket listener which will also negotiate and configure TLS.
+ * This creates a socket listener bound to `host` and 'port' using socket options `options`, and TLS options
+ * `tls_options`. `incoming_callback` will be invoked once an incoming channel is ready for use and TLS is
+ * finished negotiating, or if an error is encountered. `shutdown_callback` will be invoked once the channel has
+ * shutdown. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
+ * connections and channels have finished shutting down. Immediately after the `shutdown_callback` returns, the channel
+ * is cleaned up automatically. All callbacks are invoked in the thread of the event-loop that listener is assigned to.
+ *
+ * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
+ * value from this function.
+ *
+ * The socket type in `options` must be AWS_SOCKET_STREAM if tls_options is set.
+ * DTLS is not currently supported for tls.
+ */
+struct aws_server_socket_channel_bootstrap_options {
+    struct aws_server_bootstrap *bootstrap;
+    const char *host_name;
+    uint16_t port;
+    const struct aws_socket_options *socket_options;
+    const struct aws_tls_connection_options *tls_options;
+    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
+    bool enable_read_back_pressure;
     void *user_data;
 };
 
@@ -200,9 +219,14 @@ AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_new(
     const struct aws_client_bootstrap_options *options);
 
 /**
- * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak. Note that this will not necessarily free the memory immediately if
- * there are channels or channel events outstanding.
+ * Increments a client bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same client bootstrap passed in.
+ */
+AWS_IO_API struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap);
+
+/**
+ * Decrements a client bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap);
 
@@ -228,9 +252,14 @@ AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_new(
     struct aws_event_loop_group *el_group);
 
 /**
- * Cleans up the bootstrap's resources. Does not clean up any of your channels. You must shutdown your channels before
- * calling this if you don't want a memory leak. Note that the memory will not be freed right away if there are
- * outstanding channels or channel events
+ * Increments a server bootstrap's ref count, allowing the caller to take a reference to it.
+ *
+ * Returns the same server bootstrap passed in.
+ */
+AWS_IO_API struct aws_server_bootstrap *aws_server_bootstrap_acquire(struct aws_server_bootstrap *bootstrap);
+
+/**
+ * Decrements a server bootstrap's ref count.  When the ref count drops to zero, the bootstrap will be destroyed.
  */
 AWS_IO_API void aws_server_bootstrap_release(struct aws_server_bootstrap *bootstrap);
 
@@ -253,39 +282,11 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
+ *
+ * bootstrap_options is copied.
  */
 AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data);
-
-/**
- * Sets up a server socket listener which will also negotiate and configure TLS.
- * This creates a socket listener bound to `local_endpoint` using socket options `options`, and TLS options
- * `connection_options`. `incoming_callback` will be invoked once an incoming channel is ready for use and TLS is
- * finished negotiating, or if an error is encountered. `shutdown_callback` will be invoked once the channel has
- * shutdown. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
- * connections and channels have finished shutting down. Immediately after the `shutdown_callback` returns, the channel
- * is cleaned up automatically. All callbacks are invoked in the thread of the event-loop that listener is assigned to.
- *
- * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
- * value from this function.
- *
- * The socket type in `options` must be AWS_SOCKET_STREAM. DTLS is not supported via. this API.
- */
-AWS_IO_API struct aws_socket *aws_server_bootstrap_new_tls_socket_listener(
-    struct aws_server_bootstrap *bootstrap,
-    const struct aws_socket_endpoint *local_endpoint,
-    const struct aws_socket_options *options,
-    const struct aws_tls_connection_options *connection_options,
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback,
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback,
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback,
-    void *user_data);
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still

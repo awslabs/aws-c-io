@@ -1,23 +1,15 @@
 #ifndef AWS_IO_EVENT_LOOP_H
 #define AWS_IO_EVENT_LOOP_H
 
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/common/atomics.h>
 #include <aws/common/hash_table.h>
+#include <aws/common/ref_count.h>
+
 #include <aws/io/io.h>
 
 enum aws_io_event_type {
@@ -30,6 +22,7 @@ enum aws_io_event_type {
 
 struct aws_event_loop;
 struct aws_task;
+struct aws_thread_options;
 
 #if AWS_USE_IO_COMPLETION_PORTS
 #    include <Windows.h>
@@ -94,6 +87,10 @@ struct aws_event_loop {
     struct aws_allocator *alloc;
     aws_io_clock_fn *clock;
     struct aws_hash_table local_data;
+    struct aws_atomic_var current_load_factor;
+    uint64_t latest_tick_start;
+    size_t current_tick_latency_sum;
+    struct aws_atomic_var next_flush_time;
     void *impl_data;
 };
 
@@ -106,16 +103,22 @@ struct aws_event_loop_local_object {
     aws_event_loop_on_local_object_removed_fn *on_object_removed;
 };
 
-typedef struct aws_event_loop *(
-    aws_new_event_loop_fn)(struct aws_allocator *alloc, aws_io_clock_fn *clock, void *new_loop_user_data);
+struct aws_event_loop_options {
+    aws_io_clock_fn *clock;
+    struct aws_thread_options *thread_options;
+};
+
+typedef struct aws_event_loop *(aws_new_event_loop_fn)(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options,
+    void *new_loop_user_data);
 
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
     struct aws_array_list event_loops;
-    struct aws_atomic_var current_index;
+    struct aws_ref_count ref_count;
+    struct aws_shutdown_callback_options shutdown_options;
 };
-
-typedef void(aws_event_loop_group_cleanup_complete_fn)(void *user_data);
 
 AWS_EXTERN_C_BEGIN
 
@@ -142,6 +145,15 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped);
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
+
+/**
+ * Creates an instance of the default event loop implementation for the current architecture and operating system using
+ * extendable options.
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -214,6 +226,31 @@ int aws_event_loop_run(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_stop(struct aws_event_loop *event_loop);
+
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the beginning of your event-loop tick: after wake-up, but before processing any IO or tasks.
+ */
+AWS_IO_API
+void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
+
+/**
+ * For event-loop implementations to use for providing metrics info to the base event-loop. This enables the
+ * event-loop load balancer to take into account load when vending another event-loop to a caller.
+ *
+ * Call this function at the end of your event-loop tick: after processing IO and tasks.
+ */
+AWS_IO_API
+void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
+
+/**
+ * Returns the current load factor (however that may be calculated). If the event-loop is not invoking
+ * aws_event_loop_register_tick_start() and aws_event_loop_register_tick_end(), this value will always be 0.
+ */
+AWS_IO_API
+size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
 
 /**
  * Blocks until the event loop stops completely.
@@ -324,46 +361,74 @@ AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 /**
- * Initializes an event loop group, with clock, number of loops to manage, and the function to call for creating a new
+ * Creates an event loop group, with clock, number of loops to manage, and the function to call for creating a new
  * event loop.
  */
 AWS_IO_API
-int aws_event_loop_group_init(
-    struct aws_event_loop_group *el_group,
+struct aws_event_loop_group *aws_event_loop_group_new(
     struct aws_allocator *alloc,
     aws_io_clock_fn *clock,
     uint16_t el_count,
     aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data);
+    void *new_loop_user_data,
+    const struct aws_shutdown_callback_options *shutdown_options);
+
+/** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
+ * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
+ * If el_count exceeds the number of hw threads in the cpu_group it will be ignored on the assumption that if you
+ * care about NUMA, you don't want hyper-threads doing your IO and you especially don't want IO on a different node.
+ */
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_pinned_to_cpu_group(
+    struct aws_allocator *alloc,
+    aws_io_clock_fn *clock,
+    uint16_t el_count,
+    uint16_t cpu_group,
+    aws_new_event_loop_fn *new_loop_fn,
+    void *new_loop_user_data,
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
  * Initializes an event loop group with platform defaults. If max_threads == 0, then the
- * loop count will be the number of available processors on the machine. Otherwise, max_threads
- * will be the number of event loops in the group.
+ * loop count will be the number of available processors on the machine / 2 (to exclude hyper-threads).
+ * Otherwise, max_threads will be the number of event loops in the group.
  */
 AWS_IO_API
-int aws_event_loop_group_default_init(
-    struct aws_event_loop_group *el_group,
+struct aws_event_loop_group *aws_event_loop_group_new_default(
     struct aws_allocator *alloc,
-    uint16_t max_threads);
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options);
 
-/**
- * Destroys each event loop in the event loop group and then cleans up resources.
+/** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
+ * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
+ * If el_count exceeds the number of hw threads in the cpu_group it will be clamped to the number of hw threads
+ * on the assumption that if you care about NUMA, you don't want hyper-threads doing your IO and you especially
+ * don't want IO on a different node.
+ *
+ * If max_threads == 0, then the
+ * loop count will be the number of available processors in the cpu_group / 2 (to exclude hyper-threads)
  */
 AWS_IO_API
-void aws_event_loop_group_clean_up(struct aws_event_loop_group *el_group);
+struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    uint16_t cpu_group,
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
- * Asynchronously invokes the cleanup() fn for the event loop group.
- * Spawns a background thread to run aws_event_loop_group_cleanup().
- * When the cleanup function completes, the completion callback is invoked with the supplied user data
- * Used in complex cases where the cleanup call can happen on one of the event loop group's threads.
+ * Increments the reference count on the event loop group, allowing the caller to take a reference to it.
+ *
+ * Returns the same event loop group passed in.
  */
 AWS_IO_API
-void aws_event_loop_group_clean_up_async(
-    struct aws_event_loop_group *el_group,
-    aws_event_loop_group_cleanup_complete_fn completion_callback,
-    void *user_data);
+struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group);
+
+/**
+ * Decrements an event loop group's ref count.  When the ref count drops to zero, the event loop group will be
+ * destroyed.
+ */
+AWS_IO_API
+void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
 
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
@@ -373,8 +438,8 @@ size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group
 
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
- * this load balancing is done as it is subject to change in the future. Currently it just returns them round-robin
- * style.
+ * this load balancing is done as it is subject to change in the future. Currently it uses the "best-of-two" algorithm
+ * based on the load factor of each loop.
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);

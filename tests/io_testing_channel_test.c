@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/testing/io_testing_channel.h>
 
@@ -47,8 +37,10 @@ static int s_test_io_testing_channel(struct aws_allocator *allocator, void *ctx)
     ASSERT_FALSE(aws_linked_list_empty(write_queue));
     ASSERT_PTR_EQUALS(&write_msg->queueing_handle, aws_linked_list_front(write_queue));
 
+    testing_channel_drain_queued_tasks(&testing_channel);
     /* Test window updates */
     ASSERT_SUCCESS(testing_channel_increment_read_window(&testing_channel, 12345));
+    testing_channel_drain_queued_tasks(&testing_channel);
     ASSERT_UINT_EQUALS(12345, testing_channel_last_window_update(&testing_channel));
 
     /* Clean up */

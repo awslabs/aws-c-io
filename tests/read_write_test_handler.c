@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include "read_write_test_handler.h"
@@ -301,15 +291,4 @@ bool rw_handler_increment_read_window_called(struct aws_channel_handler *handler
 int rw_handler_last_error_code(struct aws_channel_handler *handler) {
     struct rw_test_handler_impl *handler_impl = handler->impl;
     return aws_atomic_load_int(&handler_impl->shutdown_error);
-}
-
-static bool s_rw_test_handler_shutdown_predicate(void *arg) {
-    struct rw_test_handler_impl *handler_impl = arg;
-    return aws_atomic_load_int(&handler_impl->shutdown_called);
-}
-
-int rw_handler_wait_on_shutdown(struct aws_channel_handler *handler) {
-    struct rw_test_handler_impl *handler_impl = handler->impl;
-    return aws_condition_variable_wait_pred(
-        &handler_impl->condition_variable, &handler_impl->mutex, s_rw_test_handler_shutdown_predicate, handler_impl);
 }

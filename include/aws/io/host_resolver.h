@@ -1,30 +1,28 @@
 #ifndef AWS_IO_HOST_RESOLVER_H
 #define AWS_IO_HOST_RESOLVER_H
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 struct aws_event_loop_group;
 
-typedef enum aws_address_record_type {
+enum aws_address_record_type {
     /* ipv4 address. */
     AWS_ADDRESS_RECORD_TYPE_A,
     /* ipv6 address. */
     AWS_ADDRESS_RECORD_TYPE_AAAA
-} aws_address_record_type;
+};
+
+enum aws_get_host_address_flags {
+    /* get number of ipv4 addresses. */
+    AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A = 0x00000001,
+    /* get number of ipv6 addresses. */
+    AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA = 0x00000002
+};
 
 struct aws_string;
 
@@ -32,7 +30,7 @@ struct aws_host_address {
     struct aws_allocator *allocator;
     const struct aws_string *host;
     const struct aws_string *address;
-    aws_address_record_type record_type;
+    enum aws_address_record_type record_type;
     uint64_t expiry;
     /* This next section is strictly for mitigating the impact of sticky hosts that aren't performing well. */
     /*for use in DNS-based load balancing.*/
@@ -74,6 +72,10 @@ struct aws_host_resolution_config {
     void *impl_data;
 };
 
+struct aws_host_listener;
+
+struct aws_host_listener_options;
+
 /** should you absolutely disdain the default implementation, feel free to implement your own. */
 struct aws_host_resolver_vtable {
     /** clean up everything you allocated, but not resolver itself. */
@@ -92,12 +94,33 @@ struct aws_host_resolver_vtable {
     int (*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
+    /** get number of addresses for a given host. */
+    size_t (*get_host_address_count)(
+        struct aws_host_resolver *resolver,
+        const struct aws_string *host_name,
+        uint32_t flags);
+
+    /** creates and adds a listener to the host resolver. */
+    struct aws_host_listener *(
+        *add_host_listener)(struct aws_host_resolver *resolver, const struct aws_host_listener_options *options);
+
+    /** removes a host listener from the host resolver and frees it. */
+    int (*remove_host_listener)(struct aws_host_resolver *resolver, struct aws_host_listener *listener);
 };
 
 struct aws_host_resolver {
     struct aws_allocator *allocator;
     void *impl;
     struct aws_host_resolver_vtable *vtable;
+    struct aws_ref_count ref_count;
+    struct aws_shutdown_callback_options shutdown_options;
+};
+
+struct aws_host_resolver_default_options {
+    size_t max_entries;
+    struct aws_event_loop_group *el_group;
+    const struct aws_shutdown_callback_options *shutdown_options;
+    aws_io_clock_fn *system_clock_override_fn;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -127,7 +150,7 @@ AWS_IO_API int aws_default_dns_resolve(
     void *user_data);
 
 /**
- * Initializes `resolver` with the default behavior. Here's the behavior:
+ * Creates a host resolver with the default behavior. Here's the behavior:
  *
  * Since there's not a reliable way to do non-blocking DNS without a ton of risky work that would need years of testing
  * on every Unix system in existence, we work around it by doing a threaded implementation.
@@ -158,16 +181,21 @@ AWS_IO_API int aws_default_dns_resolve(
  *
  * This for example, should enable you to hit thousands of hosts in the Amazon S3 fleet instead of just one or two.
  */
-AWS_IO_API int aws_host_resolver_init_default(
-    struct aws_host_resolver *resolver,
+AWS_IO_API struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
-    size_t max_entries,
-    struct aws_event_loop_group *el_group);
+    struct aws_host_resolver_default_options *options);
 
 /**
- * Simply calls destroy on the vtable.
+ * Increments the reference count on the host resolver, allowing the caller to take a reference to it.
+ *
+ * Returns the same host resolver passed in.
  */
-AWS_IO_API void aws_host_resolver_clean_up(struct aws_host_resolver *resolver);
+AWS_IO_API struct aws_host_resolver *aws_host_resolver_acquire(struct aws_host_resolver *resolver);
+
+/**
+ * Decrements a host resolver's ref count.  When the ref count drops to zero, the resolver will be destroyed.
+ */
+AWS_IO_API void aws_host_resolver_release(struct aws_host_resolver *resolver);
 
 /**
  * calls resolve_host on the vtable. config will be copied.
@@ -190,6 +218,81 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
  * calls purge_cache on the vtable.
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
+
+/**
+ * get number of addresses for a given host.
+ */
+AWS_IO_API size_t aws_host_resolver_get_host_address_count(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host_name,
+    uint32_t flags);
+
+/* Callback for receiving new host addresses from a listener. Memory for the new address list is only guaranteed to
+ * exist during the callback, and must be copied if the caller needs it to persist after. */
+typedef void(aws_host_listener_resolved_address_fn)(
+    /* Listener that owns this callback. */
+    struct aws_host_listener *listener,
+
+    /* Array list of aws_host_address structures.  To get an item:
+     *
+     * struct aws_host_address *host_address = NULL;
+     * aws_array_list_get_at_ptr(new_address_list, (void **)&host_address, address_index);
+     * */
+    const struct aws_array_list *new_address_list,
+
+    /* User data that was specified when adding the listener. */
+    void *user_data);
+
+/* Callback for learning of an expired address from a listener. Memory for the expired address list is only guaranteed
+ * to exist during the callback, and must be copied if the caller needs it to persist after. */
+typedef void(aws_host_listener_expired_address_fn)(
+    /* Listener that owns this callback. */
+    struct aws_host_listener *listener,
+
+    /* Array list of aws_host_address structures.  To get an item:
+     *
+     * struct aws_host_address *host_address = NULL;
+     * aws_array_list_get_at_ptr(new_address_list, (void **)&host_address, address_index);
+     * */
+    const struct aws_array_list *expired_address_list,
+
+    /* User data that was specified when adding the listener. */
+    void *user_data);
+
+/* Callback for when the listener has completed its clean up. */
+typedef void(aws_host_listener_shutdown_fn)(void *user_data);
+
+struct aws_host_listener_options {
+
+    /* Name of the host to listen for notifications from. */
+    struct aws_byte_cursor host_name;
+
+    /* Callback for when an address is resolved for the specified host. */
+    aws_host_listener_resolved_address_fn *resolved_address_callback;
+
+    /* Callback for when a resolved address expires for the specified host. */
+    aws_host_listener_expired_address_fn *expired_address_callback;
+
+    /* Callback for when a listener has completely shutdown. */
+    aws_host_listener_shutdown_fn *shutdown_callback;
+
+    /* User data to be passed into each callback. */
+    void *user_data;
+
+    /* Lets the resolver know to keep the resolution thread alive for as long as this listener is attached */
+    bool pin_host_entry;
+};
+
+/* Create and add a listener to the host resolver using the specified options. */
+AWS_IO_API struct aws_host_listener *aws_host_resolver_add_host_listener(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_listener_options *options);
+
+/* Remove the specified listener from the host resolver, triggering clean up of the listener. Note: this may not happen
+ * synchronously, and it is necessary to wait for the listener's shutdown callback to trigger. */
+AWS_IO_API int aws_host_resolver_remove_host_listener(
+    struct aws_host_resolver *resolver,
+    struct aws_host_listener *listener);
 
 AWS_EXTERN_C_END
 
