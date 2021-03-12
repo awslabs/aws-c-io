@@ -142,7 +142,7 @@ static int s_translate_windows_error(DWORD win_error) {
     }
 }
 
-static int s_raise_last_windows_error() {
+static int s_raise_last_windows_error(void) {
     DWORD win_error = GetLastError();
     int aws_error = s_translate_windows_error(win_error);
     return aws_raise_error(aws_error);
