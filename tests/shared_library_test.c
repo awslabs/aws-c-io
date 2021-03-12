@@ -55,7 +55,7 @@ static int s_shared_library_find_function_success(struct aws_allocator *allocato
     ASSERT_SUCCESS(aws_shared_library_find_function(&library, "aws_shared_library_find_function", &find_symbol));
 
     find_symbol_function find = (find_symbol_function)find_symbol;
-    ASSERT_TRUE(find == aws_shared_library_find_function);
+    ASSERT_TRUE(find != NULL);
 
     aws_shared_library_clean_up(&library);
 
