@@ -496,12 +496,13 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_host_address_clean_up(&callback_data.a_address);
     aws_mutex_unlock(&mutex);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return 0;
 }
@@ -687,12 +688,13 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
     aws_host_address_clean_up(&callback_data.a_address);
     aws_mutex_unlock(&mutex);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return 0;
 }
@@ -866,12 +868,13 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
     aws_host_address_clean_up(&callback_data.a_address);
     aws_mutex_unlock(&mutex);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
     aws_string_destroy((void *)host_name);
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return 0;
 }
@@ -1810,8 +1813,6 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
 
     s_wait_on_listener_shutdown(&callback_data);
 
-    mock_dns_resolver_clean_up(&mock_resolver_0);
-    mock_dns_resolver_clean_up(&mock_resolver_1);
     aws_host_resolver_release(resolver);
 
     aws_mutex_clean_up(&mutex);
@@ -1820,6 +1821,9 @@ static int s_test_resolver_listener_host_re_add_fn(struct aws_allocator *allocat
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver_0);
+    mock_dns_resolver_clean_up(&mock_resolver_1);
 
     return 0;
 }
@@ -1901,7 +1905,6 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
 
     s_wait_on_listener_shutdown(&callback_data);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
 
     aws_mutex_clean_up(&mutex);
@@ -1910,6 +1913,8 @@ static int s_test_resolver_listener_multiple_results_fn(struct aws_allocator *al
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return 0;
 }
@@ -2035,7 +2040,6 @@ static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *all
     listener = NULL;
     s_wait_on_listener_shutdown(&callback_data);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
 
     aws_mutex_clean_up(&mutex);
@@ -2044,6 +2048,8 @@ static int s_test_resolver_listener_address_expired_fn(struct aws_allocator *all
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return 0;
 }
@@ -2170,7 +2176,6 @@ static int s_test_host_entry_pinning(struct aws_allocator *allocator, bool pin_h
     listener = NULL;
     s_wait_on_listener_shutdown(&callback_data);
 
-    mock_dns_resolver_clean_up(&mock_resolver);
     aws_host_resolver_release(resolver);
 
     aws_mutex_clean_up(&mutex);
@@ -2179,6 +2184,8 @@ static int s_test_host_entry_pinning(struct aws_allocator *allocator, bool pin_h
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
 
     return AWS_OP_SUCCESS;
 }
@@ -2512,10 +2519,10 @@ static int s_test_resolver_address_promote_demote_listener_callbacks_fn(struct a
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
 
+    aws_io_library_clean_up();
+
     aws_string_destroy((void *)host_name);
     mock_dns_resolver_clean_up(&mock_resolver);
-
-    aws_io_library_clean_up();
 
     return 0;
 }
