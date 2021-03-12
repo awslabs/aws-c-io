@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/tls_channel_handler.h>
 
@@ -171,19 +161,18 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
 
     size_t processed = 0;
     while (processed < buf.len) {
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
+        const size_t message_size_hint = (buf.len - processed) + overhead;
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-            handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf.len - processed);
+            handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message) {
+        if (!message || message->message_data.capacity <= overhead) {
             return errSecMemoryError;
         }
 
-        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->parent_slot);
-        const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
-
-        const size_t to_write = message->message_data.capacity > available_msg_write_capacity
-                                    ? available_msg_write_capacity
-                                    : message->message_data.capacity;
+        const size_t available_msg_write_capacity = message->message_data.capacity - overhead;
+        const size_t to_write =
+            available_msg_write_capacity >= buffer_cursor.len ? buffer_cursor.len : available_msg_write_capacity;
 
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
         if (aws_byte_buf_append(&message->message_data, &chunk)) {
@@ -620,8 +609,8 @@ static int s_process_read_message(
     OSStatus status = noErr;
     while (processed < downstream_window && status == noErr) {
 
-        struct aws_io_message *outgoing_read_message =
-            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
+            slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             return AWS_OP_ERR;
         }
@@ -955,6 +944,27 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
+static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secure_transport_ctx) {
+    if (secure_transport_ctx == NULL) {
+        return;
+    }
+
+    if (secure_transport_ctx->certs) {
+        aws_release_identity(secure_transport_ctx->certs);
+    }
+
+    if (secure_transport_ctx->ca_cert) {
+        aws_release_certificates(secure_transport_ctx->ca_cert);
+    }
+
+    if (secure_transport_ctx->alpn_list) {
+        aws_string_destroy(secure_transport_ctx->alpn_list);
+    }
+
+    CFRelease(secure_transport_ctx->wrapped_allocator);
+    aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
+}
+
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
@@ -987,9 +997,26 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
+    aws_ref_count_init(
+        &secure_transport_ctx->ctx.ref_count,
+        secure_transport_ctx,
+        (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (options->certificate.len && options->private_key.len) {
+#if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
+
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_wrapped_allocator;
+        }
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
@@ -1003,6 +1030,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
+#endif
     } else if (options->pkcs12.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
@@ -1054,6 +1082,11 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
 }
 
 void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
+
+    if (ctx == NULL) {
+        return;
+    }
+
     struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
 
     if (secure_transport_ctx->certs) {

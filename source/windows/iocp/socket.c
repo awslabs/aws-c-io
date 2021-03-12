@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 /* clang is just a naive little idealist and doesn't understand that it can't just
@@ -434,9 +424,18 @@ int aws_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
     struct iocp_socket *socket_impl = socket->impl;
-    if (socket->state != INIT) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    if (socket->options.type != AWS_SOCKET_DGRAM) {
+        AWS_ASSERT(on_connection_result);
+        if (socket->state != INIT) {
+            socket->state = ERRORED;
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
+    } else { /* UDP socket */
+        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        if (socket->state != CONNECTED_READ && socket->state != INIT) {
+            socket->state = ERRORED;
+            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        }
     }
     return socket_impl->vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
@@ -549,6 +548,8 @@ static int s_determine_socket_error(int error) {
         case STATUS_INVALID_ADDRESS_COMPONENT:
         case WSAEADDRNOTAVAIL:
             return AWS_IO_SOCKET_INVALID_ADDRESS;
+        case WSAEADDRINUSE:
+            return AWS_IO_SOCKET_ADDRESS_IN_USE;
         case WSAENETUNREACH:
         case IO_NETWORK_UNREACHABLE:
         case IO_HOST_UNREACHABLE:
@@ -904,6 +905,17 @@ static inline int s_tcp_connect(
     struct iocp_socket *socket_impl = socket->impl;
     socket->remote_endpoint = *remote_endpoint;
 
+    int reuse = 1;
+    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+    }
+
     struct socket_connect_args *connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct socket_connect_args));
     if (!connect_args) {
         socket->state = ERRORED;
@@ -1208,6 +1220,18 @@ static inline int s_dgram_connect(
         (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
         (int)remote_endpoint->port);
+
+    int reuse = 1;
+    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+    }
+
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
@@ -1351,11 +1375,30 @@ static inline int s_tcp_bind(
 
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: binding to tcp %s:%p",
+        "id=%p handle=%p: binding to tcp %s:%d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         local_endpoint->address,
         (int)local_endpoint->port);
+
+    /* set this option to prevent duplicate bind calls. */
+    int exclusive_use_val = 1;
+    if (setsockopt(
+            (SOCKET)socket->io_handle.data.handle,
+            SOL_SOCKET,
+            SO_EXCLUSIVEADDRUSE,
+            (char *)&exclusive_use_val,
+            sizeof(int))) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            WSAGetLastError());
+        int error = s_determine_socket_error(WSAGetLastError());
+        return aws_raise_error(error);
+    }
+
     int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
 
     if (!error_code) {
@@ -2189,16 +2232,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     socket->options = *options;
 
-    int reuse = 1;
-    if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
-        AWS_LOGF_WARN(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            WSAGetLastError());
-    }
-
     if (socket->options.domain != AWS_SOCKET_LOCAL && socket->options.type == AWS_SOCKET_STREAM) {
         if (socket->options.keepalive &&
             !(socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec)) {
@@ -2320,12 +2353,15 @@ static int s_wait_on_close(struct aws_socket *socket) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
+    void *handle_for_logging = socket->io_handle.data.handle; /* socket's handle gets reset before final log */
+    (void)handle_for_logging;
+
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: closing from a different thread than "
         "the socket is running from. Blocking until it closes down.",
         (void *)socket,
-        (void *)socket->io_handle.data.handle);
+        handle_for_logging);
 
     struct close_args args = {
         .mutex = AWS_MUTEX_INIT,
@@ -2343,11 +2379,7 @@ static int s_wait_on_close(struct aws_socket *socket) {
     aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
     aws_condition_variable_wait_pred(&args.condition_var, &args.mutex, s_close_predicate, &args);
     aws_mutex_unlock(&args.mutex);
-    AWS_LOGF_INFO(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: close task completed.",
-        (void *)socket,
-        (void *)socket->io_handle.data.handle);
+    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p handle=%p: close task completed.", (void *)socket, handle_for_logging);
 
     if (args.ret_code) {
         return aws_raise_error(args.ret_code);

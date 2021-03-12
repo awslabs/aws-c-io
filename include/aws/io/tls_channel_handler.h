@@ -1,21 +1,11 @@
 #ifndef AWS_IO_TLS_CHANNEL_HANDLER_H
 #define AWS_IO_TLS_CHANNEL_HANDLER_H
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/byte_buf.h>
-
+#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 struct aws_channel_slot;
@@ -37,6 +27,7 @@ enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11 = 2,
     AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02 = 3,
     AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02 = 4,
+    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07 = 5,
 
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
@@ -44,6 +35,7 @@ enum aws_tls_cipher_pref {
 struct aws_tls_ctx {
     struct aws_allocator *alloc;
     void *impl;
+    struct aws_ref_count ref_count;
 };
 
 /**
@@ -117,8 +109,8 @@ struct aws_tls_ctx_options {
     enum aws_tls_cipher_pref cipher_pref;
 
     /**
-     * A PEM armored PKCS#7 collection of CAs you want to trust. Only
-     * use this if it's a CA not currently installed on your system.
+     * A PEM armored PKCS#7 collection of CAs you want to trust as a string.
+     * Only use this if it's a CA not currently installed on your system.
      */
     struct aws_byte_buf ca_file;
     /**
@@ -133,9 +125,8 @@ struct aws_tls_ctx_options {
      */
     struct aws_string *alpn_list;
     /**
-     * This is the path to PEM armored PKCS#7
-     * certificate file. It is supported on every
-     * operating system.
+     * A PEM armored PKCS#7 certificate as a string.
+     * It is supported on every operating system.
      */
     struct aws_byte_buf certificate;
 
@@ -148,7 +139,7 @@ struct aws_tls_ctx_options {
 #endif
 
     /**
-     * The path to a PEM armored PKCS#7 private key.
+     * A PEM armored PKCS#7 private key as a string.
      *
      * On windows, this field should be NULL only if you are
      * using a system installed certficate.
@@ -159,13 +150,13 @@ struct aws_tls_ctx_options {
     /**
      * Apple Only!
      *
-     * On Apple OS you can also use a pkcs#12 file for your certificate
-     * and private key. This is the path to that file.
+     * On Apple OS you can also use a pkcs#12 for your certificate
+     * and private key. This is the contents the certificate.
      */
     struct aws_byte_buf pkcs12;
 
     /**
-     * Password for the pkcs12 file in pkcs12.
+     * Password for the pkcs12 data in pkcs12.
      */
     struct aws_byte_buf pkcs12_password;
 #endif
@@ -183,6 +174,12 @@ struct aws_tls_ctx_options {
      * If you set this in server mode, it enforces client authentication.
      */
     bool verify_peer;
+
+    /**
+     * For use when adding BYO_CRYPTO implementations. You can set extra data in here for use with your TLS
+     * implementation.
+     */
+    void *ctx_options_extension;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -204,6 +201,35 @@ enum aws_tls_negotiation_status {
     AWS_TLS_NEGOTIATION_STATUS_FAILURE
 };
 
+#ifdef BYO_CRYPTO
+/**
+ * Callback for creating a TLS handler. If you're using this you're using BYO_CRYPTO. This function should return
+ * a fully implemented aws_channel_handler instance for TLS. Note: the aws_tls_options passed to your
+ * aws_tls_handler_new_fn contains multiple callbacks. Namely: aws_tls_on_negotiation_result_fn. You are responsible for
+ * invoking this function when TLs session negotiation has completed.
+ */
+typedef struct aws_channel_handler *(aws_tls_handler_new_fn)(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    void *user_data);
+
+/**
+ * Invoked when it's time to start TLS negotiation. Note: the aws_tls_options passed to your aws_tls_handler_new_fn
+ * contains multiple callbacks. Namely: aws_tls_on_negotiation_result_fn. You are responsible for invoking this function
+ * when TLS session negotiation has completed.
+ */
+typedef int(aws_tls_client_handler_start_negotiation_fn)(struct aws_channel_handler *handler, void *user_data);
+
+struct aws_tls_byo_crypto_setup_options {
+    aws_tls_handler_new_fn *new_handler_fn;
+    /* ignored for server implementations, required for clients. */
+    aws_tls_client_handler_start_negotiation_fn *start_negotiation_fn;
+    void *user_data;
+};
+
+#endif /* BYO_CRYPTO */
+
 AWS_EXTERN_C_BEGIN
 
 /******************************** tls options init stuff ***********************/
@@ -217,6 +243,8 @@ AWS_IO_API void aws_tls_ctx_options_init_default_client(
  * Cleans up resources allocated by init_* functions
  */
 AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
+
+#if !defined(AWS_OS_IOS)
 
 /**
  * Initializes options for use with mutual tls in client mode.
@@ -263,6 +291,8 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey);
+
+#endif /* AWS_OS_IOS */
 
 #ifdef _WIN32
 /**
@@ -347,6 +377,13 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
 
 /**
+ * Sets the minimum TLS version to allow.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_minimum_tls_version(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_versions minimum_tls_version);
+
+/**
  * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
  * ca_file is copied.
  */
@@ -363,6 +400,12 @@ AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
     const char *ca_file);
+
+/**
+ * When implementing BYO_CRYPTO, if you need extra data to pass to your tls implementation, set it here. The lifetime of
+ * extension_data must outlive the options object and be cleaned up after options is cleaned up.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options, void *extension_data);
 
 /**
  * Initializes default connection options from an instance ot aws_tls_ctx.
@@ -448,6 +491,18 @@ AWS_IO_API struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot);
 
+#ifdef BYO_CRYPTO
+/**
+ * If using BYO_CRYPTO, you need to call this function prior to creating any client channels in the application.
+ */
+AWS_IO_API void aws_tls_byo_crypto_set_client_setup_options(const struct aws_tls_byo_crypto_setup_options *options);
+/**
+ * If using BYO_CRYPTO, you need to call this function prior to creating any server channels in the application.
+ */
+AWS_IO_API void aws_tls_byo_crypto_set_server_setup_options(const struct aws_tls_byo_crypto_setup_options *options);
+
+#endif /* BYO_CRYPTO */
+
 /**
  * Creates a channel handler, for client or server mode, that handles alpn. This isn't necessarily required
  * since you can always call aws_tls_handler_protocol in the aws_tls_on_negotiation_result_fn callback, but
@@ -464,6 +519,7 @@ AWS_IO_API struct aws_channel_handler *aws_tls_alpn_handler_new(
  */
 AWS_IO_API int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
 
+#ifndef BYO_CRYPTO
 /**
  * Creates a new server ctx. This ctx can be used for the lifetime of the application assuming you want the same
  * options for every incoming connection. Options will be copied.
@@ -479,11 +535,19 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_server_ctx_new(
 AWS_IO_API struct aws_tls_ctx *aws_tls_client_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options);
+#endif /* BYO_CRYPTO */
 
 /**
- * Destroys the output from aws_tls_server_ctx_new and aws_tls_client_ctx_new.
+ * Increments the reference count on the tls context, allowing the caller to take a reference to it.
+ *
+ * Returns the same tls context passed in.
  */
-AWS_IO_API void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx);
+AWS_IO_API struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx);
+
+/**
+ * Decrements a tls context's ref count.  When the ref count drops to zero, the object will be destroyed.
+ */
+AWS_IO_API void aws_tls_ctx_release(struct aws_tls_ctx *ctx);
 
 /**
  * Not necessary if you are installing more handlers into the channel, but if you just want to have TLS for arbitrary

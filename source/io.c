@@ -1,20 +1,12 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/io.h>
 
 #include <aws/io/logging.h>
+
+#include <aws/cal/cal.h>
 
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
@@ -155,6 +147,15 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_NEGOTIATION_TIMEOUT,
         "Channel shutdown due to tls negotiation timeout"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ALERT_NOT_GRACEFUL,
+       "Channel shutdown due to tls alert. The alert was not for a graceful shutdown."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_MAX_RETRIES_EXCEEDED,
+       "Retry cannot be attempted because the maximum number of retries has been exceeded."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_RETRY_PERMISSION_DENIED,
+       "Retry cannot be attempted because the retry strategy has prevented the operation."),
 };
 /* clang-format on */
 
@@ -182,6 +183,14 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "Subject for channel bootstrap (client and server modes)"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_FILE_UTILS, "file-utils", "Subject for file operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SHARED_LIBRARY, "shared-library", "Subject for shared library operations"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
+        "exp-backoff-strategy",
+        "Subject for exponential backoff retry strategy"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_STANDARD_RETRY_STRATEGY,
+        "standard-retry-strategy",
+        "Subject for standard retry strategy"),
 };
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
@@ -198,6 +207,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
     if (!s_io_library_initialized) {
         s_io_library_initialized = true;
         aws_common_library_init(allocator);
+        aws_cal_library_init(allocator);
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
         aws_tls_init_static_state(allocator);
@@ -207,9 +217,11 @@ void aws_io_library_init(struct aws_allocator *allocator) {
 void aws_io_library_clean_up(void) {
     if (s_io_library_initialized) {
         s_io_library_initialized = false;
+        aws_thread_join_all_managed();
         aws_tls_clean_up_static_state();
         aws_unregister_error_info(&s_list);
         aws_unregister_log_subject_info_list(&s_io_log_subject_list);
+        aws_cal_library_clean_up();
         aws_common_library_clean_up();
     }
 }

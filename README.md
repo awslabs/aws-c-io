@@ -14,7 +14,45 @@ embedded, server, client, and mobile.
 
 This library is licensed under the Apache 2.0 License.
 
-## Recommended Usage
+## Usage
+
+### Building
+
+CMake 3.1+ is required to build.
+
+`<install-path>` must be an absolute path in the following instructions.
+
+#### Linux-Only Dependencies
+
+If you are building on Linux, you will need to build aws-lc and s2n-tls first.
+
+```
+git clone git@github.com:awslabs/aws-lc.git
+cmake -S aws-lc -B aws-lc/build -DCMAKE_INSTALL_PREFIX=<install-path>
+cmake --build aws-lc/build --target install
+
+git clone git@github.com:aws/s2n-tls.git
+cmake -S s2n-tls -B s2n-tls/build -DCMAKE_INSTALL_PREFIX=<install-path> -DCMAKE_PREFIX_PATH=<install-path>
+cmake --build s2n-tls/build --target install
+```
+
+#### Building aws-c-io and Remaining Dependencies
+
+```
+git clone git@github.com:awslabs/aws-c-common.git
+cmake -S aws-c-common -B aws-c-common/build -DCMAKE_INSTALL_PREFIX=<install-path>
+cmake --build aws-c-common/build --target install
+
+git clone git@github.com:awslabs/aws-c-cal.git
+cmake -S aws-c-cal -B aws-c-cal/build -DCMAKE_INSTALL_PREFIX=<install-path> -DCMAKE_PREFIX_PATH=<install-path>
+cmake --build aws-c-cal/build --target install
+
+git clone git@github.com:awslabs/aws-c-io.git
+cmake -S aws-c-io -B aws-c-io/build -DCMAKE_INSTALL_PREFIX=<install-path> -DCMAKE_PREFIX_PATH=<install-path>
+cmake --build aws-c-io/build --target install
+```
+
+### Usage Patterns
 
 This library contains many primitive building blocks that can be configured in a myriad of ways. However, most likely
 you simply need to use the `aws_event_loop_group` and `aws_channel_bootstrap` APIs.
@@ -115,8 +153,6 @@ Platform | Implementation
 Linux | Edge-Triggered Epoll
 BSD Variants and Apple Devices | KQueue
 Windows | IOCP (IO Completion Ports)
-Solaris | /dev/poll
-Default Fallback | Select
 
 Also, you can always implement your own as well.
 
@@ -177,7 +213,10 @@ BSD Variants | s2n
 Apple Devices | Security Framework/ Secure Transport. See https://developer.apple.com/documentation/security/secure_transport
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
 
-In addition, you can always write your own handler around your favorite implementation and use that.
+In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
+TLS implementation, you must build this library with the cmake argument `-DBYO_CRYPTO=ON`. You will no longer need s2n or
+libcrypto once you do this. Instead, your application provides an implementation of `aws_tls_ctx`, and `aws_channel_handler`.
+At startup time, you must invoke the functions: `aws_tls_byo_crypto_set_client_setup_options()` and `aws_tls_byo_crypto_set_server_setup_options()`.
 
 ### Typical Channel
 ![Typical Channel Diagram](docs/images/typical_channel.png)
@@ -617,6 +656,7 @@ notifications.
         AWS_SOCKET_IPV4,
         AWS_SOCKET_IPV6,
         AWS_SOCKET_LOCAL,
+        AWS_SOCKET_VSOCK,
     } aws_socket_domain;
 
 `AWS_SOCKET_IPV4` means an IPv4 address will be used.
@@ -630,6 +670,7 @@ notifications.
         AWS_SOCKET_DGRAM
     } aws_socket_type;
 
+`AWS_SOCKET_VSOCK` means a CID address will be used. Note: VSOCK is currently only available on Linux with an appropriate VSOCK kernel driver installed. `-DUSE_VSOCK` needs to be passed during compilation to enable VSOCK support.
 
 `AWS_SOCKET_STREAM` is TCP or a connection oriented socket.
 
@@ -658,7 +699,7 @@ with it.
         char port[10];
     };
 
-`address` can be either an IPv4 or IPv6 address. This can be used for UDP or TCP.
+`address` can be either an IPv4, IPv6 or VSOCK CID address. This can be used for UDP or TCP.
 `socket_name` is only used in LOCAL mode.
 `port` can be used for TCP or UDP.
 

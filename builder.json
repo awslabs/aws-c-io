@@ -4,15 +4,16 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"],
-            "revision": "10450714b6530d52a880a6941f95aec81c55ca4b"
-        }
+            "targets": ["linux", "android"]
+        },
+        { "name": "aws-c-cal" }
     ],
     "downstream": [
         { "name": "aws-c-mqtt" },
         { "name": "aws-c-http" }
     ],
     "build_env": {
-        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
+        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1",
+        "CMAKE_BUILD_PARALLEL_LEVEL": "2"
     }
 }

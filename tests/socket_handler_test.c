@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
@@ -52,7 +42,7 @@ struct socket_test_args {
 struct socket_common_tester {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    struct aws_event_loop_group el_group;
+    struct aws_event_loop_group *el_group;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
 };
@@ -62,7 +52,8 @@ static struct socket_common_tester c_tester;
 static int s_socket_common_tester_init(struct aws_allocator *allocator, struct socket_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&tester->el_group, allocator, 0));
+
+    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -74,8 +65,10 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
 }
 
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
+    aws_event_loop_group_release(tester->el_group);
+
     aws_mutex_clean_up(&tester->mutex);
-    aws_event_loop_group_clean_up(&tester->el_group);
+
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
@@ -299,7 +292,7 @@ static int s_local_server_tester_init(
         sizeof(tester->endpoint.address),
         LOCAL_SOCK_TEST_PATTERN,
         (long long unsigned)tester->timestamp);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, &s_c_tester->el_group);
+    tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
     struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
@@ -378,12 +371,9 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
 
-    /* this should never get used for this case. */
-    struct aws_host_resolver dummy_resolver;
-    AWS_ZERO_STRUCT(dummy_resolver);
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &dummy_resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = NULL,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -458,8 +448,9 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
     return AWS_OP_SUCCESS;
 }
@@ -505,12 +496,9 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false));
 
-    /* this should not get used for a unix domain socket. */
-    struct aws_host_resolver dummy_resolver;
-    AWS_ZERO_STRUCT(dummy_resolver);
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &c_tester.el_group,
-        .host_resolver = &dummy_resolver,
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = NULL,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -551,9 +539,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
     return AWS_OP_SUCCESS;
 }
 
@@ -580,11 +570,11 @@ static void s_creation_callback_test_channel_creation_callback(
 
 static struct aws_event_loop *s_default_new_event_loop(
     struct aws_allocator *allocator,
-    aws_io_clock_fn *clock,
+    const struct aws_event_loop_options *options,
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default(allocator, clock);
+    return aws_event_loop_new_default_with_options(allocator, options);
 }
 
 static int s_statistic_test_clock_fn(uint64_t *timestamp) {
@@ -600,8 +590,8 @@ static int s_socket_common_tester_statistics_init(
     aws_io_library_init(allocator);
 
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(aws_event_loop_group_init(
-        &tester->el_group, allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL));
+    tester->el_group =
+        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -661,14 +651,10 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false));
 
-    /* this should not get used for a unix domain socket. */
-    struct aws_host_resolver dummy_resolver;
-    AWS_ZERO_STRUCT(dummy_resolver);
-
     struct aws_client_bootstrap_options bootstrap_options;
     AWS_ZERO_STRUCT(bootstrap_options);
-    bootstrap_options.event_loop_group = &c_tester.el_group;
-    bootstrap_options.host_resolver = &dummy_resolver;
+    bootstrap_options.event_loop_group = c_tester.el_group;
+    bootstrap_options.host_resolver = NULL;
 
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -735,9 +721,11 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     aws_mutex_unlock(&c_tester.mutex);
 
     /* clean up */
-    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
     return AWS_OP_SUCCESS;
 }
 

@@ -1,21 +1,12 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #define SECURITY_WIN32
 
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/encoding.h>
 #include <aws/common/math.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
@@ -304,6 +295,8 @@ static int s_determine_sspi_error(int sspi_status) {
     switch (sspi_status) {
         case SEC_E_INSUFFICIENT_MEMORY:
             return AWS_ERROR_OOM;
+        case SEC_I_CONTEXT_EXPIRED:
+            return AWS_IO_TLS_ALERT_NOT_GRACEFUL;
         case SEC_E_WRONG_PRINCIPAL:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
             /*
@@ -641,7 +634,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
            grab the negotiated protocol out of the session.
         */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
@@ -835,7 +828,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     char server_name_cstr[256];
     AWS_ZERO_ARRAY(server_name_cstr);
-    AWS_ASSERT(sc_handler->server_name.len < 256);
+    AWS_FATAL_ASSERT(sc_handler->server_name.len < sizeof(server_name_cstr));
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
     status = InitializeSecurityContextA(
@@ -926,7 +919,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         s_message_overhead(handler);
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list) {
+        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
@@ -1039,9 +1032,22 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 read_len);
             sc_handler->buffered_read_in_data_buf.len = read_len;
             aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
+           where this can happen is an unaccepted certificate. */
+        else if (status == SEC_I_CONTEXT_EXPIRED) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
+                (void *)handler,
+                (int)status);
+
+            struct aws_channel_slot *slot = handler->slot;
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            error = AWS_OP_SUCCESS;
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             int aws_error = s_determine_sspi_error(status);
             aws_raise_error(aws_error);
         }
@@ -1099,7 +1105,9 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                 return AWS_OP_ERR;
             }
 
-            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            if (sc_handler->slot->adj_right) {
+                downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+            }
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window is %zu", (void *)handler, downstream_window);
         } else {
             if (sc_handler->on_data_read) {
@@ -1255,22 +1263,20 @@ static int s_process_write_message(
                 AWS_LS_IO_TLS, "id=%p: processing message fragment of size %zu", (void *)handler, message_cursor.len);
             /* message size will be the lesser of either payload + record overhead or the max TLS record size.*/
             size_t upstream_overhead = aws_channel_slot_upstream_message_overhead(sc_handler->slot);
-            size_t requested_length =
-                message_cursor.len + sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
-            size_t to_write = sc_handler->stream_sizes.cbMaximumMessage - upstream_overhead < requested_length
-                                  ? sc_handler->stream_sizes.cbMaximumMessage - upstream_overhead
+            upstream_overhead += sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer;
+            size_t requested_length = message_cursor.len + upstream_overhead;
+            size_t to_write = sc_handler->stream_sizes.cbMaximumMessage < requested_length
+                                  ? sc_handler->stream_sizes.cbMaximumMessage
                                   : requested_length;
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
 
-            if (!outgoing_message) {
+            if (!outgoing_message || outgoing_message->message_data.capacity <= upstream_overhead) {
                 return AWS_OP_ERR;
             }
 
             /* what if message is larger than one record? */
-            size_t original_message_fragment_to_process =
-                outgoing_message->message_data.capacity -
-                (sc_handler->stream_sizes.cbHeader + sc_handler->stream_sizes.cbTrailer);
+            size_t original_message_fragment_to_process = outgoing_message->message_data.capacity - upstream_overhead;
             memcpy(
                 outgoing_message->message_data.buffer + sc_handler->stream_sizes.cbHeader,
                 message_cursor.ptr,
@@ -1456,11 +1462,15 @@ static int s_handler_shutdown(
             };
 
             struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+            char server_name_cstr[256];
+            AWS_ZERO_ARRAY(server_name_cstr);
+            AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
+            memcpy(server_name_cstr, server_name.buffer, server_name.len);
             /* this acutally gives us an Alert record to send. */
             status = InitializeSecurityContextA(
                 &sc_handler->creds,
                 &sc_handler->sec_handle,
-                (SEC_CHAR *)server_name.buffer,
+                (SEC_CHAR *)server_name_cstr,
                 sc_handler->ctx_req,
                 0,
                 0,
@@ -1479,6 +1489,7 @@ static int s_handler_shutdown(
                     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
+                outgoing_message->message_data.len = output_buffer.cbBuffer;
 
                 /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
@@ -1505,9 +1516,13 @@ static void s_do_negotiation_task(struct aws_channel_task *task, void *arg, enum
     }
 }
 
-static void s_handler_destroy(struct aws_channel_handler *handler) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
-    struct secure_channel_handler *sc_handler = handler->impl;
+static void s_secure_channel_handler_destroy(
+    struct aws_allocator *allocator,
+    struct secure_channel_handler *sc_handler) {
+
+    if (sc_handler == NULL) {
+        return;
+    }
 
     if (sc_handler->protocol.buffer) {
         aws_byte_buf_clean_up(&sc_handler->protocol);
@@ -1531,7 +1546,14 @@ static void s_handler_destroy(struct aws_channel_handler *handler) {
 
     aws_tls_channel_handler_shared_clean_up(&sc_handler->shared_state);
 
-    aws_mem_release(handler->alloc, sc_handler);
+    aws_mem_release(allocator, sc_handler);
+}
+
+static void s_handler_destroy(struct aws_channel_handler *handler) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: destroying handler", (void *)handler);
+    struct secure_channel_handler *sc_handler = handler->impl;
+
+    s_secure_channel_handler_destroy(handler->alloc, sc_handler);
 }
 
 static void s_reset_statistics(struct aws_channel_handler *handler) {
@@ -1627,7 +1649,14 @@ static struct aws_channel_handler *s_tls_handler_new(
         NULL,
         &sc_handler->creds,
         &sc_handler->sspi_timestamp);
-    (void)status;
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
@@ -1637,14 +1666,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     } else if (options->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
         if (!sc_handler->alpn_list) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1656,8 +1683,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             aws_string_c_str(options->server_name));
         struct aws_byte_cursor server_name_crsr = aws_byte_cursor_from_string(options->server_name);
         if (aws_byte_buf_init_copy_from_cursor(&sc_handler->server_name, alloc, server_name_crsr)) {
-            aws_mem_release(alloc, sc_handler);
-            return NULL;
+            goto on_error;
         }
     }
 
@@ -1679,6 +1705,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     sc_handler->verify_peer = sc_ctx->verify_peer;
 
     return &sc_handler->handler;
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
 }
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
@@ -1696,8 +1728,10 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, false);
 }
 
-void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-    struct secure_channel_ctx *secure_channel_ctx = ctx->impl;
+static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_channel_ctx) {
+    if (secure_channel_ctx == NULL) {
+        return;
+    }
 
     if (secure_channel_ctx->custom_trust_store) {
         aws_close_cert_store(secure_channel_ctx->custom_trust_store);
@@ -1715,7 +1749,7 @@ void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
         aws_string_destroy(secure_channel_ctx->alpn_list);
     }
 
-    aws_mem_release(ctx->alloc, secure_channel_ctx);
+    aws_mem_release(secure_channel_ctx->ctx.alloc, secure_channel_ctx);
 }
 
 struct aws_tls_ctx *s_ctx_new(
@@ -1792,6 +1826,10 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->ctx.alloc = alloc;
     secure_channel_ctx->ctx.impl = secure_channel_ctx;
+    aws_ref_count_init(
+        &secure_channel_ctx->ctx.ref_count,
+        secure_channel_ctx,
+        (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
     if (options->verify_peer && options->ca_file.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
@@ -1837,6 +1875,18 @@ struct aws_tls_ctx *s_ctx_new(
     } else if (options->certificate.len && options->private_key.len) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
+
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto clean_up;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto clean_up;
+        }
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor pk_cur = aws_byte_cursor_from_buf(&options->private_key);

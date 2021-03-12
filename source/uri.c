@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/uri.h>
 
@@ -222,65 +212,56 @@ uint16_t aws_uri_port(const struct aws_uri *uri) {
     return uri->port;
 }
 
+bool aws_uri_query_string_next_param(const struct aws_uri *uri, struct aws_uri_param *param) {
+    /* If param is zeroed, then this is the first run. */
+    bool first_run = param->value.ptr == NULL;
+
+    /* aws_byte_cursor_next_split() is used to iterate over params in the query string.
+     * It takes an in/out substring arg similar to how this function works */
+    struct aws_byte_cursor substr;
+    if (first_run) {
+        /* substring must be zeroed to start */
+        AWS_ZERO_STRUCT(substr);
+    } else {
+        /* re-assemble substring which contained key and value */
+        substr.ptr = param->key.ptr;
+        substr.len = (param->value.ptr - param->key.ptr) + param->value.len;
+    }
+
+    /* The do-while is to skip over any empty substrings */
+    do {
+        if (!aws_byte_cursor_next_split(&uri->query_string, '&', &substr)) {
+            /* no more splits, done iterating */
+            return false;
+        }
+    } while (substr.len == 0);
+
+    uint8_t *delim = memchr(substr.ptr, '=', substr.len);
+    if (delim) {
+        param->key.ptr = substr.ptr;
+        param->key.len = delim - substr.ptr;
+        param->value.ptr = delim + 1;
+        param->value.len = substr.len - param->key.len - 1;
+    } else {
+        /* no '=', key gets substring, value is blank */
+        param->key = substr;
+        param->value.ptr = substr.ptr + substr.len;
+        param->value.len = 0;
+    }
+
+    return true;
+}
+
 int aws_uri_query_string_params(const struct aws_uri *uri, struct aws_array_list *out_params) {
-    if (uri->query_string.len == 0) {
-        return AWS_OP_SUCCESS;
-    }
-
-    struct aws_array_list key_val_array;
-    if (aws_array_list_init_dynamic(&key_val_array, uri->allocator, 8, sizeof(struct aws_byte_cursor))) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_byte_cursor_split_on_char(&uri->query_string, '&', &key_val_array)) {
-        goto error;
-    }
-
-    for (size_t i = 0; i < aws_array_list_length(&key_val_array); ++i) {
-        struct aws_byte_cursor *key_val = NULL;
-        aws_array_list_get_at_ptr(&key_val_array, (void *)&key_val, i);
-
-        uint8_t *delim = memchr(key_val->ptr, '=', key_val->len);
-
-        if (delim) {
-            struct aws_uri_param param_value = {
-                .key =
-                    {
-                        .ptr = key_val->ptr,
-                        .len = delim - key_val->ptr,
-                    },
-                .value =
-                    {
-                        .ptr = delim + 1,
-                        .len = key_val->len - (delim - key_val->ptr) - 1,
-                    },
-            };
-
-            if (aws_array_list_push_back(out_params, &param_value)) {
-                goto error;
-            }
-        } else {
-            struct aws_uri_param param_value = {
-                .key =
-                    {
-                        .ptr = key_val->ptr,
-                        .len = key_val->len,
-                    },
-            };
-            AWS_ZERO_STRUCT(param_value.value);
-
-            if (aws_array_list_push_back(out_params, &param_value)) {
-                goto error;
-            }
+    struct aws_uri_param param;
+    AWS_ZERO_STRUCT(param);
+    while (aws_uri_query_string_next_param(uri, &param)) {
+        if (aws_array_list_push_back(out_params, &param)) {
+            return AWS_OP_ERR;
         }
     }
 
-    aws_array_list_clean_up(&key_val_array);
     return AWS_OP_SUCCESS;
-error:
-    aws_array_list_clean_up(&key_val_array);
-    aws_array_list_clear(out_params);
-    return AWS_OP_ERR;
 }
 
 static void s_parse_scheme(struct uri_parser *parser, struct aws_byte_cursor *str) {
@@ -360,7 +341,7 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
         size_t port_len = parser->uri->authority.len - parser->uri->host_name.len - 1;
         port_delim += 1;
         for (size_t i = 0; i < port_len; ++i) {
-            if (!isdigit(port_delim[i])) {
+            if (!aws_isdigit(port_delim[i])) {
                 parser->state = ERROR;
                 aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
                 return;
@@ -449,7 +430,7 @@ static void s_unchecked_append_canonicalized_path_character(struct aws_byte_buf 
 
     uint8_t *dest_ptr = buffer->buffer + buffer->len;
 
-    if (isalnum(value)) {
+    if (aws_isalnum(value)) {
         ++buffer->len;
         *dest_ptr = value;
         return;
@@ -493,7 +474,7 @@ static void s_raw_append_canonicalized_param_character(struct aws_byte_buf *buff
 
     uint8_t *dest_ptr = buffer->buffer + buffer->len;
 
-    if (isalnum(value)) {
+    if (aws_isalnum(value)) {
         ++buffer->len;
         *dest_ptr = value;
         return;
@@ -554,4 +535,28 @@ int aws_byte_buf_append_encoding_uri_path(struct aws_byte_buf *buffer, const str
 
 int aws_byte_buf_append_encoding_uri_param(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor) {
     return s_encode_cursor_to_buffer(buffer, cursor, s_raw_append_canonicalized_param_character);
+}
+
+int aws_byte_buf_append_decoding_uri(struct aws_byte_buf *buffer, const struct aws_byte_cursor *cursor) {
+    /* reserve room up front for worst possible case: no % and everything copies over 1:1 */
+    if (aws_byte_buf_reserve_relative(buffer, cursor->len)) {
+        return AWS_OP_ERR;
+    }
+
+    /* advance over cursor */
+    struct aws_byte_cursor advancing = *cursor;
+    uint8_t c;
+    while (aws_byte_cursor_read_u8(&advancing, &c)) {
+
+        if (c == '%') {
+            /* two hex characters following '%' are the byte's value */
+            if (AWS_UNLIKELY(aws_byte_cursor_read_hex_u8(&advancing, &c) == false)) {
+                return aws_raise_error(AWS_ERROR_MALFORMED_INPUT_STRING);
+            }
+        }
+
+        buffer->buffer[buffer->len++] = c;
+    }
+
+    return AWS_OP_SUCCESS;
 }

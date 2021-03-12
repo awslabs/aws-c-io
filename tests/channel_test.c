@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 
 #include <aws/common/atomics.h>
@@ -655,10 +645,18 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group event_loop_group;
-    ASSERT_SUCCESS(aws_event_loop_group_default_init(&event_loop_group, allocator, 1));
-
     struct aws_mutex mutex = AWS_MUTEX_INIT;
+
+    struct channel_connect_test_args callback_data = {
+        .mutex = &mutex,
+        .cv = AWS_CONDITION_VARIABLE_INIT,
+        .error_code = 0,
+        .channel = NULL,
+        .setup = false,
+        .shutdown = false,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;
@@ -744,12 +742,15 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_array_list_push_back(&address_list, &host_address_1));
     ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_dns_resolver, &address_list));
 
-    struct aws_host_resolver resolver;
-    ASSERT_SUCCESS(aws_host_resolver_init_default(&resolver, allocator, 8, &event_loop_group));
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = event_loop_group,
+        .max_entries = 8,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = &event_loop_group,
-        .host_resolver = &resolver,
+        .event_loop_group = event_loop_group,
+        .host_resolver = resolver,
         .host_resolution_config = &mock_resolver_config,
     };
 
@@ -760,15 +761,6 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
-
-    struct channel_connect_test_args callback_data = {
-        .mutex = &mutex,
-        .cv = AWS_CONDITION_VARIABLE_INIT,
-        .error_code = 0,
-        .channel = NULL,
-        .setup = false,
-        .shutdown = false,
-    };
 
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
@@ -800,9 +792,10 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     /* clean up */
     aws_client_bootstrap_release(bootstrap);
-    aws_host_resolver_clean_up(&resolver);
+    aws_host_resolver_release(resolver);
     mock_dns_resolver_clean_up(&mock_dns_resolver);
-    aws_event_loop_group_clean_up(&event_loop_group);
+    aws_event_loop_group_release(event_loop_group);
+
     for (size_t addr_idx = 0; addr_idx < s3_address_count; ++addr_idx) {
         aws_array_list_get_at_ptr(&s3_addresses, (void *)&resolved_s3_address, addr_idx);
         aws_host_address_clean_up(resolved_s3_address);

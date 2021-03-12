@@ -1,16 +1,6 @@
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/tls_channel_handler.h>
 
@@ -22,6 +12,7 @@
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
+#include <aws/common/encoding.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
@@ -33,8 +24,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <openssl/crypto.h>
-
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 #define KB_1 1024
 #define MAX_RECORD_SIZE (KB_1 * 16)
@@ -42,37 +31,6 @@
 
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
-
-/* this is completely absurd and the reason I hate dependencies, but I'm assuming
- * you don't want your older versions of openssl's libcrypto crashing on you. */
-#if defined(LIBRESSL_VERSION_NUMBER) && (OPENSSL_VERSION_NUMBER == 0x20000000L)
-#    undef OPENSSL_VERSION_NUMBER
-#    define OPENSSL_VERSION_NUMBER 0x1000107fL
-#endif
-#define OPENSSL_VERSION_LESS_1_1 (OPENSSL_VERSION_NUMBER < 0x10100003L)
-
-#if OPENSSL_VERSION_LESS_1_1
-#    include <aws/common/mutex.h>
-#    include <aws/common/thread.h>
-
-static struct aws_mutex *s_libcrypto_locks = NULL;
-static struct aws_allocator *s_libcrypto_allocator = NULL;
-
-static void s_locking_fn(int mode, int n, const char *unused0, int unused1) {
-    (void)unused0;
-    (void)unused1;
-
-    if (mode & CRYPTO_LOCK) {
-        aws_mutex_lock(&s_libcrypto_locks[n]);
-    } else {
-        aws_mutex_unlock(&s_libcrypto_locks[n]);
-    }
-}
-
-static unsigned long s_id_fn(void) {
-    return (unsigned long)aws_thread_current_thread_id();
-}
-#endif
 
 struct s2n_handler {
     struct aws_channel_handler handler;
@@ -157,31 +115,12 @@ static const char *s_determine_default_pki_ca_file(void) {
 }
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
-
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
     s2n_init();
-
-#if OPENSSL_VERSION_LESS_1_1
-    AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: OpenSSL version less than 1.1 detected. Please upgrade.");
-    if (!CRYPTO_get_locking_callback()) {
-        s_libcrypto_allocator = alloc;
-        s_libcrypto_locks = aws_mem_acquire(alloc, sizeof(struct aws_mutex) * CRYPTO_num_locks());
-        AWS_FATAL_ASSERT(s_libcrypto_locks);
-        size_t lock_count = (size_t)CRYPTO_num_locks();
-        for (size_t i = 0; i < lock_count; ++i) {
-            aws_mutex_init(&s_libcrypto_locks[i]);
-        }
-        CRYPTO_set_locking_callback(s_locking_fn);
-    }
-
-    if (!CRYPTO_get_id_callback()) {
-        CRYPTO_set_id_callback(s_id_fn);
-    }
-#endif
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
@@ -194,21 +133,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {
     s2n_cleanup();
-
-#if OPENSSL_VERSION_LESS_1_1
-    if (CRYPTO_get_locking_callback() == s_locking_fn) {
-        CRYPTO_set_locking_callback(NULL);
-        size_t lock_count = (size_t)CRYPTO_num_locks();
-        for (size_t i = 0; i < lock_count; ++i) {
-            aws_mutex_clean_up(&s_libcrypto_locks[i]);
-        }
-        aws_mem_release(s_libcrypto_allocator, s_libcrypto_locks);
-    }
-
-    if (CRYPTO_get_id_callback() == s_id_fn) {
-        CRYPTO_set_id_callback(NULL);
-    }
-#endif
 }
 
 bool aws_tls_is_alpn_available(void) {
@@ -218,11 +142,16 @@ bool aws_tls_is_alpn_available(void) {
 bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+            return true;
+            /* PQ Crypto no-ops on android for now */
+#ifndef ANDROID
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
             return true;
+#endif
 
         default:
             return false;
@@ -278,20 +207,19 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
 
     size_t processed = 0;
     while (processed < buf->len) {
+        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
+        const size_t message_size_hint = (buf->len - processed) + overhead;
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
-            handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf->len - processed);
+            handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message) {
+        if (!message || message->message_data.capacity <= overhead) {
             errno = ENOMEM;
             return -1;
         }
 
-        const size_t overhead = aws_channel_slot_upstream_message_overhead(handler->slot);
-        const size_t available_msg_write_capacity = buffer_cursor.len - overhead;
-
-        const size_t to_write = message->message_data.capacity > available_msg_write_capacity
-                                    ? available_msg_write_capacity
-                                    : message->message_data.capacity;
+        const size_t available_msg_write_capacity = message->message_data.capacity - overhead;
+        const size_t to_write =
+            available_msg_write_capacity >= buffer_cursor.len ? buffer_cursor.len : available_msg_write_capacity;
 
         struct aws_byte_cursor chunk = aws_byte_cursor_advance(&buffer_cursor, to_write);
         if (aws_byte_buf_append(&message->message_data, &chunk)) {
@@ -491,8 +419,8 @@ static int s_s2n_handler_process_read_message(
 
     while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
 
-        struct aws_io_message *outgoing_read_message =
-            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window);
+        struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
+            slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             return AWS_OP_ERR;
         }
@@ -911,12 +839,10 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
 }
 
-void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-    struct s2n_ctx *s2n_ctx = ctx->impl;
-
-    if (s2n_ctx) {
+static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
+    if (s2n_ctx != NULL) {
         s2n_config_free(s2n_ctx->s2n_config);
-        aws_mem_release(ctx->alloc, s2n_ctx);
+        aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
 }
 
@@ -938,6 +864,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
+    aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
     s2n_ctx->s2n_config = s2n_config_new();
 
     if (!s2n_ctx->s2n_config) {
@@ -983,7 +910,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-SIKE-TEST-TLS-1-0-2020-02");
             break;
-
+        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-07");
+            break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
             aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -992,6 +921,18 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     if (options->certificate.len && options->private_key.len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
+
+        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_s2n_ctx;
+        }
+
+        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto cleanup_s2n_ctx;
+        }
 
         int err_code = s2n_config_add_cert_chain_and_key(
             s2n_ctx->s2n_config, (const char *)options->certificate.buffer, (const char *)options->private_key.buffer);
@@ -1012,10 +953,28 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->verify_peer) {
-        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) ||
-            s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-            goto cleanup_s2n_config;
+        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
+            if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "ctx: ocsp status request cannot be set: %s (%s)",
+                    s2n_strerror(s2n_errno, "EN"),
+                    s2n_strerror_debug(s2n_errno, "EN"));
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
+            }
+        } else {
+            if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
+                AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+            } else {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "ctx: cannot enable ocsp stapling: %s (%s)",
+                    s2n_strerror(s2n_errno, "EN"),
+                    s2n_strerror_debug(s2n_errno, "EN"));
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
+            }
         }
 
         if (options->ca_path) {

@@ -1,18 +1,8 @@
 #ifndef AWS_TESTING_IO_TESTING_CHANNEL_H
 #define AWS_TESTING_IO_TESTING_CHANNEL_H
-/*
- * Copyright 2010-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License").
- * You may not use this file except in compliance with the License.
- * A copy of the License is located at
- *
- *  http://aws.amazon.com/apache2.0
- *
- * or in the "license" file accompanying this file. This file is distributed
- * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
- * express or implied. See the License for the specific language governing
- * permissions and limitations under the License.
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/clock.h>
 #include <aws/common/task_scheduler.h>
@@ -300,27 +290,25 @@ static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel,
  * convention isn't used on the functions (since they're intended for you to call). */
 
 /** when you want to test the read path of your handler, call this with the message you want it to read. */
-AWS_STATIC_IMPL int testing_channel_push_read_message(struct testing_channel *testing, struct aws_io_message *message) {
+static inline int testing_channel_push_read_message(struct testing_channel *testing, struct aws_io_message *message) {
     return aws_channel_slot_send_message(testing->left_handler_slot, message, AWS_CHANNEL_DIR_READ);
 }
 
 /** when you want to test the write path of your handler, call this with the message you want it to write.
  * A downstream handler must have been installed */
-AWS_STATIC_IMPL int testing_channel_push_write_message(
-    struct testing_channel *testing,
-    struct aws_io_message *message) {
+static inline int testing_channel_push_write_message(struct testing_channel *testing, struct aws_io_message *message) {
     ASSERT_NOT_NULL(testing->right_handler_slot);
     return aws_channel_slot_send_message(testing->right_handler_slot, message, AWS_CHANNEL_DIR_WRITE);
 }
 
 /** when you want to test the write output of your handler, call this, get the queue and iterate the messages. */
-AWS_STATIC_IMPL struct aws_linked_list *testing_channel_get_written_message_queue(struct testing_channel *testing) {
+static inline struct aws_linked_list *testing_channel_get_written_message_queue(struct testing_channel *testing) {
     return &testing->left_handler_impl->messages;
 }
 
 /** Set whether written messages have their on_complete callbacks invoked immediately.
  * The on_complete callback will be cleared after it is invoked. */
-AWS_STATIC_IMPL void testing_channel_complete_written_messages_immediately(
+static inline void testing_channel_complete_written_messages_immediately(
     struct testing_channel *testing,
     bool complete_immediately,
     int complete_error_code) {
@@ -331,18 +319,18 @@ AWS_STATIC_IMPL void testing_channel_complete_written_messages_immediately(
 
 /** when you want to test the read output of your handler, call this, get the queue and iterate the messages.
  * A downstream handler must have been installed */
-AWS_STATIC_IMPL struct aws_linked_list *testing_channel_get_read_message_queue(struct testing_channel *testing) {
+static inline struct aws_linked_list *testing_channel_get_read_message_queue(struct testing_channel *testing) {
     AWS_ASSERT(testing->right_handler_impl);
     return &testing->right_handler_impl->messages;
 }
 
 /** When you want to see what the latest window update issues from your channel handler was, call this. */
-AWS_STATIC_IMPL size_t testing_channel_last_window_update(struct testing_channel *testing) {
+static inline size_t testing_channel_last_window_update(struct testing_channel *testing) {
     return testing->left_handler_impl->latest_window_update;
 }
 
 /** When you want the downstream handler to issue a window update */
-AWS_STATIC_IMPL int testing_channel_increment_read_window(struct testing_channel *testing, size_t size) {
+static inline int testing_channel_increment_read_window(struct testing_channel *testing, size_t size) {
     ASSERT_NOT_NULL(testing->right_handler_slot);
     return aws_channel_slot_increment_read_window(testing->right_handler_slot, size);
 }
@@ -350,7 +338,7 @@ AWS_STATIC_IMPL int testing_channel_increment_read_window(struct testing_channel
 /** Executes all currently scheduled tasks whose time has come.
  * Use testing_channel_drain_queued_tasks() to repeatedly run tasks until only future-tasks remain.
  */
-AWS_STATIC_IMPL void testing_channel_run_currently_queued_tasks(struct testing_channel *testing) {
+static inline void testing_channel_run_currently_queued_tasks(struct testing_channel *testing) {
     AWS_ASSERT(aws_channel_thread_is_callers_thread(testing->channel));
 
     uint64_t now = 0;
@@ -361,7 +349,7 @@ AWS_STATIC_IMPL void testing_channel_run_currently_queued_tasks(struct testing_c
 /** Repeatedly executes scheduled tasks until only those in the future remain.
  * This covers the common case where there's a chain reaction of now-tasks scheduling further now-tasks.
  */
-AWS_STATIC_IMPL void testing_channel_drain_queued_tasks(struct testing_channel *testing) {
+static inline void testing_channel_drain_queued_tasks(struct testing_channel *testing) {
     AWS_ASSERT(aws_channel_thread_is_callers_thread(testing->channel));
 
     uint64_t now = 0;
@@ -390,7 +378,7 @@ AWS_STATIC_IMPL void testing_channel_drain_queued_tasks(struct testing_channel *
 /** When you want to force the  "not on channel thread path" for your handler, set 'on_users_thread' to false.
  * when you want to undo that, set it back to true. If you set it to false, you'll need to call
  * 'testing_channel_execute_queued_tasks()' to invoke the tasks that ended up being scheduled. */
-AWS_STATIC_IMPL void testing_channel_set_is_on_users_thread(struct testing_channel *testing, bool on_users_thread) {
+static inline void testing_channel_set_is_on_users_thread(struct testing_channel *testing, bool on_users_thread) {
     testing->loop_impl->mock_on_callers_thread = on_users_thread;
 }
 
@@ -398,7 +386,7 @@ struct aws_testing_channel_options {
     aws_io_clock_fn *clock_fn;
 };
 
-AWS_STATIC_IMPL int testing_channel_init(
+static inline int testing_channel_init(
     struct testing_channel *testing,
     struct aws_allocator *allocator,
     struct aws_testing_channel_options *options) {
@@ -430,7 +418,7 @@ AWS_STATIC_IMPL int testing_channel_init(
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL int testing_channel_clean_up(struct testing_channel *testing) {
+static inline int testing_channel_clean_up(struct testing_channel *testing) {
     aws_channel_shutdown(testing->channel, AWS_ERROR_SUCCESS);
 
     /* Wait for channel to finish shutdown */
@@ -447,7 +435,7 @@ AWS_STATIC_IMPL int testing_channel_clean_up(struct testing_channel *testing) {
 }
 
 /** When you want to test your handler with a downstream handler installed to the right. */
-AWS_STATIC_IMPL int testing_channel_install_downstream_handler(struct testing_channel *testing, size_t initial_window) {
+static inline int testing_channel_install_downstream_handler(struct testing_channel *testing, size_t initial_window) {
     ASSERT_NULL(testing->right_handler_slot);
 
     testing->right_handler_slot = aws_channel_slot_new(testing->channel);
@@ -464,12 +452,12 @@ AWS_STATIC_IMPL int testing_channel_install_downstream_handler(struct testing_ch
 }
 
 /** Return whether channel is completely shut down */
-AWS_STATIC_IMPL bool testing_channel_is_shutdown_completed(const struct testing_channel *testing) {
+static inline bool testing_channel_is_shutdown_completed(const struct testing_channel *testing) {
     return testing->channel_shutdown_completed;
 }
 
 /** Return channel's shutdown error_code */
-AWS_STATIC_IMPL int testing_channel_get_shutdown_error_code(const struct testing_channel *testing) {
+static inline int testing_channel_get_shutdown_error_code(const struct testing_channel *testing) {
     AWS_ASSERT(testing->channel_shutdown_completed);
     return testing->channel_shutdown_error_code;
 }
@@ -479,7 +467,7 @@ AWS_STATIC_IMPL int testing_channel_get_shutdown_error_code(const struct testing
  * once in the read direction and again in the write direction.
  * Use this to inject actions that might occur in the middle of channel shutdown.
  */
-AWS_STATIC_IMPL void testing_channel_set_downstream_handler_shutdown_callback(
+static inline void testing_channel_set_downstream_handler_shutdown_callback(
     struct testing_channel *testing,
     testing_channel_handler_on_shutdown_fn *on_shutdown,
     void *user_data) {
@@ -490,7 +478,7 @@ AWS_STATIC_IMPL void testing_channel_set_downstream_handler_shutdown_callback(
 }
 
 /* Pop first message from queue and compare its contents to expected data. */
-AWS_STATIC_IMPL int testing_channel_check_written_message(
+static inline int testing_channel_check_written_message(
     struct testing_channel *channel,
     struct aws_byte_cursor expected) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
@@ -506,12 +494,12 @@ AWS_STATIC_IMPL int testing_channel_check_written_message(
 }
 
 /* Pop first message from queue and compare its contents to expected data. */
-AWS_STATIC_IMPL int testing_channel_check_written_message_str(struct testing_channel *channel, const char *expected) {
+static inline int testing_channel_check_written_message_str(struct testing_channel *channel, const char *expected) {
     return testing_channel_check_written_message(channel, aws_byte_cursor_from_c_str(expected));
 }
 
 /* copies all messages in a list into a buffer, cleans up messages*/
-AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs, struct aws_byte_buf *buffer) {
+static inline int testing_channel_drain_messages(struct aws_linked_list *msgs, struct aws_byte_buf *buffer) {
 
     while (!aws_linked_list_empty(msgs)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(msgs);
@@ -527,7 +515,7 @@ AWS_STATIC_IMPL int testing_channel_drain_messages(struct aws_linked_list *msgs,
 }
 
 /* Pop all messages from queue and compare their contents to expected data */
-AWS_STATIC_IMPL int testing_channel_check_messages_ex(
+static inline int testing_channel_check_messages_ex(
     struct aws_linked_list *msgs,
     struct aws_allocator *allocator,
     struct aws_byte_cursor expected) {
@@ -542,7 +530,7 @@ AWS_STATIC_IMPL int testing_channel_check_messages_ex(
 }
 
 /* Check contents of all messages sent in the write direction. */
-AWS_STATIC_IMPL int testing_channel_check_written_messages(
+static inline int testing_channel_check_written_messages(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
     struct aws_byte_cursor expected) {
@@ -552,7 +540,7 @@ AWS_STATIC_IMPL int testing_channel_check_written_messages(
 }
 
 /* Check contents of all messages sent in the write direction. */
-AWS_STATIC_IMPL int testing_channel_check_written_messages_str(
+static inline int testing_channel_check_written_messages_str(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
     const char *expected) {
@@ -561,9 +549,7 @@ AWS_STATIC_IMPL int testing_channel_check_written_messages_str(
 }
 
 /* Extract contents of all messages sent in the write direction. */
-AWS_STATIC_IMPL int testing_channel_drain_written_messages(
-    struct testing_channel *channel,
-    struct aws_byte_buf *output) {
+static inline int testing_channel_drain_written_messages(struct testing_channel *channel, struct aws_byte_buf *output) {
     struct aws_linked_list *msgs = testing_channel_get_written_message_queue(channel);
     ASSERT_SUCCESS(testing_channel_drain_messages(msgs, output));
 
@@ -571,7 +557,7 @@ AWS_STATIC_IMPL int testing_channel_drain_written_messages(
 }
 
 /* Check contents of all read-messages sent in the read direction by a midchannel http-handler */
-AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages(
+static inline int testing_channel_check_midchannel_read_messages(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
     struct aws_byte_cursor expected) {
@@ -581,7 +567,7 @@ AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages(
 }
 
 /* Check contents of all read-messages sent in the read direction by a midchannel http-handler */
-AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages_str(
+static inline int testing_channel_check_midchannel_read_messages_str(
     struct testing_channel *channel,
     struct aws_allocator *allocator,
     const char *expected) {
@@ -590,7 +576,7 @@ AWS_STATIC_IMPL int testing_channel_check_midchannel_read_messages_str(
 }
 
 /* For sending an aws_io_message into the channel, in the write or read direction */
-AWS_STATIC_IMPL int testing_channel_send_data(
+static inline int testing_channel_send_data(
     struct testing_channel *channel,
     struct aws_byte_cursor data,
     enum aws_channel_direction dir,
@@ -609,6 +595,11 @@ AWS_STATIC_IMPL int testing_channel_send_data(
         err = testing_channel_push_write_message(channel, msg);
     }
 
+    if (err) {
+        /* If an error happens, clean the message here. Else, the recipient of the message will take the ownership */
+        aws_mem_release(msg->allocator, msg);
+    }
+
     if (!ignore_send_message_errors) {
         ASSERT_SUCCESS(err);
     }
@@ -617,29 +608,29 @@ AWS_STATIC_IMPL int testing_channel_send_data(
 }
 
 /** Create an aws_io_message, containing the following data, and pushes it up the channel in the read direction */
-AWS_STATIC_IMPL int testing_channel_push_read_data(struct testing_channel *channel, struct aws_byte_cursor data) {
+static inline int testing_channel_push_read_data(struct testing_channel *channel, struct aws_byte_cursor data) {
     return testing_channel_send_data(channel, data, AWS_CHANNEL_DIR_READ, false);
 }
 
 /** Create an aws_io_message, containing the following data, and pushes it up the channel in the read direction */
-AWS_STATIC_IMPL int testing_channel_push_read_str(struct testing_channel *channel, const char *str) {
+static inline int testing_channel_push_read_str(struct testing_channel *channel, const char *str) {
     return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, false);
 }
 
 /** Create an aws_io_message, containing the following data.
  * Tries to push it up the channel in the read direction, but don't assert if the message can't be sent.
  * Useful for testing data that arrives during handler shutdown */
-AWS_STATIC_IMPL int testing_channel_push_read_str_ignore_errors(struct testing_channel *channel, const char *str) {
+static inline int testing_channel_push_read_str_ignore_errors(struct testing_channel *channel, const char *str) {
     return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_READ, true);
 }
 
 /** Create an aws_io_message, containing the following data, and pushes it up the channel in the write direction */
-AWS_STATIC_IMPL int testing_channel_push_write_data(struct testing_channel *channel, struct aws_byte_cursor data) {
+static inline int testing_channel_push_write_data(struct testing_channel *channel, struct aws_byte_cursor data) {
     return testing_channel_send_data(channel, data, AWS_CHANNEL_DIR_WRITE, false);
 }
 
 /** Create an aws_io_message, containing the following data, and pushes it up the channel in the write direction */
-AWS_STATIC_IMPL int testing_channel_push_write_str(struct testing_channel *channel, const char *str) {
+static inline int testing_channel_push_write_str(struct testing_channel *channel, const char *str) {
     return testing_channel_send_data(channel, aws_byte_cursor_from_c_str(str), AWS_CHANNEL_DIR_WRITE, false);
 }
 
