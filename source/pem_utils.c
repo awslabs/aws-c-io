@@ -73,9 +73,9 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
                     }
                     dash_part_counts++;
                     state = ITERATE_DASH_PART;
-                    /* FALLTHROUGH */
+                    /* fall-thru */
                 } else {
-                    break;
+                    continue;
                 }
             case ITERATE_DASH_PART:
                 /* iterating until a encoded character or endline is the next character */
@@ -124,6 +124,10 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
             default:
                 break;
         }
+    }
+    if (clean_pem[clean_pem_index] != '\n') {
+        /* in case the last newline was ignored as the loop didn't touch it */
+        clean_pem[clean_pem_index++] = '\n';
     }
     struct aws_string *return_string = aws_string_new_from_array(allocator, (uint8_t *)clean_pem, clean_pem_index);
     aws_mem_release(allocator, clean_pem);
