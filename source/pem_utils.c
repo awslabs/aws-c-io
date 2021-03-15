@@ -39,7 +39,6 @@ static const bool s_base64_encoding_table[256] = {
 static const bool s_base64_allowed_white_space_table[256] = {
     ['\r'] = true,
     ['\n'] = true,
-    [' '] = true,
 };
 
 struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_allocator *allocator) {
@@ -74,17 +73,13 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
                     }
                     dash_part_counts++;
                     state = ITERATE_DASH_PART;
-                    /* fall through */
+                    /* FALLTHROUGH */
                 } else {
                     break;
                 }
             case ITERATE_DASH_PART:
                 /* iterating until a encoded character or endline is the next character */
                 if (s_base64_encoding_table[(uint8_t)next] || s_base64_allowed_white_space_table[(uint8_t)next]) {
-                    if (next == ' ') {
-                        /* Remove any spaces next to dashes (Eg "----- BEGIN" will become "-----BEGIN") */
-                        break;
-                    }
                     if (dash_part_counts % NUM_DASH_PARTS_PEM == 1 || dash_part_counts % NUM_DASH_PARTS_PEM == 3) {
                         state = BETWEEN_DASH_PART;
                     } else if (dash_part_counts % NUM_DASH_PARTS_PEM == 0) {
