@@ -113,7 +113,7 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
                     }
                 }
                 if (next == '-') {
-                    if (clean_pem[clean_pem_index] != '\n') {
+                    if (clean_pem[clean_pem_index - 1] != '\n') {
                         clean_pem[clean_pem_index++] = '\n';
                     }
                     content_len = 0;
@@ -125,7 +125,7 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
                 break;
         }
     }
-    if (clean_pem[clean_pem_index] != '\n') {
+    if (clean_pem[clean_pem_index - 1] != '\n') {
         /* in case the last newline was ignored as the loop didn't touch it */
         clean_pem[clean_pem_index++] = '\n';
     }
