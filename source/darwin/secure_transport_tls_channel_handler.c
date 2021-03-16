@@ -1074,10 +1074,12 @@ cleanup_secure_transport_ctx:
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_pem_clean_up(options);
     return s_tls_ctx_new(alloc, options);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_pem_clean_up(options);
     return s_tls_ctx_new(alloc, options);
 }
 

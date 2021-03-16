@@ -683,9 +683,10 @@ static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash
  * This local object is added to the table of every event loop that has a (s2n) tls connection
  * added to it at some point in time
  */
-static struct aws_event_loop_local_object s_tl_cleanup_object = {.key = &s_tl_cleanup_key,
-                                                                 .object = NULL,
-                                                                 .on_object_removed = NULL};
+static struct aws_event_loop_local_object s_tl_cleanup_object = {
+    .key = &s_tl_cleanup_key,
+    .object = NULL,
+    .on_object_removed = NULL};
 
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;
@@ -1083,10 +1084,12 @@ cleanup_s2n_ctx:
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     aws_io_fatal_assert_library_initialized();
+    aws_tls_ctx_options_pem_clean_up(options);
     return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     aws_io_fatal_assert_library_initialized();
+    aws_tls_ctx_options_pem_clean_up(options);
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }

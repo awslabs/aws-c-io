@@ -2,7 +2,6 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/string.h>
 #include <aws/io/private/pem_utils.h>
 
 enum aws_pem_util_state {

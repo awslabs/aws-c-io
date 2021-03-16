@@ -1793,7 +1793,7 @@ static int s_test_cert_import(struct aws_allocator *allocator, void *ctx) {
 
     aws_io_library_init(allocator);
 
-    char filename[] = "key_pair0.pem";
+    char filename[] = "key_pair_with_comments.pem";
 
     struct aws_byte_buf pem_buf;
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&pem_buf, allocator, filename));

@@ -230,6 +230,11 @@ struct aws_tls_byo_crypto_setup_options {
 
 #endif /* BYO_CRYPTO */
 
+/**
+ * Clean up all the pem file in a context option.
+ */
+void aws_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options);
+
 AWS_EXTERN_C_BEGIN
 
 /******************************** tls options init stuff ***********************/
