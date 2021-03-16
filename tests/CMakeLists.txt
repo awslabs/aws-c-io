@@ -119,6 +119,7 @@ add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 
 if (NOT BYO_CRYPTO)
+    add_net_test_case(test_cert_import)
     add_net_test_case(test_concurrent_cert_import)
     add_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_client_channel_negotiation_error_expired)

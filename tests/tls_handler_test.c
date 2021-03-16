@@ -1788,6 +1788,49 @@ static int s_test_tls_negotiation_timeout(struct aws_allocator *allocator, void 
 
 AWS_TEST_CASE(test_tls_negotiation_timeout, s_test_tls_negotiation_timeout)
 
+static int s_test_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    char filename[] = "key_pair0.pem";
+
+    struct aws_byte_buf pem_buf;
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&pem_buf, allocator, filename));
+
+    /* parse key pair from combined PEM */
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&pem_buf);
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&pem_buf);
+    uint8_t *key_end = (uint8_t *)strstr((const char *)key_cur.ptr, "END PRIVATE KEY");
+    while (*key_end != '\n') {
+        ++key_end;
+    }
+    ++key_end; /* advance past last \n */
+    uint8_t *cert_start = key_end;
+    while (*cert_start == '\n') {
+        ++cert_start;
+    }
+
+    key_cur.len = key_end - key_cur.ptr;
+    cert_cur.len = cert_cur.len - (cert_start - cert_cur.ptr);
+    cert_cur.ptr = cert_start;
+    struct aws_tls_ctx_options tls_options = {0};
+    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls = aws_tls_client_ctx_new(allocator, &tls_options);
+    AWS_FATAL_ASSERT(tls);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+    aws_byte_buf_clean_up(&pem_buf);
+    aws_tls_ctx_release(tls);
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_cert_import, s_test_cert_import)
+
 struct import_info {
     struct aws_allocator *allocator;
     struct aws_byte_buf cert_buf;
