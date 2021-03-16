@@ -686,7 +686,8 @@ static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash
 static struct aws_event_loop_local_object s_tl_cleanup_object = {
     .key = &s_tl_cleanup_key,
     .object = NULL,
-    .on_object_removed = NULL};
+    .on_object_removed = NULL,
+};
 
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;

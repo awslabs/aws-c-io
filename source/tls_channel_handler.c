@@ -119,7 +119,7 @@ static void s_pem_clean_up(struct aws_byte_buf pem, struct aws_allocator *alloca
     }
 }
 
-void aws_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
+void aws_tls_ctx_options_pem_clean_up(const struct aws_tls_ctx_options *options) {
     if (!options) {
         return;
     }
