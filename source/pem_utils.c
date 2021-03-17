@@ -12,6 +12,9 @@ enum aws_pem_util_state {
 };
 
 int aws_clean_up_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
+    if (!pem->len) {
+        return AWS_OP_SUCCESS;
+    }
     char *clean_pem = NULL;
     clean_pem = aws_mem_calloc(allocator, pem->len, sizeof(char));
     if (!clean_pem) {
