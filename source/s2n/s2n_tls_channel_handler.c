@@ -550,17 +550,7 @@ static int s_s2n_do_delayed_shutdown(
     uint64_t shutdown_delay = s2n_connection_get_delay(s2n_handler->connection);
     uint64_t now = 0;
 
-    struct aws_event_loop *loop = aws_channel_get_event_loop(slot->channel);
-    if (loop == NULL) {
-        return AWS_OP_ERR;
-    }
-
-    aws_io_clock_fn *clock_fn = loop->clock;
-    if (clock_fn == NULL) {
-        clock_fn = aws_high_res_clock_get_ticks;
-    }
-
-    if (clock_fn(&now)) {
+    if (aws_channel_current_clock_time(slot->channel, &now)) {
         return AWS_OP_ERR;
     }
 
