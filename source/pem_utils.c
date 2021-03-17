@@ -2,7 +2,6 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/string.h>
 #include <aws/io/private/pem_utils.h>
 
 enum aws_pem_util_state {
@@ -11,7 +10,7 @@ enum aws_pem_util_state {
     END,
 };
 
-struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_allocator *allocator) {
+struct aws_byte_buf aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_allocator *allocator) {
     char *clean_pem = NULL;
     clean_pem = aws_mem_calloc(allocator, pem.len, sizeof(char));
     int state = BEGIN;
@@ -69,7 +68,5 @@ struct aws_string *aws_clean_up_pem(struct aws_byte_cursor pem, struct aws_alloc
                 break;
         }
     }
-    struct aws_string *return_string = aws_string_new_from_array(allocator, (uint8_t *)clean_pem, clean_pem_index);
-    aws_mem_release(allocator, clean_pem);
-    return return_string;
+    return aws_byte_buf_from_array((void *)clean_pem, clean_pem_index);
 }

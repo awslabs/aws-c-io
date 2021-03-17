@@ -11,9 +11,9 @@ static int s_check_clean_pem_result(
     struct aws_byte_cursor dirty_pem,
     struct aws_byte_cursor expected_clean_pem,
     struct aws_allocator *allocator) {
-    struct aws_string *clean_pem = aws_clean_up_pem(dirty_pem, allocator);
-    ASSERT_TRUE(aws_string_eq_byte_cursor(clean_pem, &expected_clean_pem));
-    aws_string_destroy(clean_pem);
+    struct aws_byte_buf clean_pem = aws_clean_up_pem(dirty_pem, allocator);
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&expected_clean_pem, &clean_pem));
+    aws_byte_buf_clean_up(&clean_pem);
     return AWS_OP_SUCCESS;
 }
 
@@ -24,11 +24,11 @@ static int s_test_pem_util_comments_around_pem_object(struct aws_allocator *allo
                                                                              "-----BEGIN CERTIFICATE-----\n"
                                                                              "CERTIFICATES\n"
                                                                              "-----END CERTIFICATE-----\n"
-                                                                             "# shake shack\r\n"
+                                                                             "# another comments\r\n"
                                                                              "-----BEGIN CERTIFICATE-----\n"
                                                                              "CERTIFICATES\n"
                                                                              "-----END CERTIFICATE-----\n"
-                                                                             "# in & out\r\n");
+                                                                             "# final comments\r\n");
 
     struct aws_byte_cursor expected_clean_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN CERTIFICATE-----\n"
                                                                                       "CERTIFICATES\n"
