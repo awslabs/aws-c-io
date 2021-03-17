@@ -4,6 +4,9 @@
  */
 #include <aws/io/tls_channel_handler.h>
 
+#include <aws/common/clock.h>
+#include <aws/common/task_scheduler.h>
+
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
@@ -32,6 +35,12 @@
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
 
+struct s2n_delayed_shutdown_task {
+    struct aws_channel_task task;
+    struct aws_channel_slot *slot;
+    int error;
+};
+
 struct s2n_handler {
     struct aws_channel_handler handler;
     struct aws_tls_channel_handler_shared shared_state;
@@ -49,6 +58,7 @@ struct s2n_handler {
     void *user_data;
     bool advertise_alpn_message;
     bool negotiation_finished;
+    struct s2n_delayed_shutdown_task delayed_shutdown_task;
 };
 
 struct s2n_ctx {
@@ -509,6 +519,57 @@ static int s_s2n_handler_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
+static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+
+    struct aws_channel_handler *handler = arg;
+    struct s2n_handler *s2n_handler = handler->impl;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in write direction", (void *)handler)
+        s2n_blocked_status blocked;
+        /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
+        s2n_shutdown(s2n_handler->connection, &blocked);
+    }
+    aws_channel_slot_on_handler_shutdown_complete(
+        s2n_handler->delayed_shutdown_task.slot,
+        AWS_CHANNEL_DIR_WRITE,
+        s2n_handler->delayed_shutdown_task.error,
+        false);
+}
+
+static int s_s2n_do_delayed_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    int error_code) {
+    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+
+    s2n_handler->delayed_shutdown_task.slot = slot;
+    s2n_handler->delayed_shutdown_task.error = error_code;
+
+    uint64_t shutdown_delay = s2n_connection_get_delay(s2n_handler->connection);
+    uint64_t now = 0;
+
+    struct aws_event_loop *loop = aws_channel_get_event_loop(slot->channel);
+    if (loop == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    aws_io_clock_fn *clock_fn = loop->clock;
+    if (clock_fn == NULL) {
+        clock_fn = aws_high_res_clock_get_ticks;
+    }
+
+    if (clock_fn(&now)) {
+        return AWS_OP_ERR;
+    }
+
+    uint64_t shutdown_time = aws_add_u64_saturating(shutdown_delay, now);
+    aws_channel_schedule_task_future(slot->channel, &s2n_handler->delayed_shutdown_task.task, shutdown_time);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_s2n_handler_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -519,10 +580,10 @@ static int s_s2n_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down write direction", (void *)handler)
-            s2n_blocked_status blocked;
-            /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
-            s2n_shutdown(s2n_handler->connection, &blocked);
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Scheduling delayed write direction shutdown", (void *)handler)
+            if (s_s2n_do_delayed_shutdown(handler, slot, error_code) == AWS_OP_SUCCESS) {
+                return AWS_OP_SUCCESS;
+            }
         }
     } else {
         AWS_LOGF_DEBUG(
@@ -808,6 +869,12 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_conn;
     }
 
+    aws_channel_task_init(
+        &s2n_handler->delayed_shutdown_task.task,
+        s_delayed_shutdown_task_fn,
+        &s2n_handler->handler,
+        "s2n_delayed_shutdown");
+
     if (s_s2n_tls_channel_handler_schedule_thread_local_cleanup(slot)) {
         goto cleanup_conn;
     }
@@ -846,6 +913,26 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     }
 }
 
+static int s2n_wall_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
+    (void)context;
+    if (aws_sys_clock_get_ticks(time_in_ns)) {
+        *time_in_ns = 0;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
+    (void)context;
+    if (aws_high_res_clock_get_ticks(time_in_ns)) {
+        *time_in_ns = 0;
+        return -1;
+    }
+
+    return 0;
+}
+
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -871,6 +958,16 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_ctx;
     }
 
+    int set_clock_result = s2n_config_set_wall_clock(s2n_ctx->s2n_config, s2n_wall_clock_time_nanoseconds, NULL);
+    if (set_clock_result != S2N_ERR_T_OK) {
+        goto cleanup_s2n_config;
+    }
+
+    set_clock_result = s2n_config_set_monotonic_clock(s2n_ctx->s2n_config, s2n_monotonic_clock_time_nanoseconds, NULL);
+    if (set_clock_result != S2N_ERR_T_OK) {
+        goto cleanup_s2n_config;
+    }
+
     switch (options->minimum_tls_version) {
         case AWS_IO_SSLv3:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
@@ -888,7 +985,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 is not supported yet.");
             /* sorry guys, we'll add this as soon as s2n does. */
             aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-            goto cleanup_s2n_ctx;
+            goto cleanup_s2n_config;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
         default:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
@@ -916,7 +1013,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
             aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
-            goto cleanup_s2n_ctx;
+            goto cleanup_s2n_config;
     }
 
     if (options->certificate.len && options->private_key.len) {
@@ -925,13 +1022,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_s2n_ctx;
+            goto cleanup_s2n_config;
         }
 
         if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_s2n_ctx;
+            goto cleanup_s2n_config;
         }
 
         int err_code = s2n_config_add_cert_chain_and_key(
