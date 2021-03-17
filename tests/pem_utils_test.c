@@ -11,9 +11,11 @@ static int s_check_clean_pem_result(
     struct aws_byte_cursor dirty_pem,
     struct aws_byte_cursor expected_clean_pem,
     struct aws_allocator *allocator) {
-    struct aws_byte_buf clean_pem = aws_clean_up_pem(dirty_pem, allocator);
-    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&expected_clean_pem, &clean_pem));
-    aws_byte_buf_clean_up(&clean_pem);
+    struct aws_byte_buf pem_buf;
+    ASSERT_SUCCESS(aws_byte_buf_init_copy_from_cursor(&pem_buf, allocator, dirty_pem));
+    ASSERT_SUCCESS(aws_clean_up_pem(&pem_buf, allocator));
+    ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&expected_clean_pem, &pem_buf));
+    aws_byte_buf_clean_up(&pem_buf);
     return AWS_OP_SUCCESS;
 }
 

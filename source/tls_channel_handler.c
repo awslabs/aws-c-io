@@ -81,26 +81,18 @@ static int s_load_null_terminated_buffer_from_cursor(
 
 #if !defined(AWS_OS_IOS)
 
-static void s_pem_clean_up(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
-    if (pem->len) {
-        struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
-        struct aws_byte_buf clean_pem = aws_clean_up_pem(pem_cursor, allocator);
-        struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem);
-        aws_byte_buf_reset(pem, true);
-        aws_byte_buf_append(pem, &clean_pem_cursor);
-        aws_byte_buf_clean_up(&clean_pem);
-    }
-}
-
-static void s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
+static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
     if (!options) {
-        return;
+        return AWS_OP_SUCCESS;
     }
     if (options->allocator) {
-        s_pem_clean_up(&options->ca_file, options->allocator);
-        s_pem_clean_up(&options->certificate, options->allocator);
-        s_pem_clean_up(&options->private_key, options->allocator);
+        if (aws_clean_up_pem(&options->ca_file, options->allocator) |
+            aws_clean_up_pem(&options->certificate, options->allocator) |
+            aws_clean_up_pem(&options->private_key, options->allocator)) {
+            return AWS_OP_ERR;
+        }
     }
+    return AWS_OP_SUCCESS;
 }
 
 int aws_tls_ctx_options_init_client_mtls(
