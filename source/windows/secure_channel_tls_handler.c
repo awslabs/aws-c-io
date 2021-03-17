@@ -1915,11 +1915,9 @@ clean_up:
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_pem_clean_up(options);
     return s_ctx_new(alloc, options, false);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_pem_clean_up(options);
     return s_ctx_new(alloc, options, true);
 }

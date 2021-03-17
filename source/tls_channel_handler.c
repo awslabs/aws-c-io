@@ -81,6 +81,28 @@ static int s_load_null_terminated_buffer_from_cursor(
 
 #if !defined(AWS_OS_IOS)
 
+static void s_pem_clean_up(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
+    if (pem->len) {
+        struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
+        struct aws_string *clean_pem = aws_clean_up_pem(pem_cursor, allocator);
+        struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_string(clean_pem);
+        aws_byte_buf_reset(pem, false);
+        aws_byte_buf_append(pem, &clean_pem_cursor);
+        aws_string_destroy(clean_pem);
+    }
+}
+
+static void s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
+    if (!options) {
+        return;
+    }
+    if (options->allocator) {
+        s_pem_clean_up(&options->ca_file, options->allocator);
+        s_pem_clean_up(&options->certificate, options->allocator);
+        s_pem_clean_up(&options->private_key, options->allocator);
+    }
+}
+
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
@@ -104,30 +126,9 @@ int aws_tls_ctx_options_init_client_mtls(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
-}
-
-static void s_pem_clean_up(struct aws_byte_buf pem, struct aws_allocator *allocator) {
-    if (pem.len) {
-        struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(&pem);
-        struct aws_string *clean_pem = aws_clean_up_pem(pem_cursor, allocator);
-        struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_string(clean_pem);
-        aws_byte_buf_reset(&pem, false);
-        aws_byte_buf_append(&pem, &clean_pem_cursor);
-        aws_string_destroy(clean_pem);
-    }
-}
-
-void aws_tls_ctx_options_pem_clean_up(const struct aws_tls_ctx_options *options) {
-    if (!options) {
-        return;
-    }
-    if (options->allocator) {
-        s_pem_clean_up(options->ca_file, options->allocator);
-        s_pem_clean_up(options->certificate, options->allocator);
-        s_pem_clean_up(options->private_key, options->allocator);
-    }
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_path(
@@ -150,7 +151,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
-
+    s_tls_ctx_options_pem_clean_up(options);
     return AWS_OP_SUCCESS;
 }
 
@@ -319,6 +320,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
             return AWS_OP_ERR;
         }
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -337,6 +339,7 @@ int aws_tls_ctx_options_override_default_trust_store(
     if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
