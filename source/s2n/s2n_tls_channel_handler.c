@@ -5,7 +5,6 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
-#include <aws/common/task_scheduler.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
