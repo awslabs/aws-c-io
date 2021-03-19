@@ -17,7 +17,7 @@ AWS_EXTERN_C_BEGIN
  * BEGIN) are removed
  */
 AWS_IO_API
-int aws_clean_up_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator);
+int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PEM_UTILS_H */

@@ -86,9 +86,9 @@ static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
         return AWS_OP_SUCCESS;
     }
     if (options->allocator) {
-        if (aws_clean_up_pem(&options->ca_file, options->allocator) |
-            aws_clean_up_pem(&options->certificate, options->allocator) |
-            aws_clean_up_pem(&options->private_key, options->allocator)) {
+        if (aws_sanitize_pem(&options->ca_file, options->allocator) |
+            aws_sanitize_pem(&options->certificate, options->allocator) |
+            aws_sanitize_pem(&options->private_key, options->allocator)) {
             return AWS_OP_ERR;
         }
     }

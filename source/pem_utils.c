@@ -11,24 +11,20 @@ enum aws_pem_util_state {
     END,
 };
 
-int aws_clean_up_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
+static const struct aws_byte_cursor begin_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN");
+static const struct aws_byte_cursor end_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----END");
+static const struct aws_byte_cursor dashes = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----");
+
+int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
     if (!pem->len) {
         return AWS_OP_SUCCESS;
     }
-    char *clean_pem = NULL;
-    clean_pem = aws_mem_calloc(allocator, pem->len, sizeof(char));
-    if (!clean_pem) {
+    struct aws_byte_buf clean_pem_buf;
+    if (aws_byte_buf_init(&clean_pem_buf, allocator, pem->len)) {
         return AWS_OP_ERR;
     }
     struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
     int state = BEGIN;
-    int clean_pem_index = 0;
-    const char *begin_header = "-----BEGIN";
-    const char *end_header = "-----END";
-    const char *dashes = "-----";
-    size_t begin_header_len = strlen(begin_header);
-    size_t end_header_len = strlen(end_header);
-    size_t dashes_len = strlen(dashes);
 
     for (size_t i = 0; i < pem_cursor.len; i++) {
         /* parse through the pem once */
@@ -36,7 +32,10 @@ int aws_clean_up_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
         switch (state) {
             case BEGIN:
                 if (current == '-') {
-                    if (!strncmp((const char *)(pem_cursor.ptr + i), begin_header, begin_header_len)) {
+                    struct aws_byte_cursor compare_cursor = pem_cursor;
+                    compare_cursor.len = begin_header.len;
+                    compare_cursor.ptr += i;
+                    if (aws_byte_cursor_eq(&compare_cursor, &begin_header)) {
                         state = ON_DATA;
                         i--;
                     }
@@ -44,41 +43,44 @@ int aws_clean_up_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                 break;
             case ON_DATA:
                 /* start copying everything */
-                clean_pem[clean_pem_index++] = current;
                 if (current == '-') {
-                    if (!strncmp((const char *)(pem_cursor.ptr + i), end_header, end_header_len)) {
+                    struct aws_byte_cursor compare_cursor = pem_cursor;
+                    compare_cursor.len = end_header.len;
+                    compare_cursor.ptr += i;
+                    if (aws_byte_cursor_eq(&compare_cursor, &end_header)) {
                         /* Copy the end header string and start to search for the end part of a pem */
-                        clean_pem_index--;
                         state = END;
-                        for (size_t index = 0; index < end_header_len; index++) {
-                            clean_pem[clean_pem_index++] = end_header[index];
-                        }
-                        i += (end_header_len - 1);
+                        aws_byte_buf_append(&clean_pem_buf, &end_header);
+                        i += (end_header.len - 1);
+                        break;
                     }
                 }
+                aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)current);
                 break;
             case END:
-                clean_pem[clean_pem_index++] = current;
                 if (current == '-') {
-                    if (!strncmp((const char *)(pem_cursor.ptr + i), dashes, dashes_len)) {
+                    struct aws_byte_cursor compare_cursor = pem_cursor;
+                    compare_cursor.len = dashes.len;
+                    compare_cursor.ptr += i;
+                    if (aws_byte_cursor_eq(&compare_cursor, &dashes)) {
                         /* End part of a pem, copy the last 5 dashes and a new line, then ignore everything before next
                          * begin header */
-                        clean_pem_index--;
                         state = BEGIN;
-                        for (size_t index = 0; index < dashes_len; index++) {
-                            clean_pem[clean_pem_index++] = dashes[index];
-                        }
-                        i += (dashes_len - 1);
-                        clean_pem[clean_pem_index++] = '\n';
+                        aws_byte_buf_append(&clean_pem_buf, &dashes);
+                        i += (dashes.len - 1);
+                        aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)'\n');
+                        break;
                     }
                 }
+                aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)current);
+                break;
             default:
                 break;
         }
     }
-    struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_array(clean_pem, clean_pem_index);
+    struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
     aws_byte_buf_reset(pem, true);
     aws_byte_buf_append(pem, &clean_pem_cursor);
-    aws_mem_release(allocator, clean_pem);
+    aws_byte_buf_clean_up(&clean_pem_buf);
     return AWS_OP_SUCCESS;
 }
