@@ -6,6 +6,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/pem_utils.h>
 #include <aws/io/tls_channel_handler.h>
 
 #define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
@@ -80,6 +81,20 @@ static int s_load_null_terminated_buffer_from_cursor(
 
 #if !defined(AWS_OS_IOS)
 
+static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
+    if (!options) {
+        return AWS_OP_SUCCESS;
+    }
+    if (options->allocator) {
+        if (aws_sanitize_pem(&options->ca_file, options->allocator) |
+            aws_sanitize_pem(&options->certificate, options->allocator) |
+            aws_sanitize_pem(&options->private_key, options->allocator)) {
+            return AWS_OP_ERR;
+        }
+    }
+    return AWS_OP_SUCCESS;
+}
+
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
@@ -103,6 +118,7 @@ int aws_tls_ctx_options_init_client_mtls(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -127,7 +143,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
-
+    s_tls_ctx_options_pem_clean_up(options);
     return AWS_OP_SUCCESS;
 }
 
@@ -296,6 +312,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
             return AWS_OP_ERR;
         }
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -314,6 +331,7 @@ int aws_tls_ctx_options_override_default_trust_store(
     if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
