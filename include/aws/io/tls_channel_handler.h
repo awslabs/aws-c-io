@@ -11,6 +11,7 @@
 struct aws_channel_slot;
 struct aws_channel_handler;
 struct aws_string;
+struct aws_tls_ctx;
 
 enum aws_tls_versions {
     AWS_IO_SSLv3,
@@ -32,10 +33,15 @@ enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
+struct aws_tls_ctx_vtable {
+    void (*acquire)(struct aws_tls_ctx *ctx);
+    void (*release)(struct aws_tls_ctx *ctx);
+};
+
 struct aws_tls_ctx {
+    const struct aws_tls_ctx_vtable *vtable;
     struct aws_allocator *alloc;
     void *impl;
-    struct aws_ref_count ref_count;
 };
 
 /**

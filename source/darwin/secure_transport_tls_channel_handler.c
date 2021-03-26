@@ -771,6 +771,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
+    struct aws_ref_count ref_count;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     CFArrayRef ca_cert;
@@ -965,6 +966,21 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
     aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
 }
 
+static void s_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
+    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
+    aws_ref_count_acquire(&secure_transport_ctx->ref_count);
+}
+
+static void s_tls_ctx_release(struct aws_tls_ctx *ctx) {
+    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
+    aws_ref_count_release(&secure_transport_ctx->ref_count);
+}
+
+static struct aws_tls_ctx_vtable s_tls_ctx_vtable = {
+    .acquire = s_tls_ctx_acquire,
+    .release = s_tls_ctx_release,
+};
+
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
     if (!secure_transport_ctx) {
@@ -995,10 +1011,11 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
+    secure_transport_ctx->ctx.vtable = &s_tls_ctx_vtable;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
-        &secure_transport_ctx->ctx.ref_count,
+        &secure_transport_ctx->ref_count,
         secure_transport_ctx,
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 

@@ -51,6 +51,7 @@ void aws_tls_clean_up_static_state(void) {}
 
 struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
+    struct aws_ref_count ref_count;
     struct aws_string *alpn_list;
     SCHANNEL_CRED credentials;
     PCERT_CONTEXT pcerts;
@@ -1625,6 +1626,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         return NULL;
     }
 
+    sc_handler->handler.vtable = &s_tls_ctx_vtable;
     sc_handler->handler.alloc = alloc;
     sc_handler->handler.impl = sc_handler;
     sc_handler->handler.vtable = &s_handler_vtable;
@@ -1752,6 +1754,21 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     aws_mem_release(secure_channel_ctx->ctx.alloc, secure_channel_ctx);
 }
 
+static void s_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
+    struct secure_channel_ctx *sc_ctx = ctx->impl;
+    aws_ref_count_acquire(&sc_ctx->ref_count);
+}
+
+static void s_tls_ctx_release(struct aws_tls_ctx *ctx) {
+    struct secure_channel_ctx *sc_ctx = ctx->impl;
+    aws_ref_count_release(&sc_ctx->ref_count);
+}
+
+static struct aws_tls_ctx_vtable s_tls_ctx_vtable = {
+    .acquire = s_tls_ctx_acquire,
+    .release = s_tls_ctx_release,
+};
+
 struct aws_tls_ctx *s_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -1827,7 +1844,7 @@ struct aws_tls_ctx *s_ctx_new(
     secure_channel_ctx->ctx.alloc = alloc;
     secure_channel_ctx->ctx.impl = secure_channel_ctx;
     aws_ref_count_init(
-        &secure_channel_ctx->ctx.ref_count,
+        &secure_channel_ctx->ref_count,
         secure_channel_ctx,
         (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 

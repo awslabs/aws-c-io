@@ -62,6 +62,7 @@ struct s2n_handler {
 
 struct s2n_ctx {
     struct aws_tls_ctx ctx;
+    struct aws_ref_count ref_count;
     struct s2n_config *s2n_config;
 };
 
@@ -924,6 +925,21 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
     return 0;
 }
 
+static void s_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
+    struct s2n_ctx *s2n_ctx = ctx->impl;
+    aws_ref_count_acquire(&s2n_ctx->ref_count);
+}
+
+static void s_tls_ctx_release(struct aws_tls_ctx *ctx) {
+    struct s2n_ctx *s2n_ctx = ctx->impl;
+    aws_ref_count_release(&s2n_ctx->ref_count);
+}
+
+static struct aws_tls_ctx_vtable s_tls_ctx_vtable = {
+    .acquire = s_tls_ctx_acquire,
+    .release = s_tls_ctx_release,
+};
+
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -940,9 +956,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         return NULL;
     }
 
+    s2n_ctx->ctx.vtable = &s_tls_ctx_vtable;
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
-    aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
+    aws_ref_count_init(&s2n_ctx->ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
     s2n_ctx->s2n_config = s2n_config_new();
 
     if (!s2n_ctx->s2n_config) {

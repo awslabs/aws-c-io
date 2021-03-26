@@ -561,7 +561,7 @@ int aws_channel_setup_client_tls(
 
 struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
     if (ctx != NULL) {
-        aws_ref_count_acquire(&ctx->ref_count);
+        ctx->vtable->acquire(ctx);
     }
 
     return ctx;
@@ -569,6 +569,6 @@ struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx) {
 
 void aws_tls_ctx_release(struct aws_tls_ctx *ctx) {
     if (ctx != NULL) {
-        aws_ref_count_release(&ctx->ref_count);
+        ctx->vtable->release(ctx);
     }
 }
