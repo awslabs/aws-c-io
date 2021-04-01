@@ -109,6 +109,7 @@ int epoll_create(int size)
 /* Definitions from aws/common/assert.h */
 /* Convert into VCC assertions */
 #define AWS_ASSERT(x) _(assert x)
+#define AWS_PRECONDITION(x) _(assert x)
 
 /* Definitions from aws/common/logging.h (no-ops for proof) */
 #define AWS_LOGF_INFO(...)
@@ -364,7 +365,7 @@ void aws_atomic_store_ptr(/*volatile*/ struct aws_atomic_var *var, void *val)
 /* Fake-up pthread.h */
 typedef uint64_t pthread_t;
 
-/* Definitions from aws/common.thread.h */
+/* Definitions from aws/common/thread.h */
 enum aws_thread_detach_state {
     AWS_THREAD_NOT_CREATED = 1,
     AWS_THREAD_JOINABLE,
@@ -381,6 +382,7 @@ struct aws_thread {
 
 struct aws_thread_options {
     size_t stack_size;
+    int32_t cpu_id;
 };
 
 _(pure) aws_thread_id_t aws_thread_current_thread_id(void)
@@ -401,6 +403,10 @@ void aws_thread_clean_up(struct aws_thread *thread)
 _(pure) bool aws_thread_thread_id_equal(aws_thread_id_t t1, aws_thread_id_t t2)
   _(ensures \result == (t1 == t2))
 ;
+
+/* Pure from point-of-view of the event loop since the following functions lock and mutate private aws-c-common state */
+_(pure) void aws_thread_increment_unjoined_count();
+_(pure) void aws_thread_decrement_unjoined_count();
 
 /* Definitions from aws/io/io.h */
 enum aws_io_event_type {
@@ -427,6 +433,13 @@ typedef int(* aws_io_clock_fn_ptr)(uint64_t *timestamp)
 
 /* Definitions from aws/io/event_loop.h */
 struct aws_event_loop_vtable;
+
+struct aws_event_loop_options {
+    aws_io_clock_fn_ptr clock; /*< VCC change: fnptr */
+    struct aws_thread_options *thread_options;
+    _(invariant clock->\valid)
+    _(invariant thread_options != NULL <==> \mine(thread_options))
+};
 
 _(claimable) struct aws_event_loop {
     struct aws_event_loop_vtable *vtable;
@@ -519,6 +532,7 @@ struct epoll_loop {
     _(group scheduler)
     _(:scheduler) struct aws_task_scheduler scheduler;
     struct aws_thread thread_created_on;
+    struct aws_thread_options thread_options;
     aws_thread_id_t thread_joined_to;
     struct aws_atomic_var running_thread_id;
     _(group read_handle)
@@ -783,11 +797,28 @@ static void s_main_loop(void *args _(ghost \claim(c_mutex)))
     _(writes &epoll_loop_of(event_loop_of(args))->should_process_task_pre_queue)
 ;
 
-struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn_ptr clock
+struct aws_event_loop *aws_event_loop_new_default(
+    struct aws_allocator *alloc,
+    aws_io_clock_fn_ptr clock /*< VCC change: fnptr */
     _(out \claim(c_mutex))
 )
     _(requires \wrapped(alloc))
     _(requires clock->\valid)
+    _(ensures \result == NULL ||
+       (\wrapped0(\result) &&
+        \fresh(\result) && \malloc_root(\result) &&
+        \fresh(epoll_loop_of(\result)) && \malloc_root(epoll_loop_of(\result)) &&
+        ownership_of_epoll_loop_objects(epoll_loop_of(\result)) &&
+        \fresh(c_mutex) && \wrapped0(c_mutex) && \claims_object(c_mutex, &(epoll_loop_of(\result)->task_pre_queue_mutex))))
+;
+
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options
+    _(out \claim(c_mutex))
+)
+    _(requires \wrapped(alloc))
+    _(maintains \wrapped(options))
     _(ensures \result == NULL ||
        (\wrapped0(\result) &&
         \fresh(\result) && \malloc_root(\result) &&

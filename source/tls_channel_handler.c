@@ -6,6 +6,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/pem_utils.h>
 #include <aws/io/tls_channel_handler.h>
 
 #define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
@@ -86,6 +87,20 @@ static int s_load_null_terminated_buffer_from_cursor(
 
 #if !defined(AWS_OS_IOS)
 
+static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
+    if (!options) {
+        return AWS_OP_SUCCESS;
+    }
+    if (options->allocator) {
+        if (aws_sanitize_pem(&options->ca_file, options->allocator) |
+            aws_sanitize_pem(&options->certificate, options->allocator) |
+            aws_sanitize_pem(&options->private_key, options->allocator)) {
+            return AWS_OP_ERR;
+        }
+    }
+    return AWS_OP_SUCCESS;
+}
+
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
@@ -109,6 +124,7 @@ int aws_tls_ctx_options_init_client_mtls(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -133,7 +149,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
-
+    s_tls_ctx_options_pem_clean_up(options);
     return AWS_OP_SUCCESS;
 }
 #    if defined(__APPLE__)
@@ -312,8 +328,13 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
             return AWS_OP_ERR;
         }
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
+}
+
+void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options, void *extension_data) {
+    options->ctx_options_extension = extension_data;
 }
 
 int aws_tls_ctx_options_override_default_trust_store(
@@ -326,6 +347,7 @@ int aws_tls_ctx_options_override_default_trust_store(
     if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
         return AWS_OP_ERR;
     }
+    s_tls_ctx_options_pem_clean_up(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -399,6 +421,12 @@ int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *server_name) {
+
+    if (conn_options->server_name != NULL) {
+        aws_string_destroy(conn_options->server_name);
+        conn_options->server_name = NULL;
+    }
+
     conn_options->server_name = aws_string_new_from_cursor(allocator, server_name);
     if (!conn_options->server_name) {
         return AWS_OP_ERR;
@@ -412,6 +440,11 @@ int aws_tls_connection_options_set_alpn_list(
     struct aws_allocator *allocator,
     const char *alpn_list) {
 
+    if (conn_options->alpn_list != NULL) {
+        aws_string_destroy(conn_options->alpn_list);
+        conn_options->alpn_list = NULL;
+    }
+
     conn_options->alpn_list = aws_string_new_from_c_str(allocator, alpn_list);
     if (!conn_options->alpn_list) {
         return AWS_OP_ERR;
@@ -419,6 +452,84 @@ int aws_tls_connection_options_set_alpn_list(
 
     return AWS_OP_SUCCESS;
 }
+
+#ifdef BYO_CRYPTO
+
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_FATAL_ASSERT(
+        false &&
+        "When using BYO_CRYPTO, user is responsible for creating aws_tls_ctx manually. You cannot call this function.");
+}
+
+struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_FATAL_ASSERT(
+        false &&
+        "When using BYO_CRYPTO, user is responsible for creating aws_tls_ctx manually. You cannot call this function.");
+}
+
+static aws_tls_handler_new_fn *s_client_handler_new = NULL;
+static aws_tls_client_handler_start_negotiation_fn *s_start_negotiation_fn = NULL;
+static void *s_client_user_data = NULL;
+
+static aws_tls_handler_new_fn *s_server_handler_new = NULL;
+static void *s_server_user_data = NULL;
+
+struct aws_channel_handler *aws_tls_client_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot) {
+    AWS_FATAL_ASSERT(
+        s_client_handler_new &&
+        "For BYO_CRYPTO, you must call aws_tls_client_handler_new_set_callback() with a non-null value.");
+    return s_client_handler_new(allocator, options, slot, s_client_user_data);
+}
+
+struct aws_channel_handler *aws_tls_server_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot) {
+    AWS_FATAL_ASSERT(
+        s_client_handler_new &&
+        "For BYO_CRYPTO, you must call aws_tls_server_handler_new_set_callback() with a non-null value.")
+    return s_server_handler_new(allocator, options, slot, s_server_user_data);
+}
+
+void aws_tls_byo_crypto_set_client_setup_options(const struct aws_tls_byo_crypto_setup_options *options) {
+    AWS_FATAL_ASSERT(options);
+    AWS_FATAL_ASSERT(options->new_handler_fn);
+    AWS_FATAL_ASSERT(options->start_negotiation_fn);
+
+    s_client_handler_new = options->new_handler_fn;
+    s_start_negotiation_fn = options->start_negotiation_fn;
+    s_client_user_data = options->user_data;
+}
+
+void aws_tls_byo_crypto_set_server_setup_options(const struct aws_tls_byo_crypto_setup_options *options) {
+    AWS_FATAL_ASSERT(options);
+    AWS_FATAL_ASSERT(options->new_handler_fn);
+
+    s_server_handler_new = options->new_handler_fn;
+    s_server_user_data = options->user_data;
+}
+
+int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+    AWS_FATAL_ASSERT(
+        s_start_negotiation_fn &&
+        "For BYO_CRYPTO, you must call aws_tls_client_handler_set_start_negotiation_callback() with a non-null value.")
+    return s_start_negotiation_fn(handler, s_client_user_data);
+}
+
+void aws_tls_init_static_state(struct aws_allocator *alloc) {
+    (void)alloc;
+}
+
+void aws_tls_clean_up_static_state(void) {}
+
+#endif /* BYO_CRYPTO */
 
 int aws_channel_setup_client_tls(
     struct aws_channel_slot *right_of_slot,

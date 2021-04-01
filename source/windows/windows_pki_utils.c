@@ -179,7 +179,7 @@ int aws_import_trusted_certificates(
             NULL,
             NULL,
             NULL,
-            &cert_context);
+            (const void **)&cert_context);
 
         if (!query_res) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob.");
@@ -266,7 +266,7 @@ int aws_import_key_pair_to_cert_context(
             NULL,
             NULL,
             NULL,
-            &cert_context);
+            (const void **)&cert_context);
 
         if (!query_res) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob.");

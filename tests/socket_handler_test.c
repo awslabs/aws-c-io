@@ -66,7 +66,6 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
 
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
     aws_event_loop_group_release(tester->el_group);
-    ASSERT_SUCCESS(aws_global_thread_creator_shutdown_wait_for(10));
 
     aws_mutex_clean_up(&tester->mutex);
 
@@ -571,11 +570,11 @@ static void s_creation_callback_test_channel_creation_callback(
 
 static struct aws_event_loop *s_default_new_event_loop(
     struct aws_allocator *allocator,
-    aws_io_clock_fn *clock,
+    const struct aws_event_loop_options *options,
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default(allocator, clock);
+    return aws_event_loop_new_default_with_options(allocator, options);
 }
 
 static int s_statistic_test_clock_fn(uint64_t *timestamp) {

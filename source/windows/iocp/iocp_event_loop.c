@@ -82,6 +82,8 @@ struct iocp_loop {
          * We move values out while holding the mutex and operate on them later */
         event_thread_state state;
     } thread_data;
+
+    struct aws_thread_options thread_options;
 };
 
 enum {
@@ -135,9 +137,12 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .free_io_event_resources = s_free_io_event_resources,
 };
 
-struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    AWS_ASSERT(clock);
+    AWS_ASSERT(options);
+    AWS_ASSERT(options->clock);
 
     if (!s_set_info_fn) {
         HMODULE ntdll = GetModuleHandleA("ntdll.dll");
@@ -172,7 +177,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing IO Completion Port", (void *)event_loop);
-    err = aws_event_loop_init_base(event_loop, alloc, clock);
+    err = aws_event_loop_init_base(event_loop, alloc, options->clock);
     if (err) {
         goto clean_up;
     }
@@ -181,6 +186,12 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     impl = aws_mem_calloc(alloc, 1, sizeof(struct iocp_loop));
     if (!impl) {
         goto clean_up;
+    }
+
+    if (options->thread_options) {
+        impl->thread_options = *options->thread_options;
+    } else {
+        impl->thread_options = *aws_default_thread_options();
     }
 
     /* initialize thread id to NULL. This will be updated once the event loop thread starts. */
@@ -339,8 +350,10 @@ static int s_run(struct aws_event_loop *event_loop) {
     impl->synced_data.state = EVENT_THREAD_STATE_RUNNING;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
-    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, event_loop, NULL);
+    aws_thread_increment_unjoined_count();
+    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, event_loop, &impl->thread_options);
     if (err) {
+        aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         goto clean_up;
     }
@@ -389,6 +402,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 #endif
 
     int err = aws_thread_join(&impl->thread_created_on);
+    aws_thread_decrement_unjoined_count();
     if (err) {
         return AWS_OP_ERR;
     }
@@ -655,6 +669,8 @@ static void s_event_thread_main(void *user_data) {
             timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
             false);                          /* fAlertable */
 
+        aws_event_loop_register_tick_start(event_loop);
+
         if (has_completion_entries) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
@@ -733,6 +749,8 @@ static void s_event_thread_main(void *user_data) {
                 (unsigned long long)next_run_time_ns,
                 (int)timeout_ms);
         }
+
+        aws_event_loop_register_tick_end(event_loop);
     }
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     /* set back to NULL. This should be updated again in destroy, right before task cancelation happens. */

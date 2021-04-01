@@ -23,6 +23,7 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
     struct aws_event_loop *event_loop = args;
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
+    /* now okay to reschedule stop tasks. */
     _(unwrap &epoll_loop->stop_task_ptr)
     aws_atomic_store_ptr(&epoll_loop->stop_task_ptr, NULL);
     _(wrap &epoll_loop->stop_task_ptr)
@@ -77,7 +78,9 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop
     _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
 ) {
     struct epoll_loop *epoll_loop = _(by_claim c_event_loop) event_loop->impl_data;
-    return aws_thread_join(&epoll_loop->thread_created_on _(ghost event_loop) _(ghost c_event_loop) _(ghost c_mutex));
+    int result = aws_thread_join(&epoll_loop->thread_created_on _(ghost event_loop) _(ghost c_event_loop) _(ghost c_mutex));
+    aws_thread_decrement_unjoined_count();
+    return result;
 }
 
 int aws_thread_launch(
@@ -98,7 +101,9 @@ static int s_run(struct aws_event_loop *event_loop _(ghost \claim(c_mutex))) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
     epoll_loop->should_continue = true;
-    if (aws_thread_launch(&epoll_loop->thread_created_on, /*&s_main_loop*/&dummy_main_loop, event_loop, NULL)) {
+    aws_thread_increment_unjoined_count();
+    if (aws_thread_launch(&epoll_loop->thread_created_on, /*&s_main_loop*/&dummy_main_loop, event_loop, &epoll_loop->thread_options)) {
+        aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
         return AWS_OP_ERR;

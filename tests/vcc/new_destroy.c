@@ -34,6 +34,10 @@ void close(int fd)
     _(requires valid_fd(fd))
 ;
 
+const struct aws_thread_options *aws_default_thread_options(void)
+    _(ensures \wrapped(\result))
+;
+
 struct aws_event_loop_vtable s_vtable;
 
 #if USE_EFD
@@ -59,19 +63,61 @@ int aws_open_nonblocking_posix_pipe(/*int pipe_fds[2]*/int *pipe_fds)
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn_ptr clock
     _(out \claim(c_mutex))
 ) {
+    /* VCC change: rewrite struct initialization */
+#if 0
+    struct aws_event_loop_options options = {
+        .thread_options = NULL,
+        .clock = clock,
+    };
+#else
+    struct aws_event_loop_options options;
+    options.thread_options = NULL;
+    options.clock = clock;
+    _(wrap(&options))
+#endif
+
+    /* VCC change: rewrite return to allow for unwrap */
+#if 0
+    return aws_event_loop_new_default_with_options(alloc, &options);
+#else
+    struct aws_event_loop *r = aws_event_loop_new_default_with_options(alloc, &options, _(out c_mutex));
+    _(unwrap(&options))
+    return r;
+#endif
+}
+
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options
+    _(out \claim(c_mutex))
+) {
+    AWS_PRECONDITION(options);
+    /* VCC change: rewrite clock fnptr validity check */
+#if 0
+    AWS_PRECONDITION(options->clock);
+#else
+    AWS_PRECONDITION(options->clock->\valid);
+#endif
+
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
     if (!loop) {
         return NULL;
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered epoll", (void *)loop);
-    if (aws_event_loop_init_base(loop, alloc, clock)) {
+    if (aws_event_loop_init_base(loop, alloc, options->clock)) {
         goto clean_up_loop;
     }
 
     struct epoll_loop *epoll_loop = aws_mem_calloc(alloc, 1, sizeof(struct epoll_loop));
     if (!epoll_loop) {
         goto cleanup_base_loop;
+    }
+
+    if (options->thread_options) {
+        epoll_loop->thread_options = *options->thread_options;
+    } else {
+        epoll_loop->thread_options = *aws_default_thread_options();
     }
 
     /* initialize thread id to NULL, it should be updated when the event loop thread starts. */
@@ -106,6 +152,11 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     epoll_loop->write_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
     epoll_loop->read_task_handle = (struct aws_io_handle){.data.fd = fd, .additional_data = NULL};
 #else
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: Eventfd not available, falling back to pipe for cross-thread notification.",
+        (void *)loop);
+
     /* VCC change: array init using {0} */
 #if 0
     int pipe_fds[2] = {0};
