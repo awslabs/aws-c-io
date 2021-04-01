@@ -282,7 +282,9 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 /**
  * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
  */
-AWS_IO_API int aws_tls_ctx_options_set_keychain_path(struct aws_tls_ctx_options *options, const char *keychain_path);
+AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor keychain_path_cursor);
 #    endif
 
 /**

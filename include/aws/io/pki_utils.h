@@ -50,7 +50,7 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
-    const char *keychain_path);
+    const struct aws_string *keychain_path);
 #    endif /* AWS_OS_IOS */
 
 /**

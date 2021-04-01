@@ -153,8 +153,10 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     return AWS_OP_SUCCESS;
 }
 #    if defined(__APPLE__)
-int aws_tls_ctx_options_set_keychain_path(struct aws_tls_ctx_options *options, const char *keychain_path) {
-    options->keychain_path = aws_string_new_from_c_str(options->allocator, keychain_path);
+int aws_tls_ctx_options_set_keychain_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor keychain_path_cursor) {
+    options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
     if (!options->keychain_path) {
         return AWS_OP_ERR;
     }

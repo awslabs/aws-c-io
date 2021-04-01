@@ -48,7 +48,7 @@ int aws_import_public_and_private_keys_to_identity(
     SecKeychainRef import_keychain = NULL;
 
     if (keychain_path) {
-        OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(options->alpn_list), &import_keychain);
+        OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
