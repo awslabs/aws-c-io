@@ -47,6 +47,12 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     if (options->pkcs12_password.len) {
         aws_byte_buf_clean_up_secure(&options->pkcs12_password);
     }
+
+#    if !defined(AWS_OS_IOS)
+    if (options->keychain_path) {
+        aws_string_destroy(options->keychain_path);
+    }
+#    endif
 #endif
 
     if (options->alpn_list) {
@@ -146,8 +152,20 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     s_tls_ctx_options_pem_clean_up(options);
     return AWS_OP_SUCCESS;
 }
+#    if defined(__APPLE__)
+int aws_tls_ctx_options_set_keychain_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor keychain_path_cursor) {
+    options->keychain_path = aws_string_new_from_cursor(options->allocator, &keychain_path_cursor);
+    if (!options->keychain_path) {
+        return AWS_OP_ERR;
+    }
 
-#endif /* AWS_OS_IOS */
+    return AWS_OP_SUCCESS;
+}
+#    endif /* __APPLE__ */
+
+#endif /* !AWS_OS_IOS */
 
 #ifdef _WIN32
 void aws_tls_ctx_options_init_client_mtls_from_system_path(

@@ -6,6 +6,8 @@
  */
 #include <aws/io/io.h>
 
+struct aws_string;
+
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -49,7 +51,8 @@ int aws_import_public_and_private_keys_to_identity(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    CFArrayRef *identity);
+    CFArrayRef *identity,
+    const struct aws_string *keychain_path);
 #    endif /* AWS_OS_IOS */
 
 /**

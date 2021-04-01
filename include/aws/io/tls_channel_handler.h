@@ -159,6 +159,15 @@ struct aws_tls_ctx_options {
      * Password for the pkcs12 data in pkcs12.
      */
     struct aws_byte_buf pkcs12_password;
+
+#    if !defined(AWS_OS_IOS)
+    /**
+     * On Apple OS you can also use a custom keychain instead of
+     * the default keychain of the account.
+     */
+    struct aws_string *keychain_path;
+#    endif
+
 #endif
 
     /** max tls fragment size. Default is the value of g_aws_channel_max_fragment_size. */
@@ -268,6 +277,15 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
+
+#    ifdef __APPLE__
+/**
+ * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
+ */
+AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_byte_cursor keychain_path_cursor);
+#    endif
 
 /**
  * Initializes options for use with in server mode.
