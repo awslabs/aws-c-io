@@ -5,6 +5,7 @@
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/mutex.h>
+#include <aws/common/string.h>
 #include <aws/io/logging.h>
 
 #include <Security/SecCertificate.h>
