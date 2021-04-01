@@ -6,6 +6,8 @@
  */
 #include <aws/io/io.h>
 
+struct aws_string;
+
 AWS_EXTERN_C_BEGIN
 
 /**
