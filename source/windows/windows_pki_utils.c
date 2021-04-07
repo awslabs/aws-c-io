@@ -340,9 +340,7 @@ static int s_cert_context_import_ecc_private_key(
     CRYPT_BIT_BLOB *public_key_blob = &cert_context->pCertInfo->SubjectPublicKeyInfo.PublicKey;
     DWORD public_key_blob_length = public_key_blob->cbData;
     if (public_key_blob_length == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: invalid zero-length ecc key data");
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid zero-length ecc key data");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
     }
@@ -363,9 +361,7 @@ static int s_cert_context_import_ecc_private_key(
     DWORD key_blob_size = sizeof(BCRYPT_ECCKEY_BLOB) + public_key_blob_length + private_key_length;
     key_blob = (BCRYPT_ECCKEY_BLOB *)aws_mem_calloc(allocator, 1, key_blob_size);
     if (key_blob == NULL) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: could not allocate ecc key blob memory");
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: could not allocate ecc key blob memory");
         goto done;
     }
 
@@ -390,7 +386,8 @@ static int s_cert_context_import_ecc_private_key(
 
     status = NCryptOpenStorageProvider(&crypto_prov, MS_KEY_STORAGE_PROVIDER, 0);
     if (status != ERROR_SUCCESS) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: could not open ncrypt key storage provider, error %d", (int)GetLastError());
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: could not open ncrypt key storage provider, error %d", (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -418,7 +415,11 @@ static int s_cert_context_import_ecc_private_key(
 
     if (status != ERROR_SUCCESS) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to import ecc key %s with status %d, last error %d", uuid_str, status, (int) GetLastError());
+            AWS_LS_IO_PKI,
+            "static: failed to import ecc key %s with status %d, last error %d",
+            uuid_str,
+            status,
+            (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -483,9 +484,7 @@ int aws_import_key_pair_to_cert_context(
 
     if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &certificates)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to decode cert pem to buffer list with error %d",
-            (int)aws_last_error());
+            AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
     }
 
@@ -616,8 +615,7 @@ int aws_import_key_pair_to_cert_context(
             break;
 
         default:
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to decode private key");
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to decode private key");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
     }
