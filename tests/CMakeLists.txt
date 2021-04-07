@@ -113,6 +113,8 @@ add_test_case(test_pem_invalid_parse)
 add_test_case(test_pem_valid_data_invalid_parse)
 add_test_case(test_pem_invalid_in_chain_parse)
 
+add_test_case(test_pem_util_comments_around_pem_object)
+
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 

@@ -5,6 +5,7 @@
 #include <aws/io/pki_utils.h>
 
 #include <aws/common/mutex.h>
+#include <aws/common/string.h>
 #include <aws/io/logging.h>
 
 #include <Security/SecCertificate.h>
@@ -22,7 +23,8 @@ int aws_import_public_and_private_keys_to_identity(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    CFArrayRef *identity) {
+    CFArrayRef *identity,
+    const struct aws_string *keychain_path) {
 
     int result = AWS_OP_ERR;
 
@@ -45,7 +47,34 @@ int aws_import_public_and_private_keys_to_identity(
 
     SecCertificateRef certificate_ref = NULL;
     SecKeychainRef import_keychain = NULL;
-    SecKeychainCopyDefault(&import_keychain);
+
+    if (keychain_path) {
+        OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error opening keychain \"%s\" with OSStatus %d",
+                aws_string_c_str(keychain_path),
+                keychain_status);
+            return AWS_OP_ERR;
+        }
+        keychain_status = SecKeychainUnlock(import_keychain, 0, "", true);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error unlocking keychain \"%s\" with OSStatus %d",
+                aws_string_c_str(keychain_path),
+                keychain_status);
+            return AWS_OP_ERR;
+        }
+    } else {
+        OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: error opening the default keychain with OSStatus %d", keychain_status);
+            return AWS_OP_ERR;
+        }
+    }
 
     aws_mutex_lock(&s_sec_mutex);
 
