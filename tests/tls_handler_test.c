@@ -2280,4 +2280,39 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(tls_double_channel, s_tls_double_channel_fn)
 
+static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ecc-cert.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ecc-key.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
+
 #endif /* BYO_CRYPTO */
