@@ -51,7 +51,8 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     } else if (!strncmp(cert_path, "LocalMachineEnterprise", store_name_len)) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE;
     } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: certificate path %s does not contain a valid cert store identifier.", cert_path);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: certificate path %s does not contain a valid cert store identifier.", cert_path);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -87,7 +88,11 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!*cert_store) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s. Failed to load cert store with error code %d", cert_path, (int)GetLastError());
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path %s. Failed to load cert store with error code %d",
+            cert_path,
+            (int)GetLastError());
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -163,9 +168,7 @@ int aws_import_trusted_certificates(
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to create temporary cert store, error code %d",
-            (int)GetLastError());
+            AWS_LS_IO_PKI, "static: failed to create temporary cert store, error code %d", (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -196,7 +199,8 @@ int aws_import_trusted_certificates(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", (int)GetLastError());
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", (int)GetLastError());
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
@@ -333,8 +337,8 @@ static int s_cert_context_import_ecc_private_key(
 
     public_key_blob_length--;
     struct aws_byte_cursor public_blob_cursor = {
-        .ptr = public_key_blob->pbData + 1, 
-        .len = public_key_blob_length, 
+        .ptr = public_key_blob->pbData + 1,
+        .len = public_key_blob_length,
     };
 
     CRYPT_ECC_PRIVATE_KEY_INFO *private_key_info = (CRYPT_ECC_PRIVATE_KEY_INFO *)key;
@@ -354,7 +358,7 @@ static int s_cert_context_import_ecc_private_key(
     key_blob->cbKey = private_key_length;
 
     struct aws_byte_buf key_blob_buffer = {
-        .buffer = (uint8_t *)key_blob, 
+        .buffer = (uint8_t *)key_blob,
         .len = sizeof(BCRYPT_ECCKEY_BLOB),
         .capacity = key_blob_size,
     };
@@ -422,7 +426,7 @@ done:
     return result;
 }
 
-enum aws_certificate_type { 
+enum aws_certificate_type {
     AWS_CT_X509_UNKNOWN,
     AWS_CT_X509_RSA,
     AWS_CT_X509_ECC,
@@ -466,7 +470,10 @@ int aws_import_key_pair_to_cert_context(
     *store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
 
     if (!*store) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to load in-memory/ephemeral certificate store, error code %d", GetLastError());
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: failed to load in-memory/ephemeral certificate store, error code %d",
+            GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -523,32 +530,32 @@ int aws_import_key_pair_to_cert_context(
     size_t private_key_count = aws_array_list_length(&private_keys);
     for (size_t i = 0; i < private_key_count; ++i) {
         aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, i);
-    
+
         if (CryptDecodeObjectEx(
-            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-            PKCS_RSA_PRIVATE_KEY,
-            private_key_ptr->buffer,
-            (DWORD)private_key_ptr->len,
-            CRYPT_DECODE_ALLOC_FLAG,
-            0,
-            &key,
-            &decoded_len)) {
+                X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                PKCS_RSA_PRIVATE_KEY,
+                private_key_ptr->buffer,
+                (DWORD)private_key_ptr->len,
+                CRYPT_DECODE_ALLOC_FLAG,
+                0,
+                &key,
+                &decoded_len)) {
             cert_type = AWS_CT_X509_RSA;
         }
 #if _MSC_VER > 1500
         else if (CryptDecodeObjectEx(
-            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-            X509_ECC_PRIVATE_KEY,
-            private_key_ptr->buffer,
-            (DWORD)private_key_ptr->len,
-            CRYPT_DECODE_ALLOC_FLAG,
-            NULL,
-            &key,
-            &decoded_len)) {
+                     X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                     X509_ECC_PRIVATE_KEY,
+                     private_key_ptr->buffer,
+                     (DWORD)private_key_ptr->len,
+                     CRYPT_DECODE_ALLOC_FLAG,
+                     NULL,
+                     &key,
+                     &decoded_len)) {
             cert_type = AWS_CT_X509_ECC;
         }
 #endif
-        
+
         if (cert_type != AWS_CT_X509_UNKNOWN) {
             break;
         }
@@ -565,7 +572,7 @@ int aws_import_key_pair_to_cert_context(
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
 
-    switch (cert_type) { 
+    switch (cert_type) {
         case AWS_CT_X509_RSA:
             result = s_cert_context_import_rsa_private_key(certs, key, decoded_len, uuid_str);
             break;
@@ -576,9 +583,7 @@ int aws_import_key_pair_to_cert_context(
 
         default:
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error decoding PKCS#1 private key with last error %d",
-                (int)GetLastError());
+                AWS_LS_IO_PKI, "static: error decoding PKCS#1 private key with last error %d", (int)GetLastError());
             goto clean_up;
     }
 
