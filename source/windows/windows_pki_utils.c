@@ -195,7 +195,7 @@ int aws_import_trusted_certificates(
             NULL,
             (const void **)&cert_context);
 
-        if (!query_res) {
+        if (!query_res || cert_context == NULL) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", (int)GetLastError());
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
@@ -234,6 +234,200 @@ void aws_close_cert_store(HCERTSTORE cert_store) {
     CertCloseStore(cert_store, 0);
 }
 
+static int s_cert_context_import_rsa_private_key(
+    PCCERT_CONTEXT *certs,
+    BYTE *key,
+    DWORD decoded_len,
+    char uuid_str[AWS_UUID_STR_LEN]) {
+
+    int result = AWS_OP_ERR;
+    HCRYPTPROV crypto_prov = 0;
+    HCRYPTKEY h_key = 0;
+
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
+    size_t converted_chars = 0;
+    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
+    (void)converted_chars;
+
+    if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: error creating a new crypto context for key %s with errno %d",
+            uuid_str,
+            (int)GetLastError());
+        goto done;
+    }
+
+    if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+        goto done;
+    }
+
+    CRYPT_KEY_PROV_INFO key_prov_info;
+    AWS_ZERO_STRUCT(key_prov_info);
+    key_prov_info.pwszContainerName = uuid_wstr;
+    key_prov_info.dwProvType = PROV_RSA_FULL;
+    key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
+
+    if (!CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: error creating a new certificate context for key %s with errno %d",
+            uuid_str,
+            (int)GetLastError());
+        goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (h_key != 0) {
+        CryptDestroyKey(h_key);
+    }
+
+    if (crypto_prov != 0) {
+        CryptReleaseContext(crypto_prov, 0);
+    }
+
+    return result;
+}
+
+#define ECC_256_MAGIC_NUMBER 0x20
+#define ECC_384_MAGIC_NUMBER 0x30
+
+static ULONG s_compute_ecc_key_type_from_private_key_size(size_t private_key_len) {
+    switch (private_key_len) {
+        case ECC_256_MAGIC_NUMBER:
+            return BCRYPT_ECDSA_PRIVATE_P256_MAGIC;
+        case ECC_384_MAGIC_NUMBER:
+            return BCRYPT_ECDSA_PRIVATE_P384_MAGIC;
+        default:
+            return BCRYPT_ECDSA_PRIVATE_P521_MAGIC;
+    }
+}
+
+static int s_cert_context_import_ecc_private_key(
+    PCCERT_CONTEXT *certs,
+    struct aws_allocator *allocator,
+    BYTE *key,
+    DWORD decoded_len,
+    char uuid_str[AWS_UUID_STR_LEN]) {
+
+    (void)decoded_len;
+
+    AWS_FATAL_ASSERT(certs != NULL);
+    const CERT_CONTEXT *cert_context = *certs;
+    AWS_FATAL_ASSERT(cert_context != NULL);
+
+    HCRYPTPROV crypto_prov = 0;
+    HCRYPTKEY h_key = 0;
+    BCRYPT_ECCKEY_BLOB *key_blob = NULL;
+    int result = AWS_OP_ERR;
+    SECURITY_STATUS status;
+
+    CRYPT_BIT_BLOB *public_key_blob = &cert_context->pCertInfo->SubjectPublicKeyInfo.PublicKey;
+    DWORD public_key_blob_length = public_key_blob->cbData;
+    if (public_key_blob_length == 0) {
+        goto done;
+    }
+
+    public_key_blob_length--;
+    struct aws_byte_cursor public_blob_cursor = {
+        .ptr = public_key_blob->pbData + 1, 
+        .len = public_key_blob_length, 
+    };
+
+    CRYPT_ECC_PRIVATE_KEY_INFO *private_key_info = (CRYPT_ECC_PRIVATE_KEY_INFO *)key;
+    ULONG private_key_length = private_key_info->PrivateKey.cbData;
+    struct aws_byte_cursor private_key_cursor = {
+        .ptr = private_key_info->PrivateKey.pbData,
+        .len = private_key_length,
+    };
+
+    DWORD key_blob_size = sizeof(BCRYPT_ECCKEY_BLOB) + public_key_blob_length + private_key_length;
+    key_blob = (BCRYPT_ECCKEY_BLOB *)aws_mem_calloc(allocator, 1, key_blob_size);
+    if (key_blob == NULL) {
+        goto done;
+    }
+
+    key_blob->dwMagic = s_compute_ecc_key_type_from_private_key_size(private_key_cursor.len);
+    key_blob->cbKey = private_key_length;
+
+    struct aws_byte_buf key_blob_buffer = {
+        .buffer = (uint8_t *)key_blob, 
+        .len = sizeof(BCRYPT_ECCKEY_BLOB),
+        .capacity = key_blob_size,
+    };
+
+    if (aws_byte_buf_append(&key_blob_buffer, &public_blob_cursor)) {
+        goto done;
+    }
+
+    if (aws_byte_buf_append(&key_blob_buffer, &private_key_cursor)) {
+        goto done;
+    }
+
+    status = NCryptOpenStorageProvider(&crypto_prov, MS_KEY_STORAGE_PROVIDER, 0);
+    if (status != ERROR_SUCCESS) {
+        goto done;
+    }
+
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
+    size_t converted_chars = 0;
+    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
+    (void)converted_chars;
+
+    NCryptBuffer ncBuf = {sizeof(uuid_wstr), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
+    NCryptBufferDesc ncBufDesc;
+    ncBufDesc.ulVersion = 0;
+    ncBufDesc.cBuffers = 1;
+    ncBufDesc.pBuffers = &ncBuf;
+
+    status = NCryptImportKey(
+        crypto_prov,
+        0,
+        BCRYPT_ECCPRIVATE_BLOB,
+        &ncBufDesc,
+        &h_key,
+        (BYTE *)key_blob,
+        key_blob_size,
+        NCRYPT_OVERWRITE_KEY_FLAG);
+
+    if (status != ERROR_SUCCESS) {
+        goto done;
+    }
+
+    CRYPT_KEY_PROV_INFO key_prov_info = {uuid_wstr, MS_KEY_STORAGE_PROVIDER, 0, 0, 0, NULL, 0};
+
+    if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+        goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (h_key != 0) {
+        NCryptFreeObject(h_key);
+    }
+
+    if (crypto_prov != 0) {
+        NCryptFreeObject(crypto_prov);
+    }
+
+    if (key_blob != NULL) {
+        aws_mem_release(allocator, key_blob);
+    }
+
+    return result;
+}
+
+enum aws_certificate_type { 
+    AWS_CT_X509_UNKNOWN,
+    AWS_CT_X509_RSA,
+    AWS_CT_X509_ECC,
+};
+
 int aws_import_key_pair_to_cert_context(
     struct aws_allocator *alloc,
     const struct aws_byte_cursor *public_cert_chain,
@@ -249,6 +443,7 @@ int aws_import_key_pair_to_cert_context(
     *store = NULL;
     int result = AWS_OP_ERR;
     CERT_CONTEXT *cert_context = NULL;
+    BYTE *key = NULL;
 
     if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
         return AWS_OP_ERR;
@@ -299,7 +494,7 @@ int aws_import_key_pair_to_cert_context(
             NULL,
             (const void **)&cert_context);
 
-        if (!query_res) {
+        if (!query_res || cert_context == NULL) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d.", GetLastError());
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
@@ -322,52 +517,26 @@ int aws_import_key_pair_to_cert_context(
         }
     }
 
-    struct aws_uuid uuid;
-
-    if (aws_uuid_init(&uuid)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to load a uuid. This should never happen.");
-        goto clean_up;
-    }
-
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
-    uuid_buf.len = 0;
-    aws_uuid_to_str(&uuid, &uuid_buf);
-    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
-    size_t converted_chars = 0;
-    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
-    (void)converted_chars;
-
-    HCRYPTPROV crypto_prov = 0;
-    BOOL success = CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET);
-
-    if (!success) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new crypto context for key %s with errno %d",
-            uuid_str,
-            (int)GetLastError());
-        goto clean_up;
-    }
-
     struct aws_byte_buf *private_key_ptr = NULL;
-    aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, 0);
-    BYTE *key = NULL;
-
     DWORD decoded_len = 0;
-    success = CryptDecodeObjectEx(
-        X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-        PKCS_RSA_PRIVATE_KEY,
-        private_key_ptr->buffer,
-        (DWORD)private_key_ptr->len,
-        CRYPT_DECODE_ALLOC_FLAG,
-        0,
-        &key,
-        &decoded_len);
-
+    enum aws_certificate_type cert_type = AWS_CT_X509_UNKNOWN;
+    size_t private_key_count = aws_array_list_length(&private_keys);
+    for (size_t i = 0; i < private_key_count; ++i) {
+        aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, i);
+    
+        if (CryptDecodeObjectEx(
+            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+            PKCS_RSA_PRIVATE_KEY,
+            private_key_ptr->buffer,
+            (DWORD)private_key_ptr->len,
+            CRYPT_DECODE_ALLOC_FLAG,
+            0,
+            &key,
+            &decoded_len)) {
+            cert_type = AWS_CT_X509_RSA;
+        }
 #if _MSC_VER > 1500
-    if (!success) {
-        success = CryptDecodeObjectEx(
+        else if (CryptDecodeObjectEx(
             X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
             X509_ECC_PRIVATE_KEY,
             private_key_ptr->buffer,
@@ -375,48 +544,51 @@ int aws_import_key_pair_to_cert_context(
             CRYPT_DECODE_ALLOC_FLAG,
             NULL,
             &key,
-            &decoded_len);
-    }
+            &decoded_len)) {
+            cert_type = AWS_CT_X509_ECC;
+        }
 #endif
-
-    if (!success) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error decoding PKCS#1 private key for key %s with errno %d",
-            uuid_str,
-            (int)GetLastError());
-        goto clean_up;
+        
+        if (cert_type != AWS_CT_X509_UNKNOWN) {
+            break;
+        }
     }
-    HCRYPTKEY h_key = 0;
-    success = CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key);
-    LocalFree(key);
-    CryptDestroyKey(h_key);
 
-    CRYPT_KEY_PROV_INFO key_prov_info;
-    AWS_ZERO_STRUCT(key_prov_info);
-    key_prov_info.pwszContainerName = uuid_wstr;
-    key_prov_info.dwProvType = PROV_RSA_FULL;
-    key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
-
-    success = CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info);
-    CryptReleaseContext(crypto_prov, 0);
-
-    if (!success) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new certificate context for key %s with errno %d",
-            uuid_str,
-            (int)GetLastError());
+    struct aws_uuid uuid;
+    if (aws_uuid_init(&uuid)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to create a uuid.");
         goto clean_up;
     }
 
-    result = AWS_OP_SUCCESS;
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+
+    switch (cert_type) { 
+        case AWS_CT_X509_RSA:
+            result = s_cert_context_import_rsa_private_key(certs, key, decoded_len, uuid_str);
+            break;
+
+        case AWS_CT_X509_ECC:
+            result = s_cert_context_import_ecc_private_key(certs, alloc, key, decoded_len, uuid_str);
+            break;
+
+        default:
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error decoding PKCS#1 private key with last error %d",
+                (int)GetLastError());
+            goto clean_up;
+    }
 
 clean_up:
     aws_cert_chain_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
     aws_cert_chain_clean_up(&private_keys);
     aws_array_list_clean_up(&private_keys);
+
+    LocalFree(key);
 
     if (result == AWS_OP_ERR) {
         if (*store != NULL) {
