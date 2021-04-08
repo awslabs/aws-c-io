@@ -318,6 +318,10 @@ static ULONG s_compute_ecc_key_type_from_private_key_size(size_t private_key_len
     }
 }
 
+enum aws_ecc_public_key_compression_type {
+    AWS_EPKCT_UNCOMPRESSED = 0x04,
+};
+
 static int s_cert_context_import_ecc_private_key(
     PCCERT_CONTEXT *certs,
     struct aws_allocator *allocator,
@@ -345,6 +349,21 @@ static int s_cert_context_import_ecc_private_key(
         goto done;
     }
 
+    /*
+    * Per rfc5480#section-2.2, the public key section of the encoding consists of a single byte that tells whether or not the public key is compressed,
+    * followed by the raw key data itself.  Windows doesn't seem to support importing compressed keys directly, so for now check and fail if
+    * it's a compressed key.
+    */
+    if (*public_key_blob->pbData != AWS_EPKCT_UNCOMPRESSED) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: compressed ecc public keys not yet supported.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto done;
+    }
+
+    /*
+     * Now we want everything but the first byte, so dec the length and bump the pointer.  I was more comfortable doing it the manual way
+     * rather than with cursors because using cursors would force us to do multiple narrowing casts back when configuring win32 data.
+     */
     public_key_blob_length--;
     struct aws_byte_cursor public_blob_cursor = {
         .ptr = public_key_blob->pbData + 1,
