@@ -1829,39 +1829,15 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
 
     /* setup, note that all I/O should be before the threads are launched */
     for (size_t idx = 0; idx < NUM_PAIRS; ++idx) {
-        char filename[1024];
-        sprintf(filename, "key_pair%u.pem", (uint32_t)idx);
-
         struct import_info *import = &imports[idx];
         import->allocator = allocator;
-        struct aws_byte_buf pem_buf;
-        ASSERT_SUCCESS(aws_byte_buf_init_from_file(&pem_buf, import->allocator, filename));
 
-        /* parse key pair from combined PEM */
-        struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&pem_buf);
-        struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&pem_buf);
-        uint8_t *key_end = (uint8_t *)strstr((const char *)key_cur.ptr, "END PRIVATE KEY");
-        while (*key_end != '\n') {
-            ++key_end;
-        }
-        ++key_end; /* advance past last \n */
-        uint8_t *cert_start = key_end;
-        while (*cert_start == '\n') {
-            ++cert_start;
-        }
+        char filename[1024];
+        sprintf(filename, "testcert%u.pem", (uint32_t)idx);
+        ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import->cert_buf, import->allocator, filename));
 
-        key_cur.len = key_end - key_cur.ptr;
-        cert_cur.len = cert_cur.len - (cert_start - cert_cur.ptr);
-        cert_cur.ptr = cert_start;
-
-        AWS_FATAL_ASSERT(
-            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->cert_buf, import->allocator, cert_cur));
-        AWS_FATAL_ASSERT(
-            AWS_OP_SUCCESS == aws_byte_buf_init_copy_from_cursor(&import->key_buf, import->allocator, key_cur));
-        struct aws_byte_cursor null_cur = aws_byte_cursor_from_array("", 1);
-        AWS_FATAL_ASSERT(AWS_OP_SUCCESS == aws_byte_buf_append_dynamic(&import->key_buf, &null_cur));
-
-        aws_byte_buf_clean_up(&pem_buf);
+        sprintf(filename, "testkey.pem");
+        ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import->key_buf, import->allocator, filename));
 
         struct aws_thread *thread = &import->thread;
         ASSERT_SUCCESS(aws_thread_init(thread, allocator));
@@ -2303,5 +2279,43 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(tls_double_channel, s_tls_double_channel_fn)
+
+static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+#    ifndef AWS_OS_APPLE
+    aws_io_library_init(allocator);
+
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ecc-cert.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ecc-key.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+
+    aws_io_library_clean_up();
+#    endif /* AWS_OS_APPLE */
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
 
 #endif /* BYO_CRYPTO */
