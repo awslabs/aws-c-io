@@ -77,18 +77,30 @@ struct aws_string *aws_get_home_directory(struct aws_allocator *allocator) {
 }
 
 bool aws_path_exists(const char *path) {
+#if defined(AWS_OS_WINDOWS_DESKTOP)
     return PathFileExistsA(path) == TRUE;
+#else
+    return false;
+#endif
 }
 
 int aws_fseek(FILE *file, aws_off_t offset, int whence) {
+#if defined(AWS_OS_WINDOWS_DESKTOP)
     if (_fseeki64(file, offset, whence)) {
         return aws_translate_and_raise_io_error(errno);
     }
 
     return AWS_OP_SUCCESS;
+#else
+    (void)file;
+    (void)offset;
+    (void)whence;
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif
 }
 
 int aws_file_get_length(FILE *file, int64_t *length) {
+#if defined(AWS_OS_WINDOWS_DESKTOP)
     int fd = _fileno(file);
     if (fd == -1) {
         return aws_raise_error(AWS_IO_INVALID_FILE_HANDLE);
@@ -112,4 +124,9 @@ int aws_file_get_length(FILE *file, int64_t *length) {
     *length = size;
 
     return AWS_OP_SUCCESS;
+#else
+    (void)file;
+    (void)length;
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif
 }
