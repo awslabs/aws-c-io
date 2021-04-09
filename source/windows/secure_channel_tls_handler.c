@@ -121,7 +121,7 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
-#ifdef SECBUFFER_APPLICATION_PROTOCOLS
+#    ifdef SECBUFFER_APPLICATION_PROTOCOLS
     AWS_LOGF_DEBUG(
         AWS_LS_IO_TLS,
         "static: This library was built with Windows 8.1 or later, "
@@ -152,12 +152,12 @@ bool aws_tls_is_alpn_available(void) {
         AWS_LS_IO_TLS,
         "static: Running on older version of windows, ALPN is not supported. "
         "Please update your OS to take advantage of modern features.");
-#else
+#    else
     AWS_LOGF_WARN(
         AWS_LS_IO_TLS,
         "static: This library was built using a Windows SDK prior to 8.1. "
         "Please build with a version of windows >= 8.1 to take advantage modern features. ALPN is not supported.");
-#endif /*SECBUFFER_APPLICATION_PROTOCOLS */
+#    endif /*SECBUFFER_APPLICATION_PROTOCOLS */
     return false;
 }
 #else /* !AWS_OS_WINDOWS_DESKTOP */
