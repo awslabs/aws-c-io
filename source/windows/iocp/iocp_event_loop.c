@@ -12,6 +12,8 @@
 
 #include <aws/io/logging.h>
 
+#include <ntstatus.h>
+
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
     due to winsock. Also some of the definitions here aren't in the public API
