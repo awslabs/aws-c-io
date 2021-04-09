@@ -318,6 +318,8 @@ static ULONG s_compute_ecc_key_type_from_private_key_size(size_t private_key_len
     }
 }
 
+#ifndef AWS_SUPPORT_WIN7
+
 enum aws_ecc_public_key_compression_type {
     AWS_EPKCT_COMPRESSED_EVEN = 0x02,
     AWS_EPKCT_COMPRESSED_ODD = 0x03,
@@ -485,6 +487,8 @@ done:
     return result;
 }
 
+#endif /* AWS_SUPPORT_WIN7 */
+
 enum aws_certificate_type {
     AWS_CT_X509_UNKNOWN,
     AWS_CT_X509_RSA,
@@ -605,7 +609,7 @@ int aws_import_key_pair_to_cert_context(
                 &decoded_len)) {
             cert_type = AWS_CT_X509_RSA;
         }
-#if _MSC_VER > 1500
+#ifndef AWS_SUPPORT_WIN7
         else if (CryptDecodeObjectEx(
                      X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                      X509_ECC_PRIVATE_KEY,
@@ -617,7 +621,7 @@ int aws_import_key_pair_to_cert_context(
                      &decoded_len)) {
             cert_type = AWS_CT_X509_ECC;
         }
-#endif
+#endif /* AWS_SUPPORT_WIN7 */
 
         if (cert_type != AWS_CT_X509_UNKNOWN) {
             break;
@@ -640,9 +644,11 @@ int aws_import_key_pair_to_cert_context(
             result = s_cert_context_import_rsa_private_key(certs, key, decoded_len, uuid_str);
             break;
 
+#ifndef AWS_SUPPORT_WIN7
         case AWS_CT_X509_ECC:
             result = s_cert_context_import_ecc_private_key(certs, alloc, key, decoded_len, uuid_str);
             break;
+#endif /* AWS_SUPPORT_WIN7 */
 
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to decode private key");
