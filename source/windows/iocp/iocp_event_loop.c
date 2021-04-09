@@ -12,7 +12,9 @@
 
 #include <aws/io/logging.h>
 
+#if !defined(AWS_OS_WINDOWS_DESKTOP)
 #include <ntstatus.h>
+#endif
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
