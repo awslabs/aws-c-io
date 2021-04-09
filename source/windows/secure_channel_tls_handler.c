@@ -117,6 +117,7 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
+#if defined(AWS_OS_WINDOWS_DESKTOP)
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
@@ -159,6 +160,11 @@ bool aws_tls_is_alpn_available(void) {
 #endif /*SECBUFFER_APPLICATION_PROTOCOLS */
     return false;
 }
+#else /* !AWS_OS_WINDOWS_DESKTOP */
+bool aws_tls_is_alpn_available(void) {
+    return true;
+}
+#endif
 
 bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
