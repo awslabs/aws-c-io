@@ -180,6 +180,7 @@ add_test_case(test_input_stream_file_seek_beginning)
 add_test_case(test_input_stream_file_seek_end)
 add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
+add_test_case(test_input_stream_binary)
 
 add_test_case(open_channel_statistics_test)
 

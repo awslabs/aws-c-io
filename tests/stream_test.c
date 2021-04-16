@@ -14,7 +14,11 @@
 
 AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
 
-const char *s_test_file_name = "stream.txt";
+/* 0x1A represents the Windows end-of-file character. Having this in the test data set allows us to verify that file
+ * stream reads on binary files do not terminate early on Windows.*/
+const uint8_t s_simple_binary_test[] = {'a', 'b', 'c', 'd', 'e', 'f', 0x1A, 'g', 'h', 'i', 'j', 'k'};
+
+const char *s_test_file_name = "stream.dat";
 
 static struct aws_input_stream *s_create_memory_stream(struct aws_allocator *allocator) {
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
@@ -30,6 +34,16 @@ static struct aws_input_stream *s_create_file_stream(struct aws_allocator *alloc
 
     FILE *file = fopen(s_test_file_name, "w+");
     fprintf(file, "%s", (char *)s_simple_test->bytes);
+    fclose(file);
+
+    return aws_input_stream_new_from_file(allocator, s_test_file_name);
+}
+
+static struct aws_input_stream *s_create_binary_file_stream(struct aws_allocator *allocator) {
+    remove(s_test_file_name);
+
+    FILE *file = fopen(s_test_file_name, "w+b");
+    fwrite(s_simple_binary_test, sizeof(uint8_t), sizeof(s_simple_binary_test), file);
     fclose(file);
 
     return aws_input_stream_new_from_file(allocator, s_test_file_name);
@@ -321,3 +335,22 @@ static int s_test_input_stream_file_length(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(test_input_stream_file_length, s_test_input_stream_file_length);
+
+static int s_test_input_stream_binary(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_binary_file_stream(allocator);
+
+    struct aws_byte_cursor test_cursor = {
+        .ptr = (uint8_t *)s_simple_binary_test,
+        .len = sizeof(s_simple_binary_test),
+    };
+
+    ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
+
+    s_destroy_file_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_binary, s_test_input_stream_binary);
