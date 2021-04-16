@@ -42,7 +42,7 @@ static struct aws_input_stream *s_create_file_stream(struct aws_allocator *alloc
 static struct aws_input_stream *s_create_binary_file_stream(struct aws_allocator *allocator) {
     remove(s_test_file_name);
 
-    FILE *file = fopen(s_test_file_name, "w+");
+    FILE *file = fopen(s_test_file_name, "w+b");
     fwrite(s_simple_binary_test, sizeof(uint8_t), sizeof(s_simple_binary_test), file);
     fclose(file);
 
