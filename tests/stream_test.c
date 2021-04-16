@@ -13,6 +13,7 @@
 #endif
 
 AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
+const uint8_t s_simple_binary_test[] = "abcdef\x1Ahijk";
 
 const char *s_test_file_name = "stream.txt";
 
@@ -30,6 +31,15 @@ static struct aws_input_stream *s_create_file_stream(struct aws_allocator *alloc
 
     FILE *file = fopen(s_test_file_name, "w+");
     fprintf(file, "%s", (char *)s_simple_test->bytes);
+    fclose(file);
+
+    return aws_input_stream_new_from_file(allocator, s_test_file_name);
+}
+static struct aws_input_stream *s_create_binary_file_stream(struct aws_allocator *allocator) {
+    remove(s_test_file_name);
+
+    FILE *file = fopen(s_test_file_name, "w+");
+    fwrite(s_simple_binary_test, sizeof(uint8_t), sizeof(s_simple_binary_test), file);
     fclose(file);
 
     return aws_input_stream_new_from_file(allocator, s_test_file_name);
@@ -321,3 +331,22 @@ static int s_test_input_stream_file_length(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(test_input_stream_file_length, s_test_input_stream_file_length);
+
+static int s_test_input_stream_binary(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct aws_input_stream *stream = s_create_binary_file_stream(allocator);
+
+    struct aws_byte_cursor test_cursor = {
+        .ptr = (uint8_t *)s_simple_binary_test,
+        .len = sizeof(s_simple_binary_test),
+    };
+
+    ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
+
+    s_destroy_memory_stream(stream);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_binary, s_test_input_stream_binary);
