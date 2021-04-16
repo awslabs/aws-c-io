@@ -18,7 +18,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
  * stream reads on binary files do not terminate early on Windows.*/
 const uint8_t s_simple_binary_test[] = "abcdef\x1Aghijk";
 
-const char *s_test_file_name = "stream.txt";
+const char *s_test_file_name = "stream.dat";
 
 static struct aws_input_stream *s_create_memory_stream(struct aws_allocator *allocator) {
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
@@ -348,7 +348,7 @@ static int s_test_input_stream_binary(struct aws_allocator *allocator, void *ctx
 
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_memory_stream(stream);
+    s_destroy_file_stream(stream);
 
     return AWS_OP_SUCCESS;
 }
