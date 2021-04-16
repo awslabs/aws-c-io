@@ -38,6 +38,7 @@ static struct aws_input_stream *s_create_file_stream(struct aws_allocator *alloc
 
     return aws_input_stream_new_from_file(allocator, s_test_file_name);
 }
+
 static struct aws_input_stream *s_create_binary_file_stream(struct aws_allocator *allocator) {
     remove(s_test_file_name);
 
