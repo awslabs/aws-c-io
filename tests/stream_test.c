@@ -18,7 +18,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
  * stream reads on binary files do not terminate early on Windows.*/
 const uint8_t s_simple_binary_test[] = {'a', 'b', 'c', 'd', 'e', 'f', 0x1A, 'g', 'h', 'i', 'j', 'k'};
 
-const char *s_test_file_name = "stream.dat";
+const char *s_test_file_name = "streamÅ.dat";
 
 static struct aws_input_stream *s_create_memory_stream(struct aws_allocator *allocator) {
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
@@ -32,7 +32,7 @@ static void s_destroy_memory_stream(struct aws_input_stream *stream) {
 static struct aws_input_stream *s_create_file_stream(struct aws_allocator *allocator) {
     remove(s_test_file_name);
 
-    FILE *file = fopen(s_test_file_name, "w+");
+    FILE *file = fopen(s_test_file_name, "w+,css=UNICODE");
     fprintf(file, "%s", (char *)s_simple_test->bytes);
     fclose(file);
 
@@ -42,7 +42,7 @@ static struct aws_input_stream *s_create_file_stream(struct aws_allocator *alloc
 static struct aws_input_stream *s_create_binary_file_stream(struct aws_allocator *allocator) {
     remove(s_test_file_name);
 
-    FILE *file = fopen(s_test_file_name, "w+b");
+    FILE *file = fopen(s_test_file_name, "w+b,css=UNICODE");
     fwrite(s_simple_binary_test, sizeof(uint8_t), sizeof(s_simple_binary_test), file);
     fclose(file);
 
