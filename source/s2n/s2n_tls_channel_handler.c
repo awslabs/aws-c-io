@@ -974,7 +974,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLSv1_3:
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            default;
+        default:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "default_tls13");
             break;
     }
