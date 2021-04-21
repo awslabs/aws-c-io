@@ -284,7 +284,7 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
  */
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
-    struct aws_byte_cursor keychain_path_cursor);
+    struct aws_byte_cursor *keychain_path_cursor);
 #    endif
 
 /**
