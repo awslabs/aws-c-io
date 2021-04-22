@@ -5,6 +5,7 @@
 
 #include <aws/io/stream.h>
 
+#include <aws/common/file_open.h>
 #include <aws/io/file_utils.h>
 
 #include <errno.h>
@@ -326,7 +327,7 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
     input_stream->vtable = &s_aws_input_stream_file_vtable;
     input_stream->impl = impl;
 
-    impl->file = fopen(file_name, "r+b");
+    impl->file = aws_fopen(file_name, "r+b");
     if (impl->file == NULL) {
         aws_translate_and_raise_io_error(errno);
         goto on_error;
