@@ -19,15 +19,6 @@ jobs:
 
     # No further steps if successful
 
-    - name: Notify fail
-      uses: thomas-moulard/action-amazon-chime@master
-      if: failure()
-      with:
-        message: |
-          [${{ github.workflow }}][${{ github.event_name }}] WARNING: Proof update may be required
-          Link to GitHub Action run: https://github.com/${{ github.repository }}/commit/${{ github.sha }}/checks
-        webhook: ${{ secrets.P2ConcurrencyRoomWebHookURL }}
-
     - name: Echo fail
       if: failure()
       run: |

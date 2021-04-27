@@ -6,19 +6,16 @@
 #include <aws/io/file_utils.h>
 
 #include <aws/common/environment.h>
+#include <aws/common/file.h>
 #include <aws/common/string.h>
 #include <aws/io/logging.h>
 
 #include <errno.h>
 #include <stdio.h>
 
-#ifdef _MSC_VER
-#    pragma warning(disable : 4996) /* Disable warnings about fopen() being insecure */
-#endif                              /* _MSC_VER */
-
 int aws_byte_buf_init_from_file(struct aws_byte_buf *out_buf, struct aws_allocator *alloc, const char *filename) {
     AWS_ZERO_STRUCT(*out_buf);
-    FILE *fp = fopen(filename, "rb");
+    FILE *fp = aws_fopen(filename, "rb");
 
     if (fp) {
         if (fseek(fp, 0L, SEEK_END)) {
