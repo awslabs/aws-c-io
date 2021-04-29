@@ -568,7 +568,9 @@ static int s_handle_shutdown(
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_mem_release(message->allocator, message);
+            if (message->allocator) {
+                aws_mem_release(message->allocator, message);
+            }
         }
     }
 
