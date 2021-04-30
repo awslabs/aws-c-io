@@ -657,6 +657,7 @@ static int s_process_read_message(
         if (slot->adj_right) {
             if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+                aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
                 /* incoming message was pushed to the input_queue, so this handler owns it now */
                 return AWS_OP_SUCCESS;
             }
