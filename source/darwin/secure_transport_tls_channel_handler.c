@@ -612,7 +612,8 @@ static int s_process_read_message(
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
-            return AWS_OP_ERR;
+            /* even though this is a failure, this handler has taken ownership of the message */
+            return AWS_OP_SUCCESS;
         }
 
         size_t read = 0;
