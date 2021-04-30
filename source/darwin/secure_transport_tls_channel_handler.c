@@ -613,6 +613,7 @@ static int s_process_read_message(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
             /* even though this is a failure, this handler has taken ownership of the message */
+            aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
             return AWS_OP_SUCCESS;
         }
 
