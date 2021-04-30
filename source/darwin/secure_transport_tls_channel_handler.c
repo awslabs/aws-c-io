@@ -568,9 +568,7 @@ static int s_handle_shutdown(
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            if (message->allocator) {
-                aws_mem_release(message->allocator, message);
-            }
+            aws_mem_release(message->allocator, message);
         }
     }
 
@@ -658,7 +656,7 @@ static int s_process_read_message(
         if (slot->adj_right) {
             if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-                return AWS_OP_ERR;
+                return AWS_OP_SUCCESS;
             }
         } else {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
