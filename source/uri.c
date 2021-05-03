@@ -437,23 +437,21 @@ static void s_unchecked_append_canonicalized_path_character(struct aws_byte_buf 
     }
 
     switch (value) {
+        /* non-alpha-numeric unreserved, don't % encode them */
         case '-':
         case '_':
         case '.':
         case '~':
-        case '$':
-        case '&':
-        case ',':
+
+        /* reserved characters that we should not % encode in the path component */
         case '/':
-        case ':':
-        case ';':
-        case '=':
-        case '@': {
             ++buffer->len;
             *dest_ptr = value;
             return;
-        }
 
+        /*
+         * everything else we should % encode, including from the reserved list
+         */
         default:
             buffer->len += 3;
             *dest_ptr++ = '%';
