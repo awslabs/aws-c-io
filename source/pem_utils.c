@@ -23,9 +23,10 @@ static int s_sanitize_pem(
         return AWS_OP_SUCCESS;
     }
 
+    int result = AWS_OP_ERR;
     struct aws_byte_buf clean_pem_buf;
     if (aws_byte_buf_init(&clean_pem_buf, allocator, pem_cursor.len)) {
-        return AWS_OP_ERR;
+        return result;
     }
 
     enum aws_pem_util_state state = APUS_BEGIN;
@@ -85,10 +86,13 @@ static int s_sanitize_pem(
     struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
 
     aws_byte_buf_reset(output, true);
-    aws_byte_buf_append(output, &clean_pem_cursor);
+    if (aws_byte_buf_append_dynamic(output, &clean_pem_cursor) == AWS_OP_SUCCESS) {
+        result = AWS_OP_SUCCESS;
+    }
+
     aws_byte_buf_clean_up(&clean_pem_buf);
 
-    return AWS_OP_SUCCESS;
+    return result;
 }
 
 int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
@@ -97,7 +101,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
 
 struct aws_string *aws_sanitize_pem_to_string(struct aws_byte_cursor pem_cursor, struct aws_allocator *allocator) {
     struct aws_byte_buf pem_buf;
-    if (aws_byte_buf_init(&pem_buf, allocator, pem_cursor.len)) {
+    if (aws_byte_buf_init(&pem_buf, allocator, pem_cursor.len + 1)) {
         return NULL;
     }
 
