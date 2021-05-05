@@ -1007,23 +1007,23 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
     }
 
-    if (options->certificate.len && options->private_key.len) {
+    if (options->certificate && options->certificate->len && options->private_key && options->private_key->len) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
-        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+        if (!aws_text_is_utf8(options->certificate->bytes, options->certificate->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_s2n_config;
         }
 
-        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+        if (!aws_text_is_utf8(options->private_key->bytes, options->private_key->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_s2n_config;
         }
 
         int err_code = s2n_config_add_cert_chain_and_key(
-            s2n_ctx->s2n_config, (const char *)options->certificate.buffer, (const char *)options->private_key.buffer);
+            s2n_ctx->s2n_config, (const char *)options->certificate->bytes, (const char *)options->private_key->bytes);
 
         if (mode == S2N_CLIENT) {
             s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
@@ -1079,20 +1079,20 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             }
         }
 
-        if (options->ca_file.len) {
-            if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
+        if (options->ca_file && options->ca_file->len) {
+            if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file->bytes)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file->bytes);
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
         }
 
-        if (!options->ca_path && !options->ca_file.len) {
+        if (!options->ca_path && (!options->ca_file || !options->ca_file->len)) {
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,

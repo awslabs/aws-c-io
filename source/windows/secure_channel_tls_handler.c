@@ -1831,11 +1831,11 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx,
         (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
-    if (options->verify_peer && options->ca_file.len) {
+    if (options->verify_peer && options->ca_file) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
         secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
-        struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_buf(&options->ca_file);
+        struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_string(options->ca_file);
         int error = aws_import_trusted_certificates(alloc, &ca_blob_cur, &secure_channel_ctx->custom_trust_store);
 
         if (error) {
@@ -1872,24 +1872,24 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
-    } else if (options->certificate.len && options->private_key.len) {
+    } else if (options->certificate && options->private_key) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
-        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+        if (!aws_text_is_utf8(options->certificate->bytes, options->certificate->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
-        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+        if (!aws_text_is_utf8(options->private_key->bytes, options->private_key->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
-        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
-        struct aws_byte_cursor pk_cur = aws_byte_cursor_from_buf(&options->private_key);
+        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_string(options->certificate);
+        struct aws_byte_cursor pk_cur = aws_byte_cursor_from_string(options->private_key);
         int err = aws_import_key_pair_to_cert_context(
             alloc, &cert_chain_cur, &pk_cur, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
 

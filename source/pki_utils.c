@@ -14,8 +14,8 @@
 #include <string.h>
 
 enum PEM_PARSE_STATE {
-    BEGIN,
-    ON_DATA,
+    APUS_BEGIN,
+    APUS_ON_DATA,
 };
 
 void aws_cert_chain_clean_up(struct aws_array_list *cert_chain) {
@@ -37,7 +37,7 @@ static int s_convert_pem_to_raw_base64(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *pem,
     struct aws_array_list *cert_chain_or_key) {
-    enum PEM_PARSE_STATE state = BEGIN;
+    enum PEM_PARSE_STATE state = APUS_BEGIN;
 
     struct aws_byte_buf current_cert;
     const char *begin_header = "-----BEGIN";
@@ -78,23 +78,23 @@ static int s_convert_pem_to_raw_base64(
         }
 
         switch (state) {
-            case BEGIN:
+            case APUS_BEGIN:
                 if (current_cur_ptr->len > begin_header_len &&
                     !strncmp((const char *)current_cur_ptr->ptr, begin_header, begin_header_len)) {
-                    state = ON_DATA;
+                    state = APUS_ON_DATA;
                     index_of_current_cert_start = i + 1;
                 }
                 ++i;
                 break;
             /* this loops through the lines containing data twice. First to figure out the length, a second
              * time to actually copy the data. */
-            case ON_DATA:
+            case APUS_ON_DATA:
                 /* Found end tag. */
                 if (current_cur_ptr->len > end_header_len &&
                     !strncmp((const char *)current_cur_ptr->ptr, end_header, end_header_len)) {
                     if (on_length_calc) {
                         on_length_calc = false;
-                        state = ON_DATA;
+                        state = APUS_ON_DATA;
                         i = index_of_current_cert_start;
 
                         if (aws_byte_buf_init(&current_cert, allocator, current_cert_len)) {
@@ -107,7 +107,7 @@ static int s_convert_pem_to_raw_base64(
                             aws_byte_buf_clean_up(&current_cert);
                             goto end_of_loop;
                         }
-                        state = BEGIN;
+                        state = APUS_BEGIN;
                         on_length_calc = true;
                         current_cert_len = 0;
                         ++i;
@@ -128,7 +128,7 @@ static int s_convert_pem_to_raw_base64(
 end_of_loop:
     aws_array_list_clean_up(&split_buffers);
 
-    if (state == BEGIN && aws_array_list_length(cert_chain_or_key) > 0) {
+    if (state == APUS_BEGIN && aws_array_list_length(cert_chain_or_key) > 0) {
         return AWS_OP_SUCCESS;
     }
 

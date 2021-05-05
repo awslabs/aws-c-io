@@ -112,7 +112,7 @@ struct aws_tls_ctx_options {
      * A PEM armored PKCS#7 collection of CAs you want to trust as a string.
      * Only use this if it's a CA not currently installed on your system.
      */
-    struct aws_byte_buf ca_file;
+    struct aws_string *ca_file;
     /**
      * Only used on Unix systems using an openssl style trust API.
      * this is typically something like /etc/pki/tls/certs/"
@@ -128,7 +128,7 @@ struct aws_tls_ctx_options {
      * A PEM armored PKCS#7 certificate as a string.
      * It is supported on every operating system.
      */
-    struct aws_byte_buf certificate;
+    struct aws_string *certificate;
 
 #ifdef _WIN32
     /** The path to a system
@@ -144,7 +144,7 @@ struct aws_tls_ctx_options {
      * On windows, this field should be NULL only if you are
      * using a system installed certficate.
      */
-    struct aws_byte_buf private_key;
+    struct aws_string *private_key;
 
 #ifdef __APPLE__
     /**

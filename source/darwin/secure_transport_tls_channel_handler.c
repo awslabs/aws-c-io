@@ -1006,24 +1006,24 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         secure_transport_ctx,
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
-    if (options->certificate.len && options->private_key.len) {
+    if (options->certificate && options->private_key) {
 #if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
-        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+        if (!aws_text_is_utf8(options->certificate->bytes, options->certificate->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_wrapped_allocator;
         }
 
-        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+        if (!aws_text_is_utf8(options->private_key->bytes, options->private_key->len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_wrapped_allocator;
         }
 
-        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
-        struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
+        struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_string(options->certificate);
+        struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_string(options->private_key);
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
@@ -1052,10 +1052,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         }
     }
 
-    if (options->ca_file.len) {
+    if (options->ca_file) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
 
-        struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);
+        struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_string(options->ca_file);
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());

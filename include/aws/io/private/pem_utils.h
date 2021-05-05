@@ -19,5 +19,8 @@ AWS_EXTERN_C_BEGIN
 AWS_IO_API
 int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator);
 
+AWS_IO_API
+struct aws_string *aws_sanitize_pem_to_string(struct aws_byte_cursor pem_cursor, struct aws_allocator *allocator);
+
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PEM_UTILS_H */
