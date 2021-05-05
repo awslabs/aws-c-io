@@ -612,7 +612,9 @@ static int s_process_read_message(
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
-            return AWS_OP_ERR;
+            /* even though this is a failure, this handler has taken ownership of the message */
+            aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
+            return AWS_OP_SUCCESS;
         }
 
         size_t read = 0;
@@ -656,7 +658,9 @@ static int s_process_read_message(
         if (slot->adj_right) {
             if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-                return AWS_OP_ERR;
+                aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
+                /* incoming message was pushed to the input_queue, so this handler owns it now */
+                return AWS_OP_SUCCESS;
             }
         } else {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);

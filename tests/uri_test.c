@@ -530,7 +530,9 @@ static int s_test_uri_encode_path_rfc3986(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(s_test_uri_encode_path_case(
         allocator, "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/1234567890/", "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/1234567890/"));
     ASSERT_SUCCESS(s_test_uri_encode_path_case(
-        allocator, "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_~./$@-&,:;/=/", "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_~./$@-&,:;/=/"));
+        allocator,
+        "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_-~./$@&,:;=/",
+        "/ABCDEFGHIJKLMNOPQRSTUVWXYZ/_-~./%24%40%26%2C%3A%3B%3D/"));
     ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/%^#! /", "/path/%25%5E%23%21%20/"));
     ASSERT_SUCCESS(s_test_uri_encode_path_case(allocator, "/path/ሴ", "/path/%E1%88%B4"));
     ASSERT_SUCCESS(s_test_uri_encode_path_case(
