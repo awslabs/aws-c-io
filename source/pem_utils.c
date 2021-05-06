@@ -93,7 +93,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
         pem->buffer[pem->len] = 0;
     }
 
-    aws_byte_buf_clean_up(&clean_pem_buf);
+    aws_byte_buf_clean_up_secure(&clean_pem_buf);
 
     return result;
 }
