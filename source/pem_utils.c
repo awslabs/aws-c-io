@@ -78,17 +78,22 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                 break;
         }
     }
-    struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
-    aws_byte_buf_reset(pem, true);
-    int result = aws_byte_buf_append_dynamic(pem, &clean_pem_cursor);
-    aws_byte_buf_clean_up(&clean_pem_buf);
 
+    struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
+    int result = aws_byte_buf_reserve(pem, clean_pem_cursor.len + 1);
     if (result == AWS_OP_SUCCESS) {
-        result = aws_byte_buf_reserve(pem, pem->len + 1);
-        if (result == AWS_OP_SUCCESS) {
-            pem->buffer[pem->len] = 0;
-        }
+        aws_byte_buf_reset(pem, true);
+        aws_byte_buf_append(pem, &clean_pem_cursor);
+
+        /* these buffers must be zero-padded without that affecting the length
+         *
+         * alternatively we could stop using buffers here and use strings instead, but that requires
+         * a more substantial amount of surgery, so we'll start with a minimal fix for now.
+         */
+        pem->buffer[pem->len] = 0;
     }
+
+    aws_byte_buf_clean_up(&clean_pem_buf);
 
     return result;
 }

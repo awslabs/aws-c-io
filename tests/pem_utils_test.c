@@ -15,6 +15,10 @@ static int s_check_clean_pem_result(
     ASSERT_SUCCESS(aws_byte_buf_init_copy_from_cursor(&pem_buf, allocator, dirty_pem));
     ASSERT_SUCCESS(aws_sanitize_pem(&pem_buf, allocator));
     ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&expected_clean_pem, &pem_buf));
+
+    /* Verify the buffer is still zero-terminated correctly */
+    ASSERT_INT_EQUALS(pem_buf.len, strlen((const char *)pem_buf.buffer));
+
     aws_byte_buf_clean_up(&pem_buf);
     return AWS_OP_SUCCESS;
 }
