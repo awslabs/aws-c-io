@@ -1022,8 +1022,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
         }
 
+        /* Ensure that what we pass to s2n is zero-terminated */
+        struct aws_string *certificate_string = aws_string_new_from_buf(alloc, &options->certificate);
+        struct aws_string *private_key_string = aws_string_new_from_buf(alloc, &options->private_key);
+
         int err_code = s2n_config_add_cert_chain_and_key(
-            s2n_ctx->s2n_config, (const char *)options->certificate.buffer, (const char *)options->private_key.buffer);
+            s2n_ctx->s2n_config, (const char *)certificate_string->bytes, (const char *)private_key_string->bytes);
+
+        aws_string_destroy(certificate_string);
+        aws_string_destroy_secure(private_key_string);
 
         if (mode == S2N_CLIENT) {
             s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
@@ -1080,7 +1087,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (options->ca_file.len) {
-            if (s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)options->ca_file.buffer)) {
+            /* Ensure that what we pass to s2n is zero-terminated */
+            struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
+            int set_ca_result =
+                s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)ca_file_string->bytes);
+            aws_string_destroy(ca_file_string);
+
+            if (set_ca_result) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "ctx: configuration error %s (%s)",
