@@ -230,8 +230,6 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         goto done;
     }
 
-#ifdef NEVER
-
     struct aws_byte_buf host = aws_tls_handler_server_name(handler);
     // hostname shouldn't be longer than 255 charts
     if (host.len >= 255) {
@@ -290,8 +288,6 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             (int)policystatus.dwError);
         goto done;
     }
-
-#endif
   
     /* if the chain was trusted, then we're good to go, if it was not
        we bail out. */
