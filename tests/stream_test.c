@@ -155,7 +155,7 @@ AWS_TEST_CASE(test_input_stream_file_iterate, s_test_input_stream_file_iterate);
 static int s_do_input_stream_seek_test(
     struct aws_input_stream *stream,
     struct aws_allocator *allocator,
-    aws_off_t offset,
+    int64_t offset,
     enum aws_stream_seek_basis basis,
     struct aws_byte_cursor *expected_contents) {
     struct aws_byte_buf read_buf;

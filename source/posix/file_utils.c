@@ -34,14 +34,17 @@ bool aws_path_exists(const char *path) {
     return stat(path, &buffer) == 0;
 }
 
-int aws_fseek(FILE *file, aws_off_t offset, int whence) {
+int aws_fseek(FILE *file, int64_t offset, int whence) {
 
-    int result =
-#if _FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L
-        fseeko(file, offset, whence);
+#ifdef AWS_HAVE_POSIX_LARGE_FILE_SUPPORT
+    int result = fseeko(file, offset, whence);
 #else
-        fseek(file, offset, whence);
-#endif
+    /* must use fseek(), which takes offset as a long */
+    if (offset < LONG_MIN || offset > LONG_MAX) {
+        return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
+    }
+    int result = fseek(file, offset, whence);
+#endif /* AWS_HAVE_POSIX_LFS */
 
     if (result != 0) {
         return aws_translate_and_raise_io_error(errno);
