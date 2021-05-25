@@ -186,7 +186,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
 
     /* get the peer's certificate so we can validated it.*/
-    
+
     SECURITY_STATUS status =
         QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &peer_certificate);
 
@@ -205,7 +205,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_ZERO_STRUCT(engine_config);
     engine_config.cbSize = sizeof(engine_config);
     engine_config.hExclusiveRoot = sc_handler->custom_ca_store;
-   
+
     if (!CertCreateCertificateChainEngine(&engine_config, &engine)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
@@ -273,10 +273,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     if (!CertVerifyCertificateChainPolicy(policyiod, cert_chain_ctx, &policypara, &policystatus)) {
         int error = GetLastError();
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS,
-            "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x",
-            (void *)handler,
-            (int)error);
+            AWS_LS_IO_TLS, "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x", (void *)handler, (int)error);
         goto done;
     }
 
@@ -288,7 +285,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             (int)policystatus.dwError);
         goto done;
     }
-  
+
     /* if the chain was trusted, then we're good to go, if it was not
        we bail out. */
     CERT_SIMPLE_CHAIN *simple_chain = cert_chain_ctx->rgpChain[0];
