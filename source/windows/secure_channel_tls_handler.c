@@ -264,7 +264,8 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     wchar_t whost[MAX_HOST_LENGTH + 1];
     AWS_ZERO_ARRAY(whost);
 
-    int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
+    int converted = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
     if (converted != host.len) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
