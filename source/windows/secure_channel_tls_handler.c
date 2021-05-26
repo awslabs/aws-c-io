@@ -216,12 +216,35 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         goto done;
     }
 
+    /*
+     * apply cached revocation data; keep it cache only to prevent blocking network calls from interfering
+     * with what is supposed to be a non-blocking, async API
+     */
+    DWORD get_chain_flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN | CRT_CHAIN_REVOCATION_CHECK_CACHE_ONLY;
+
+    /* mimic chromium here since we intend for this to be used generally */
+    const LPCSTR usage_identifiers[] = {
+        szOID_PKIX_KP_SERVER_AUTH,
+        szOID_SERVER_GATED_CRYPTO,
+        szOID_SGC_NETSCAPE,
+    };
+
     CERT_CHAIN_PARA chain_params;
     AWS_ZERO_STRUCT(chain_params);
     chain_params.cbSize = sizeof(chain_params);
+    chain_para.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
+    chain_para.RequestedUsage.Usage.cUsageIdentifier = AWS_ARRAY_SIZE(usage_identifiers);
+    chain_para.RequestedUsage.Usage.rgpszUsageIdentifier = usage_identifiers;
 
     if (!CertGetCertificateChain(
-            engine, peer_certificate, NULL, peer_certificate->hCertStore, &chain_params, 0, NULL, &cert_chain_ctx)) {
+            engine,
+            peer_certificate,
+            NULL,
+            peer_certificate->hCertStore,
+            &chain_params,
+            get_chain_flags,
+            NULL,
+            &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.",
