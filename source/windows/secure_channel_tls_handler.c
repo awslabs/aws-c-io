@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 #define SECURITY_WIN32
-#define _CRT_SECURE_NO_WARNINGS
 
 #include <aws/io/tls_channel_handler.h>
 
