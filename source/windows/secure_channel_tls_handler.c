@@ -172,6 +172,9 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     }
 }
 
+/* technically we could lower this, but lets be forgiving */
+#define MAX_HOST_LENGTH 255
+
 /* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(
@@ -185,8 +188,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     HCERTCHAINENGINE engine = NULL;
     CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
 
-    /* get the peer's certificate so we can validated it.*/
-
+    /* get the peer's certificate so we can validate it.*/
     SECURITY_STATUS status =
         QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &peer_certificate);
 
@@ -220,7 +222,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
      * apply cached revocation data; keep it cache only to prevent blocking network calls from interfering
      * with what is supposed to be a non-blocking, async API
      */
-    DWORD get_chain_flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN | CRT_CHAIN_REVOCATION_CHECK_CACHE_ONLY;
+    DWORD get_chain_flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN | CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY;
 
     /* mimic chromium here since we intend for this to be used generally */
     const LPCSTR usage_identifiers[] = {
@@ -232,9 +234,9 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     CERT_CHAIN_PARA chain_params;
     AWS_ZERO_STRUCT(chain_params);
     chain_params.cbSize = sizeof(chain_params);
-    chain_para.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
-    chain_para.RequestedUsage.Usage.cUsageIdentifier = AWS_ARRAY_SIZE(usage_identifiers);
-    chain_para.RequestedUsage.Usage.rgpszUsageIdentifier = usage_identifiers;
+    chain_params.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
+    chain_params.RequestedUsage.Usage.cUsageIdentifier = AWS_ARRAY_SIZE(usage_identifiers);
+    chain_params.RequestedUsage.Usage.rgpszUsageIdentifier = usage_identifiers;
 
     if (!CertGetCertificateChain(
             engine,
@@ -254,22 +256,23 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     }
 
     struct aws_byte_buf host = aws_tls_handler_server_name(handler);
-    // hostname shouldn't be longer than 255 charts
-    if (host.len >= 255) {
+    if (host.len > MAX_HOST_LENGTH) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: host name too long (%d).", (void *)handler, (int)host.len);
         goto done;
     }
 
-    wchar_t whost[255];
+    wchar_t whost[MAX_HOST_LENGTH + 1];
     AWS_ZERO_ARRAY(whost);
-    size_t converted = mbstowcs(whost, (const char *)host.buffer, host.len);
+
+    int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, (const char*)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
     if (converted != host.len) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: unable to convert host to wstr, %d -> %d.",
+            "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x.",
             (void *)handler,
             (int)host.len,
-            (int)converted);
+            (int)converted,
+            (int)GetLastError());
         goto done;
     }
 
