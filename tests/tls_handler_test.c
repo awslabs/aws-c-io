@@ -792,16 +792,11 @@ struct default_host_callback_data {
     bool invoked;
 };
 
-static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
-
-    aws_io_library_init(allocator);
-
-    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
-
-    struct aws_tls_ctx_options client_ctx_options;
-    aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-
-    struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
+static int s_verify_negotiation_fails_helper(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    struct aws_tls_ctx_options *client_ctx_options) {
+    struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, client_ctx_options);
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
@@ -875,6 +870,42 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_release(client_ctx);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
+
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
+
+    struct aws_tls_ctx_options client_ctx_options;
+    aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
+
+    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
+
+    aws_tls_ctx_options_clean_up(&client_ctx_options);
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_verify_negotiation_fails_with_ca_override(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    const char *root_ca_path) {
+
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
+
+    struct aws_tls_ctx_options client_ctx_options;
+    aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
+    aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path);
+
+    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
+
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
@@ -904,6 +935,22 @@ static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_alloc
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
+
+static int s_tls_client_channel_negotiation_error_wrong_host_with_ca_override_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_negotiation_fails_with_ca_override(allocator, host_name, "DigiCertGlobalRootCA.crt.pem");
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_wrong_host_with_ca_override,
+    s_tls_client_channel_negotiation_error_wrong_host_with_ca_override_fn)
 
 static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
