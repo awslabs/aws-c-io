@@ -1718,6 +1718,8 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     }
 
     ssize_t read_val = read(socket->io_handle.data.fd, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
+    int error = errno;
+
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET, "id=%p fd=%d: read of %d", (void *)socket, socket->io_handle.data.fd, (int)read_val);
 
@@ -1740,7 +1742,6 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return AWS_OP_SUCCESS;
     }
 
-    int error = errno;
 #if defined(EWOULDBLOCK)
     if (error == EAGAIN || error == EWOULDBLOCK) {
 #else
