@@ -265,7 +265,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 
     int converted = MultiByteToWideChar(
         CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
-    if (converted != host.len) {
+    if ((size_t)converted != host.len) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x.",
