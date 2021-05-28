@@ -98,6 +98,25 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_file(
  */
 AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
 
+/**
+ * Calculate the new size_t position for a seek within an in-memory buffer.
+ * Do not bind to high-level languages, this is a helper function for input-stream implementations.
+ * If seek would go outside the buffer's bounds, AWS_IO_STREAM_INVALID_SEEK_POSITION is raised.
+ * Otherwise, out_pos is set to the new position.
+ *
+ * @param offset[in]    Offset for seeking.
+ * @param basis[in]     Basis for seeking.
+ * @param len[in]       Total length of buffer we're seeking in.
+ * @param pos[in]       Current file position.
+ * @param out_pos[out]  New file position with offset applied.
+ */
+AWS_IO_API int aws_input_stream_calculate_seek_pos(
+    int64_t offset,
+    enum aws_stream_seek_basis basis,
+    size_t len,
+    size_t pos,
+    size_t *out_pos);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_STREAM_H */

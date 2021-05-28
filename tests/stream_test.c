@@ -230,6 +230,52 @@ static int s_test_input_stream_memory_seek_end(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(test_input_stream_memory_seek_end, s_test_input_stream_memory_seek_end);
 
+static int s_test_input_stream_memory_seek_multiple_times(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const char *src_cstr = "0123456789";
+    const struct aws_byte_cursor src_cursor = aws_byte_cursor_from_c_str(src_cstr);
+    struct aws_input_stream *stream = aws_input_stream_new_from_cursor(allocator, &src_cursor);
+
+    char read_byte = 0;
+    struct aws_byte_buf read_buf = aws_byte_buf_from_empty_array(&read_byte, 1);
+
+    /* Seek to BEGIN + 2. Read "2" */
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, 2, AWS_SSB_BEGIN));
+    read_buf.len = 0;
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
+    ASSERT_INT_EQUALS('2', read_byte);
+
+    /* Seek to BEGIN + 4. Read "4" */
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, 4, AWS_SSB_BEGIN));
+    read_buf.len = 0;
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
+    ASSERT_INT_EQUALS('4', read_byte);
+
+    /* Seek to END - 1. Read "9" */
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, -1, AWS_SSB_END));
+    read_buf.len = 0;
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
+    ASSERT_INT_EQUALS('9', read_byte);
+
+    /* Seek to END - 5. Read "5" */
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, -1, AWS_SSB_END));
+    read_buf.len = 0;
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
+    ASSERT_INT_EQUALS('9', read_byte);
+
+    /* Seek to BEGIN + 0. Read "0" */
+    ASSERT_SUCCESS(aws_input_stream_seek(stream, 4, AWS_SSB_BEGIN));
+    read_buf.len = 0;
+    ASSERT_SUCCESS(aws_input_stream_read(stream, &read_buf));
+    ASSERT_INT_EQUALS('4', read_byte);
+
+    aws_input_stream_destroy(stream);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_input_stream_memory_seek_multiple_times, s_test_input_stream_memory_seek_multiple_times);
+
 static int s_test_input_stream_file_seek_end(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 

@@ -88,55 +88,66 @@ struct aws_input_stream_byte_cursor_impl {
 
 AWS_STATIC_ASSERT(sizeof(size_t) <= 8);
 
-static int s_aws_input_stream_byte_cursor_seek(
-    struct aws_input_stream *stream,
+int aws_input_stream_calculate_seek_pos(
     int64_t offset,
-    enum aws_stream_seek_basis basis) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+    enum aws_stream_seek_basis basis,
+    size_t len,
+    size_t pos,
+    size_t *out_pos) {
 
-    uint64_t final_offset = 0;
+    (void)pos; /* ignored for now, but maybe someday we'll have AWS_SSB_CUR */
 
     if (basis == AWS_SSB_BEGIN) {
         /*
          * (uint64_t)offset -- safe by virtue of the earlier is-negative check
-         * (uint64_t)impl->original_cursor.len -- safe via assumption 1
+         * (uint64_t)len -- safe via assumption 1
          */
-        if (offset < 0 || (uint64_t)offset > (uint64_t)impl->original_cursor.len) {
+        if (offset < 0 || (uint64_t)offset > (uint64_t)len) {
             return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
         }
 
-        /* safe because negative offsets were turned into an error */
-        final_offset = (uint64_t)offset;
-
-    } else {
-        AWS_ASSERT(basis == AWS_SSB_END);
-
-        /*
-         * -offset -- safe as long offset is not INT64_MIN which was previously checked
-         * (uint64_t)(-offset) -- safe because (-offset) is positive (and < INT64_MAX < UINT64_MAX)
-         */
-        if (offset > 0 || offset == INT64_MIN || (uint64_t)(-offset) > (uint64_t)impl->original_cursor.len) {
-            return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
-        }
-
-        /* cases that would make this unsafe became errors with previous conditional */
-        final_offset = (uint64_t)impl->original_cursor.len - (uint64_t)(-offset);
+        /* safe because negative offsets were turned into an error,
+         * and because we already validated that offset len which is <= SIZE_MAX */
+        *out_pos = (size_t)offset;
+        return AWS_OP_SUCCESS;
     }
 
-    /* true because we already validated against (impl->original_cursor.len) which is <= SIZE_MAX */
-    AWS_ASSERT(final_offset <= SIZE_MAX);
+    AWS_ASSERT(basis == AWS_SSB_END);
 
-    /* safe via previous assert */
-    size_t final_offset_sz = (size_t)final_offset;
+    /*
+     * -offset -- safe as long offset is not INT64_MIN which was previously checked
+     * (uint64_t)(-offset) -- safe because (-offset) is positive (and < INT64_MAX < UINT64_MAX)
+     */
+    if (offset > 0 || offset == INT64_MIN || (uint64_t)(-offset) > (uint64_t)len) {
+        return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
+    }
+
+    /* cases that would make this unsafe became errors with previous conditional */
+    *out_pos = len - (size_t)(-offset);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_input_stream_byte_cursor_seek(
+    struct aws_input_stream *stream,
+    int64_t offset,
+    enum aws_stream_seek_basis basis) {
+
+    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+
+    AWS_ASSERT(impl->current_cursor.ptr >= impl->original_cursor.ptr);
+    size_t prev_pos = impl->current_cursor.ptr - impl->original_cursor.ptr;
+    size_t new_pos = 0;
+    if (aws_input_stream_calculate_seek_pos(offset, basis, impl->original_cursor.len, prev_pos, &new_pos)) {
+        return AWS_OP_ERR;
+    }
 
     /* sanity */
-    AWS_ASSERT(final_offset_sz <= impl->current_cursor.len);
+    AWS_ASSERT(new_pos <= impl->original_cursor.len);
 
+    /* reset current_cursor to new position */
     impl->current_cursor = impl->original_cursor;
-
-    /* let's skip advance */
-    impl->current_cursor.ptr += final_offset_sz;
-    impl->current_cursor.len -= final_offset_sz;
+    impl->current_cursor.ptr += new_pos;
+    impl->current_cursor.len -= new_pos;
 
     return AWS_OP_SUCCESS;
 }
