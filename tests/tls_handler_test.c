@@ -2365,4 +2365,30 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
 
+static int s_test_tls_connection_options_is_valid(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    {
+        struct aws_tls_connection_options options;
+        AWS_ZERO_STRUCT(options);
+        ASSERT_FALSE(aws_tls_connection_options_is_valid(&options));
+    }
+
+    {
+        struct aws_tls_ctx context;
+        AWS_ZERO_STRUCT(context);
+
+        struct aws_tls_connection_options options;
+        AWS_ZERO_STRUCT(options);
+        options.ctx = &context;
+
+        ASSERT_TRUE(aws_tls_connection_options_is_valid(&options));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_tls_connection_options_is_valid, s_test_tls_connection_options_is_valid)
+
 #endif /* BYO_CRYPTO */

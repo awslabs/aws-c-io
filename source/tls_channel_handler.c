@@ -455,6 +455,15 @@ int aws_tls_connection_options_set_alpn_list(
     return AWS_OP_SUCCESS;
 }
 
+AWS_IO_API bool aws_tls_connection_options_is_valid(const struct aws_tls_connection_options *conn_options) {
+
+    if (conn_options->ctx == NULL) {
+        return false;
+    }
+
+    return true;
+}
+
 #ifdef BYO_CRYPTO
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
