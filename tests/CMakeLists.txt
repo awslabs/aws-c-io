@@ -123,6 +123,10 @@ if (NOT BYO_CRYPTO)
     add_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_client_channel_negotiation_error_expired)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host)
+    # TODO: make this unconditional by fixing Mac handler
+    if (WIN32)
+        add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
+    endif()
     add_net_test_case(tls_client_channel_negotiation_error_self_signed)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
     #track these down in s2n and find out why that aren't failing.

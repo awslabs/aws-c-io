@@ -171,6 +171,9 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     }
 }
 
+/* technically we could lower this, but lets be forgiving */
+#define MAX_HOST_LENGTH 255
+
 /* this only gets called if the user specified a custom ca. */
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(
@@ -179,8 +182,12 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         (void *)handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    /* get the peer's certificate so we can validated it.*/
+    int result = AWS_OP_ERR;
     CERT_CONTEXT *peer_certificate = NULL;
+    HCERTCHAINENGINE engine = NULL;
+    CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
+
+    /* get the peer's certificate so we can validate it.*/
     SECURITY_STATUS status =
         QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &peer_certificate);
 
@@ -200,7 +207,6 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     engine_config.cbSize = sizeof(engine_config);
     engine_config.hExclusiveRoot = sc_handler->custom_ca_store;
 
-    HCERTCHAINENGINE engine = NULL;
     if (!CertCreateCertificateChainEngine(&engine_config, &engine)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
@@ -208,26 +214,102 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             "Most likely, the configured CA is corrupted.",
             (void *)handler,
             (int)status);
-        CertFreeCertificateContext(peer_certificate);
-        return AWS_OP_ERR;
+        goto done;
     }
+
+    /*
+     * apply cached revocation data; keep it cache only to prevent blocking network calls from interfering
+     * with what is supposed to be a non-blocking, async API
+     */
+    DWORD get_chain_flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN | CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY;
+
+    /* mimic chromium here since we intend for this to be used generally */
+    const LPCSTR usage_identifiers[] = {
+        szOID_PKIX_KP_SERVER_AUTH,
+        szOID_SERVER_GATED_CRYPTO,
+        szOID_SGC_NETSCAPE,
+    };
 
     CERT_CHAIN_PARA chain_params;
     AWS_ZERO_STRUCT(chain_params);
     chain_params.cbSize = sizeof(chain_params);
-
-    CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
+    chain_params.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
+    chain_params.RequestedUsage.Usage.cUsageIdentifier = AWS_ARRAY_SIZE(usage_identifiers);
+    chain_params.RequestedUsage.Usage.rgpszUsageIdentifier = usage_identifiers;
 
     if (!CertGetCertificateChain(
-            engine, peer_certificate, NULL, peer_certificate->hCertStore, &chain_params, 0, NULL, &cert_chain_ctx)) {
+            engine,
+            peer_certificate,
+            NULL,
+            peer_certificate->hCertStore,
+            &chain_params,
+            get_chain_flags,
+            NULL,
+            &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.",
             (void *)handler,
             (int)status);
-        CertFreeCertificateChainEngine(engine);
-        CertFreeCertificateContext(peer_certificate);
-        return AWS_OP_ERR;
+        goto done;
+    }
+
+    struct aws_byte_buf host = aws_tls_handler_server_name(handler);
+    if (host.len > MAX_HOST_LENGTH) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: host name too long (%d).", (void *)handler, (int)host.len);
+        goto done;
+    }
+
+    wchar_t whost[MAX_HOST_LENGTH + 1];
+    AWS_ZERO_ARRAY(whost);
+
+    int converted = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
+    if (converted != host.len) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x.",
+            (void *)handler,
+            (int)host.len,
+            (int)converted,
+            (int)GetLastError());
+        goto done;
+    }
+
+    /* check if the chain was trusted */
+    LPCSTR policyiod = CERT_CHAIN_POLICY_SSL;
+
+    SSL_EXTRA_CERT_CHAIN_POLICY_PARA sslpolicy;
+    AWS_ZERO_STRUCT(sslpolicy);
+    sslpolicy.cbSize = sizeof(sslpolicy);
+    sslpolicy.dwAuthType = AUTHTYPE_SERVER;
+    sslpolicy.fdwChecks = 0;
+    sslpolicy.pwszServerName = whost;
+
+    CERT_CHAIN_POLICY_PARA policypara;
+    AWS_ZERO_STRUCT(policypara);
+    policypara.cbSize = sizeof(policypara);
+    policypara.dwFlags = 0;
+    policypara.pvExtraPolicyPara = &sslpolicy;
+
+    CERT_CHAIN_POLICY_STATUS policystatus;
+    AWS_ZERO_STRUCT(policystatus);
+    policystatus.cbSize = sizeof(policystatus);
+
+    if (!CertVerifyCertificateChainPolicy(policyiod, cert_chain_ctx, &policypara, &policystatus)) {
+        int error = GetLastError();
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x", (void *)handler, (int)error);
+        goto done;
+    }
+
+    if (policystatus.dwError) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: certificate verification failed, error 0x%x",
+            (void *)handler,
+            (int)policystatus.dwError);
+        goto done;
     }
 
     /* if the chain was trusted, then we're good to go, if it was not
@@ -236,21 +318,33 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     DWORD trust_mask = ~(DWORD)CERT_TRUST_IS_NOT_TIME_NESTED;
     trust_mask &= simple_chain->TrustStatus.dwErrorStatus;
 
-    CertFreeCertificateChain(cert_chain_ctx);
-    CertFreeCertificateChainEngine(engine);
-    CertFreeCertificateContext(peer_certificate);
-
-    if (trust_mask == 0) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: peer certificate is trusted.", (void *)handler);
-        return AWS_OP_SUCCESS;
-    } else {
+    if (trust_mask != 0) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: peer certificate is un-trusted with SECURITY_STATUS %d.",
             (void *)handler,
             (int)trust_mask);
-        return AWS_OP_ERR;
+        goto done;
     }
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: peer certificate is trusted.", (void *)handler);
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (cert_chain_ctx != NULL) {
+        CertFreeCertificateChain(cert_chain_ctx);
+    }
+
+    if (engine != NULL) {
+        CertFreeCertificateChainEngine(engine);
+    }
+
+    if (peer_certificate != NULL) {
+        CertFreeCertificateContext(peer_certificate);
+    }
+
+    return result;
 }
 
 static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int err) {
