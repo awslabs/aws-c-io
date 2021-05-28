@@ -235,7 +235,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     chain_params.cbSize = sizeof(chain_params);
     chain_params.RequestedUsage.dwType = USAGE_MATCH_TYPE_OR;
     chain_params.RequestedUsage.Usage.cUsageIdentifier = AWS_ARRAY_SIZE(usage_identifiers);
-    chain_params.RequestedUsage.Usage.rgpszUsageIdentifier = usage_identifiers;
+    chain_params.RequestedUsage.Usage.rgpszUsageIdentifier = (LPSTR *)usage_identifiers;
 
     if (!CertGetCertificateChain(
             engine,
