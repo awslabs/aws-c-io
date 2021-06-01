@@ -55,7 +55,7 @@ bool aws_path_exists(const char *path);
  * whence can either be SEEK_SET or SEEK_END
  */
 AWS_IO_API
-int aws_fseek(FILE *file, aws_off_t offset, int whence);
+int aws_fseek(FILE *file, int64_t offset, int whence);
 
 /*
  * Wrapper for os-specific file length query.  We can't use fseek(END, 0)

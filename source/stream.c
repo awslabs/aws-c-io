@@ -10,7 +10,7 @@
 
 #include <errno.h>
 
-int aws_input_stream_seek(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis) {
+int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->seek);
 
     return stream->vtable->seek(stream, offset, basis);
@@ -78,56 +78,53 @@ struct aws_input_stream_byte_cursor_impl {
 
 /*
  * This is an ugly function that, in the absence of better guidance, is designed to handle all possible combinations of
- *  aws_off_t (int32_t, int64_t) x all possible combinations of size_t (uint32_t, uint64_t).  Whether the anomalous
- * combination of int64_t vs. uint32_t is even possible on any real platform is unknown.  If size_t ever exceeds 64 bits
- * this function will fail badly.
+ * size_t (uint32_t, uint64_t).  If size_t ever exceeds 64 bits this function will fail badly.
  *
  *  Safety and invariant assumptions are sprinkled via comments.  The overall strategy is to cast up to 64 bits and
  * perform all arithmetic there, being careful with signed vs. unsigned to prevent bad operations.
  *
- *  Assumption #1: aws_off_t resolves to a signed integer 64 bits or smaller
- *  Assumption #2: size_t resolves to an unsigned integer 64 bits or smaller
+ *  Assumption #1: size_t resolves to an unsigned integer 64 bits or smaller
  */
 
-AWS_STATIC_ASSERT(sizeof(aws_off_t) <= 8);
 AWS_STATIC_ASSERT(sizeof(size_t) <= 8);
 
 static int s_aws_input_stream_byte_cursor_seek(
     struct aws_input_stream *stream,
-    aws_off_t offset,
+    int64_t offset,
     enum aws_stream_seek_basis basis) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
     uint64_t final_offset = 0;
-    int64_t checked_offset = offset; /* safe by assumption 1 */
 
     switch (basis) {
         case AWS_SSB_BEGIN:
             /*
-             * (uint64_t)checked_offset -- safe by virtue of the earlier is-negative check + Assumption 1
-             * (uint64_t)impl->original_cursor.len -- safe via assumption 2
+             * (uint64_t)offset -- safe by virtue of the earlier is-negative check
+             * (uint64_t)impl->original_cursor.len -- safe via assumption 1
              */
-            if (checked_offset < 0 || (uint64_t)checked_offset > (uint64_t)impl->original_cursor.len) {
+            if (offset < 0 || (uint64_t)offset > (uint64_t)impl->original_cursor.len) {
                 return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
             }
 
             /* safe because negative offsets were turned into an error */
-            final_offset = (uint64_t)checked_offset;
+            final_offset = (uint64_t)offset;
             break;
 
         case AWS_SSB_END:
             /*
-             * -checked_offset -- safe as long checked_offset is not INT64_MIN which was previously checked
-             * (uint64_t)(-checked_offset) -- safe because (-checked_offset) is positive (and < INT64_MAX < UINT64_MAX)
+             * -offset -- safe as long offset is not INT64_MIN which was previously checked
+             * (uint64_t)(-offset) -- safe because (-offset) is positive (and < INT64_MAX < UINT64_MAX)
              */
-            if (checked_offset > 0 || checked_offset == INT64_MIN ||
-                (uint64_t)(-checked_offset) > (uint64_t)impl->original_cursor.len) {
+            if (offset > 0 || offset == INT64_MIN || (uint64_t)(-offset) > (uint64_t)impl->original_cursor.len) {
                 return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
             }
 
             /* cases that would make this unsafe became errors with previous conditional */
-            final_offset = (uint64_t)impl->original_cursor.len - (uint64_t)(-checked_offset);
+            final_offset = (uint64_t)impl->original_cursor.len - (uint64_t)(-offset);
             break;
+
+        default:
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
     /* true because we already validated against (impl->original_cursor.len) which is <= SIZE_MAX */
@@ -137,11 +134,10 @@ static int s_aws_input_stream_byte_cursor_seek(
     size_t final_offset_sz = (size_t)final_offset;
 
     /* sanity */
-    AWS_ASSERT(final_offset_sz <= impl->current_cursor.len);
+    AWS_ASSERT(final_offset_sz <= impl->original_cursor.len);
 
+    /* reset current_cursor to new position */
     impl->current_cursor = impl->original_cursor;
-
-    /* let's skip advance */
     impl->current_cursor.ptr += final_offset_sz;
     impl->current_cursor.len -= final_offset_sz;
 
@@ -244,7 +240,7 @@ struct aws_input_stream_file_impl {
 
 static int s_aws_input_stream_file_seek(
     struct aws_input_stream *stream,
-    aws_off_t offset,
+    int64_t offset,
     enum aws_stream_seek_basis basis) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
