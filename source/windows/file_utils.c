@@ -80,7 +80,7 @@ bool aws_path_exists(const char *path) {
     return PathFileExistsA(path) == TRUE;
 }
 
-int aws_fseek(FILE *file, aws_off_t offset, int whence) {
+int aws_fseek(FILE *file, int64_t offset, int whence) {
     if (_fseeki64(file, offset, whence)) {
         return aws_translate_and_raise_io_error(errno);
     }

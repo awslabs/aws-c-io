@@ -24,7 +24,7 @@ struct aws_stream_status {
 };
 
 struct aws_input_stream_vtable {
-    int (*seek)(struct aws_input_stream *stream, aws_off_t offset, enum aws_stream_seek_basis basis);
+    int (*seek)(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis);
     /**
      * Stream as much data as will fit into the destination buffer and update its length.
      * The destination buffer's capacity MUST NOT be changed.
@@ -52,10 +52,7 @@ AWS_EXTERN_C_BEGIN
 /*
  * Seek to a position within a stream; analagous to fseek() and its relatives
  */
-AWS_IO_API int aws_input_stream_seek(
-    struct aws_input_stream *stream,
-    aws_off_t offset,
-    enum aws_stream_seek_basis basis);
+AWS_IO_API int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis);
 
 /*
  * Read data from a stream.  If data is available, will read up to the (capacity - len) open bytes
