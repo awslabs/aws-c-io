@@ -1216,6 +1216,86 @@ static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, vo
 }
 AWS_TEST_CASE(tls_client_channel_no_verify, s_tls_client_channel_no_verify_fn)
 
+/* Check all of the bad tls cases with verify_peer off.  Now they should succeed. */
+
+static int s_tls_client_channel_negotiation_no_verify_expired_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_expired, s_tls_client_channel_negotiation_no_verify_expired_fn)
+
+static int s_tls_client_channel_negotiation_no_verify_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_no_verify_wrong_host,
+    s_tls_client_channel_negotiation_no_verify_wrong_host_fn)
+
+static int s_tls_client_channel_negotiation_no_verify_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_no_verify_self_signed,
+    s_tls_client_channel_negotiation_no_verify_self_signed_fn)
+
+static int s_tls_client_channel_negotiation_no_verify_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_no_verify_untrusted_root,
+    s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
+
+static int s_tls_client_channel_negotiation_no_verify_revoked_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_revoked, s_tls_client_channel_negotiation_no_verify_revoked_fn)
+
+static int s_tls_client_channel_negotiation_no_verify_pinning_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
+    ASSERT_NOT_NULL(host_name);
+    int err_code = s_verify_good_host(allocator, host_name, false);
+    aws_string_destroy((void *)host_name);
+    return err_code;
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_pinning, s_tls_client_channel_negotiation_no_verify_pinning_fn)
+
 static void s_reset_arg_state(struct tls_test_args *setup_test_args) {
     setup_test_args->tls_levels_negotiated = 0;
     setup_test_args->shutdown_finished = false;
