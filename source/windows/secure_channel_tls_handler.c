@@ -1946,6 +1946,7 @@ struct aws_tls_ctx *s_ctx_new(
             "static: x.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.");
 
+        secure_channel_ctx->credentials.dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                                                    SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
                                                    SCH_CRED_MANUAL_CRED_VALIDATION;

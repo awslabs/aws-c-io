@@ -132,6 +132,15 @@ if (NOT BYO_CRYPTO)
     #track these down in s2n and find out why that aren't failing.
     #add_net_test_case(tls_client_channel_negotiation_error_revoked)
     #add_net_test_case(tls_client_channel_negotiation_error_pinning)
+
+    # once done, add these tests as well
+    #add_net_test_case(tls_client_channel_negotiation_no_verify_revoked)
+    #add_net_test_case(tls_client_channel_negotiation_no_verify_pinning)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_expired)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
+
     add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_client_channel_negotiation_success_ecc256)
