@@ -330,7 +330,9 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
             return AWS_OP_ERR;
         }
     }
+#if !defined(AWS_OS_IOS)
     s_tls_ctx_options_pem_clean_up(options);
+#endif
 
     return AWS_OP_SUCCESS;
 }
