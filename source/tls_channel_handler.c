@@ -85,9 +85,10 @@ static int s_load_null_terminated_buffer_from_cursor(
     return AWS_OP_SUCCESS;
 }
 
+static int s_tls_ctx_options_pem_sanitize(struct aws_tls_ctx_options *options) {
+    (void)options;
+    /* PEM is not supported on iOS */
 #if !defined(AWS_OS_IOS)
-
-static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
     if (!options) {
         return AWS_OP_SUCCESS;
     }
@@ -99,7 +100,10 @@ static int s_tls_ctx_options_pem_clean_up(struct aws_tls_ctx_options *options) {
         }
     }
     return AWS_OP_SUCCESS;
+#endif
 }
+
+#if !defined(AWS_OS_IOS)
 
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
@@ -124,7 +128,7 @@ int aws_tls_ctx_options_init_client_mtls(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
-    s_tls_ctx_options_pem_clean_up(options);
+    s_tls_ctx_options_pem_sanitize(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -149,7 +153,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
         aws_byte_buf_clean_up(&options->certificate);
         return AWS_OP_ERR;
     }
-    s_tls_ctx_options_pem_clean_up(options);
+    s_tls_ctx_options_pem_sanitize(options);
     return AWS_OP_SUCCESS;
 }
 #    if defined(__APPLE__)
@@ -330,7 +334,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
             return AWS_OP_ERR;
         }
     }
-    s_tls_ctx_options_pem_clean_up(options);
+    s_tls_ctx_options_pem_sanitize(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -349,7 +353,7 @@ int aws_tls_ctx_options_override_default_trust_store(
     if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
         return AWS_OP_ERR;
     }
-    s_tls_ctx_options_pem_clean_up(options);
+    s_tls_ctx_options_pem_sanitize(options);
 
     return AWS_OP_SUCCESS;
 }
