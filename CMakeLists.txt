@@ -33,6 +33,7 @@ include(AwsSharedLibSetup)
 include(AwsSanitizers)
 include(AwsFindPackage)
 include(CTest)
+include(CheckSymbolExists)
 
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
