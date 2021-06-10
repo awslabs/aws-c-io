@@ -298,6 +298,14 @@ int aws_tls_ctx_options_init_default_server(
 
 #endif /* AWS_OS_IOS */
 
+void s_log_override_trust_store_deprecation(struct aws_tls_ctx_options *options, const char *calling_function_name) {
+    AWS_LOGF_WARN(
+        AWS_LS_IO_TLS,
+        "id=%p: Specifying a certificate authority to override trust store using %s is DEPRECATED due to inconsistent behavior between platforms and may not work as expected. See aws-c-io README.md for more information",
+        (void *)options,
+        calling_function_name);
+}
+
 int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list) {
     options->alpn_list = aws_string_new_from_c_str(options->allocator, alpn_list);
     if (!options->alpn_list) {
@@ -317,6 +325,10 @@ void aws_tls_ctx_options_set_minimum_tls_version(
     options->minimum_tls_version = minimum_tls_version;
 }
 
+/**
+  * The following API is deprecated due to inconsistent override versus append system/library trust
+  * behavior between Windows, Mac, and Unix based platforms
+  */
 int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
@@ -335,6 +347,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
         }
     }
     s_tls_ctx_options_pem_sanitize(options);
+    s_log_override_trust_store_deprecation(options);
 
     return AWS_OP_SUCCESS;
 }
@@ -343,10 +356,13 @@ void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options,
     options->ctx_options_extension = extension_data;
 }
 
+/**
+  * The following API is deprecated due to inconsistent override versus append system/library trust
+  * behavior between Windows, Mac, and Unix based platforms
+  */
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     const struct aws_byte_cursor *ca_file) {
-
     /* s2n relies on null terminated c_strings, so we need to make sure we're properly
      * terminated, but we don't want length to reflect the terminator because
      * Apple and Windows will fail hard if you use a null terminator. */
@@ -354,6 +370,7 @@ int aws_tls_ctx_options_override_default_trust_store(
         return AWS_OP_ERR;
     }
     s_tls_ctx_options_pem_sanitize(options);
+    s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store");
 
     return AWS_OP_SUCCESS;
 }

@@ -766,3 +766,16 @@ Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_
 
 Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be written.
 `written` is the amount of data read from `buffer` and successfully written to `socket`.
+
+### Deprecated APIs
+
+The following API is deprecated due to inconsistent behavior between Windows, Mac, and Unix based platforms. There is a warning output to the log when using this behavior.
+
+    int aws_tls_ctx_options_override_default_trust_store_from_path(struct aws_tls_ctx_options *options, const char *ca_path, const char *ca_file)
+
+Platform | Override CA behavior
+--- | ---
+macOS | Appends user supplied CA to system's trust. TLS handshakes will succeed if the peer can be verified either from user supplied CA or system trust.
+Windows | Overrides the system's trust, and only allows TLS handshakes will only succeed if the peer is verifiable using the user supplied CA
+Linux/BSD | Appends user supplied CA to the same CA/trust as the linked libcrypto (i.e. /etc/ssl/certs; aws-lc searches a common set of paths). TLS handshakes will succeed if the peer can be verified either from the user supplied CA or the linked libcrypto trust.
+
