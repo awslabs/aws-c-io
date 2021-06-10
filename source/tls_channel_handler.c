@@ -301,7 +301,8 @@ int aws_tls_ctx_options_init_default_server(
 void s_log_override_trust_store_deprecation(struct aws_tls_ctx_options *options, const char *calling_function_name) {
     AWS_LOGF_WARN(
         AWS_LS_IO_TLS,
-        "id=%p: Specifying a certificate authority to override trust store using %s is DEPRECATED due to inconsistent behavior between platforms and may not work as expected. See aws-c-io README.md for more information",
+        "id=%p: Specifying a certificate authority to override trust store using %s is DEPRECATED due to inconsistent "
+        "behavior between platforms and may not work as expected. See aws-c-io README.md for more information",
         (void *)options,
         calling_function_name);
 }
@@ -326,9 +327,9 @@ void aws_tls_ctx_options_set_minimum_tls_version(
 }
 
 /**
-  * The following API is deprecated due to inconsistent override versus append system/library trust
-  * behavior between Windows, Mac, and Unix based platforms
-  */
+ * The following API is deprecated due to inconsistent override versus append system/library trust
+ * behavior between Windows, Mac, and Unix based platforms
+ */
 int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
@@ -357,9 +358,9 @@ void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options,
 }
 
 /**
-  * The following API is deprecated due to inconsistent override versus append system/library trust
-  * behavior between Windows, Mac, and Unix based platforms
-  */
+ * The following API is deprecated due to inconsistent override versus append system/library trust
+ * behavior between Windows, Mac, and Unix based platforms
+ */
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     const struct aws_byte_cursor *ca_file) {
