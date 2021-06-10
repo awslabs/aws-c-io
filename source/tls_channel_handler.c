@@ -347,7 +347,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
         }
     }
     s_tls_ctx_options_pem_sanitize(options);
-    s_log_override_trust_store_deprecation(options);
+    s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store_from_path");
 
     return AWS_OP_SUCCESS;
 }
