@@ -776,6 +776,6 @@ The following API is deprecated due to inconsistent behavior between Windows, Ma
 Platform | Override CA behavior
 --- | ---
 macOS | Appends user supplied CA to system's trust. TLS handshakes will succeed if the peer can be verified either from user supplied CA or system trust.
-Windows | Overrides the system's trust, and only allows TLS handshakes will only succeed if the peer is verifiable using the user supplied CA
-Linux/BSD | Appends user supplied CA to the same CA/trust as the linked libcrypto (i.e. /etc/ssl/certs; aws-lc searches a common set of paths). TLS handshakes will succeed if the peer can be verified either from the user supplied CA or the linked libcrypto trust.
+Windows | Overrides the system's trust, and only allows TLS handshakes if the peer is verifiable from the user supplied CA
+Linux/BSD | Appends user supplied CA to the same CA/trust as the linked libcrypto (i.e. /etc/ssl/certs). TLS handshakes will succeed if the peer can be verified either the user supplied CA or the linked libcrypto trust.
 
