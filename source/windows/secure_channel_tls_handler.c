@@ -218,10 +218,9 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     }
 
     /*
-     * apply cached revocation data; keep it cache only to prevent blocking network calls from interfering
-     * with what is supposed to be a non-blocking, async API
+     * TODO: Investigate CRL options further on a per-platform basis.  Add control APIs if appropriate.
      */
-    DWORD get_chain_flags = CERT_CHAIN_REVOCATION_CHECK_CHAIN | CERT_CHAIN_REVOCATION_CHECK_CACHE_ONLY;
+    DWORD get_chain_flags = 0;
 
     /* mimic chromium here since we intend for this to be used generally */
     const LPCSTR usage_identifiers[] = {
