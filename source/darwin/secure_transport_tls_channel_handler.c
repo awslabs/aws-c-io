@@ -362,7 +362,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         if (secure_transport_handler->server_name) {
             /* Log server name to be consistent with other tls_channel_handler implementations,
              * but this is just a copy of the EXPECTED server name,
-             * the Secure Transport API doesn't seem to expose anything else */
+             * the Secure Transport API doesn't seem to expose actual server name. */
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: Remote Server Name: %s",
