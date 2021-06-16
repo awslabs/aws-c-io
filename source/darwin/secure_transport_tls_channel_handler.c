@@ -96,9 +96,10 @@ struct secure_transport_handler {
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
     struct aws_byte_buf protocol;
-    /*per spec the max length for a server name is 255 bytes (plus the null character). */
-    char server_name_array[256];
-    struct aws_byte_buf server_name;
+    /* Note: This is just a copy of the expected server name.
+     * The Secure Transport API doesn't seem to expose actual server name.
+     * SSLGetPeerDomainName just returns whatever was passed earlier to SSLSetPeerDomainName */
+    struct aws_string *server_name;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
     CFArrayRef ca_certs;
@@ -213,6 +214,8 @@ static void s_destroy(struct aws_channel_handler *handler) {
 
         aws_tls_channel_handler_shared_clean_up(&secure_transport_handler->shared_state);
 
+        aws_string_destroy(secure_transport_handler->server_name);
+
         aws_mem_release(handler->alloc, secure_transport_handler);
     }
 }
@@ -325,7 +328,6 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     if (status == noErr) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
         secure_transport_handler->negotiation_finished = true;
-        size_t name_len = 0;
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
@@ -357,24 +359,15 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 secure_transport_handler->protocol.buffer);
         }
 
-        name_len = 0;
-        status = SSLGetPeerDomainNameLength(secure_transport_handler->ctx, &name_len);
-
-        if (status == noErr && name_len) {
-            size_t max_len = name_len > sizeof(secure_transport_handler->server_name) - 1
-                                 ? sizeof(secure_transport_handler->server_name) - 1
-                                 : name_len;
-            SSLGetPeerDomainName(secure_transport_handler->ctx, secure_transport_handler->server_name_array, &max_len);
-            /* sometimes this api includes the NULL character, sometimes it doesn't, so unfortunately we have to
-             * actually call strlen.*/
-            size_t actual_length = strlen(secure_transport_handler->server_name_array);
-            secure_transport_handler->server_name =
-                aws_byte_buf_from_array((uint8_t *)secure_transport_handler->server_name_array, actual_length);
+        if (secure_transport_handler->server_name) {
+            /* Log server name to be consistent with other tls_channel_handler implementations,
+             * but this is just a copy of the EXPECTED server name,
+             * the Secure Transport API doesn't seem to expose actual server name. */
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: Remote Server Name: %s",
                 (void *)handler,
-                secure_transport_handler->server_name_array);
+                aws_string_c_str(secure_transport_handler->server_name));
         }
 
         if (secure_transport_handler->parent_slot->adj_right && secure_transport_handler->advertise_alpn_message &&
@@ -417,13 +410,22 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return AWS_OP_ERR;
             }
 
-            SecPolicyRef policy = SecPolicyCreateBasicX509();
+            SecPolicyRef policy;
+            if (secure_transport_handler->server_name) {
+                CFStringRef server_name = CFStringCreateWithCString(
+                    secure_transport_handler->wrapped_allocator,
+                    aws_string_c_str(secure_transport_handler->server_name),
+                    kCFStringEncodingUTF8);
+                policy = SecPolicyCreateSSL(true, server_name);
+                CFRelease(server_name);
+            } else {
+                policy = SecPolicyCreateBasicX509();
+            }
             status = SecTrustSetPolicies(trust, policy);
             CFRelease(policy);
 
             if (status != errSecSuccess) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "id=%p: Failed to set basic x509 policy %d\n", (void *)handler, (int)status);
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)handler, (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
@@ -758,7 +760,13 @@ struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
-    return secure_transport_handler->server_name;
+    const uint8_t *bytes = NULL;
+    size_t len = 0;
+    if (secure_transport_handler->server_name) {
+        bytes = secure_transport_handler->server_name->bytes;
+        len = secure_transport_handler->server_name->len;
+    }
+    return aws_byte_buf_from_array(bytes, len);
 }
 
 static struct aws_channel_handler_vtable s_handler_vtable = {
@@ -902,6 +910,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->latest_message_on_completion = NULL;
 
     if (options->server_name) {
+        secure_transport_handler->server_name = aws_string_new_from_string(allocator, options->server_name);
         size_t server_name_len = options->server_name->len;
         SSLSetPeerDomainName(secure_transport_handler->ctx, aws_string_c_str(options->server_name), server_name_len);
     }
