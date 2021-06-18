@@ -1364,6 +1364,8 @@ static inline int create_and_init_host_entry(
     aws_thread_launch(&resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
+    aws_thread_clean_up(&resolver_thread);
+
     return AWS_OP_SUCCESS;
 
 setup_host_entry_error:
