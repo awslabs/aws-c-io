@@ -210,7 +210,6 @@ struct host_entry {
     /* immutable post-creation */
     struct aws_allocator *allocator;
     struct aws_host_resolver *resolver;
-    struct aws_thread resolver_thread;
     const struct aws_string *host_name;
     int64_t resolve_frequency_ns;
     struct aws_host_resolution_config resolution_config;
@@ -1346,7 +1345,9 @@ static inline int create_and_init_host_entry(
     new_host_entry->resolution_config = *config;
     aws_condition_variable_init(&new_host_entry->entry_signal);
 
-    if (aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator)) {
+    struct aws_thread resolver_thread;
+    AWS_ZERO_STRUCT(resolver_thread);
+    if (aws_thread_init(&resolver_thread, resolver->allocator)) {
         goto setup_host_entry_error;
     }
 
@@ -1360,7 +1361,7 @@ static inline int create_and_init_host_entry(
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
 
-    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
+    aws_thread_launch(&resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
     return AWS_OP_SUCCESS;
@@ -1368,7 +1369,7 @@ static inline int create_and_init_host_entry(
 setup_host_entry_error:
 
     if (thread_init) {
-        aws_thread_clean_up(&new_host_entry->resolver_thread);
+        aws_thread_clean_up(&resolver_thread);
     }
 
     s_clean_up_host_entry(new_host_entry);
