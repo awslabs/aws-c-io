@@ -392,9 +392,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
         s_invoke_negotiation_callback(handler, AWS_ERROR_SUCCESS);
 
+    } else if (status == errSSLPeerAuthCompleted) {
         /* this branch gets hit only when verification is disabled,
          * or a custom CA bundle is being used. */
-    } else if (status == errSSLPeerAuthCompleted) {
 
         if (secure_transport_handler->verify_peer) {
             if (!secure_transport_handler->ca_certs) {

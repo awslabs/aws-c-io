@@ -90,7 +90,7 @@ static int s_tls_client_opt_tester_init(
     aws_io_library_init(allocator);
 
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt");
+    aws_tls_ctx_options_override_default_trust_store_with_file(&tester->ctx_options, "unittests.crt");
 
     tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
@@ -902,7 +902,7 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path);
+    aws_tls_ctx_options_override_default_trust_store_with_file(&client_ctx_options, root_ca_path);
 
     ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
 

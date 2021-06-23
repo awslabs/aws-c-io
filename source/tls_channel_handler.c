@@ -62,47 +62,6 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     AWS_ZERO_STRUCT(*options);
 }
 
-static int s_load_null_terminated_buffer_from_cursor(
-    struct aws_byte_buf *load_into,
-    struct aws_allocator *allocator,
-    const struct aws_byte_cursor *from) {
-    if (from->ptr[from->len - 1] == 0) {
-        if (aws_byte_buf_init_copy_from_cursor(load_into, allocator, *from)) {
-            return AWS_OP_ERR;
-        }
-
-        load_into->len -= 1;
-    } else {
-        if (aws_byte_buf_init(load_into, allocator, from->len + 1)) {
-            return AWS_OP_ERR;
-        }
-
-        memcpy(load_into->buffer, from->ptr, from->len);
-        load_into->buffer[from->len] = 0;
-        load_into->len = from->len;
-    }
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_ctx_options_pem_sanitize(struct aws_tls_ctx_options *options) {
-    (void)options;
-    /* PEM is not supported on iOS */
-#if !defined(AWS_OS_IOS)
-    if (!options) {
-        return AWS_OP_SUCCESS;
-    }
-    if (options->allocator) {
-        if (aws_sanitize_pem(&options->ca_file, options->allocator) |
-            aws_sanitize_pem(&options->certificate, options->allocator) |
-            aws_sanitize_pem(&options->private_key, options->allocator)) {
-            return AWS_OP_ERR;
-        }
-    }
-    return AWS_OP_SUCCESS;
-#endif
-}
-
 #if !defined(AWS_OS_IOS)
 
 int aws_tls_ctx_options_init_client_mtls(
@@ -110,6 +69,7 @@ int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
+
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
@@ -117,20 +77,26 @@ int aws_tls_ctx_options_init_client_mtls(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    /* s2n relies on null terminated c_strings, so we need to make sure we're properly
-     * terminated, but we don't want length to reflect the terminator because
-     * Apple and Windows will fail hard if you use a null terminator. */
-    if (s_load_null_terminated_buffer_from_cursor(&options->certificate, allocator, cert)) {
-        return AWS_OP_ERR;
+    if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
+        goto error;
     }
 
-    if (s_load_null_terminated_buffer_from_cursor(&options->private_key, allocator, pkey)) {
-        aws_byte_buf_clean_up(&options->certificate);
-        return AWS_OP_ERR;
+    if (aws_sanitize_pem(&options->certificate, allocator)) {
+        goto error;
     }
-    s_tls_ctx_options_pem_sanitize(options);
+
+    if (aws_byte_buf_init_copy_from_cursor(&options->private_key, allocator, *pkey)) {
+        goto error;
+    }
+
+    if (aws_sanitize_pem(&options->private_key, allocator)) {
+        goto error;
+    }
 
     return AWS_OP_SUCCESS;
+error:
+    aws_tls_ctx_options_clean_up(options);
+    return AWS_OP_ERR;
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_path(
@@ -138,6 +104,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path) {
+
     AWS_ZERO_STRUCT(*options);
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
     options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
@@ -146,16 +113,27 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
-        return AWS_OP_ERR;
+        goto error;
+    }
+
+    if (aws_sanitize_pem(&options->certificate, allocator)) {
+        goto error;
     }
 
     if (aws_byte_buf_init_from_file(&options->private_key, allocator, pkey_path)) {
-        aws_byte_buf_clean_up(&options->certificate);
-        return AWS_OP_ERR;
+        goto error;
     }
-    s_tls_ctx_options_pem_sanitize(options);
+
+    if (aws_sanitize_pem(&options->certificate, allocator)) {
+        goto error;
+    }
+
     return AWS_OP_SUCCESS;
+error:
+    aws_tls_ctx_options_clean_up(options);
+    return AWS_OP_ERR;
 }
+
 #    if defined(__APPLE__)
 int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
@@ -228,11 +206,11 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    if (s_load_null_terminated_buffer_from_cursor(&options->pkcs12, allocator, pkcs12)) {
+    if (aws_byte_buf_init_copy(&options->pkcs12, allocator, pkcs12)) {
         return AWS_OP_ERR;
     }
 
-    if (s_load_null_terminated_buffer_from_cursor(&options->pkcs12_password, allocator, pkcs_pwd)) {
+    if (aws_byte_buf_init_copy(&options->pkcs12_password, allocator, pkcs_pwd)) {
         aws_byte_buf_clean_up_secure(&options->pkcs12);
         return AWS_OP_ERR;
     }
@@ -326,6 +304,72 @@ void aws_tls_ctx_options_set_minimum_tls_version(
     options->minimum_tls_version = minimum_tls_version;
 }
 
+/* Helper for setting CA file via path OR contents */
+int s_override_trust_store_with_file(
+    struct aws_tls_ctx_options *options,
+    const char *ca_file_path,
+    const struct aws_byte_cursor *ca_file_contents) {
+
+    AWS_ASSERT((ca_file_path != NULL) ^ (ca_file_contents != NULL));
+
+    struct aws_byte_buf ca_file_tmp;
+    AWS_ZERO_STRUCT(ca_file_tmp);
+
+    if (ca_file_path) {
+        if (aws_byte_buf_init_from_file(&ca_file_tmp, options->allocator, ca_file_path)) {
+            goto error;
+        }
+    } else {
+        if (aws_byte_buf_init_copy_from_cursor(&ca_file_tmp, options->allocator, *ca_file_contents)) {
+            goto error;
+        }
+    }
+
+    if (aws_sanitize_pem(&ca_file_tmp, options->allocator)) {
+        goto error;
+    }
+
+    if (ca_file_tmp.len == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot override trust store with empty CA file");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+
+    /* success. clean up previous value before setting new one */
+    aws_byte_buf_clean_up_secure(&options->ca_file);
+    options->ca_file = ca_file_tmp;
+    return AWS_OP_SUCCESS;
+
+error:
+    aws_byte_buf_clean_up_secure(&ca_file_tmp);
+    return AWS_OP_ERR;
+}
+
+int aws_tls_ctx_options_override_default_trust_store_with_file_contents(
+    struct aws_tls_ctx_options *options,
+    const struct aws_byte_cursor *ca_file_contents) {
+
+    return s_override_trust_store_with_file(options, NULL, ca_file_contents);
+}
+
+int aws_tls_ctx_options_override_default_trust_store_with_file(
+    struct aws_tls_ctx_options *options,
+    const char *ca_file_path) {
+
+    return s_override_trust_store_with_file(options, ca_file_path, NULL);
+}
+
+int aws_tls_ctx_options_override_default_trust_store_with_directory(
+    struct aws_tls_ctx_options *options,
+    const char *ca_dir_path) {
+
+    /* clean up any previous value before setting new one */
+    aws_string_destroy_secure(options->ca_path);
+
+    options->ca_path = aws_string_new_from_c_str(options->allocator, ca_dir_path);
+    return AWS_OP_SUCCESS;
+}
+
 /**
  * The following API is deprecated due to inconsistent override versus append system/library trust
  * behavior between Windows, Mac, and Unix based platforms
@@ -335,19 +379,19 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
     const char *ca_path,
     const char *ca_file) {
 
-    if (ca_path) {
-        options->ca_path = aws_string_new_from_c_str(options->allocator, ca_path);
-        if (!options->ca_path) {
+    if (ca_file) {
+        if (aws_tls_ctx_options_override_default_trust_store_with_file(options, ca_file)) {
             return AWS_OP_ERR;
         }
     }
 
-    if (ca_file) {
-        if (aws_byte_buf_init_from_file(&options->ca_file, options->allocator, ca_file)) {
+    if (ca_path) {
+        if (aws_tls_ctx_options_override_default_trust_store_with_directory(options, ca_path)) {
             return AWS_OP_ERR;
         }
     }
-    s_tls_ctx_options_pem_sanitize(options);
+
+    options->legacy_ca_override = true;
     s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store_from_path");
 
     return AWS_OP_SUCCESS;
@@ -364,13 +408,12 @@ void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options,
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     const struct aws_byte_cursor *ca_file) {
-    /* s2n relies on null terminated c_strings, so we need to make sure we're properly
-     * terminated, but we don't want length to reflect the terminator because
-     * Apple and Windows will fail hard if you use a null terminator. */
-    if (s_load_null_terminated_buffer_from_cursor(&options->ca_file, options->allocator, ca_file)) {
+
+    if (aws_tls_ctx_options_override_default_trust_store_with_file_contents(options, ca_file)) {
         return AWS_OP_ERR;
     }
-    s_tls_ctx_options_pem_sanitize(options);
+
+    options->legacy_ca_override = true;
     s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store");
 
     return AWS_OP_SUCCESS;
