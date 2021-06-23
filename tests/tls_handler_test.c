@@ -794,14 +794,14 @@ struct default_host_callback_data {
 
 static int s_verify_negotiation_fails_helper(
     struct aws_allocator *allocator,
-    const struct aws_string *host_name,
+    const char *host_name,
     struct aws_tls_ctx_options *client_ctx_options) {
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, client_ctx_options);
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
-    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_c_str(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
 
     struct tls_test_args outgoing_args = {
@@ -837,7 +837,7 @@ static int s_verify_negotiation_fails_helper(
     struct aws_socket_channel_bootstrap_options channel_options;
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
-    channel_options.host_name = aws_string_c_str(host_name);
+    channel_options.host_name = host_name;
     channel_options.port = 443;
     channel_options.socket_options = &options;
     channel_options.tls_options = &tls_client_conn_options;
@@ -874,7 +874,7 @@ static int s_verify_negotiation_fails_helper(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
+static int s_verify_negotiation_fails(struct aws_allocator *allocator, const char *host_name) {
 
     aws_io_library_init(allocator);
 
@@ -893,7 +893,7 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
 
 static int s_verify_negotiation_fails_with_ca_override(
     struct aws_allocator *allocator,
-    const struct aws_string *host_name,
+    const char *host_name,
     const char *root_ca_path) {
 
     aws_io_library_init(allocator);
@@ -915,11 +915,7 @@ static int s_verify_negotiation_fails_with_ca_override(
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "expired.badssl.com");
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel_negotiation_error_expired_fn)
@@ -927,11 +923,7 @@ AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel
 static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "wrong.host.badssl.com");
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
@@ -941,11 +933,8 @@ static int s_tls_client_channel_negotiation_error_wrong_host_with_ca_override_fn
     void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails_with_ca_override(allocator, host_name, "DigiCertGlobalRootCA.crt.pem");
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails_with_ca_override(
+        allocator, "wrong.host.badssl.com", "DigiCertGlobalRootCA.crt.pem");
 }
 
 AWS_TEST_CASE(
@@ -955,11 +944,7 @@ AWS_TEST_CASE(
 static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "self-signed.badssl.com");
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_channel_negotiation_error_self_signed_fn)
@@ -967,25 +952,31 @@ AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_cha
 static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "untrusted-root.badssl.com");
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_error_untrusted_root,
-    s_tls_client_channel_negotiation_error_untrusted_root_fn)
+    s_tls_client_channel_negotiation_error_untrusted_root_fn);
+
+/* negotiation should fail because we've overridden the default trust store with something that is not
+ * in www.amazon.com's certificate chain */
+static int s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    return s_verify_negotiation_fails_with_ca_override(allocator, "www.amazon.com", "unittests.crt");
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override,
+    s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn)
 
 static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "revoked.badssl.com");
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
@@ -993,11 +984,7 @@ AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel
 static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, "pinning-test.badssl.com");
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_pinning, s_tls_client_channel_negotiation_error_pinning_fn)

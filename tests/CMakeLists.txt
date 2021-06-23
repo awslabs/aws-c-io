@@ -126,6 +126,7 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
     add_net_test_case(tls_client_channel_negotiation_error_self_signed)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
+    add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
     #track these down in s2n and find out why that aren't failing.
     #add_net_test_case(tls_client_channel_negotiation_error_revoked)
     #add_net_test_case(tls_client_channel_negotiation_error_pinning)
