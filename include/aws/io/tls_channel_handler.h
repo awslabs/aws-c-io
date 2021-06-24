@@ -122,14 +122,14 @@ struct aws_tls_ctx_options {
     /**
      * If true, the user called a deprecated variant of override_default_trust_store(...)
      * and the legacy behavior should be used. The legacy behavior was inconsistent
-     * about "overriding" vs "adding" to the default trust store when a custom CA is set.
+     * about whether the default trust store was still used.
      *
      * WINDOWS (Secure Channel): Default trust store IS NOT used.
      *
      * APPLE (Secure Transport): Default trust store IS used.
      *
      * LINUX (s2n / libcrypto): libcrypto's default trust store IS used (configured at build time via --openssldir).
-     *      But DO NOT use the default trust store file/directory we found by searching common locations at startup.
+     *      But DO NOT use the default trust store we found by searching common locations at startup.
      */
     bool legacy_ca_override;
 
@@ -418,7 +418,7 @@ AWS_IO_API void aws_tls_ctx_options_set_minimum_tls_version(
 
 /**
  * Override the default trust store with a CA certificates file.
- * ca_pem_contents is the ASCII/UTF-8 encoded contents of a file containing trusted CA certificates in PEM format.
+ * ca_file_contents is the ASCII/UTF-8 encoded contents of a file of trusted CA certificates in PEM format.
  * The contents are copied.
  */
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_with_file_contents(
@@ -427,7 +427,7 @@ AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_with_file_conten
 
 /**
  * Override the default trust store with a CA certificates file.
- * ca_pem_path is the path to an ASCII/UTF-8 encoded file containing trusted CA certificates in PEM format.
+ * ca_file_path is the path to an ASCII/UTF-8 encoded file of trusted CA certificates in PEM format.
  */
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_with_file(
     struct aws_tls_ctx_options *options,
@@ -435,8 +435,10 @@ AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_with_file(
 
 /**
  * Override the default trust store with a directory of CA certificates.
- * ca_dir_path is the path to a directory of CA certificates in PEM format.
+ * ca_dir_path is the path to a directory of trusted CA certificates in PEM format.
  * This is only supported on Unix systems.
+ * For more info on the layout of such a directory, read about "CApath" in the OpenSSL docs:
+ * https://www.openssl.org/docs/manmaster/man1/openssl-verification-options.html
  */
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store_with_directory(
     struct aws_tls_ctx_options *options,

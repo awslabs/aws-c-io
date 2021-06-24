@@ -1081,7 +1081,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     "You used a deprecated 'override default trust store' function."
                     " Certificates from the OPENSSLDIR are still being trusted, which you might not expect.");
             } else {
-                /* To override the trust store, first wipe anything that s2n loaded by default */
+                /* Non-deprecated function was used, so actually override the trust store.
+                 * We begin by wiping anything that s2n loaded by default */
                 if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_TLS,
@@ -1127,14 +1128,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 }
             }
         } else {
-            /* User did not call an override_default_trust_store() function.
-             * Be sure to load system defaults.
+            /* User wants to use the system's default trust store.
              *
-             * Note that s2n's trust store always starts with libcrypto's default paths (OPENSSLDIR).
-             * OPENSSLDIR is configured when libcrypto is built, but might not be correct for the current machine.
-             * This can happen if libcrypto was statically linked into an application built on one flavor of Linux,
-             * and distributed to run on other flavors of Linux that might use different directories.
-             * Therefore, load the system default CA-file and/or CA-directory that were found at library startup. */
+             * Note that s2n's trust store always starts with libcrypto's default locations.
+             * These paths are configured when libcrypto is built (--openssldir),
+             * but might not be right for the current machine (this happens when
+             * libcrypto is statically linked into an application that is distributed
+             * to multiple flavors of Linux). Therefore, load the locations that
+             * were found at library startup. */
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
