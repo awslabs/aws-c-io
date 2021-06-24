@@ -37,6 +37,8 @@
 #        define LOCAL_SOCK_TEST_PATTERN "testsock%llu_%d.sock"
 #    endif
 
+#    pragma clang diagnostic ignored "-Wunused-function"
+
 struct tls_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;

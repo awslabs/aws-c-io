@@ -206,11 +206,11 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     options->allocator = allocator;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    if (aws_byte_buf_init_copy(&options->pkcs12, allocator, pkcs12)) {
+    if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12, allocator, *pkcs12)) {
         return AWS_OP_ERR;
     }
 
-    if (aws_byte_buf_init_copy(&options->pkcs12_password, allocator, pkcs_pwd)) {
+    if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12_password, allocator, *pkcs_pwd)) {
         aws_byte_buf_clean_up_secure(&options->pkcs12);
         return AWS_OP_ERR;
     }
