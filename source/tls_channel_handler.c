@@ -364,6 +364,8 @@ int aws_tls_ctx_options_override_default_trust_store_with_directory(
     const char *ca_dir_path) {
 
 #if defined(__APPLE__) || defined(_WIN32)
+    (void)options;
+    (void)ca_dir_path;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support overriding the trust store with a directory");
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 #else
