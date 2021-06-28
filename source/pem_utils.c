@@ -17,7 +17,7 @@ static const struct aws_byte_cursor dashes = AWS_BYTE_CUR_INIT_FROM_STRING_LITER
 
 int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) {
     if (!pem->len) {
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
     struct aws_byte_buf clean_pem_buf;
     if (aws_byte_buf_init(&clean_pem_buf, allocator, pem->len)) {
@@ -78,9 +78,21 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                 break;
         }
     }
+
+    if (clean_pem_buf.len == 0) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+
     struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
     aws_byte_buf_reset(pem, true);
-    aws_byte_buf_append(pem, &clean_pem_cursor);
+    if (aws_byte_buf_append(pem, &clean_pem_cursor)) {
+        goto error;
+    }
     aws_byte_buf_clean_up(&clean_pem_buf);
     return AWS_OP_SUCCESS;
+
+error:
+    aws_byte_buf_clean_up(&clean_pem_buf);
+    return AWS_OP_ERR;
 }

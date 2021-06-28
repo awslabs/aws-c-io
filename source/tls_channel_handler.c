@@ -82,6 +82,7 @@ int aws_tls_ctx_options_init_client_mtls(
     }
 
     if (aws_sanitize_pem(&options->certificate, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
         goto error;
     }
 
@@ -90,6 +91,7 @@ int aws_tls_ctx_options_init_client_mtls(
     }
 
     if (aws_sanitize_pem(&options->private_key, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid private key. File must contain PEM encoded data");
         goto error;
     }
 
@@ -117,6 +119,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     }
 
     if (aws_sanitize_pem(&options->certificate, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
         goto error;
     }
 
@@ -124,7 +127,8 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
         goto error;
     }
 
-    if (aws_sanitize_pem(&options->certificate, allocator)) {
+    if (aws_sanitize_pem(&options->private_key, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid private key. File must contain PEM encoded data");
         goto error;
     }
 
@@ -326,12 +330,7 @@ int s_override_trust_store_with_file(
     }
 
     if (aws_sanitize_pem(&ca_file_tmp, options->allocator)) {
-        goto error;
-    }
-
-    if (ca_file_tmp.len == 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot override trust store with empty CA file");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA file. File must contain PEM encoded data");
         goto error;
     }
 
