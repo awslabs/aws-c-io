@@ -1924,7 +1924,7 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx,
         (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
-    if (options->verify_peer && options->ca_file.len) {
+    if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
         secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
@@ -1966,7 +1966,7 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
-    } else if (options->certificate.len && options->private_key.len) {
+    } else if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 

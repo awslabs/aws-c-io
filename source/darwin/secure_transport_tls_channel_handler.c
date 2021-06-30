@@ -1016,7 +1016,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         secure_transport_ctx,
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
-    if (options->certificate.len && options->private_key.len) {
+    if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 #if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
@@ -1046,7 +1046,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
             goto cleanup_wrapped_allocator;
         }
 #endif
-    } else if (options->pkcs12.len) {
+    } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
@@ -1062,7 +1062,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         }
     }
 
-    if (options->ca_file.len) {
+    if (aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
 
         struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);

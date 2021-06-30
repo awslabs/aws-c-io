@@ -1007,7 +1007,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
     }
 
-    if (options->certificate.len && options->private_key.len) {
+    if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
@@ -1072,7 +1072,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             }
         }
 
-        if (options->ca_path || options->ca_file.len) {
+        if (options->ca_path || aws_tls_options_buf_is_set(&options->ca_file)) {
             /* The user called an override_default_trust_store() function.
              * Begin by wiping anything that s2n loaded by default */
             if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
@@ -1100,7 +1100,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 }
             }
 
-            if (options->ca_file.len) {
+            if (aws_tls_options_buf_is_set(&options->ca_file)) {
                 /* Ensure that what we pass to s2n is zero-terminated */
                 struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
                 int set_ca_result =

@@ -7,6 +7,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/pem_utils.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/tls_channel_handler.h>
 
 #define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
@@ -23,41 +24,21 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
 }
 
 void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
-    if (options->ca_file.len) {
-        aws_byte_buf_clean_up(&options->ca_file);
-    }
-
-    if (options->ca_path) {
-        aws_string_destroy(options->ca_path);
-    }
-
-    if (options->certificate.len) {
-        aws_byte_buf_clean_up(&options->certificate);
-    }
-
-    if (options->private_key.len) {
-        aws_byte_buf_clean_up_secure(&options->private_key);
-    }
+    aws_byte_buf_clean_up(&options->ca_file);
+    aws_string_destroy(options->ca_path);
+    aws_byte_buf_clean_up(&options->certificate);
+    aws_byte_buf_clean_up_secure(&options->private_key);
 
 #ifdef __APPLE__
-    if (options->pkcs12.len) {
-        aws_byte_buf_clean_up_secure(&options->pkcs12);
-    }
-
-    if (options->pkcs12_password.len) {
-        aws_byte_buf_clean_up_secure(&options->pkcs12_password);
-    }
+    aws_byte_buf_clean_up_secure(&options->pkcs12);
+    aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
 #    if !defined(AWS_OS_IOS)
-    if (options->keychain_path) {
-        aws_string_destroy(options->keychain_path);
-    }
+    aws_string_destroy(options->keychain_path);
 #    endif
 #endif
 
-    if (options->alpn_list) {
-        aws_string_destroy(options->alpn_list);
-    }
+    aws_string_destroy(options->alpn_list);
 
     AWS_ZERO_STRUCT(*options);
 }
@@ -304,6 +285,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
     const char *ca_path,
     const char *ca_file) {
 
+    /* Note: on success these are not cleaned up, their data is "moved" into the options struct */
     struct aws_string *ca_path_tmp = NULL;
     struct aws_byte_buf ca_file_tmp;
     AWS_ZERO_STRUCT(ca_file_tmp);
@@ -322,7 +304,7 @@ int aws_tls_ctx_options_override_default_trust_store_from_path(
     }
 
     if (ca_file) {
-        if (options->ca_file.capacity) {
+        if (aws_tls_options_buf_is_set(&options->ca_file)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
             aws_raise_error(AWS_ERROR_INVALID_STATE);
             goto error;
@@ -361,7 +343,7 @@ int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     const struct aws_byte_cursor *ca_file) {
 
-    if (options->ca_file.capacity) {
+    if (aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
