@@ -112,7 +112,6 @@ struct secure_transport_handler {
     bool negotiation_finished;
     bool verify_peer;
     bool read_task_pending;
-    bool legacy_ca_override;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -444,23 +443,13 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return AWS_OP_ERR;
             }
 
-            /* Whether or not to use system's built in anchor certificates depends on whether or not
-             * a deprecated variant of override_default_trust_store() function was used */
-            bool ignore_system_anchors = true;
-            if (secure_transport_handler->legacy_ca_override) {
-                ignore_system_anchors = false;
-                AWS_LOGF_WARN(
-                    AWS_LS_IO_TLS,
-                    "You used a deprecated 'override default trust store' function. The system's built in"
-                    " anchor certificates are still being trusted, which you might not expect.");
-            }
-            status = SecTrustSetAnchorCertificatesOnly(trust, ignore_system_anchors);
+            /* Use ONLY the custom CA bundle (ignoring system anchors) */
+            status = SecTrustSetAnchorCertificatesOnly(trust, true);
             if (status != errSecSuccess) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
-                    "id=%p: Failed to %s system anchors with OSStatus %d\n",
+                    "id=%p: Failed to ignore system anchors with OSStatus %d\n",
                     (void *)handler,
-                    ignore_system_anchors ? "ignore" : "enable",
                     (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -801,7 +790,6 @@ struct secure_transport_ctx {
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;
     bool veriify_peer;
-    bool legacy_ca_override;
 };
 
 static struct aws_channel_handler *s_tls_handler_new(
@@ -890,7 +878,6 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     OSStatus status = noErr;
     secure_transport_handler->verify_peer = secure_transport_ctx->veriify_peer;
-    secure_transport_handler->legacy_ca_override = secure_transport_ctx->legacy_ca_override;
 
     if (!secure_transport_ctx->veriify_peer && protocol_side == kSSLClientSide) {
         AWS_LOGF_WARN(
@@ -1020,7 +1007,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     }
 
     secure_transport_ctx->veriify_peer = options->verify_peer;
-    secure_transport_ctx->legacy_ca_override = options->legacy_ca_override;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->ctx.alloc = alloc;

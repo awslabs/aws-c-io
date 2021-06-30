@@ -23,10 +23,6 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
-#    if !defined(_WIN32) && !defined(__APPLE__)
-#        include <openssl/x509.h>
-#    endif
-
 #    if _MSC_VER
 #        pragma warning(disable : 4996) /* sprintf */
 #    endif
@@ -36,8 +32,6 @@
 #    else
 #        define LOCAL_SOCK_TEST_PATTERN "testsock%llu_%d.sock"
 #    endif
-
-#    pragma clang diagnostic ignored "-Wunused-function"
 
 struct tls_test_args {
     struct aws_allocator *allocator;
@@ -96,7 +90,8 @@ static int s_tls_client_opt_tester_init(
     aws_io_library_init(allocator);
 
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_with_file(&tester->ctx_options, "unittests.crt");
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt"));
 
     tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
@@ -897,11 +892,10 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const cha
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_negotiation_fails_with_ca_override_helper(
+static int s_verify_negotiation_fails_with_ca_override(
     struct aws_allocator *allocator,
     const char *host_name,
-    const char *root_ca_path,
-    bool use_deprecated_fn) {
+    const char *root_ca_path) {
 
     aws_io_library_init(allocator);
 
@@ -910,12 +904,7 @@ static int s_verify_negotiation_fails_with_ca_override_helper(
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
 
-    if (use_deprecated_fn) {
-        ASSERT_SUCCESS(
-            aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path));
-    } else {
-        ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_with_file(&client_ctx_options, root_ca_path));
-    }
+    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path));
 
     ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
 
@@ -923,24 +912,6 @@ static int s_verify_negotiation_fails_with_ca_override_helper(
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
     return AWS_OP_SUCCESS;
-}
-
-static int s_verify_negotiation_fails_with_ca_override(
-    struct aws_allocator *allocator,
-    const char *host_name,
-    const char *root_ca_path) {
-
-    return s_verify_negotiation_fails_with_ca_override_helper(
-        allocator, host_name, root_ca_path, false /*use_deprecated_fn*/);
-}
-
-static int s_verify_negotiation_fails_with_deprecated_ca_override(
-    struct aws_allocator *allocator,
-    const char *host_name,
-    const char *root_ca_path) {
-
-    return s_verify_negotiation_fails_with_ca_override_helper(
-        allocator, host_name, root_ca_path, true /*use_deprecated_fn*/);
 }
 
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
@@ -990,8 +961,8 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_untrusted_root,
     s_tls_client_channel_negotiation_error_untrusted_root_fn);
 
-/* negotiation should fail because we've overridden the default trust store with something that is not
- * in www.amazon.com's certificate chain */
+/* negotiation should fail. www.amazon.com is obviously trusted by the default trust store,
+ * but we've overridden the default trust store */
 static int s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1093,8 +1064,7 @@ static int s_verify_negotiation_succeeds_helper(
     struct aws_allocator *allocator,
     const char *host_name,
     bool verify,
-    const char *ca_file_path,
-    bool use_deprecated_override) {
+    const char *ca_file_path) {
 
     aws_io_library_init(allocator);
 
@@ -1117,13 +1087,8 @@ static int s_verify_negotiation_succeeds_helper(
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "http/1.1");
     aws_tls_ctx_options_set_verify_peer(&client_ctx_options, verify);
     if (ca_file_path) {
-        if (use_deprecated_override) {
-            ASSERT_SUCCESS(
-                aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, ca_file_path));
-        } else {
-            ASSERT_SUCCESS(
-                aws_tls_ctx_options_override_default_trust_store_with_file(&client_ctx_options, ca_file_path));
-        }
+        ASSERT_SUCCESS(
+            aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, ca_file_path));
     }
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
@@ -1202,21 +1167,11 @@ static int s_verify_negotiation_succeeds_helper(
 }
 
 static int s_verify_negotiation_succeeds(struct aws_allocator *allocator, const char *host_name) {
-    return s_verify_negotiation_succeeds_helper(
-        allocator, host_name, true /*verify*/, NULL /*ca*/, false /*deprecated_override*/);
+    return s_verify_negotiation_succeeds_helper(allocator, host_name, true /*verify*/, NULL /*ca*/);
 }
 
 static int s_verify_negotiation_succeeds_no_verify_peer(struct aws_allocator *allocator, const char *host_name) {
-    return s_verify_negotiation_succeeds_helper(
-        allocator, host_name, false /*verify*/, NULL /*ca*/, false /*deprecated_override*/);
-}
-
-static int s_verify_negotiation_succeeds_with_deprecated_ca_override(
-    struct aws_allocator *allocator,
-    const char *host_name,
-    const char *ca_file_path) {
-    return s_verify_negotiation_succeeds_helper(
-        allocator, host_name, true /*verify*/, ca_file_path, true /*deprecated_override*/);
+    return s_verify_negotiation_succeeds_helper(allocator, host_name, false /*verify*/, NULL /*ca*/);
 }
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
@@ -1306,69 +1261,6 @@ static int s_tls_client_channel_negotiation_no_verify_pinning_fn(struct aws_allo
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_pinning, s_tls_client_channel_negotiation_no_verify_pinning_fn)
-
-/* Test that legacy behavior is still used when the deprecated variants of override_trust_store() are used.
- * In the past, override_trust_store didn't ALWAYS override the trust store.
- * This behavior varied by platform.
- * This test uses logging, instead of just comments, just because it's extra crazy */
-static int s_tls_client_channel_negotiation_legacy_behavior_for_deprecated_ca_override_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
-
-    const char *real_website = "www.amazon.com";
-    const char *some_random_ca_file = "unittests.crt";
-
-#    if defined(_WIN32)
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_GENERAL,
-        "expecting connection to fail because deprecated overload_default_trust_store function"
-        " actually ignores the default trust store on Windows");
-    return s_verify_negotiation_fails_with_deprecated_ca_override(allocator, real_website, some_random_ca_file);
-
-#    elif defined(__APPLE__)
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_GENERAL,
-        "expecting connection to succeed because deprecated overload_default_trust_store function"
-        " still uses Apple's default anchor certificates");
-    return s_verify_negotiation_succeeds_with_deprecated_ca_override(allocator, real_website, some_random_ca_file);
-
-#    else
-    /* LINUX (s2n / libcrypto): deprecated override function was weird in a complicated way:
-     * libcrypto's default trust store IS used
-     * but the default trust store file/directory we found by searching common locations at startup IS NOT used. */
-    const char *libcrypto_cert_dir = X509_get_default_cert_dir();
-    bool libcrypto_cert_dir_exists = aws_path_exists(libcrypto_cert_dir);
-
-    const char *libcrypto_cert_file = X509_get_default_cert_file();
-    bool libcrypto_cert_file_exists = aws_path_exists(libcrypto_cert_file);
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_GENERAL,
-        "libcrypto configured with default paths - %s: %s - %s: %s",
-        libcrypto_cert_dir,
-        libcrypto_cert_dir_exists ? "FOUND" : "NOT FOUND",
-        libcrypto_cert_file,
-        libcrypto_cert_file_exists ? "FOUND" : "NOT FOUND");
-
-    if (libcrypto_cert_dir_exists || libcrypto_cert_file_exists) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_GENERAL,
-            "expecting connection to succeed because deprecated overload_default_trust_store function"
-            " still uses libcrypto's default paths, which are present on this machine");
-        return s_verify_negotiation_succeeds_with_deprecated_ca_override(allocator, real_website, some_random_ca_file);
-    } else {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_GENERAL,
-            "expecting connection to fail because deprecated overload_default_trust_store function still uses "
-            "libcrypto's default paths, this machine doesn't have those paths");
-        return s_verify_negotiation_fails_with_deprecated_ca_override(allocator, real_website, some_random_ca_file);
-    }
-#    endif
-}
-
-AWS_TEST_CASE(
-    tls_client_channel_negotiation_legacy_behavior_for_deprecated_ca_override,
-    s_tls_client_channel_negotiation_legacy_behavior_for_deprecated_ca_override_fn)
 
 static void s_reset_arg_state(struct tls_test_args *setup_test_args) {
     setup_test_args->tls_levels_negotiated = 0;

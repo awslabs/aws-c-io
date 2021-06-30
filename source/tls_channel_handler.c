@@ -280,15 +280,6 @@ int aws_tls_ctx_options_init_default_server(
 
 #endif /* AWS_OS_IOS */
 
-void s_log_override_trust_store_deprecation(struct aws_tls_ctx_options *options, const char *calling_function_name) {
-    AWS_LOGF_WARN(
-        AWS_LS_IO_TLS,
-        "id=%p: Specifying a certificate authority to override trust store using %s is DEPRECATED due to inconsistent "
-        "behavior between platforms and may not work as expected. See aws-c-io README.md for more information",
-        (void *)options,
-        calling_function_name);
-}
-
 int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list) {
     options->alpn_list = aws_string_new_from_c_str(options->allocator, alpn_list);
     if (!options->alpn_list) {
@@ -308,122 +299,87 @@ void aws_tls_ctx_options_set_minimum_tls_version(
     options->minimum_tls_version = minimum_tls_version;
 }
 
-/* Helper for setting CA file via path OR contents */
-int s_override_trust_store_with_file(
-    struct aws_tls_ctx_options *options,
-    const char *ca_file_path,
-    const struct aws_byte_cursor *ca_file_contents) {
-
-    AWS_ASSERT((ca_file_path != NULL) ^ (ca_file_contents != NULL));
-
-    struct aws_byte_buf ca_file_tmp;
-    AWS_ZERO_STRUCT(ca_file_tmp);
-
-    if (ca_file_path) {
-        if (aws_byte_buf_init_from_file(&ca_file_tmp, options->allocator, ca_file_path)) {
-            goto error;
-        }
-    } else {
-        if (aws_byte_buf_init_copy_from_cursor(&ca_file_tmp, options->allocator, *ca_file_contents)) {
-            goto error;
-        }
-    }
-
-    if (aws_sanitize_pem(&ca_file_tmp, options->allocator)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA file. File must contain PEM encoded data");
-        goto error;
-    }
-
-    /* success. clean up previous value before setting new one */
-    aws_byte_buf_clean_up_secure(&options->ca_file);
-    options->ca_file = ca_file_tmp;
-    return AWS_OP_SUCCESS;
-
-error:
-    aws_byte_buf_clean_up_secure(&ca_file_tmp);
-    return AWS_OP_ERR;
-}
-
-int aws_tls_ctx_options_override_default_trust_store_with_file_contents(
-    struct aws_tls_ctx_options *options,
-    const struct aws_byte_cursor *ca_file_contents) {
-
-    return s_override_trust_store_with_file(options, NULL, ca_file_contents);
-}
-
-int aws_tls_ctx_options_override_default_trust_store_with_file(
-    struct aws_tls_ctx_options *options,
-    const char *ca_file_path) {
-
-    return s_override_trust_store_with_file(options, ca_file_path, NULL);
-}
-
-int aws_tls_ctx_options_override_default_trust_store_with_directory(
-    struct aws_tls_ctx_options *options,
-    const char *ca_dir_path) {
-
-#if defined(__APPLE__) || defined(_WIN32)
-    (void)options;
-    (void)ca_dir_path;
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support overriding the trust store with a directory");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-#else
-
-    /* clean up any previous value before setting new one */
-    aws_string_destroy_secure(options->ca_path);
-
-    options->ca_path = aws_string_new_from_c_str(options->allocator, ca_dir_path);
-    return AWS_OP_SUCCESS;
-#endif
-}
-
-/**
- * The following API is deprecated due to inconsistent override versus append system/library trust
- * behavior between Windows, Mac, and Unix based platforms
- */
 int aws_tls_ctx_options_override_default_trust_store_from_path(
     struct aws_tls_ctx_options *options,
     const char *ca_path,
     const char *ca_file) {
 
-    if (ca_file) {
-        if (aws_tls_ctx_options_override_default_trust_store_with_file(options, ca_file)) {
-            return AWS_OP_ERR;
-        }
-    }
+    struct aws_string *ca_path_tmp = NULL;
+    struct aws_byte_buf ca_file_tmp;
+    AWS_ZERO_STRUCT(ca_file_tmp);
 
     if (ca_path) {
-        if (aws_tls_ctx_options_override_default_trust_store_with_directory(options, ca_path)) {
-            return AWS_OP_ERR;
+        if (options->ca_path) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto error;
+        }
+
+        ca_path_tmp = aws_string_new_from_c_str(options->allocator, ca_path);
+        if (!ca_path_tmp) {
+            goto error;
         }
     }
 
-    options->legacy_ca_override = true;
-    s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store_from_path");
+    if (ca_file) {
+        if (options->ca_file.capacity) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto error;
+        }
 
+        if (aws_byte_buf_init_from_file(&ca_file_tmp, options->allocator, ca_file)) {
+            goto error;
+        }
+
+        if (aws_sanitize_pem(&ca_file_tmp, options->allocator)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA file. File must contain PEM encoded data");
+            goto error;
+        }
+    }
+
+    /* Success, set new values. (no need to clean up old values, we checked earlier that they were unallocated) */
+    if (ca_path) {
+        options->ca_path = ca_path_tmp;
+    }
+    if (ca_file) {
+        options->ca_file = ca_file_tmp;
+    }
     return AWS_OP_SUCCESS;
+
+error:
+    aws_string_destroy_secure(ca_path_tmp);
+    aws_byte_buf_clean_up_secure(&ca_file_tmp);
+    return AWS_OP_ERR;
 }
 
 void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options, void *extension_data) {
     options->ctx_options_extension = extension_data;
 }
 
-/**
- * The following API is deprecated due to inconsistent override versus append system/library trust
- * behavior between Windows, Mac, and Unix based platforms
- */
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
     const struct aws_byte_cursor *ca_file) {
 
-    if (aws_tls_ctx_options_override_default_trust_store_with_file_contents(options, ca_file)) {
-        return AWS_OP_ERR;
+    if (options->ca_file.capacity) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    options->legacy_ca_override = true;
-    s_log_override_trust_store_deprecation(options, "aws_tls_ctx_options_override_default_trust_store");
+    if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_file)) {
+        goto error;
+    }
+
+    if (aws_sanitize_pem(&options->ca_file, options->allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA file. File must contain PEM encoded data");
+        goto error;
+    }
 
     return AWS_OP_SUCCESS;
+
+error:
+    aws_byte_buf_clean_up_secure(&options->ca_file);
+    return AWS_OP_ERR;
 }
 
 void aws_tls_connection_options_init_from_ctx(

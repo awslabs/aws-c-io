@@ -1073,26 +1073,17 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (options->ca_path || options->ca_file.len) {
-            /* The user called an override_default_trust_store() function. */
-            if (options->legacy_ca_override) {
-                /* A deprecated function was used, preserve legacy behavior */
-                AWS_LOGF_WARN(
+            /* The user called an override_default_trust_store() function.
+             * Begin by wiping anything that s2n loaded by default */
+            if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
+                AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
-                    "You used a deprecated 'override default trust store' function."
-                    " Certificates from the OPENSSLDIR are still being trusted, which you might not expect.");
-            } else {
-                /* Non-deprecated function was used, so actually override the trust store.
-                 * We begin by wiping anything that s2n loaded by default */
-                if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_TLS,
-                        "ctx: configuration error %s (%s)",
-                        s2n_strerror(s2n_errno, "EN"),
-                        s2n_strerror_debug(s2n_errno, "EN"));
-                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to wipe default trust store\n");
-                    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-                    goto cleanup_s2n_config;
-                }
+                    "ctx: configuration error %s (%s)",
+                    s2n_strerror(s2n_errno, "EN"),
+                    s2n_strerror_debug(s2n_errno, "EN"));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to wipe default trust store\n");
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_s2n_config;
             }
 
             if (options->ca_path) {
@@ -1132,8 +1123,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
              *
              * Note that s2n's trust store always starts with libcrypto's default locations.
              * These paths are configured when libcrypto is built (--openssldir),
-             * but might not be right for the current machine (this happens when
-             * libcrypto is statically linked into an application that is distributed
+             * but might not be right for the current machine (e.g. if libcrypto
+             * is statically linked into an application that is distributed
              * to multiple flavors of Linux). Therefore, load the locations that
              * were found at library startup. */
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
