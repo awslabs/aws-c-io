@@ -72,8 +72,6 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
     AWS_FATAL_ASSERT(
         aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options) ==
         AWS_OP_SUCCESS);
-
-    aws_thread_clean_up(&cleanup_thread);
 }
 
 static struct aws_event_loop_group *s_event_loop_group_new(
