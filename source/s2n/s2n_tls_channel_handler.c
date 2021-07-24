@@ -1001,6 +1001,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-07");
             break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-TLS-1-0-2021-05-26");
+            break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
             aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
