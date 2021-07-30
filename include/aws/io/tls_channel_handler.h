@@ -280,7 +280,6 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
 
-
 /**
  * This struct exists as a graceful way to pass many arguments when
  * calling init-with-pkcs11 functions on aws_tls_ctx_options (this also makes
