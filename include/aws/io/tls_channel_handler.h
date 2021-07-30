@@ -282,10 +282,10 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 
 
 /**
- * This struct exists as a graceful way to pass many arguments to
- * aws_tls_cxt_options' init-with-pkcs11 functions (also as a way to introduce
- * optional arguments in the future).
- * Instances should only exist briefly on the stack.
+ * This struct exists as a graceful way to pass many arguments when
+ * calling init-with-pkcs11 functions on aws_tls_ctx_options (this also makes
+ * it easy to introduce optional arguments in the future).
+ * Instances of this struct should only exist briefly on the stack.
  * Instructions for binding this to high-level languages:
  * - Python: The members of this struct should be the keyword args to the init-with-pkcs11 functions.
  * - JavaScript: This should be an options map passed to init-with-pkcs11 functions.

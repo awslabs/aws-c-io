@@ -19,7 +19,7 @@ struct aws_pkcs11_lib_handle;
 struct aws_pkcs11_lib_handle_options {
     /**
      * Name of PKCS#11 library file to load.
-     * Set to NULL if your program is compiled with PKCS#11 symbols linked in.
+     * Set to NULL if your application is compiled with PKCS#11 symbols linked in.
      */
     const char *filename;
 
