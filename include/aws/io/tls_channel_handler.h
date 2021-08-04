@@ -10,6 +10,7 @@
 
 struct aws_channel_slot;
 struct aws_channel_handler;
+struct aws_pkcs11_session;
 struct aws_string;
 
 enum aws_tls_versions {
@@ -278,6 +279,67 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
+
+/**
+ * This struct exists as a graceful way to pass many arguments when
+ * calling init-with-pkcs11 functions on aws_tls_ctx_options (this also makes
+ * it easy to introduce optional arguments in the future).
+ * Instances of this struct should only exist briefly on the stack.
+ * Instructions for binding this to high-level languages:
+ * - Python: The members of this struct should be the keyword args to the init-with-pkcs11 functions.
+ * - JavaScript: This should be an options map passed to init-with-pkcs11 functions.
+ * - Java: Don't expose this struct, create function overloads with common combinations.
+ * - C++: Same as Java
+ */
+struct aws_tls_ctx_pkcs11_options {
+    /**
+     * The PKCS#11 library to use.
+     */
+    struct aws_pkcs11_lib_handle *pkcs11_lib;
+
+    /**
+     * ID of slot containing token.
+     */
+    uint32_t slot_id;
+
+    /**
+     * PIN for logging into the token (UTF-8).
+     */
+    struct aws_byte_cursor pin;
+
+    /**
+     * Certificate's file path on disk (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Set NULL if passing in certificate by some other means.
+     */
+    struct aws_byte_cursor *cert_file_path;
+
+    /**
+     * Certificate's file contents (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Set NULL if passing in certificate by some other means.
+     */
+    struct aws_byte_cursor *cert_file_contents;
+
+    /**
+     * Label of private key on token (UTF-8).
+     * Set NULL if the private key has no label.
+     */
+    struct aws_byte_cursor *pkey_pkcs11_label;
+};
+
+/**
+ * Initializes options for use with mutual TLS in client mode,
+ * where a PKCS#11 library provides access to the private key.
+ *
+ * @param options           aws_tls_ctx_options to be initialized.
+ * @param allocator         Allocator to use.
+ * @param pkcs11_options    Options for using PKCS#11 (contents are copied)
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_pkcs11_options *pkcs11_options);
 
 #    ifdef __APPLE__
 /**
