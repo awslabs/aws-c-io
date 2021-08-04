@@ -18,10 +18,10 @@ struct aws_pkcs11_lib_handle;
  */
 struct aws_pkcs11_lib_handle_options {
     /**
-     * Name of PKCS#11 library file to load.
-     * Set to NULL if your application is compiled with PKCS#11 symbols linked in.
+     * Name of PKCS#11 library file to load (UTF-8).
+     * Set to empty if your application is compiled with PKCS#11 symbols linked in.
      */
-    const char *filename;
+    struct aws_byte_cursor filename;
 
     /**
      * Set true to skip calling C_Initialize() and C_Finalize() on the PKCS#11 library.

@@ -305,17 +305,27 @@ struct aws_tls_ctx_pkcs11_options {
     /**
      * PIN for logging into the token (UTF-8).
      */
-    const char *pin;
+    struct aws_byte_cursor pin;
 
     /**
-     * Label of certificate on token (UTF-8).
+     * Certificate's file path on disk (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Set NULL if passing in certificate by some other means.
      */
-    const char *cert_label;
+    struct aws_byte_cursor *cert_file_path;
+
+    /**
+     * Certificate's file contents (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Set NULL if passing in certificate by some other means.
+     */
+    struct aws_byte_cursor *cert_file_contents;
 
     /**
      * Label of private key on token (UTF-8).
+     * Set NULL if the private key has no label.
      */
-    const char *pkey_label;
+    struct aws_byte_cursor *pkey_pkcs11_label;
 };
 
 /**
