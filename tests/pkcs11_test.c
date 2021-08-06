@@ -24,8 +24,8 @@ static void s_pkcs11_tester_clean_up(void) {
 }
 
 /* Read env-vars.
- * Raises an error if env-vars not set, and the test should be skipped */
-static int s_pkcs11_tester_init_or_skip(struct aws_allocator *allocator) {
+ * Raises false if the test should be skipped because the env-vars aren't set */
+static bool s_pkcs11_tester_init_or_skip(struct aws_allocator *allocator) {
     aws_io_library_init(allocator);
 
     const struct aws_string *env_var = TEST_PKCS11_LIB;
@@ -34,19 +34,20 @@ static int s_pkcs11_tester_init_or_skip(struct aws_allocator *allocator) {
         goto skip;
     }
 
-    return AWS_OP_SUCCESS;
+    return true;
 
 skip:
     printf("Skipping test because '%s' env-var not found\n", aws_string_c_str(env_var));
     s_pkcs11_tester_clean_up();
-    return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    return false;
 }
 
-static int s_test_pkcs11_lib_new(struct aws_allocator *allocator, void *ctx) {
+/* Simplest test: Loads and unloads library, calling C_Initialize() and C_Finalize() */
+static int s_test_pkcs11_lib_initialize(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    if (s_pkcs11_tester_init_or_skip(allocator) != AWS_OP_SUCCESS) {
-        return AWS_OP_SUCCESS;
+    if (s_pkcs11_tester_init_or_skip(allocator) == false) {
+        return AWS_OP_SUCCESS; /* skip */
     }
 
     /* Load library */
@@ -61,4 +62,46 @@ static int s_test_pkcs11_lib_new(struct aws_allocator *allocator, void *ctx) {
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_lib_new, s_test_pkcs11_lib_new)
+AWS_TEST_CASE(pkcs11_lib_initialize, s_test_pkcs11_lib_initialize)
+
+/* Test that we can use the `omit_initialize` option to have the library loaded multiple times */
+static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    if (s_pkcs11_tester_init_or_skip(allocator) == false) {
+        return AWS_OP_SUCCESS; /* skip */
+    }
+
+    struct aws_pkcs11_lib_options options_normal = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.filepath),
+    };
+
+    struct aws_pkcs11_lib_options options_omit_initialize = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.filepath),
+        .omit_initialize = true,
+    };
+
+    /* First test that we fail gracefully if we omit_initialize, but no one else has initialized it yet either */
+    struct aws_pkcs11_lib *pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
+    ASSERT_NULL(pkcs11_lib_should_fail);
+    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+
+    /* Next test that we can load the library twice by using omit_initialize the second time we load it */
+    struct aws_pkcs11_lib *pkcs11_lib_1 = aws_pkcs11_lib_new(allocator, &options_normal);
+    ASSERT_NOT_NULL(pkcs11_lib_1);
+
+    struct aws_pkcs11_lib *pkcs11_lib_2 = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
+    ASSERT_NOT_NULL(pkcs11_lib_2);
+
+    /* Next test that omit_initialize is required if someone else already initialized the library */
+    pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_normal);
+    ASSERT_NULL(pkcs11_lib_should_fail);
+    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+
+    /* Clean up */
+    aws_pkcs11_lib_release(pkcs11_lib_2);
+    aws_pkcs11_lib_release(pkcs11_lib_1);
+    s_pkcs11_tester_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(pkcs11_lib_omit_initialize, s_test_pkcs11_lib_omit_initialize)
