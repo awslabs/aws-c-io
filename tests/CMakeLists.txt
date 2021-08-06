@@ -215,6 +215,8 @@ add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
 
+add_test_case(pkcs11_lib_new)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

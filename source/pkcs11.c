@@ -283,7 +283,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_PKCS11,
         "Loading PKCS#11. file:'%s' C_Initialize:%s",
-        filename ? filename : "<MAIN_PROGRAM>",
+        filename ? filename : "<MAIN PROGRAM>",
         options->omit_initialize ? "omit" : "yes");
 
     if (aws_shared_library_init(&pkcs11_lib->shared_lib, filename)) {
@@ -335,10 +335,10 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
 
     AWS_LOGF_INFO(
         AWS_LS_IO_PKCS11,
-        "id=%p: PKCS#11 loaded. source:'%s' cryptokiVersion:%" PRIu8 ".%" PRIu8 " manufacturerID:'" PRInSTR
+        "id=%p: PKCS#11 loaded. file:'%s' cryptokiVersion:%" PRIu8 ".%" PRIu8 " manufacturerID:'" PRInSTR
         "' flags:0x%08lX libraryDescription:'" PRInSTR "' libraryVersion:%" PRIu8 ".%" PRIu8 " C_Initialize:%s",
         (void *)pkcs11_lib,
-        filename ? filename : "<MAIN_PROGRAM>",
+        filename ? filename : "<MAIN PROGRAM>",
         info.cryptokiVersion.major,
         info.cryptokiVersion.minor,
         AWS_BYTE_CURSOR_PRI(s_trim_padding(info.manufacturerID, sizeof(info.manufacturerID))),
