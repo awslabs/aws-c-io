@@ -23,10 +23,11 @@
 #include <unistd.h>
 
 #if defined(__MACH__)
-#    define NO_SIGNAL SO_NOSIGPIPE
+#    define NO_SIGNAL_SOCK_OPT SO_NOSIGPIPE
+#    define NO_SIGNAL_SEND SO_NOSIGPIPE
 #    define TCP_KEEPIDLE TCP_KEEPALIVE
 #else
-#    define NO_SIGNAL MSG_NOSIGNAL
+#    define NO_SIGNAL_SEND MSG_NOSIGNAL
 #endif
 
 /* This isn't defined on ancient linux distros (breaking the builds).
@@ -1158,18 +1159,18 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     socket->options = *options;
 
+#ifdef NO_SIGNAL_SOCK_OPT
     int option_value = 1;
-    if (AWS_UNLIKELY(
-            setsockopt(socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL, &option_value, sizeof(option_value)))) {
+    if (AWS_UNLIKELY(setsockopt(
+            socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL_SOCK_OPT, &option_value, sizeof(option_value)))) {
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: setsockopt() for NO_SIGNAL failed with errno %d. If you are having SIGPIPE signals thrown, "
-            "you may"
-            " want to install a signal trap in your application layer.",
+            "id=%p fd=%d: setsockopt() for NO_SIGNAL_SOCK_OPT failed with errno %d.",
             (void *)socket,
             socket->io_handle.data.fd,
             errno);
     }
+#endif /* NO_SIGNAL_SOCK_OPT */
 
     int reuse = 1;
     if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)))) {
@@ -1475,8 +1476,8 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
             (unsigned long long)write_request->original_buffer_len,
             (unsigned long long)write_request->cursor_cpy.len);
 
-        ssize_t written =
-            send(socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL);
+        ssize_t written = send(
+            socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL_SEND);
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
