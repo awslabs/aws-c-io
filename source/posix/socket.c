@@ -22,9 +22,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/*
+ * On OsX, suppress NoPipe signals via flags to setsockopt()
+ * On Linux, suppress NoPipe signals via flags to send()
+ */
 #if defined(__MACH__)
 #    define NO_SIGNAL_SOCK_OPT SO_NOSIGPIPE
-#    define NO_SIGNAL_SEND SO_NOSIGPIPE
+#    define NO_SIGNAL_SEND 0
 #    define TCP_KEEPIDLE TCP_KEEPALIVE
 #else
 #    define NO_SIGNAL_SEND MSG_NOSIGNAL
