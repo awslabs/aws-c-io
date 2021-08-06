@@ -295,7 +295,7 @@ struct aws_tls_ctx_pkcs11_options {
     /**
      * The PKCS#11 library to use.
      */
-    struct aws_pkcs11_lib_handle *pkcs11_lib;
+    struct aws_pkcs11_lib *pkcs11_lib;
 
     /**
      * ID of slot containing token.

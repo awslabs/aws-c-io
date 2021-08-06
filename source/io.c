@@ -156,6 +156,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
        AWS_IO_RETRY_PERMISSION_DENIED,
        "Retry cannot be attempted because the retry strategy has prevented the operation."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_PKCS11_ERROR,
+       "PKCS#11 error"),
 };
 /* clang-format on */
 
@@ -191,6 +194,7 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         AWS_LS_IO_STANDARD_RETRY_STRATEGY,
         "standard-retry-strategy",
         "Subject for standard retry strategy"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
 };
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
