@@ -14,7 +14,10 @@
     ],
     "targets": {
         "linux": {
-            "packages": ["softhsm"]
+            "packages": ["softhsm"],
+            "test_env": {
+                "TEST_PKCS11_LIB": "/lib/softhsm/libsofthsm2.so"
+            }
         }
     },
     "build_env": {
