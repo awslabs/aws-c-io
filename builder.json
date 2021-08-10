@@ -14,10 +14,12 @@
     ],
     "targets": {
         "linux": {
+            "_comment": "Install SoftHSM2, and run ./builder/actions/pkcs11_test_setup.py",
             "packages": ["softhsm"],
-            "test_env": {
-                "TEST_PKCS11_LIB": "/lib/softhsm/libsofthsm2.so"
-            }
+            "test_steps": [
+                "pkcs11-test-setup",
+                "test"
+            ]
         }
     },
     "build_env": {
