@@ -19,9 +19,15 @@
 #define CK_DECLARE_FUNCTION(returnType, name) returnType name
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
-#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
 
-/* Return c-string for PKCS#11 CKR_* contants */
+/* At time of authoring (Aug 2021) 2.40 had been the latest stable version since 2014.
+ * Let's just support that for now. We can probably support earlier,
+ * but we'd have to reseach and confirm it's not a security risk. */
+#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
+#define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
+#define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 40
+
+/* Return c-string for PKCS#11 CKR_* contants. */
 const char *s_ckr_str(CK_RV rv) {
     /* clang-format off */
     switch (rv) {
@@ -324,8 +330,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         pkcs11_lib->should_finalize = true;
     }
 
-    /* Get info about the library and log it.
-     * This will be VERY useful for diagnosing user issues. */
+    /* Call C_GetInfo() */
     CK_INFO info;
     rv = pkcs11_lib->function_list->C_GetInfo(&info);
     if (rv != CKR_OK) {
@@ -333,6 +338,23 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         goto except;
     }
 
+    /* Check API version. */
+    if ((info.cryptokiVersion.major != AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR) ||
+        (info.cryptokiVersion.minor < AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p: PKCS#11 library has cryptokiVersion %" PRIu8 ".%" PRIu8 " but %d.%d compatibility is required",
+            (void *)pkcs11_lib,
+            info.cryptokiVersion.major,
+            info.cryptokiVersion.minor,
+            AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR,
+            AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR);
+
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+
+    /* Log info about the library, this will be VERY useful for diagnosing user issues. */
     AWS_LOGF_INFO(
         AWS_LS_IO_PKCS11,
         "id=%p: PKCS#11 loaded. file:'%s' cryptokiVersion:%" PRIu8 ".%" PRIu8 " manufacturerID:'" PRInSTR
