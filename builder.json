@@ -4,7 +4,8 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"]
+            "targets": ["linux", "android"],
+            "revision": "kyber_r3_crt_compatibility"
         },
         { "name": "aws-c-cal" }
     ],
