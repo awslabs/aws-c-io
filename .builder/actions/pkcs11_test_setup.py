@@ -1,6 +1,5 @@
 """
-Prepare for PKCS#11 tests.
-Assumes SoftHSM2 is installed.
+Prepare for PKCS#11 tests by configuring SoftHSM2, if it is installed.
 """
 
 import Builder
@@ -19,24 +18,22 @@ class Pkcs11TestSetup(Builder.Action):
         result = env.shell.exec('softhsm2-util', *args, **kwargs)
 
         # early versions of softhsm2-util (2.1.0 is a known offender)
-        # return error code 0 and print the help if the input is bad.
-        # We want this to be an error.
+        # return error code 0 and print the help if invalid args are passed.
+        # This should be an error.
         #
-        # invalid args can happen because early versions don't have as many
-        # args as later versions, so your personal machine might behave
-        # differently than some CI machine
+        # invalid args can happen because later versions of softhsm2-util
+        # support more args than earlier versions, so what works on your
+        # machine might not work on some ancient docker image.
         if 'Usage: softhsm2-util' in result.output:
             raise Exception('softhsm2-util failed')
 
         return result
 
     def _find_softhsm_lib(self):
-        """Return path to SoftHSM2 lib, or None if not found"""
-        base_dirs = ['/usr', '/']
-        lib_dirs = ['lib64', 'lib']
+        """Return path to SoftHSM2 shared lib, or None if not found"""
         lib_name = 'libsofthsm2.so'
-        for base_dir in base_dirs:
-            for lib_dir in lib_dirs:
+        for lib_dir in ['lib64', 'lib']:
+            for base_dir in ['/usr', '/']:
                 search_dir = os.path.join(base_dir, lib_dir)
                 for root, dirs, files in os.walk(search_dir):
                     for name in files:
@@ -66,12 +63,13 @@ class Pkcs11TestSetup(Builder.Action):
             m = re.match(r"Slot ([0-9]+)", line)
             if m:
                 current_slot = int(m.group(1))
+                current_info_block = None
                 continue
 
             if current_slot is None:
                 continue
 
-            # check for start of block like "Token info" or "Slot info"
+            # check for start of next indented block, like "Token info"
             m = re.match(r"    ([^ ].*)", line)
             if m:
                 current_info_block = m.group(1)
@@ -96,15 +94,13 @@ class Pkcs11TestSetup(Builder.Action):
             print("Skipping PKCS#11 tests: SoftHSM2 not installed")
             return
 
-        # set up a fresh token directory under the build dir
-        # because some CI machines can't use the default paths, and anyway it's
-        # simpler to run this script knowing we're starting fresh each time
+        # put SoftHSM config file and token directory under the build dir.
         softhsm2_dir = os.path.join(env.build_dir, 'softhsm2')
+        env.shell.rm(softhsm2_dir, quiet=True)
+        env.shell.mkdir(softhsm2_dir)
 
         conf_path = os.path.join(softhsm2_dir, 'softhsm2.conf')
         token_dir = os.path.join(softhsm2_dir, 'tokens')
-
-        env.shell.rm(softhsm2_dir, quiet=True)
         env.shell.mkdir(token_dir)
         env.shell.setenv('SOFTHSM2_CONF', conf_path)
         with open(conf_path, 'w') as conf_file:
