@@ -89,18 +89,26 @@ class Pkcs11TestSetup(Builder.Action):
 
     def run(self, env):
         """Set up SoftHSM, and set env vars, so this machine can run the PKCS#11 tests"""
+
         # bail out if SoftHSM is not installed
         softhsm_lib = self._find_softhsm_lib()
         if not softhsm_lib:
             print("Skipping PKCS#11 tests: SoftHSM2 not installed")
             return
 
-        # bail out if SoftHSM already has tokens installed
-        # that means we're probably on a user machine,
-        # and we don't want to mess with their existing configuration
-        if len(self._get_token_slots(env)) > 0:
-            print("Skipping PKCS#11 test setup: SoftHSM2 tokens already exist on this machine")
-            return
+        # set up a fresh token directory under the build dir
+        # because some CI machines can't use the default paths, and anyway it's
+        # simpler to run this script knowing we're starting fresh each time
+        softhsm2_dir = os.path.join(env.build_dir, 'softhsm2')
+
+        conf_path = os.path.join(softhsm2_dir, 'softhsm2.conf')
+        token_dir = os.path.join(softhsm2_dir, 'tokens')
+
+        env.shell.rm(softhsm2_dir, quiet=True)
+        env.shell.mkdir(token_dir)
+        env.shell.setenv('SOFTHSM2_CONF', conf_path)
+        with open(conf_path, 'w') as conf_file:
+            conf_file.write(f"directories.tokendir = {token_dir}\n")
 
         # create a token
         self._exec_softhsm2_util(
@@ -111,11 +119,11 @@ class Pkcs11TestSetup(Builder.Action):
             '--so-pin', '0000',
             env=env)
 
-        # We need to figure out which slot the new token is in because:
-        # 1) old versions of softhsm2-util make you pass --slot
-        #    (instead of taking --token like newer versions)
+        # we need to figure out which slot the new token is in because:
+        # 1) old versions of softhsm2-util make you pass --slot <number>
+        #    (instead of accepting --token <name> like newer versions)
         # 2) newer versions of softhsm2-util reassign new tokens to crazy
-        #    slot IDs (instead of simply using 0 like older versions)
+        #    slot numbers (instead of simply using 0 like older versions)
         slot = self._get_token_slots(env)[0]
 
         # add private key to token
