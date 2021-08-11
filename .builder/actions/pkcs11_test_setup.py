@@ -131,7 +131,7 @@ class Pkcs11TestSetup(Builder.Action):
             env=env)
 
         # for logging's sake, print the new state of things
-        self._exec_softhsm2_util('--show-slot', '--pin', '0000', env=env)
+        self._exec_softhsm2_util('--show-slots', '--pin', '0000', env=env)
 
         # set env vars for tests
         env.shell.setenv('TEST_PKCS11_LIB', softhsm_lib)
