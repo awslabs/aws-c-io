@@ -11,6 +11,25 @@ import re
 
 class Pkcs11TestSetup(Builder.Action):
 
+    def _exec_softhsm2_util(self, *args, **kwargs):
+        env = kwargs.pop('env')
+        if not 'check' in kwargs:
+            kwargs['check'] = True
+
+        result = env.shell.exec('softhsm2-util', *args, **kwargs)
+
+        # early versions of softhsm2-util (2.1.0 is a known offender)
+        # return error code 0 and print the help if the input is bad.
+        # We want this to be an error.
+        #
+        # invalid args can happen because early versions don't have as many
+        # args as later versions, so your personal machine might behave
+        # differently than some CI machine
+        if 'Usage: softhsm2-util' in result.output:
+            raise Exception('softhsm2-util failed')
+
+        return result
+
     def _find_softhsm_lib(self):
         """Return path to SoftHSM2 lib, or None if not found"""
         base_dirs = ['/usr', '/']
@@ -25,14 +44,48 @@ class Pkcs11TestSetup(Builder.Action):
                             return os.path.join(root, name)
         return None
 
-    def _count_tokens(self, env):
-        """Return number of slots with initialized tokens"""
-        output = env.shell.exec('softhsm2-util', '--show-slots', quiet=True, check=True).output
-        count = 0
+    def _get_token_slots(self, env):
+        """Return array of IDs for slots with initialized tokens"""
+        token_slot_ids = []
+
+        output = self._exec_softhsm2_util('--show-slots', env=env, quiet=True).output
+
+        # --- output looks like ---
+        #Available slots:
+        #Slot 0
+        #    Slot info:
+        #        ...
+        #        Token present:    yes
+        #    Token info:
+        #        ...
+        #        Initialized:      yes
+        current_slot = None
+        current_info_block = None
         for line in output.splitlines():
-            if re.match(r" *Initialized: *yes", line):
-                count += 1
-        return count
+            # check for start of "Slot <ID>" block
+            m = re.match(r"Slot ([0-9]+)", line)
+            if m:
+                current_slot = int(m.group(1))
+                continue
+
+            if current_slot is None:
+                continue
+
+            # check for start of block like "Token info" or "Slot info"
+            m = re.match(r"    ([^ ].*)", line)
+            if m:
+                current_info_block = m.group(1)
+                continue
+
+            if current_info_block is None:
+                continue
+
+            # if we're in token block, check for "Initialized: yes"
+            if "Token info" in current_info_block:
+                if re.match(r" *Initialized: *yes", line):
+                    token_slot_ids.append(current_slot)
+
+        return token_slot_ids
 
     def run(self, env):
         """Set up SoftHSM, and set env vars, so this machine can run the PKCS#11 tests"""
@@ -45,29 +98,40 @@ class Pkcs11TestSetup(Builder.Action):
         # bail out if SoftHSM already has tokens installed
         # that means we're probably on a user machine,
         # and we don't want to mess with their existing configuration
-        if self._count_tokens(env) > 0:
+        if len(self._get_token_slots(env)) > 0:
             print("Skipping PKCS#11 test setup: SoftHSM2 tokens already exist on this machine")
             return
 
         # create a token
-        env.shell.exec('softhsm2-util',
-                       '--init-token',
-                       '--free', # use any free slot
-                       '--token', 'my-test-token',
-                       '--pin', '0000',
-                       '--so-pin', '0000',
-                       check=True)
+        self._exec_softhsm2_util(
+            '--init-token',
+            '--free', # use any free slot
+            '--label', 'my-test-token',
+            '--pin', '0000',
+            '--so-pin', '0000',
+            env=env)
+
+        # We need to figure out which slot the new token is in because:
+        # 1) old versions of softhsm2-util make you pass --slot
+        #    (instead of taking --token like newer versions)
+        # 2) newer versions of softhsm2-util reassign new tokens to crazy
+        #    slot IDs (instead of simply using 0 like older versions)
+        slot = self._get_token_slots(env)[0]
 
         # add private key to token
-        resources_dir = os.path.realpath(os.path.join(__file__, '..', '..', 'tests', 'resources'))
-        pkey_path = os.path.join(resources_dir, 'unittests.p8')
-        env.shell.exec('softhsm2-util',
-                       '--import', pkey_path,
-                       '--token', 'my-test-token',
-                       '--label', 'my-test-key',
-                       '--id', 'BEEFCAFE', # ID is hex
-                       '--pin', '0000',
-                       check = True)
+        resources_dir = '../../tests/resources'
+        this_dir = os.path.dirname(__file__)
+        resources_dir = os.path.realpath(os.path.join(this_dir, resources_dir))
+        self._exec_softhsm2_util(
+            '--import', os.path.join(resources_dir, 'unittests.p8'),
+            '--slot', str(slot),
+            '--label', 'my-test-key',
+            '--id', 'BEEFCAFE', # ID is hex
+            '--pin', '0000',
+            env=env)
+
+        # for logging's sake, print the new state of things
+        self._exec_softhsm2_util('--show-slot', '--pin', '0000', env=env)
 
         # set env vars for tests
         env.shell.setenv('TEST_PKCS11_LIB', softhsm_lib)
