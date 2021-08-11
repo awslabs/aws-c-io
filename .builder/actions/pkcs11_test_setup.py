@@ -140,6 +140,7 @@ class Pkcs11TestSetup(Builder.Action):
         # set env vars for tests
         env.shell.setenv('TEST_PKCS11_LIB', softhsm_lib)
         env.shell.setenv('TEST_PKCS11_TOKEN_LABEL', 'my-test-token')
+        env.shell.setenv('TEST_PKCS11_PIN', '0000')
         env.shell.setenv('TEST_PKCS11_PKEY_LABEL', 'my-test-key')
         env.shell.setenv('TEST_PKCS11_CERT_FILE', os.path.join(resources_dir, 'unittests.crt'))
         env.shell.setenv('TEST_PKCS11_CA_FILE', os.path.join(resources_dir, 'unittests.crt'))

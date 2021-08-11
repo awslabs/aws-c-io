@@ -9,7 +9,50 @@
 #include <aws/common/string.h>
 #include <aws/testing/aws_test_harness.h>
 
-/* Environment variables that must be set for these tests (otherwise the tests are skipped) */
+/**
+ * To run these tests the following environment variables should be set:
+ *
+ * TEST_PKCS11_LIB = <path to shared lib>
+ *      common paths to softhsm are:
+ *      /usr/lib/softhsm2/libsofthsm2.so
+ *      /usr/lib64/libsofthsm2.so
+ *      /usr/local/lib/softhsm/libsofthsm2.so
+ *
+ * TEST_PKCS11_TOKEN_LABEL = <token label>
+ * TEST_PKCS11_PIN = <pin for logging into token>
+ * TEST_PKCS11_PKEY_LABEL = <private key label>
+ * TEST_PKCS11_CERT_FILE = <path to PEM-encoded certificate>
+ * TEST_PKCS11_CA_FILE = <path to PEM-encoded CA file needed to trust certificate>
+ *      If omitted, the system's default trust store is used.
+ *
+ * The suggested way to set up your local machine is like so:
+ * 1)   Install SoftHSM2 via brew/apt/apt-get/yum:
+ *      > brew install softhsm
+ *
+ * 2)   Ensure if it's working:
+ *      > softhsm2-util --show-slots
+ *
+ *      If this spits out an error message, create a config file:
+ *      Default location: ~/.config/softhsm2/softhsm2.conf
+ *      Contents must specify token dir, default value is:
+ *          directories.tokendir = /usr/local/var/lib/softhsm/tokens/
+ *
+ * 3)   Create token and private key.
+ *      You could any labels/pin and any key/cert/ca with the tests.
+ *      These commands show us using files from source control and specific labels/pin:
+ *
+ *      > softhsm2-util --init-token --free --label my-test-token --pin 0000 --so-pin 0000
+ *      look at slot that the token ended up in
+ *
+ *      > softhsm2-util --import tests/resources/unittests.p8 --slot <slot-from-above> \
+ *        --label my-test-key --id BEEFCAFE --pin 0000
+ *
+ * 4)   Set env vars listed above
+ *
+ * CI machines running aws-crt-builder will be set up by pkcs11_test_setup.py.
+ * But this script is made for use with aws-crt-builder, so it's tough to run standalone.
+ */
+
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_LIB, "TEST_PKCS11_LIB");
 
 /* Singleton that stores env-var values */
