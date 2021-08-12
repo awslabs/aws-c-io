@@ -14,11 +14,6 @@
  * and set the following environment variables:
  *
  * TEST_PKCS11_LIB = <path to shared lib>
- *      common paths to softhsm are:
- *      /usr/lib/softhsm2/libsofthsm2.so
- *      /usr/lib64/libsofthsm2.so
- *      /usr/local/lib/softhsm/libsofthsm2.so
- *
  * TEST_PKCS11_TOKEN_LABEL = <token label>
  * TEST_PKCS11_PIN = <pin for logging into token>
  * TEST_PKCS11_PKEY_LABEL = <private key label>
@@ -48,7 +43,13 @@
  *      > softhsm2-util --import tests/resources/unittests.p8 --slot <slot-from-above> \
  *        --label my-test-key --id BEEFCAFE --pin 0000
  *
- * 4)   Set env vars listed above
+ * 4)   Set env vars like so:
+ *      TEST_PKCS11_LIB = <path to libsofthsm2.so>
+ *      TEST_PKCS11_TOKEN_LABEL = my-test-token
+ *      TEST_PKCS11_PIN = 0000
+ *      TEST_PKCS11_PKEY_LABEL = my-test-key
+ *      TEST_PKCS11_CERT_FILE = <path to aws-c-io>/tests/resources/unittests.crt
+ *      TEST_PKCS11_CA_FILE = <path to aws-c-io>/tests/resources/unittests.crt
  *
  * CI machines running aws-crt-builder will be set up by pkcs11_test_setup.py.
  * But this script is made for use with aws-crt-builder, so it's tough to run standalone.
