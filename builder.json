@@ -15,8 +15,9 @@
     ],
     "targets": {
         "linux": {
-            "_comment": "Install SoftHSM2, and run ./builder/actions/pkcs11_test_setup.py",
+            "_comment": "Enable and run PKCS#11 tests",
             "packages": ["softhsm"],
+            "+cmake_args": ["-DENABLE_PKCS11_TESTS=ON"],
             "test_steps": [
                 "pkcs11-test-setup",
                 "test"
@@ -24,7 +25,6 @@
         }
     },
     "build_env": {
-        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1",
-        "CMAKE_BUILD_PARALLEL_LEVEL": "2"
+        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
     }
 }
