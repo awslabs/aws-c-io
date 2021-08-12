@@ -20,7 +20,7 @@
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
 
-/* At time of authoring (Aug 2021) 2.40 had been the latest stable version since 2014.
+/* At time of authoring (Aug 2021) 2.40 had been the latest stable version since 2016.
  * Let's just support that for now. We can probably support earlier,
  * but we'd have to reseach and confirm it's not a security risk. */
 #include <aws/io/private/pkcs11/v2.40/pkcs11.h>
