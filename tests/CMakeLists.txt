@@ -1,6 +1,8 @@
 include(AwsTestHarness)
 enable_testing()
 
+option(ENABLE_PKCS11_TESTS "Build and run PKCS#11 tests" OFF)
+
 file(GLOB TEST_SRC "*.c")
 file(GLOB TEST_HDRS "*.h")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
@@ -215,8 +217,10 @@ add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
 
-add_test_case(pkcs11_lib_initialize)
-add_test_case(pkcs11_lib_omit_initialize)
+if (ENABLE_PKCS11_TESTS)
+    add_test_case(pkcs11_lib_initialize)
+    add_test_case(pkcs11_lib_omit_initialize)
+endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
