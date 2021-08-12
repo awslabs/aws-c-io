@@ -30,16 +30,15 @@ class Pkcs11TestSetup(Builder.Action):
         return result
 
     def _find_softhsm_lib(self):
-        """Return path to SoftHSM2 shared lib, or None if not found"""
-        lib_name = 'libsofthsm2.so'
-        for lib_dir in ['lib64', 'lib']:
-            for base_dir in ['/usr', '/']:
+        """Return path to SoftHSM2 shared lib, or raise exception if not found"""
+        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
+            for base_dir in ['/usr/local', '/usr', '/',]:
                 search_dir = os.path.join(base_dir, lib_dir)
                 for root, dirs, files in os.walk(search_dir):
-                    for name in files:
-                        if name == lib_name:
-                            return os.path.join(root, name)
-        return None
+                    for file_name in files:
+                        if 'libsofthsm2.so' in file_name:
+                            return os.path.join(root, file_name)
+        raise RuntimeError('SoftHSM2 shared lib not found')
 
     def _get_token_slots(self, env):
         """Return array of IDs for slots with initialized tokens"""
@@ -86,19 +85,12 @@ class Pkcs11TestSetup(Builder.Action):
         return token_slot_ids
 
     def run(self, env):
-        """Set up SoftHSM, and set env vars, so this machine can run the PKCS#11 tests"""
+        """Set up SoftHSM token, and set env vars, so this machine can run the PKCS#11 tests"""
 
-        # bail out if SoftHSM is not installed
         softhsm_lib = self._find_softhsm_lib()
-        if not softhsm_lib:
-            print("Skipping PKCS#11 tests: SoftHSM2 not installed")
-            return
 
         # put SoftHSM config file and token directory under the build dir.
         softhsm2_dir = os.path.join(env.build_dir, 'softhsm2')
-        env.shell.rm(softhsm2_dir, quiet=True)
-        env.shell.mkdir(softhsm2_dir)
-
         conf_path = os.path.join(softhsm2_dir, 'softhsm2.conf')
         token_dir = os.path.join(softhsm2_dir, 'tokens')
         env.shell.mkdir(token_dir)
