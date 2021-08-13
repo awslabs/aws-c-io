@@ -69,7 +69,8 @@ static void s_pkcs11_tester_clean_up(void) {
     aws_io_library_clean_up();
 }
 
-/* Read env-vars */
+/* Read env-vars.
+ * Raise an error if any necessary ones are missing */
 static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
     aws_io_library_init(allocator);
 

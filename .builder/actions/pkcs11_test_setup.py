@@ -92,12 +92,12 @@ class Pkcs11TestSetup(Builder.Action):
 
         result = self.env.shell.exec('softhsm2-util', *args, **kwargs)
 
-        # early versions of softhsm2-util (2.1.0 is a known offender)
+        # older versions of softhsm2-util (2.1.0 is a known offender)
         # return error code 0 and print the help if invalid args are passed.
         # This should be an error.
         #
-        # invalid args can happen because later versions of softhsm2-util
-        # support more args than earlier versions, so what works on your
+        # invalid args can happen because newer versions of softhsm2-util
+        # support more args than older versions, so what works on your
         # machine might not work on some ancient docker image.
         if 'Usage: softhsm2-util' in result.output:
             raise Exception('softhsm2-util failed')

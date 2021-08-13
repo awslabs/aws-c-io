@@ -20,7 +20,7 @@
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
 
-/* Support older PKCS#11 versions, even if we're using later versions of the headers.
+/* Support older PKCS#11 versions, even if we're using newer headers.
  * The PKCS#11 API is designed to be forward compatible. */
 #include <aws/io/private/pkcs11/v2.40/pkcs11.h>
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
