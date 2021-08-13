@@ -10,6 +10,17 @@ import re
 
 class Pkcs11TestSetup(Builder.Action):
 
+    def _find_softhsm_lib(self):
+        """Return path to SoftHSM2 shared lib, or None if not found"""
+        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
+            for base_dir in ['/usr/local', '/usr', '/',]:
+                search_dir = os.path.join(base_dir, lib_dir)
+                for root, dirs, files in os.walk(search_dir):
+                    for file_name in files:
+                        if 'libsofthsm2.so' in file_name:
+                            return os.path.join(root, file_name)
+        return None
+
     def _exec_softhsm2_util(self, *args, **kwargs):
         env = kwargs.pop('env')
         if not 'check' in kwargs:
@@ -28,17 +39,6 @@ class Pkcs11TestSetup(Builder.Action):
             raise Exception('softhsm2-util failed')
 
         return result
-
-    def _find_softhsm_lib(self):
-        """Return path to SoftHSM2 shared lib, or raise exception if not found"""
-        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
-            for base_dir in ['/usr/local', '/usr', '/',]:
-                search_dir = os.path.join(base_dir, lib_dir)
-                for root, dirs, files in os.walk(search_dir):
-                    for file_name in files:
-                        if 'libsofthsm2.so' in file_name:
-                            return os.path.join(root, file_name)
-        raise RuntimeError('SoftHSM2 shared lib not found')
 
     def _get_token_slots(self, env):
         """Return array of IDs for slots with initialized tokens"""
@@ -85,9 +85,17 @@ class Pkcs11TestSetup(Builder.Action):
         return token_slot_ids
 
     def run(self, env):
-        """Set up SoftHSM token, and set env vars, so this machine can run the PKCS#11 tests"""
-
+        """
+        Set up this machine for running the PKCS#11 tests.
+        If SoftHSM2 is not installed, the tests are skipped.
+        """
         softhsm_lib = self._find_softhsm_lib()
+        if softhsm_lib is None:
+            print("WARNING: libsofthsm2.so not found. PKCS#11 tests are disabled")
+            return
+
+        # set cmake flag so PKCS#11 tests are enabled
+        env.project.config['cmake_args'].append('-DENABLE_PKCS11_TESTS=ON')
 
         # put SoftHSM config file and token directory under the build dir.
         softhsm2_dir = os.path.join(env.build_dir, 'softhsm2')
@@ -129,10 +137,22 @@ class Pkcs11TestSetup(Builder.Action):
         # for logging's sake, print the new state of things
         self._exec_softhsm2_util('--show-slots', '--pin', '0000', env=env)
 
-        # set env vars for tests
-        env.shell.setenv('TEST_PKCS11_LIB', softhsm_lib)
-        env.shell.setenv('TEST_PKCS11_TOKEN_LABEL', 'my-test-token')
-        env.shell.setenv('TEST_PKCS11_PIN', '0000')
-        env.shell.setenv('TEST_PKCS11_PKEY_LABEL', 'my-test-key')
-        env.shell.setenv('TEST_PKCS11_CERT_FILE', os.path.join(resources_dir, 'unittests.crt'))
-        env.shell.setenv('TEST_PKCS11_CA_FILE', os.path.join(resources_dir, 'unittests.crt'))
+        # add test env vars
+        # (not that we can't just add these to current environment or they'll vanish when builder finishes this stage)
+        test_env = [
+            ('TEST_PKCS11_LIB', softhsm_lib),
+            ('TEST_PKCS11_TOKEN_LABEL', 'my-test-token'),
+            ('TEST_PKCS11_PIN', '0000'),
+            ('TEST_PKCS11_PKEY_LABEL', 'my-test-key'),
+            ('TEST_PKCS11_CERT_FILE', os.path.join(resources_dir, 'unittests.crt')),
+            ('TEST_PKCS11_CA_FILE', os.path.join(resources_dir, 'unittests.crt')),
+        ]
+        for k, v in test_env:
+            print(f"export {k}={v}")
+            env.project.config['test_env'][k] = v
+
+
+
+
+
+

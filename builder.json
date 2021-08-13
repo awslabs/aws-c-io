@@ -15,13 +15,9 @@
     ],
     "targets": {
         "linux": {
-            "_comment": "Enable and run PKCS#11 tests",
+            "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
             "packages": ["softhsm"],
-            "+cmake_args": ["-DENABLE_PKCS11_TESTS=ON"],
-            "test_steps": [
-                "pkcs11-test-setup",
-                "test"
-            ]
+            "+pre_build_steps": ["pkcs11-test-setup"]
         }
     },
     "build_env": {

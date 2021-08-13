@@ -3,12 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/private/pkcs11_private.h>
-
-#include <aws/common/environment.h>
-#include <aws/common/string.h>
-#include <aws/testing/aws_test_harness.h>
-
 /**
  * To run these tests, configure cmake with: -DENABLE_PKCS11_TESTS=ON
  * and set the following environment variables:
@@ -25,22 +19,23 @@
  * 1)   Install SoftHSM2 via brew/apt/apt-get/yum:
  *      > brew install softhsm
  *
- * 2)   Ensure if it's working:
+ * 2)   Check if it's working:
  *      > softhsm2-util --show-slots
  *
  *      If this spits out an error message, create a config file:
  *      Default location: ~/.config/softhsm2/softhsm2.conf
- *      Contents must specify token dir, default value is:
+ *      This file must specify token dir, default value is:
  *          directories.tokendir = /usr/local/var/lib/softhsm/tokens/
  *
  * 3)   Create token and private key.
- *      You could any labels/pin and any key/cert/ca with the tests.
- *      These commands show us using files from source control and specific labels/pin:
+ *      You can use any values for the labels, pin, key, cert, CA etc.
+ *      Here are copy-paste friendly commands for using files available in this repo.
  *
  *      > softhsm2-util --init-token --free --label my-test-token --pin 0000 --so-pin 0000
+ *
  *      look at slot that the token ended up in
  *
- *      > softhsm2-util --import tests/resources/unittests.p8 --slot <slot-from-above> \
+ *      > softhsm2-util --import tests/resources/unittests.p8 --slot <slot-with-token> \
  *        --label my-test-key --id BEEFCAFE --pin 0000
  *
  * 4)   Set env vars like so:
@@ -54,6 +49,12 @@
  * CI machines running aws-crt-builder will be set up by pkcs11_test_setup.py.
  * But this script is made for use with aws-crt-builder, so it's tough to run standalone.
  */
+
+#include <aws/io/private/pkcs11_private.h>
+
+#include <aws/common/environment.h>
+#include <aws/common/string.h>
+#include <aws/testing/aws_test_harness.h>
 
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_LIB, "TEST_PKCS11_LIB");
 
