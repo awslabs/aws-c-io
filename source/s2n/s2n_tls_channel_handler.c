@@ -1010,7 +1010,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
     }
 
-    if (options->certificate.len && options->private_key.len) {
+    if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
@@ -1075,40 +1075,61 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             }
         }
 
-        if (options->ca_path) {
-            if (s2n_config_set_verification_ca_location(
-                    s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
+        if (options->ca_path || aws_tls_options_buf_is_set(&options->ca_file)) {
+            /* The user called an override_default_trust_store() function.
+             * Begin by wiping anything that s2n loaded by default */
+            if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "ctx: configuration error %s (%s)",
                     s2n_strerror(s2n_errno, "EN"),
                     s2n_strerror_debug(s2n_errno, "EN"));
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to wipe default trust store\n");
                 aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
-        }
 
-        if (options->ca_file.len) {
-            /* Ensure that what we pass to s2n is zero-terminated */
-            struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
-            int set_ca_result =
-                s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)ca_file_string->bytes);
-            aws_string_destroy(ca_file_string);
-
-            if (set_ca_result) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "ctx: configuration error %s (%s)",
-                    s2n_strerror(s2n_errno, "EN"),
-                    s2n_strerror_debug(s2n_errno, "EN"));
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
-                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-                goto cleanup_s2n_config;
+            if (options->ca_path) {
+                if (s2n_config_set_verification_ca_location(
+                        s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_TLS,
+                        "ctx: configuration error %s (%s)",
+                        s2n_strerror(s2n_errno, "EN"),
+                        s2n_strerror_debug(s2n_errno, "EN"));
+                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
+                    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                    goto cleanup_s2n_config;
+                }
             }
-        }
 
-        if (!options->ca_path && !options->ca_file.len) {
+            if (aws_tls_options_buf_is_set(&options->ca_file)) {
+                /* Ensure that what we pass to s2n is zero-terminated */
+                struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
+                int set_ca_result =
+                    s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)ca_file_string->bytes);
+                aws_string_destroy(ca_file_string);
+
+                if (set_ca_result) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_TLS,
+                        "ctx: configuration error %s (%s)",
+                        s2n_strerror(s2n_errno, "EN"),
+                        s2n_strerror_debug(s2n_errno, "EN"));
+                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
+                    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                    goto cleanup_s2n_config;
+                }
+            }
+        } else {
+            /* User wants to use the system's default trust store.
+             *
+             * Note that s2n's trust store always starts with libcrypto's default locations.
+             * These paths are configured when libcrypto is built (--openssldir),
+             * but might not be right for the current machine (e.g. if libcrypto
+             * is statically linked into an application that is distributed
+             * to multiple flavors of Linux). Therefore, load the locations that
+             * were found at library startup. */
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,

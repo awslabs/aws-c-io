@@ -116,7 +116,9 @@ add_test_case(test_pem_invalid_parse)
 add_test_case(test_pem_valid_data_invalid_parse)
 add_test_case(test_pem_invalid_in_chain_parse)
 
-add_test_case(test_pem_util_comments_around_pem_object)
+add_test_case(pem_sanitize_comments_around_pem_object_removed)
+add_test_case(pem_sanitize_empty_file_rejected)
+add_test_case(pem_sanitize_wrong_format_rejected)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
@@ -129,6 +131,7 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
     add_net_test_case(tls_client_channel_negotiation_error_self_signed)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
+    add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
     #track these down in s2n and find out why that aren't failing.
     #add_net_test_case(tls_client_channel_negotiation_error_revoked)
     #add_net_test_case(tls_client_channel_negotiation_error_pinning)
