@@ -88,7 +88,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
 
     struct aws_byte_cursor clean_pem_cursor = aws_byte_cursor_from_buf(&clean_pem_buf);
     aws_byte_buf_reset(pem, true);
-    aws_byte_buf_append(pem, &clean_pem_cursor);
+    aws_byte_buf_append_dynamic(pem, &clean_pem_cursor);
     aws_byte_buf_clean_up(&clean_pem_buf);
     return AWS_OP_SUCCESS;
 
