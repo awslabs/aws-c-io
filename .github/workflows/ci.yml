@@ -27,6 +27,9 @@ jobs:
           - manylinux1-x86
           - manylinux2014-x64
           - manylinux2014-x86
+          - fedora-34-x64
+          - opensuse-leap
+          - rhel8-x64
     steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
@@ -114,16 +117,17 @@ jobs:
         docker pull $DOCKER_IMAGE
         docker run --env GITHUB_REF $DOCKER_IMAGE --version=${BUILDER_VERSION} build -p ${{ env.PACKAGE_NAME }} --compiler=gcc-${{ matrix.version }}
 
-  linux-shared-libs:
-    runs-on: ubuntu-latest
-    steps:
+#  reenable when aws-lc fixes the issue where libdecrepit is built and depnds on libssl which is not built
+#  linux-shared-libs:
+#    runs-on: ubuntu-latest
+#    steps:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws ecr get-login-password --region us-east-1 | docker login ${{ secrets.AWS_ECR_REPO }} -u AWS --password-stdin
-        export DOCKER_IMAGE=${{ secrets.AWS_ECR_REPO }}/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
-        docker pull $DOCKER_IMAGE
-        docker run --env GITHUB_REF $DOCKER_IMAGE build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+#    - name: Build ${{ env.PACKAGE_NAME }}
+#      run: |
+#        aws ecr get-login-password --region us-east-1 | docker login ${{ secrets.AWS_ECR_REPO }} -u AWS --password-stdin
+#        export DOCKER_IMAGE=${{ secrets.AWS_ECR_REPO }}/aws-crt-${{ env.LINUX_BASE_IMAGE }}:${{ env.BUILDER_VERSION }}
+#        docker pull $DOCKER_IMAGE
+#        docker run --env GITHUB_REF $DOCKER_IMAGE build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
   windows:
     runs-on: windows-latest
