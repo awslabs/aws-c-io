@@ -864,7 +864,7 @@ int aws_channel_slot_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
-        "in %s direction with error code %d(%s)",
+        "in %s direction with error code %d (%s)",
         (void *)slot->channel,
         (void *)slot,
         (void *)slot->handler,

@@ -541,7 +541,7 @@ static int s_process_write_message(
     if (status != noErr) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: SSLWrite failed with OSStatus error code %d(%s).",
+            "id=%p: SSLWrite failed with OSStatus error code %d (%s).",
             (void *)handler,
             (int)status,
             CFStringGetCStringPtr(SecCopyErrorMessageString(status, NULL), kCFStringEncodingUTF8));
