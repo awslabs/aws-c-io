@@ -90,7 +90,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*cert_store) {
         WCHAR wszMsgBuff[512];
         FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. Failed to load cert store with error code %d (%s)",
@@ -129,7 +129,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*certs) {
         WCHAR wszMsgBuff[512];
         FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. "
@@ -177,7 +177,7 @@ int aws_import_trusted_certificates(
     if (!*cert_store) {
         WCHAR wszMsgBuff[512];
         FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to create temporary cert store, error code %d (%s)",
@@ -216,7 +216,13 @@ int aws_import_trusted_certificates(
 
             WCHAR wszMsgBuff[512];
             FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                GetLastError(),
+                0,
+                wszMsgBuff,
+                512,
+                NULL);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: failed to parse certificate blob, error code %d (%s)",
@@ -231,7 +237,13 @@ int aws_import_trusted_certificates(
 
             WCHAR wszMsgBuff[512];
             FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                GetLastError(),
+                0,
+                wszMsgBuff,
+                512,
+                NULL);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: failed to add certificate to store, error code %d (%s)",
@@ -295,7 +307,7 @@ static int s_cert_context_import_rsa_private_key(
 
         WCHAR wszMsgBuff[512];
         FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to import rsa key %s into crypto provider, error code %d (%s)",
@@ -572,7 +584,7 @@ int aws_import_key_pair_to_cert_context(
     if (!*store) {
         WCHAR wszMsgBuff[512];
         FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to load in-memory/ephemeral certificate store, error code %d (%s)",
@@ -608,7 +620,13 @@ int aws_import_key_pair_to_cert_context(
         if (!query_res || cert_context == NULL) {
             WCHAR wszMsgBuff[512];
             FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                GetLastError(),
+                0,
+                wszMsgBuff,
+                512,
+                NULL);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d (%s).", GetLastError(), wszMsgBuff);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
@@ -619,7 +637,13 @@ int aws_import_key_pair_to_cert_context(
         if (!add_result) {
             WCHAR wszMsgBuff[512];
             FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                NULL,
+                GetLastError(),
+                0,
+                wszMsgBuff,
+                512,
+                NULL);
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d (%s).", GetLastError(), wszMsgBuff);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
