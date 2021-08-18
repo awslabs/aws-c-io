@@ -33,9 +33,10 @@ jobs:
           - rhel8-x64
           - al2-x64
     steps:
-        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
-      run: ./ci/linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ matrix.image }} downstream
+      run: |
+        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ matrix.image }} downstream
 
   linux-byo-crypto:
     runs-on: ubuntu-latest
