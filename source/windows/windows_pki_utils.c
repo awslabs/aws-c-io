@@ -88,11 +88,15 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!*cert_store) {
+        WCHAR wszMsgBuff[512];
+        FormatMessage(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. Failed to load cert store with error code %d",
+            "static: invalid certificate path %s. Failed to load cert store with error code %d (%s)",
             cert_path,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -123,12 +127,16 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
     if (!*certs) {
+        WCHAR wszMsgBuff[512];
+        FormatMessage(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. "
-            "The referenced certificate was not found in the certificate store, error code %d",
+            "The referenced certificate was not found in the certificate store, error code %d (%s)",
             cert_path,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
         goto on_error;
     }
@@ -167,8 +175,14 @@ int aws_import_trusted_certificates(
         CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
+        WCHAR wszMsgBuff[512];
+        FormatMessage(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to create temporary cert store, error code %d", (int)GetLastError());
+            AWS_LS_IO_PKI,
+            "static: failed to create temporary cert store, error code %d (%s)",
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -199,16 +213,30 @@ int aws_import_trusted_certificates(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
+
+            WCHAR wszMsgBuff[512];
+            FormatMessage(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", (int)GetLastError());
+                AWS_LS_IO_PKI,
+                "static: failed to parse certificate blob, error code %d (%s)",
+                (int)GetLastError(),
+                wszMsgBuff);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*cert_store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
+
+            WCHAR wszMsgBuff[512];
+            FormatMessage(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to add certificate to store, error code %d", (int)GetLastError());
+                AWS_LS_IO_PKI,
+                "static: failed to add certificate to store, error code %d (%s)",
+                (int)GetLastError(),
+                wszMsgBuff);
         }
 
         CertFreeCertificateContext(cert_context);
@@ -264,11 +292,16 @@ static int s_cert_context_import_rsa_private_key(
     }
 
     if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+
+        WCHAR wszMsgBuff[512];
+        FormatMessage(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to import rsa key %s into crypto provider, error code %d",
+            "static: failed to import rsa key %s into crypto provider, error code %d (%s)",
             uuid_str,
-            GetLastError());
+            GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -537,10 +570,14 @@ int aws_import_key_pair_to_cert_context(
     *store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
 
     if (!*store) {
+        WCHAR wszMsgBuff[512];
+        FormatMessage(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to load in-memory/ephemeral certificate store, error code %d",
-            GetLastError());
+            "static: failed to load in-memory/ephemeral certificate store, error code %d (%s)",
+            GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -569,14 +606,21 @@ int aws_import_key_pair_to_cert_context(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d.", GetLastError());
+            WCHAR wszMsgBuff[512];
+            FormatMessage(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d (%s).", GetLastError(), wszMsgBuff);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d.", GetLastError());
+            WCHAR wszMsgBuff[512];
+            FormatMessage(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dwErr, 0, wszMsgBuff, 512, NULL);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d (%s).", GetLastError(), wszMsgBuff);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 
