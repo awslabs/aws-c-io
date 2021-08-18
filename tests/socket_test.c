@@ -1357,6 +1357,8 @@ static void s_async_read_task(struct aws_task *task, void *args, enum aws_task_s
     (void)args;
     (void)status;
     uint8_t buf_storage[100];
+    AWS_ZERO_ARRAY(buf_storage);
+
     struct aws_byte_buf buf = aws_byte_buf_from_array(buf_storage, sizeof(buf_storage));
     while (true) {
         size_t amount_read = 0;
