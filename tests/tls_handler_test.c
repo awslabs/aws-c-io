@@ -1075,17 +1075,6 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_legacy_crypto_dh2048,
     s_tls_client_channel_negotiation_error_legacy_crypto_dh2048_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_incomplete_chain_host_name, "incomplete-chain.badssl.com");
-
-static int s_tls_client_channel_negotiation_error_incomplete_chain_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_negotiation_fails(allocator, s_uncommon_incomplete_chain_host_name, 443, NULL);
-}
-
-AWS_TEST_CASE(
-    tls_client_channel_negotiation_error_incomplete_chain,
-    s_tls_client_channel_negotiation_error_incomplete_chain_fn)
-
 AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_subject_host_name, "no-subject.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_no_subject_fn(struct aws_allocator *allocator, void *ctx) {
