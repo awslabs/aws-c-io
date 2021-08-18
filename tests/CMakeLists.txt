@@ -144,21 +144,26 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
 
     # Badssl - Broken Crypto endpoint suite
+    # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
+    # to be a way to disable it
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4_md5)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh480)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh512)
-    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh1024)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
 
     # Badssl - Legacy crypto suite, includes both negative and positive tests, with override checks where appropriate
-    # Our current baseline/default is tls1.1 whereas badssl expects a baseline of 1.2
+    # Our current baseline/default is platform-specific, whereas badssl expects a baseline of 1.2
+    #   Linux - tls1.1
+    #   Windows - tls1.0 (we loosely support win7 where tls1.1 is shipped as disabled)
+    #   Mac - ??
     # We skip the cbc and 3des checks, as a positive connection result there does not yet represent a security risk
+    # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
+    # to be a way to disable it
     add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
     add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
     add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
     add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
-    add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_dh2048)
 
     # Badssl - Secure uncommon suite
     # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based

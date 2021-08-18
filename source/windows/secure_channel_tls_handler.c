@@ -1877,6 +1877,7 @@ struct aws_tls_ctx *s_ctx_new(
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
             case AWS_IO_TLSv1:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
             case AWS_IO_TLSv1_1:
@@ -1890,14 +1891,13 @@ struct aws_tls_ctx *s_ctx_new(
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
 #endif
                 break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-                break;
+
         }
     } else {
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
             case AWS_IO_TLSv1:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
             case AWS_IO_TLSv1_1:
@@ -1910,9 +1910,6 @@ struct aws_tls_ctx *s_ctx_new(
 #if defined(SP_PROT_TLS1_3_SERVER)
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
 #endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
                 break;
         }
     }
@@ -1952,6 +1949,9 @@ struct aws_tls_ctx *s_ctx_new(
     } else if (is_client_mode) {
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
+
+    /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
+    secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
 
     /* if using a system store. */
     if (options->system_certificate_path) {
