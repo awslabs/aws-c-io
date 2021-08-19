@@ -217,10 +217,7 @@ int aws_import_trusted_certificates(
         if (!add_result) {
             int last_error = GetLastError();
             aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertAddCertificateContextToStore()", last_error);
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: failed to add certificate to store, error code %d",
-                last_error;
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to add certificate to store, error code %d", last_error);
         }
 
         CertFreeCertificateContext(cert_context);
