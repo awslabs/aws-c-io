@@ -206,42 +206,24 @@ int aws_import_trusted_certificates(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-
-            WCHAR wszMsgBuff[512];
-            FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL,
-                GetLastError(),
-                0,
-                wszMsgBuff,
-                512,
-                NULL);
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptQueryObject()", last_error);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
-                "static: failed to parse certificate blob, error code %d (%s)",
-                (int)GetLastError(),
-                wszMsgBuff);
+                "static: failed to parse certificate blob, error code %d",
+                last_error;
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*cert_store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-
-            WCHAR wszMsgBuff[512];
-            FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL,
-                GetLastError(),
-                0,
-                wszMsgBuff,
-                512,
-                NULL);
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertAddCertificateContextToStore()", last_error);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
-                "static: failed to add certificate to store, error code %d (%s)",
-                (int)GetLastError(),
-                wszMsgBuff);
+                "static: failed to add certificate to store, error code %d",
+                last_error;
         }
 
         CertFreeCertificateContext(cert_context);
@@ -615,33 +597,18 @@ int aws_import_key_pair_to_cert_context(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-            WCHAR wszMsgBuff[512];
-            FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL,
-                GetLastError(),
-                0,
-                wszMsgBuff,
-                512,
-                NULL);
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d (%s).", GetLastError(), wszMsgBuff);
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptQueryObject()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d", last_error);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-            WCHAR wszMsgBuff[512];
-            FormatMessage(
-                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL,
-                GetLastError(),
-                0,
-                wszMsgBuff,
-                512,
-                NULL);
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d (%s).", GetLastError(), wszMsgBuff);
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertAddCertificateContextToStore()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d.", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 
