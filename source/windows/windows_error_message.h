@@ -17,7 +17,7 @@ void aws_win_log_message(
     WCHAR buffer[512]; // Buffer for text.
     DWORD dw_chars;
     dw_chars = FormatMessage(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, last_error, 0, buffer, buffer_size, NULL);
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, last_error, 0, buffer, 512, NULL);
     AWS_LOGF(
         log_level,
         subject,

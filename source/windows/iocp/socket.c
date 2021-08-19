@@ -1583,7 +1583,7 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
         socket->state = LISTENING;
         return AWS_OP_SUCCESS;
     }
-    int error_code = GetLastError();
+    error_code = GetLastError();
     aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "listen", error_code);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
