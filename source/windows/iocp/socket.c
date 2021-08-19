@@ -2800,7 +2800,7 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "PeekNamedPipe()", error_code);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: PeekNamedPipe() failed with error %d (%s)",
+            "id=%p handle=%p: PeekNamedPipe() failed with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             error_code);
