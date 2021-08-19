@@ -208,10 +208,7 @@ int aws_import_trusted_certificates(
         if (!query_res || cert_context == NULL) {
             int last_error = GetLastError();
             aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptQueryObject()", last_error);
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: failed to parse certificate blob, error code %d",
-                last_error;
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", last_error);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
