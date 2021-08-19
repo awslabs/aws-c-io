@@ -10,8 +10,8 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include "../windows_error_message.h "
 #include <aws/io/logging.h>
-#include <aws/io/windows_error_message.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
@@ -205,7 +205,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         1);                   /* NumberOfConcurrentThreads */
     if (impl->iocp_handle == NULL) {
         WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+        aws_win_format_message(wszMsgBuff, 512, GetLastError());
         AWS_LOGF_FATAL(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIOCompletionPort failed with error %d (%s)",
@@ -538,7 +538,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
 
     if (!iocp_associated) {
         WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+        aws_win_format_message(wszMsgBuff, 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d (%s)",

@@ -13,6 +13,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <MSWSock.h>
 // clang-format on
 
+#include "windows_error_message.h"
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
@@ -30,7 +31,7 @@ void aws_check_and_init_winsock(void) {
         WSADATA wsa_data;
         if (WSAStartup(requested_version, &wsa_data)) {
             WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+            aws_win_format_message(wszMsgBuff, 512, GetLastError());
             AWS_LOGF_FATAL(
                 AWS_LS_IO_SOCKET,
                 "static: WinSock initialization failed with error %d (%s)",
@@ -59,7 +60,7 @@ void aws_check_and_init_winsock(void) {
 
         if (rc) {
             WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+            aws_win_format_message(wszMsgBuff, 512, GetLastError());
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "static: failed to load WSAID_CONNECTEX function with error %d (%s)",
@@ -85,7 +86,7 @@ void aws_check_and_init_winsock(void) {
 
         if (rc) {
             WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+            aws_win_format_message(wszMsgBuff, 512, GetLastError());
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "static: failed to load WSAID_ACCEPTEX function with error %d (%s)",

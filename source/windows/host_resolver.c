@@ -7,11 +7,11 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include "windows_error_message.h"
 #include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
-#include <aws/io/windows_error_message.h>
 
 int aws_default_dns_resolve(
     struct aws_allocator *allocator,
@@ -37,7 +37,7 @@ int aws_default_dns_resolve(
 
     if (res_error) {
         WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, size_t 512, res_error);
+        aws_win_format_message(wszMsgBuff, 512, res_error);
         AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d (%s)", res_error, wszMsgBuff);
         goto clean_up;
     }

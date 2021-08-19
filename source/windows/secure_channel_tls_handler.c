@@ -11,6 +11,7 @@
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
+#include "windows_error_message.h"
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
@@ -266,7 +267,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
     if ((size_t)converted != host.len) {
         WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
+        aws_win_format_message(wszMsgBuff, 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x (%s).",
@@ -301,7 +302,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     if (!CertVerifyCertificateChainPolicy(policyiod, cert_chain_ctx, &policypara, &policystatus)) {
         int error = GetLastError();
         WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, size_t 512, error);
+        aws_win_format_message(wszMsgBuff, 512, error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x",
