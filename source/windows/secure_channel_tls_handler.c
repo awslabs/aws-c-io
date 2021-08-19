@@ -266,16 +266,15 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     int converted = MultiByteToWideChar(
         CP_UTF8, MB_ERR_INVALID_CHARS, (const char *)host.buffer, (int)host.len, whost, AWS_ARRAY_SIZE(whost));
     if ((size_t)converted != host.len) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, GetLastError());
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "MultiByteToWideChar()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x (%s).",
+            "id=%p: unable to convert host to wstr, %d -> %d, with last error 0x%x.",
             (void *)handler,
             (int)host.len,
             (int)converted,
-            (int)GetLastError(),
-            wszMsgBuff);
+            (int)last_error);
         goto done;
     }
 
@@ -301,14 +300,9 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
 
     if (!CertVerifyCertificateChainPolicy(policyiod, cert_chain_ctx, &policypara, &policystatus)) {
         int error = GetLastError();
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, error);
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "CertVerifyCertificateChainPolicy()", error);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS,
-            "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x",
-            (void *)handler,
-            (int)error,
-            wszMsgBuff);
+            AWS_LS_IO_TLS, "id=%p: CertVerifyCertificateChainPolicy() failed, error 0x%x", (void *)handler, (int)error);
         goto done;
     }
 

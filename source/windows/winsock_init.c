@@ -30,13 +30,9 @@ void aws_check_and_init_winsock(void) {
         WORD requested_version = MAKEWORD(2, 2);
         WSADATA wsa_data;
         if (WSAStartup(requested_version, &wsa_data)) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, GetLastError());
-            AWS_LOGF_FATAL(
-                AWS_LS_IO_SOCKET,
-                "static: WinSock initialization failed with error %d (%s)",
-                (int)GetLastError(),
-                wszMsgBuff);
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_FATAL, AWS_LS_IO_SOCKET, "WSAStartup()", last_error);
+            AWS_LOGF_FATAL(AWS_LS_IO_SOCKET, "static: WinSock initialization failed with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }
@@ -59,13 +55,10 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSAIoctl()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "static: failed to load WSAID_CONNECTEX function with error %d (%s)",
-                (int)GetLastError(),
-                wszMsgBuff);
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_CONNECTEX function with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }
@@ -85,13 +78,10 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSAIoctl()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "static: failed to load WSAID_ACCEPTEX function with error %d (%s)",
-                (int)GetLastError(),
-                wszMsgBuff);
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_ACCEPTEX function with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }

@@ -597,17 +597,16 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "getsockopt()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to determine connection error %d (%s)",
+            "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            (int)last_error);
         socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
+        int error = s_determine_socket_error(last_error);
         aws_raise_error(error);
         socket_impl->vtable->connection_error(socket, error);
         return AWS_OP_ERR;
@@ -658,15 +657,14 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
             (int)port);
         socket->local_endpoint.port = port;
     } else {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "getsockname()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: getsockname() failed with error %d (%s)",
+            "id=%p handle=%p: getsockname() failed with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -695,15 +693,14 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "getsockopt()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to determine connection error %d (%s)",
+            "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         socket->state = ERRORED;
         int error = s_determine_socket_error(WSAGetLastError());
         aws_raise_error(error);
@@ -756,17 +753,16 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
             socket->local_endpoint.address,
             (int)port);
     } else {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "getsockname()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: getsockname() failed with error %d (%s)",
+            "id=%p handle=%p: getsockname() failed with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
+        int error = s_determine_socket_error(last_error);
         aws_raise_error(error);
         socket_impl->vtable->connection_error(socket, error);
         return AWS_OP_ERR;
@@ -920,15 +916,14 @@ static inline int s_tcp_connect(
 
     int reuse = 1;
     if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_WARN, AWS_LS_IO_SOCKET, "setsockopt()", last_error);
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d (%s)",
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
     }
 
@@ -981,15 +976,13 @@ static inline int s_tcp_connect(
     if (!connect_res) {
         int error_code = WSAGetLastError();
         if (error_code != ERROR_IO_PENDING) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, error_code);
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "connection error", error_code);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p handle=%p: connection error %d (%s)",
+                "id=%p handle=%p: connection error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                error_code,
-                wszMsgBuff);
+                error_code);
             socket_impl->connect_args = NULL;
             socket_impl->read_io_data->in_use = false;
             aws_mem_release(allocator, connect_args);
@@ -1242,34 +1235,32 @@ static inline int s_dgram_connect(
 
     int reuse = 1;
     if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_WARN, AWS_LS_IO_SOCKET, "setsockopt()", last_error);
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d (%s)",
+            "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
     }
 
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "connection error", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: Failed to connect to %s:%d with error %d (%s).",
+            "id=%p handle=%p: Failed to connect to %s:%d with error %d.",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         socket->state = ERRORED;
-        int error_code = WSAGetLastError();
+        int error_code = last_error;
         int aws_error = s_determine_socket_error(error_code);
         aws_raise_error(aws_error);
         socket_impl->vtable->connection_error(socket, aws_error);
@@ -1309,17 +1300,16 @@ static inline int s_dgram_connect(
     }
 
     if (sock_name_err) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "connection error", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: Failed to connect with error %d (%s)",
+            "id=%p handle=%p: Failed to connect with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError(),
-            wszMsgBuff);
+            last_error);
         socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
+        int error = s_determine_socket_error(last_error);
         aws_raise_error(error);
         return AWS_OP_ERR;
     }
@@ -1417,16 +1407,15 @@ static inline int s_tcp_bind(
             SO_EXCLUSIVEADDRUSE,
             (char *)&exclusive_use_val,
             sizeof(int))) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+        int last_error = WSAGetLastError();
+        aws_win_log_message(AWS_LL_WARN, AWS_LS_IO_SOCKET, "setsockopt()", last_error);
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d (%s)",
+            "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError(),
-            wszMsgBuff);
-        int error = s_determine_socket_error(WSAGetLastError());
+            last_error);
+        int error = s_determine_socket_error(last_error);
         return aws_raise_error(error);
     }
 
@@ -1436,17 +1425,16 @@ static inline int s_tcp_bind(
         socket->state = BOUND;
         return AWS_OP_SUCCESS;
     }
-    WCHAR wszMsgBuff[512];
-    aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+    int last_error = WSAGetLastError();
+    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "binding", last_error);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: error binding. error %d (%s)",
+        "id=%p handle=%p: error binding. error %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        (int)WSAGetLastError(),
-        wszMsgBuff);
+        last_error);
     socket->state = ERRORED;
-    int error = s_determine_socket_error(WSAGetLastError());
+    int error = s_determine_socket_error(last_error);
     return aws_raise_error(error);
 }
 
@@ -1500,17 +1488,16 @@ static inline int s_udp_bind(
         return AWS_OP_SUCCESS;
     }
 
-    WCHAR wszMsgBuff[512];
-    aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+    int last_error = WSAGetLastError();
+    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "binding", last_error);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: error binding. error %d (%s)",
+        "id=%p handle=%p: error binding. error %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        (int)WSAGetLastError(),
-        wszMsgBuff);
+        last_error);
     socket->state = ERRORED;
-    int error = s_determine_socket_error(WSAGetLastError());
+    int error = s_determine_socket_error(last_error);
     return aws_raise_error(error);
 }
 
@@ -1567,19 +1554,17 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
         socket->state = BOUND;
         return AWS_OP_SUCCESS;
     } else {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, GetLastError());
+        int error_code = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "open named pipe", error_code);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to open named pipe %s with error %d (%s)",
+            "id=%p handle=%p: failed to open named pipe %s with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             local_endpoint->address,
-            (int)GetLastError(),
-            wszMsgBuff);
+            error_code);
 
         socket->state = ERRORED;
-        int error_code = GetLastError();
         int aws_error = s_determine_socket_error(error_code);
         return aws_raise_error(aws_error);
     }
@@ -1598,16 +1583,14 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
         socket->state = LISTENING;
         return AWS_OP_SUCCESS;
     }
-    WCHAR wszMsgBuff[512];
-    aws_win_format_message(wszMsgBuff, 512, GetLastError());
+    int error_code = GetLastError();
+    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "listen", error_code);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: listen failed with error code %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        (int)GetLastError(),
-        wszMsgBuff);
-    error_code = GetLastError();
+        error_code);
     int aws_error = s_determine_socket_error(error_code);
     return aws_raise_error(aws_error);
 }
@@ -1668,15 +1651,14 @@ static void s_incoming_pipe_connection_event(
             aws_raise_error(AWS_IO_SOCKET_CLOSED);
             socket->state = CLOSED;
         } else {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "named-pipe", last_error);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: named-pipe error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                (int)GetLastError(),
-                wszMsgBuff);
+                last_error);
             aws_raise_error(s_determine_socket_error(status_code));
             socket->state = ERRORED;
         }
@@ -1731,15 +1713,14 @@ static void s_incoming_pipe_connection_event(
             NULL);
 
         if (socket->io_handle.data.handle == INVALID_HANDLE_VALUE) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "rebinding named pipe", last_error);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: error rebinding named pipe with error %d (%s)",
+                "id=%p handle=%p: error rebinding named pipe with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                (int)GetLastError(),
-                wszMsgBuff);
+                last_error);
             socket->state = ERRORED;
             operation_data->in_use = false;
             socket_impl->vtable->connection_error(socket, aws_last_error());
@@ -1773,15 +1754,14 @@ static void s_incoming_pipe_connection_event(
         if (!res) {
             int error_code = GetLastError();
             if (error_code != ERROR_IO_PENDING && error_code != ERROR_PIPE_CONNECTED) {
-                WCHAR wszMsgBuff[512];
-                aws_win_format_message(wszMsgBuff, 512, error_code);
+                int last_error = GetLastError();
+                aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "named pipe coonect", last_error);
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: named-pipe connect failed with error %d (%s)",
+                    "id=%p handle=%p: named-pipe connect failed with error %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    (int)GetLastError(),
-                    wszMsgBuff);
+                    last_error);
                 socket->state = ERRORED;
                 socket_impl->read_io_data->in_use = false;
                 int aws_err = s_determine_socket_error(error_code);
@@ -1868,15 +1848,14 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
             } else if (AWS_UNLIKELY(win_err == WSAECONNRESET)) {
                 continue;
             }
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+            int last_error = WSAGetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "accept", last_error);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: accept failed with error %d (%s)",
+                "id=%p handle=%p: accept failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                (int)WSAGetLastError(),
-                wszMsgBuff);
+                last_error);
             socket->state = ERRORED;
             socket_impl->read_io_data->in_use = false;
             aws_mem_release(socket->allocator, socket_impl->incoming_socket);
@@ -2221,15 +2200,13 @@ static int s_local_start_accept(
     if (!res) {
         int error_code = GetLastError();
         if (error_code != ERROR_IO_PENDING && error_code != ERROR_PIPE_CONNECTED) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, error_code);
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "CoonnectNamedPipe()", error_code);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: ConnectNamedPipe() failed with error %d (%s).",
+                "id=%p handle=%p: ConnectNamedPipe() failed with error %d.",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                error_code,
-                wszMsgBuff);
+                error_code);
             socket->state = ERRORED;
             socket_impl->read_io_data->in_use = false;
             int aws_err = s_determine_socket_error(error_code);
@@ -2297,15 +2274,14 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     SO_KEEPALIVE,
                     (char *)&keep_alive,
                     sizeof(int))) {
-                WCHAR wszMsgBuff[512];
-                aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+                int last_error = WSAGetLastError();
+                aws_win_log_message(AWS_LL_WARN, AWS_LS_IO_SOCKET, "setsockopt", last_error);
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: setsockopt() call for enabling keep-alive failed with WSAError %d (%s)",
+                    "id=%p handle=%p: setsockopt() call for enabling keep-alive failed with WSAError %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    WSAGetLastError(),
-                    wszMsgBuff);
+                    last_error);
             }
         } else if (socket->options.keepalive) {
             ULONG keep_alive_timeout = (ULONG)aws_timestamp_convert(
@@ -2328,15 +2304,14 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     &bytes_returned,
                     NULL,
                     NULL)) {
-                WCHAR wszMsgBuff[512];
-                aws_win_format_message(wszMsgBuff, 512, WSAGetLastError());
+                int last_error = WSAGetLastError();
+                aws_win_log_message(AWS_LL_WARN, AWS_LS_IO_SOCKET, "WSAIoctl()", last_error);
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: WSAIoctl() call for setting keep-alive values failed with WSAError %d (%s)",
+                    "id=%p handle=%p: WSAIoctl() call for setting keep-alive values failed with WSAError %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    WSAGetLastError(),
-                    wszMsgBuff);
+                    last_error);
             }
         }
 /* this is only available in Windows 10 1703 and later. It doesn't, matter if this runs on an older version
@@ -2731,15 +2706,13 @@ static int s_stream_subscribe_to_read(
         int wsa_err = WSAGetLastError();
         if (wsa_err != ERROR_IO_PENDING) {
 
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, wsa_err);
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "ReadFile()", wsa_err);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: socket ReadFile() failed with error %d (%s)",
+                "id=%p handle=%p: socket ReadFile() failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                wsa_err,
-                wszMsgBuff);
+                wsa_err);
             iocp_socket->read_io_data->in_use = false;
             socket->state &= ~CONNECTED_WAITING_ON_READABLE;
 
@@ -2792,15 +2765,13 @@ static int s_dgram_subscribe_to_read(
     if (err) {
         int wsa_err = WSAGetLastError();
         if (wsa_err != ERROR_IO_PENDING) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, wsa_err);
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSARecv()", wsa_err);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: socket WSARecv() failed with error %d (%s)",
+                "id=%p handle=%p: socket WSARecv() failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                wsa_err,
-                wszMsgBuff);
+                wsa_err);
             iocp_socket->read_io_data->in_use = false;
             int aws_error = s_determine_socket_error(wsa_err);
             if (aws_error == AWS_IO_SOCKET_CLOSED) {
@@ -2826,15 +2797,13 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
 
     if (!peek_success) {
         int error_code = GetLastError();
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, error_code);
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "PeekNamedPipe()", error_code);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: PeekNamedPipe() failed with error %d (%s)",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            error_code,
-            wszMsgBuff);
+            error_code);
         return aws_raise_error(s_determine_socket_error(error_code));
     }
 
@@ -2850,15 +2819,13 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
             if (!success) {
                 int wsa_err = GetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
-                    WCHAR wszMsgBuff[512];
-                    aws_win_format_message(wszMsgBuff, 512, wsa_err);
+                    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "ReadFile()", wsa_err);
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: ReadFile() failed with error %d (%s)",
+                        "id=%p handle=%p: ReadFile() failed with error %d ",
                         (void *)socket,
                         (void *)socket->io_handle.data.handle,
-                        wsa_err,
-                        wszMsgBuff);
+                        wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
                     if (aws_error == AWS_IO_SOCKET_CLOSED) {
@@ -2899,15 +2866,13 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         } else {
             socket->state = ERRORED;
         }
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, error_code);
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "ReadFile()", error_code);
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket ReadFile() failed with error %d (%s)",
+            "id=%p handle=%p: socket ReadFile() failed with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            error_code,
-            wszMsgBuff);
+            error_code);
         return aws_raise_error(aws_error);
     }
 
@@ -2976,15 +2941,13 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
             if (!success) {
                 int wsa_err = GetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
-                    WCHAR wszMsgBuff[512];
-                    aws_win_format_message(wszMsgBuff, 512, wsa_err);
+                    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "ReadFile()", wsa_err);
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: ReadFile() for 0 byte read failed with error %d (%s)",
+                        "id=%p handle=%p: ReadFile() for 0 byte read failed with error %d",
                         (void *)socket,
                         (void *)socket->io_handle.data.handle,
-                        wsa_err,
-                        wszMsgBuff);
+                        wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
                     if (aws_error == AWS_IO_SOCKET_CLOSED) {
@@ -3083,15 +3046,13 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
             if (err) {
                 int wsa_err = WSAGetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
-                    WCHAR wszMsgBuff[512];
-                    aws_win_format_message(wszMsgBuff, 512, wsa_err);
+                    aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSARecv()", wsa_err);
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: WSARecv() for 0 byte read failed with error %d (%s)",
+                        "id=%p handle=%p: WSARecv() for 0 byte read failed with error %d",
                         (void *)socket,
                         (void *)socket->io_handle.data.handle,
-                        wsa_err,
-                        wszMsgBuff);
+                        wsa_err);
                     iocp_socket->read_io_data->in_use = false;
                     int aws_error = s_determine_socket_error(wsa_err);
                     if (aws_error == AWS_IO_SOCKET_CLOSED) {
@@ -3240,15 +3201,13 @@ int aws_socket_write(
     if (!res) {
         int error_code = GetLastError();
         if (error_code != ERROR_IO_PENDING) {
-            WCHAR wszMsgBuff[512];
-            aws_win_format_message(wszMsgBuff, 512, error_code);
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WriteFile()", error_code);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: WriteFile() failed with error %d (%s)",
+                "id=%p handle=%p: WriteFile() failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                error_code,
-                wszMsgBuff);
+                error_code);
 
             aws_linked_list_remove(&write_cb_data->io_data.node);
             aws_mem_release(socket->allocator, write_cb_data);
