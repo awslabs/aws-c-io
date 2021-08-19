@@ -22,10 +22,10 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 
+#include "../windows_error_message.h"
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
-#include "../windows_error_message.h"
 
 #include <aws/io/io.h>
 #include <fcntl.h>
@@ -927,7 +927,8 @@ static inline int s_tcp_connect(
             "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d (%s)",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError(), );
+            WSAGetLastError(),
+            wszMsgBuff);
         return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
     }
 

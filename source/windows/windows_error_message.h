@@ -8,8 +8,8 @@
 
 #include <Windows.h>
 
-bool aws_win_format_message(char *buffer, size_t buffer_size, DWORD lastError) {
-    FormatMessage(
+int aws_win_format_message(LPTSTR buffer, size_t buffer_size, DWORD lastError) {
+    return FormatMessage(
         FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, lastError, 0, buffer, buffer_size, NULL);
 }
 
