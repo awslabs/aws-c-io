@@ -7,7 +7,7 @@ on:
       - '!main'
 
 env:
-  BUILDER_VERSION: v0.8.26
+  BUILDER_VERSION: v0.8.27
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
@@ -35,8 +35,8 @@ jobs:
     steps:
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ matrix.image }} downstream
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} downstream
 
   linux-byo-crypto:
     runs-on: ubuntu-latest
@@ -44,8 +44,8 @@ jobs:
        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-al2-x64 --cmake-extra=-DBYO_CRYPTO=ON
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-al2-x64 build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBYO_CRYPTO=ON
 
   clang-compat:
     runs-on: ubuntu-latest
@@ -56,8 +56,8 @@ jobs:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ env.LINUX_BASE_IMAGE }} --compiler=clang-${{ matrix.version }}
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-${{ matrix.version }}
 
   clang-tsan:
     runs-on: ubuntu-latest
@@ -68,8 +68,8 @@ jobs:
       # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
-          aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ env.LINUX_BASE_IMAGE }} --compiler=clang-${{ matrix.version }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS=",thread"
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-${{ matrix.version }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS=",thread"
 
   clang-asan:
     runs-on: ubuntu-latest
@@ -80,8 +80,8 @@ jobs:
       # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
-          aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ env.LINUX_BASE_IMAGE }} --compiler=clang-${{ matrix.version }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS=",address,undefined"
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-${{ matrix.version }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS=",address,undefined"
 
   gcc-compat:
     runs-on: ubuntu-latest
@@ -92,8 +92,8 @@ jobs:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ env.LINUX_BASE_IMAGE }} --compiler=gcc-${{ matrix.version }}
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=gcc-${{ matrix.version }}
 
   linux-shared-libs:
     runs-on: ubuntu-latest
@@ -101,8 +101,8 @@ jobs:
         # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.PACKAGE_NAME }} ${{ env.BUILDER_VERSION }} ${{ secrets.AWS_ECR_REPO }} aws-crt-${{ env.LINUX_BASE_IMAGE }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
   windows:
     runs-on: windows-latest
