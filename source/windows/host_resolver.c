@@ -36,9 +36,8 @@ int aws_default_dns_resolve(
     int res_error = GetAddrInfoA(hostname_cstr, NULL, &hints, &result);
 
     if (res_error) {
-        WCHAR wszMsgBuff[512];
-        aws_win_format_message(wszMsgBuff, 512, res_error);
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d (%s)", res_error, wszMsgBuff);
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_DNS, "GetAddrInfoA()", res_error);
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", res_error);
         goto clean_up;
     }
 
