@@ -9,6 +9,8 @@
 
 #include <aws/io/logging.h>
 
+#include <aws/io/windows_error_message.h>
+
 #include <Windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -89,8 +91,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     if (!*cert_store) {
         WCHAR wszMsgBuff[512];
-        FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. Failed to load cert store with error code %d (%s)",
@@ -128,8 +129,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
 
     if (!*certs) {
         WCHAR wszMsgBuff[512];
-        FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. "
@@ -176,8 +176,7 @@ int aws_import_trusted_certificates(
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
         WCHAR wszMsgBuff[512];
-        FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to create temporary cert store, error code %d (%s)",
@@ -294,20 +293,21 @@ static int s_cert_context_import_rsa_private_key(
     (void)converted_chars;
 
     if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
+        WCHAR wszMsgBuff[512];
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: error creating a new rsa crypto context for key %s with errno %d",
+            "static: error creating a new rsa crypto context for key %s with errno code %d (%s)",
             uuid_str,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
     if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
-
         WCHAR wszMsgBuff[512];
-        FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to import rsa key %s into crypto provider, error code %d (%s)",
@@ -325,11 +325,14 @@ static int s_cert_context_import_rsa_private_key(
     key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
 
     if (!CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+        WCHAR wszMsgBuff[512];
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: error creating a new certificate context for key %s with errno %d",
+            "static: error creating a new certificate context for key %s with error code %d (%s)",
             uuid_str,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -462,9 +465,14 @@ static int s_cert_context_import_ecc_private_key(
     }
 
     status = NCryptOpenStorageProvider(&crypto_prov, MS_KEY_STORAGE_PROVIDER, 0);
+    WCHAR wszMsgBuff[512];
+    aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
     if (status != ERROR_SUCCESS) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: could not open ncrypt key storage provider, error %d", (int)GetLastError());
+            AWS_LS_IO_PKI,
+            "static: could not open ncrypt key storage provider, error code %d (%s)",
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -491,12 +499,15 @@ static int s_cert_context_import_ecc_private_key(
         NCRYPT_OVERWRITE_KEY_FLAG);
 
     if (status != ERROR_SUCCESS) {
+        WCHAR wszMsgBuff[512];
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to import ecc key %s with status %d, last error %d",
+            "static: failed to import ecc key %s with status %d, last error code %d (%s)",
             uuid_str,
             status,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -506,9 +517,10 @@ static int s_cert_context_import_ecc_private_key(
     if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to set cert context key provider, key %s, with last error %d",
+            "static: failed to set cert context key provider, key %s, with last error code %d (%s)",
             uuid_str,
-            (int)GetLastError());
+            (int)GetLastError(),
+            wszMsgBuff);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -562,8 +574,13 @@ int aws_import_key_pair_to_cert_context(
     }
 
     if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &certificates)) {
+        WCHAR wszMsgBuff[512];
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
+            AWS_LS_IO_PKI,
+            "static: failed to decode cert pem to buffer list with error code %d (%s)",
+            (int)aws_last_error(),
+            wszMsgBuff);
         goto clean_up;
     }
 
@@ -572,8 +589,13 @@ int aws_import_key_pair_to_cert_context(
     }
 
     if (aws_decode_pem_to_buffer_list(alloc, private_key, &private_keys)) {
+        WCHAR wszMsgBuff[512];
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error %d", (int)aws_last_error());
+            AWS_LS_IO_PKI,
+            "static: failed to decode key pem to buffer list with error code %d (%s)",
+            (int)aws_last_error(),
+            wszMsgBuff);
         goto clean_up;
     }
 
@@ -583,8 +605,7 @@ int aws_import_key_pair_to_cert_context(
 
     if (!*store) {
         WCHAR wszMsgBuff[512];
-        FormatMessage(
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, wszMsgBuff, 512, NULL);
+        aws_win_format_message(wszMsgBuff, size_t 512, GetLastError());
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: failed to load in-memory/ephemeral certificate store, error code %d (%s)",
