@@ -12,7 +12,7 @@ void aws_win_log_message(
     DWORD dw_chars;
     char *buffer;
     int size_needed;
-    struct aws_allocator *allocator = *aws_default_allocator();
+    struct aws_allocator *allocator = aws_default_allocator();
 
     dw_chars = FormatMessage(
         FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, last_error, 0, (LPSTR)buffer, 512, NULL);
