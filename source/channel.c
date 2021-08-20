@@ -870,7 +870,7 @@ int aws_channel_slot_shutdown(
         (void *)slot->handler,
         (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write",
         err_code,
-        aws_error_str(err_code));
+        aws_error_name(err_code));
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 
