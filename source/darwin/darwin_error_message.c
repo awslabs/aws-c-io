@@ -1,4 +1,5 @@
 #include "darwin_error_message.h"
+#include <Security/SecCertificate.h>
 
 void aws_darwin_log_message(
     enum aws_log_level log_level,
