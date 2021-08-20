@@ -4,6 +4,7 @@
  */
 #include <aws/io/tls_channel_handler.h>
 
+#include "darwin_error_message.h"
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/pki_utils.h>
@@ -425,6 +426,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             CFRelease(policy);
 
             if (status != errSecSuccess) {
+                aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "SecTrustSetPolicies()", status);
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)handler, (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -433,6 +435,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
             if (status != errSecSuccess) {
+                aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "SecTrustSetAnchorCertificates()", status);
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "id=%p: Failed to set anchor certificate with OSStatus %d\n",
@@ -446,6 +449,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             /* Use ONLY the custom CA bundle (ignoring system anchors) */
             status = SecTrustSetAnchorCertificatesOnly(trust, true);
             if (status != errSecSuccess) {
+                aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "SecTrustSetAnchorCertificatesOnly()", status);
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "id=%p: Failed to ignore system anchors with OSStatus %d\n",
@@ -464,7 +468,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 (trust_eval == kSecTrustResultProceed || trust_eval == kSecTrustResultUnspecified)) {
                 return s_drive_negotiation(handler);
             }
-
+            aws_darwin_log_message(AWS_LL_WARN, AWS_LS_IO_TLS, "SecTrustEvaluate()", status);
             AWS_LOGF_WARN(
                 AWS_LS_IO_TLS,
                 "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
@@ -478,6 +482,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     } else if (status != errSSLWouldBlock) {
         secure_transport_handler->negotiation_finished = false;
 
+        aws_darwin_log_message(AWS_LL_WARN, AWS_LS_IO_TLS, "negotiation", status);
         AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: negotiation failed with OSStatus %d.", (void *)handler, (int)status);
         aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -539,12 +544,9 @@ static int s_process_write_message(
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes written: %llu", (void *)handler, (unsigned long long)processed);
 
     if (status != noErr) {
+        aws_darwin_log_message(AWS_LL_DEBUG, AWS_LS_IO_TLS, "SSLWrite()", status);
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS,
-            "id=%p: SSLWrite failed with OSStatus error code %d (%s).",
-            (void *)handler,
-            (int)status,
-            CFStringGetCStringPtr(SecCopyErrorMessageString(status, NULL), kCFStringEncodingUTF8));
+            AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", (void *)handler, (int)status)
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
@@ -636,6 +638,7 @@ static int s_process_read_message(
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
 
             if (status != errSSLWouldBlock) {
+                aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_TLS, "SSLRead()", status);
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "id=%p: error reported during SSLRead. OSStatus code %d",

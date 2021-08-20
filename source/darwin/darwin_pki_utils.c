@@ -51,6 +51,7 @@ int aws_import_public_and_private_keys_to_identity(
     if (keychain_path) {
         OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
+            aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecKeychainOpen()", keychain_status);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: error opening keychain \"%s\" with OSStatus %d",
@@ -60,6 +61,7 @@ int aws_import_public_and_private_keys_to_identity(
         }
         keychain_status = SecKeychainUnlock(import_keychain, 0, "", true);
         if (keychain_status != errSecSuccess) {
+            aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecKeychainUnlock()", keychain_status);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: error unlocking keychain \"%s\" with OSStatus %d",
@@ -70,6 +72,7 @@ int aws_import_public_and_private_keys_to_identity(
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {
+            aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecKeychainCopyDefault()", keychain_status);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI, "static: error opening the default keychain with OSStatus %d", keychain_status);
             return AWS_OP_ERR;
@@ -91,12 +94,14 @@ int aws_import_public_and_private_keys_to_identity(
     CFRelease(key_data);
 
     if (cert_status != errSecSuccess && cert_status != errSecDuplicateItem) {
+        aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecItemImport()", cert_status);
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing certificate with OSStatus %d", (int)cert_status);
         result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         goto done;
     }
 
     if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+        aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecItemImport()", key_status);
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
         result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         goto done;
@@ -215,6 +220,7 @@ int aws_import_pkcs12_to_identity(
         return AWS_OP_SUCCESS;
     }
 
+    aws_darwin_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "SecPKCS12Import()", status);
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing pkcs#12 certificate OSStatus %d", (int)status);
 
     return AWS_OP_ERR;
