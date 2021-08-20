@@ -4,6 +4,7 @@
  */
 #include <aws/io/pki_utils.h>
 
+#include "darwin_error_message.h"
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/io/logging.h>

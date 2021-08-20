@@ -8,7 +8,7 @@ void aws_darwin_log_message(
     OSStatus status) {
 
     CFStringRef msg_cfstring = SecCopyErrorMessageString(status, NULL);
-    const char msg_buf[512];
+    char msg_buf[512];
     bool msg_buf_valid = false;
     if (msg_cfstring) {
         msg_buf_valid = CFStringGetCString(msg_cfstring, msg_buf, sizeof(msg_buf), kCFStringEncodingUTF8);
@@ -24,6 +24,6 @@ void aws_darwin_log_message(
         (int)status,
         msg_buf);
     if (msg_cfstring) {
-        CFRelese(msg_cfstring);
+        CFRelease(msg_cfstring);
     }
 }
