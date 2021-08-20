@@ -12,7 +12,7 @@
 void aws_darwin_log_message(
     enum aws_log_level log_level,
     aws_log_subject_t subject,
-    char *function_name,
+    const char *function_name,
     OSStatus status);
 
 #endif /* AWS_DARWIN_ERROR_MESSAGE_H */

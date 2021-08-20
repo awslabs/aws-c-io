@@ -4,7 +4,7 @@
 void aws_darwin_log_message(
     enum aws_log_level log_level,
     aws_log_subject_t subject,
-    char *function_name,
+    const char *function_name,
     OSStatus status) {
 
     CFStringRef msg_cfstring = SecCopyErrorMessageString(status, NULL);

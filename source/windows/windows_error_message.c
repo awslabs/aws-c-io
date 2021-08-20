@@ -12,10 +12,10 @@ void aws_win_log_message(
     char *err;
     int size_needed;
     dw_chars = FormatMessage(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, last_error, 0, (LPSTR)buffer, 512, NULL);
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, last_error, 0, (LPSTR)wstr, 512, NULL);
     if (dw_chars) {
         size_needed = WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)dw_chars, NULL, 0, NULL, NULL);
-        char buffer[size_needed];
+        const char buffer[size_needed];
         WideCharToMultiByte(CP_UTF8, 0, &wstr[0], (int)dw_chars, &buffer[0], size_needed, NULL, NULL);
         err = &buffer[0];
     } else {
