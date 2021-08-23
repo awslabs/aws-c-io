@@ -333,8 +333,10 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
 
             parser->uri->userinfo =
                 aws_byte_cursor_advance(&authority_parse_csr, userinfo_delim - authority_parse_csr.ptr);
+            /* For the "@" mark */
+            aws_byte_cursor_advance(&authority_parse_csr, 1);
             struct aws_byte_cursor userinfo_parse_csr = parser->uri->userinfo;
-            uint8_t *info_delim = memchr(authority_parse_csr.ptr, ':', authority_parse_csr.len);
+            uint8_t *info_delim = memchr(userinfo_parse_csr.ptr, ':', userinfo_parse_csr.len);
             /* RFC-3986 section 3.2.1: Use of the format "user:password" in the userinfo field is deprecated. But still,
              * we will use this format here as it's a common use case. You also have the whole userinfo field. */
             if (info_delim) {
@@ -350,14 +352,14 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
 
         if (!port_delim) {
             parser->uri->port = 0;
-            parser->uri->host_name = parser->uri->authority;
+            parser->uri->host_name = authority_parse_csr;
             return;
         }
 
         parser->uri->host_name.ptr = authority_parse_csr.ptr;
         parser->uri->host_name.len = port_delim - authority_parse_csr.ptr;
 
-        size_t port_len = parser->uri->authority.len - parser->uri->host_name.len - 1;
+        size_t port_len = authority_parse_csr.len - parser->uri->host_name.len - 1;
         port_delim += 1;
         for (size_t i = 0; i < port_len; ++i) {
             if (!aws_isdigit(port_delim[i])) {
