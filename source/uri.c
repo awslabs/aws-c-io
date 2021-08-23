@@ -338,7 +338,7 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
             struct aws_byte_cursor userinfo_parse_csr = parser->uri->userinfo;
             uint8_t *info_delim = memchr(userinfo_parse_csr.ptr, ':', userinfo_parse_csr.len);
             /* RFC-3986 section 3.2.1: Use of the format "user:password" in the userinfo field is deprecated. But we
-             * treat the userinfo as URL here, also, if the format is not following URL partern, you have the hole
+             * treat the userinfo as URL here, also, if the format is not following URL partern, you have the whole
              * userinfo */
             /* RFC-1738 section 3.1: <user>:<password> */
             if (info_delim) {
