@@ -23,11 +23,11 @@ static int s_test_uri_full_parse(struct aws_allocator *allocator, void *ctx) {
     struct aws_byte_cursor expected_userinfo = aws_byte_cursor_from_c_str("some_user:some_password");
     ASSERT_BIN_ARRAYS_EQUALS(expected_userinfo.ptr, expected_userinfo.len, uri.userinfo.ptr, uri.userinfo.len);
 
-    struct aws_byte_cursor expected_user_name = aws_byte_cursor_from_c_str("some_user");
-    ASSERT_BIN_ARRAYS_EQUALS(expected_user_name.ptr, expected_user_name.len, uri.user_name.ptr, uri.user_name.len);
+    struct aws_byte_cursor expected_user = aws_byte_cursor_from_c_str("some_user");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_user.ptr, expected_user.len, uri.user.ptr, uri.user.len);
 
     struct aws_byte_cursor expected_password = aws_byte_cursor_from_c_str("some_password");
-    ASSERT_BIN_ARRAYS_EQUALS(expected_password.ptr, expected_password.len, uri.pass_word.ptr, uri.pass_word.len);
+    ASSERT_BIN_ARRAYS_EQUALS(expected_password.ptr, expected_password.len, uri.password.ptr, uri.password.len);
 
     struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
     ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
@@ -315,9 +315,9 @@ static int s_test_uri_userinfo_no_password_parse(struct aws_allocator *allocator
     struct aws_byte_cursor expected_userinfo = aws_byte_cursor_from_c_str("some_name");
     ASSERT_BIN_ARRAYS_EQUALS(expected_userinfo.ptr, expected_userinfo.len, uri.userinfo.ptr, uri.userinfo.len);
 
-    struct aws_byte_cursor expected_user_name = aws_byte_cursor_from_c_str("some_name");
-    ASSERT_BIN_ARRAYS_EQUALS(expected_user_name.ptr, expected_user_name.len, uri.user_name.ptr, uri.user_name.len);
-    ASSERT_UINT_EQUALS(0u, uri.pass_word.len);
+    struct aws_byte_cursor expected_user = aws_byte_cursor_from_c_str("some_name");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_user.ptr, expected_user.len, uri.user.ptr, uri.user.len);
+    ASSERT_UINT_EQUALS(0u, uri.password.len);
 
     struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
     ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
@@ -335,7 +335,7 @@ static int s_test_uri_userinfo_no_password_parse(struct aws_allocator *allocator
 
 AWS_TEST_CASE(uri_userinfo_no_password_parse, s_test_uri_userinfo_no_password_parse);
 
-static int s_test_uri_empty_user_name_parse(struct aws_allocator *allocator, void *ctx) {
+static int s_test_uri_empty_user_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* RFC-3986 section 3.2.1: Use of the format "user:password" in the userinfo field is deprecated.
      * We will try to parse the userinfo with the format still, but if not happening, it will not be treated as an
@@ -353,8 +353,8 @@ static int s_test_uri_empty_user_name_parse(struct aws_allocator *allocator, voi
     ASSERT_BIN_ARRAYS_EQUALS(expected_authority.ptr, expected_authority.len, uri.authority.ptr, uri.authority.len);
 
     ASSERT_UINT_EQUALS(0u, uri.userinfo.len);
-    ASSERT_UINT_EQUALS(0u, uri.user_name.len);
-    ASSERT_UINT_EQUALS(0u, uri.pass_word.len);
+    ASSERT_UINT_EQUALS(0u, uri.user.len);
+    ASSERT_UINT_EQUALS(0u, uri.password.len);
 
     struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
     ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
@@ -370,7 +370,7 @@ static int s_test_uri_empty_user_name_parse(struct aws_allocator *allocator, voi
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(uri_empty_user_name_parse, s_test_uri_empty_user_name_parse);
+AWS_TEST_CASE(uri_empty_user_parse, s_test_uri_empty_user_parse);
 
 static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

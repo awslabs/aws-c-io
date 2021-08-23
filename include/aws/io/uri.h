@@ -19,8 +19,8 @@ struct aws_uri {
     struct aws_byte_cursor scheme;
     struct aws_byte_cursor authority;
     struct aws_byte_cursor userinfo;
-    struct aws_byte_cursor user_name;
-    struct aws_byte_cursor pass_word;
+    struct aws_byte_cursor user;
+    struct aws_byte_cursor password;
     struct aws_byte_cursor host_name;
     uint16_t port;
     struct aws_byte_cursor path;

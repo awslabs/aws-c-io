@@ -342,12 +342,12 @@ static void s_parse_authority(struct uri_parser *parser, struct aws_byte_cursor 
              * userinfo */
             /* RFC-1738 section 3.1: <user>:<password> */
             if (info_delim) {
-                parser->uri->user_name.ptr = userinfo_parse_csr.ptr;
-                parser->uri->user_name.len = info_delim - userinfo_parse_csr.ptr;
-                parser->uri->pass_word.ptr = info_delim + 1;
-                parser->uri->pass_word.len = parser->uri->userinfo.len - parser->uri->user_name.len - 1;
+                parser->uri->user.ptr = userinfo_parse_csr.ptr;
+                parser->uri->user.len = info_delim - userinfo_parse_csr.ptr;
+                parser->uri->password.ptr = info_delim + 1;
+                parser->uri->password.len = parser->uri->userinfo.len - parser->uri->user.len - 1;
             } else {
-                parser->uri->user_name = userinfo_parse_csr;
+                parser->uri->user = userinfo_parse_csr;
             }
         }
         uint8_t *port_delim = memchr(authority_parse_csr.ptr, ':', authority_parse_csr.len);
