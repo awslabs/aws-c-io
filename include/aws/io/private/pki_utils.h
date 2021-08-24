@@ -6,7 +6,16 @@
  */
 #include <aws/io/io.h>
 
-struct aws_string;
+#ifdef _WIN32
+/* It's ok to include external headers because this is a PRIVATE header file
+ * (it is usually a crime to include windows.h from header file) */
+#    include <Windows.h>
+#endif /* _WIN32 */
+
+#ifdef AWS_OS_APPLE
+/* It's ok to include external headers because this is a PRIVATE header file */
+#    include <CoreFoundation/CFArray.h>
+#endif /* AWS_OS_APPLE */
 
 AWS_EXTERN_C_BEGIN
 
@@ -39,8 +48,6 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
     struct aws_array_list *cert_chain_or_key);
 
 #ifdef AWS_OS_APPLE
-struct __CFArray;
-typedef const struct __CFArray *CFArrayRef;
 #    if !defined(AWS_OS_IOS)
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
@@ -88,11 +95,6 @@ void aws_release_certificates(CFArrayRef certs);
 #endif /* AWS_OS_APPLE */
 
 #ifdef _WIN32
-typedef void *HCERTSTORE;
-struct _CERT_CONTEXT;
-typedef const struct _CERT_CONTEXT *PCCERT_CONTEXT;
-typedef unsigned long long HCRYPTPROV;
-typedef unsigned long long HCRYPTKEY;
 
 /**
  * Returns AWS_OP_SUCCESS if we were able to successfully load the certificate and cert_store.

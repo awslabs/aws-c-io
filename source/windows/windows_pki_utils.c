@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 
 #include <aws/common/uuid.h>
 
