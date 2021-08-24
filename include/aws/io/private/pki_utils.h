@@ -17,6 +17,8 @@
 #    include <CoreFoundation/CFArray.h>
 #endif /* AWS_OS_APPLE */
 
+struct aws_string;
+
 AWS_EXTERN_C_BEGIN
 
 /**
