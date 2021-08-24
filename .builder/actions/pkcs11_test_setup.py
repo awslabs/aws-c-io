@@ -78,7 +78,7 @@ class Pkcs11TestSetup(Builder.Action):
         """Return path to SoftHSM2 shared lib, or None if not found"""
 
         # get list of shared libraries
-        output= self.env.shell.exec('ldconfig', '--print-cache', quiet=True).output
+        output = self.env.shell.exec('ldconfig', '--print-cache').output
 
         # each line of output looks like:
         #      libsofthsm2.so (libc6,x86-64) => /lib64/libsofthsm2.so
