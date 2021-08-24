@@ -4,50 +4,7 @@
  */
 
 /**
- * To run these tests, configure cmake with: -DENABLE_PKCS11_TESTS=ON
- * and set the following environment variables:
- *
- * TEST_PKCS11_LIB = <path to shared lib>
- * TEST_PKCS11_TOKEN_LABEL = <token label>
- * TEST_PKCS11_PIN = <pin for logging into token>
- * TEST_PKCS11_PKEY_LABEL = <private key label>
- * TEST_PKCS11_CERT_FILE = <path to PEM-encoded certificate>
- * TEST_PKCS11_CA_FILE = <path to PEM-encoded CA file needed to trust certificate>
- *      If omitted, the system's default trust store is used.
- *
- * The suggested way to set up your local machine is like so:
- * 1)   Install SoftHSM2 via brew/apt/apt-get/yum:
- *      > brew install softhsm
- *
- * 2)   Check if it's working:
- *      > softhsm2-util --show-slots
- *
- *      If this spits out an error message, create a config file:
- *      Default location: ~/.config/softhsm2/softhsm2.conf
- *      This file must specify token dir, default value is:
- *          directories.tokendir = /usr/local/var/lib/softhsm/tokens/
- *
- * 3)   Create token and private key.
- *      You can use any values for the labels, pin, key, cert, CA etc.
- *      Here are copy-paste friendly commands for using files available in this repo.
- *
- *      > softhsm2-util --init-token --free --label my-test-token --pin 0000 --so-pin 0000
- *
- *      look at slot that the token ended up in
- *
- *      > softhsm2-util --import tests/resources/unittests.p8 --slot <slot-with-token> \
- *        --label my-test-key --id BEEFCAFE --pin 0000
- *
- * 4)   Set env vars like so:
- *      TEST_PKCS11_LIB = <path to libsofthsm2.so>
- *      TEST_PKCS11_TOKEN_LABEL = my-test-token
- *      TEST_PKCS11_PIN = 0000
- *      TEST_PKCS11_PKEY_LABEL = my-test-key
- *      TEST_PKCS11_CERT_FILE = <path to aws-c-io>/tests/resources/unittests.crt
- *      TEST_PKCS11_CA_FILE = <path to aws-c-io>/tests/resources/unittests.crt
- *
- * CI machines running aws-crt-builder will be set up by pkcs11_test_setup.py.
- * But this script is made for use with aws-crt-builder, so it's tough to run standalone.
+ * See PKCS11.md for instructions on running these tests
  */
 
 #include <aws/io/private/pkcs11_private.h>

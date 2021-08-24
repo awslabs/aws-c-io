@@ -76,13 +76,18 @@ class Pkcs11TestSetup(Builder.Action):
 
     def _find_softhsm_lib(self):
         """Return path to SoftHSM2 shared lib, or None if not found"""
-        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
-            for base_dir in ['/usr/local', '/usr', '/',]:
-                search_dir = os.path.join(base_dir, lib_dir)
-                for root, dirs, files in os.walk(search_dir):
-                    for file_name in files:
-                        if 'libsofthsm2.so' in file_name:
-                            return os.path.join(root, file_name)
+
+        # get list of shared libraries
+        output= self.env.shell.exec('ldconfig', '--print-cache', quiet=True).output
+
+        # each line of output looks like:
+        #      libsofthsm2.so (libc6,x86-64) => /lib64/libsofthsm2.so
+        for line in output.splitlines():
+            tokens = line.split()
+            if len(tokens) >= 2 and tokens[0] == 'libsofthsm2.so':
+                return tokens[-1]
+
+        # didn't find it
         return None
 
 

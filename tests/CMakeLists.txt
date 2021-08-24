@@ -1,7 +1,7 @@
 include(AwsTestHarness)
 enable_testing()
 
-# see top of pkcs11_tests.c for instructions on running these tests
+# See PKCS11.md for instructions on running these tests
 option(ENABLE_PKCS11_TESTS "Build and run PKCS#11 tests" OFF)
 
 file(GLOB TEST_SRC "*.c")
@@ -218,8 +218,8 @@ add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
 
+# See PKCS11.md for instructions on running these tests
 if (ENABLE_PKCS11_TESTS)
-    # see top of pkcs11_tests.c for instructions on running these tests
     add_test_case(pkcs11_lib_initialize)
     add_test_case(pkcs11_lib_omit_initialize)
 endif()
