@@ -7,8 +7,8 @@
 
 static int s_test_uri_full_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    const char *str_uri =
-        "https://www.test.com:8443/path/to/resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
+    const char *str_uri = "https://some_user:some_password@www.test.com:8443/path/to/"
+                          "resource?test1=value1&test%20space=value%20space&test2=value2&test2=value3";
 
     struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
     struct aws_uri uri;
@@ -17,8 +17,17 @@ static int s_test_uri_full_parse(struct aws_allocator *allocator, void *ctx) {
     struct aws_byte_cursor expected_scheme = aws_byte_cursor_from_c_str("https");
     ASSERT_BIN_ARRAYS_EQUALS(expected_scheme.ptr, expected_scheme.len, uri.scheme.ptr, uri.scheme.len);
 
-    struct aws_byte_cursor expected_authority = aws_byte_cursor_from_c_str("www.test.com:8443");
+    struct aws_byte_cursor expected_authority = aws_byte_cursor_from_c_str("some_user:some_password@www.test.com:8443");
     ASSERT_BIN_ARRAYS_EQUALS(expected_authority.ptr, expected_authority.len, uri.authority.ptr, uri.authority.len);
+
+    struct aws_byte_cursor expected_userinfo = aws_byte_cursor_from_c_str("some_user:some_password");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_userinfo.ptr, expected_userinfo.len, uri.userinfo.ptr, uri.userinfo.len);
+
+    struct aws_byte_cursor expected_user = aws_byte_cursor_from_c_str("some_user");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_user.ptr, expected_user.len, uri.user.ptr, uri.user.len);
+
+    struct aws_byte_cursor expected_password = aws_byte_cursor_from_c_str("some_password");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_password.ptr, expected_password.len, uri.password.ptr, uri.password.len);
 
     struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
     ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
@@ -285,6 +294,83 @@ static int s_test_uri_root_only_parse(struct aws_allocator *allocator, void *ctx
 }
 
 AWS_TEST_CASE(uri_root_only_parse, s_test_uri_root_only_parse);
+
+static int s_test_uri_userinfo_no_password_parse(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    /* RFC-3986 section 3.2.1: Use of the format "user:password" in the userinfo field is deprecated.
+     * We will try to parse the userinfo with the format still, but if not happening, it will not be treated as an
+     * error. The whole userinfo will still be available to access */
+    const char *str_uri = "https://some_name@www.test.com";
+
+    struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
+    struct aws_uri uri;
+    ASSERT_SUCCESS(aws_uri_init_parse(&uri, allocator, &uri_csr));
+
+    struct aws_byte_cursor expected_scheme = aws_byte_cursor_from_c_str("https");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_scheme.ptr, expected_scheme.len, uri.scheme.ptr, uri.scheme.len);
+
+    struct aws_byte_cursor expected_authority = aws_byte_cursor_from_c_str("some_name@www.test.com");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_authority.ptr, expected_authority.len, uri.authority.ptr, uri.authority.len);
+
+    struct aws_byte_cursor expected_userinfo = aws_byte_cursor_from_c_str("some_name");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_userinfo.ptr, expected_userinfo.len, uri.userinfo.ptr, uri.userinfo.len);
+
+    struct aws_byte_cursor expected_user = aws_byte_cursor_from_c_str("some_name");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_user.ptr, expected_user.len, uri.user.ptr, uri.user.len);
+    ASSERT_UINT_EQUALS(0u, uri.password.len);
+
+    struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
+
+    ASSERT_UINT_EQUALS(0, uri.port);
+
+    struct aws_byte_cursor expected_path = aws_byte_cursor_from_c_str("/");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_path.ptr, expected_path.len, uri.path.ptr, uri.path.len);
+
+    ASSERT_UINT_EQUALS(0u, uri.query_string.len);
+
+    aws_uri_clean_up(&uri);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(uri_userinfo_no_password_parse, s_test_uri_userinfo_no_password_parse);
+
+static int s_test_uri_empty_user_parse(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    /* RFC-3986 section 3.2.1: Use of the format "user:password" in the userinfo field is deprecated.
+     * We will try to parse the userinfo with the format still, but if not happening, it will not be treated as an
+     * error. The whole userinfo will still be available to access */
+    const char *str_uri = "https://@www.test.com";
+
+    struct aws_byte_cursor uri_csr = aws_byte_cursor_from_c_str(str_uri);
+    struct aws_uri uri;
+    ASSERT_SUCCESS(aws_uri_init_parse(&uri, allocator, &uri_csr));
+
+    struct aws_byte_cursor expected_scheme = aws_byte_cursor_from_c_str("https");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_scheme.ptr, expected_scheme.len, uri.scheme.ptr, uri.scheme.len);
+
+    struct aws_byte_cursor expected_authority = aws_byte_cursor_from_c_str("@www.test.com");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_authority.ptr, expected_authority.len, uri.authority.ptr, uri.authority.len);
+
+    ASSERT_UINT_EQUALS(0u, uri.userinfo.len);
+    ASSERT_UINT_EQUALS(0u, uri.user.len);
+    ASSERT_UINT_EQUALS(0u, uri.password.len);
+
+    struct aws_byte_cursor expected_host = aws_byte_cursor_from_c_str("www.test.com");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_host.ptr, expected_host.len, uri.host_name.ptr, uri.host_name.len);
+
+    ASSERT_UINT_EQUALS(0, uri.port);
+
+    struct aws_byte_cursor expected_path = aws_byte_cursor_from_c_str("/");
+    ASSERT_BIN_ARRAYS_EQUALS(expected_path.ptr, expected_path.len, uri.path.ptr, uri.path.len);
+
+    ASSERT_UINT_EQUALS(0u, uri.query_string.len);
+
+    aws_uri_clean_up(&uri);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(uri_empty_user_parse, s_test_uri_empty_user_parse);
 
 static int s_test_uri_query_params(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
