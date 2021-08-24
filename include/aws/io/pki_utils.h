@@ -91,6 +91,9 @@ void aws_release_certificates(CFArrayRef certs);
 typedef void *HCERTSTORE;
 struct _CERT_CONTEXT;
 typedef const struct _CERT_CONTEXT *PCCERT_CONTEXT;
+typedef unsigned long long HCRYPTPROV;
+typedef unsigned long long HCRYPTKEY;
+
 /**
  * Returns AWS_OP_SUCCESS if we were able to successfully load the certificate and cert_store.
  *
@@ -124,7 +127,10 @@ AWS_IO_API int aws_import_key_pair_to_cert_context(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     HCERTSTORE *cert_store,
-    PCCERT_CONTEXT *certs);
+    PCCERT_CONTEXT *certs,
+    HCRYPTPROV *crypto_provider,
+    HCRYPTKEY *private_key_handle);
+
 #endif /* _WIN32 */
 
 AWS_EXTERN_C_END

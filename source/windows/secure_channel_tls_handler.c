@@ -56,6 +56,8 @@ struct secure_channel_ctx {
     PCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
     HCERTSTORE custom_trust_store;
+    HCRYPTPROV crypto_provider;
+    HCRYPTKEY private_key;
     bool verify_peer;
 };
 
@@ -1826,6 +1828,14 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
         return;
     }
 
+    if (secure_channel_ctx->private_key) {
+        CryptDestroyKey(secure_channel_ctx->private_key);
+    }
+
+    if (secure_channel_ctx->crypto_provider) {
+        CryptReleaseContext(secure_channel_ctx->crypto_provider, 0);
+    }
+
     if (secure_channel_ctx->custom_trust_store) {
         aws_close_cert_store(secure_channel_ctx->custom_trust_store);
     }
@@ -1849,10 +1859,6 @@ struct aws_tls_ctx *s_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
     bool is_client_mode) {
-    struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
-    if (!secure_channel_ctx) {
-        return NULL;
-    }
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -1860,11 +1866,22 @@ struct aws_tls_ctx *s_ctx_new(
         return NULL;
     }
 
+    struct secure_channel_ctx *secure_channel_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_ctx));
+    if (!secure_channel_ctx) {
+        return NULL;
+    }
+
+    secure_channel_ctx->ctx.alloc = alloc;
+    secure_channel_ctx->ctx.impl = secure_channel_ctx;
+    aws_ref_count_init(
+        &secure_channel_ctx->ctx.ref_count,
+        secure_channel_ctx,
+        (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
+
     if (options->alpn_list) {
         secure_channel_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
         if (!secure_channel_ctx->alpn_list) {
-            aws_mem_release(alloc, secure_channel_ctx);
-            return NULL;
+            goto clean_up;
         }
     }
 
@@ -1916,13 +1933,6 @@ struct aws_tls_ctx *s_ctx_new(
                 break;
         }
     }
-
-    secure_channel_ctx->ctx.alloc = alloc;
-    secure_channel_ctx->ctx.impl = secure_channel_ctx;
-    aws_ref_count_init(
-        &secure_channel_ctx->ctx.ref_count,
-        secure_channel_ctx,
-        (aws_simple_completion_callback *)s_secure_channel_ctx_destroy);
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
@@ -1985,7 +1995,13 @@ struct aws_tls_ctx *s_ctx_new(
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor pk_cur = aws_byte_cursor_from_buf(&options->private_key);
         int err = aws_import_key_pair_to_cert_context(
-            alloc, &cert_chain_cur, &pk_cur, &secure_channel_ctx->cert_store, &secure_channel_ctx->pcerts);
+            alloc,
+            &cert_chain_cur,
+            &pk_cur,
+            &secure_channel_ctx->cert_store,
+            &secure_channel_ctx->pcerts,
+            &secure_channel_ctx->crypto_provider,
+            &secure_channel_ctx->private_key);
 
         if (err) {
             AWS_LOGF_ERROR(
@@ -2000,11 +2016,7 @@ struct aws_tls_ctx *s_ctx_new(
     return &secure_channel_ctx->ctx;
 
 clean_up:
-    if (secure_channel_ctx->custom_trust_store) {
-        aws_close_cert_store(secure_channel_ctx->custom_trust_store);
-    }
-
-    aws_mem_release(alloc, secure_channel_ctx);
+    s_secure_channel_ctx_destroy(secure_channel_ctx);
     return NULL;
 }
 
