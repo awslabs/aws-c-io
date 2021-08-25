@@ -1519,7 +1519,7 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
     socket->local_endpoint = *local_endpoint;
     socket->io_handle.data.handle = CreateNamedPipeA(
         local_endpoint->address,
-        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | socket->options.windows_named_pipe_open_flags,
         PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_ACCEPT_REMOTE_CLIENTS,
         PIPE_UNLIMITED_INSTANCES,
         PIPE_BUFFER_SIZE,
@@ -1678,7 +1678,7 @@ static void s_incoming_pipe_connection_event(
 
         socket->io_handle.data.handle = CreateNamedPipeA(
             socket->local_endpoint.address,
-            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | socket->options.windows_named_pipe_open_flags,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_ACCEPT_REMOTE_CLIENTS,
             PIPE_UNLIMITED_INSTANCES,
             PIPE_BUFFER_SIZE,

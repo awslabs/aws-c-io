@@ -41,6 +41,7 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+    uint32_t windows_named_pipe_open_flags;
 };
 
 struct aws_socket;
