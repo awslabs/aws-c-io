@@ -275,7 +275,7 @@ static int s_cert_context_import_rsa_private_key(
             goto on_error;
         }
 
-        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *) crypto_prov)) {
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *)crypto_prov)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI,
                 "static: error creating a new certificate context for rsa key with errno %d",
@@ -286,18 +286,14 @@ static int s_cert_context_import_rsa_private_key(
     } else {
         if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new rsa crypto context with errno %d",
-                (int)GetLastError());
+                AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", (int)GetLastError());
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
 
         if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: failed to import rsa key into crypto provider, error code %d",
-                GetLastError());
+                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
@@ -484,9 +480,7 @@ static int s_cert_context_import_ecc_private_key(
 
     if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to set cert context key provider, with last error %d",
-            (int)GetLastError());
+            AWS_LS_IO_PKI, "static: failed to set cert context key provider, with last error %d", (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -681,15 +675,15 @@ int aws_import_key_pair_to_cert_context(
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
 
-    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = { 0 };
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
     size_t converted_chars = 0;
     mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
     (void)converted_chars;
 
     switch (cert_type) {
         case AWS_CT_X509_RSA:
-            result =
-                s_cert_context_import_rsa_private_key(*certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
+            result = s_cert_context_import_rsa_private_key(
+                *certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
             break;
 
 #ifndef AWS_SUPPORT_WIN7
