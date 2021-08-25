@@ -77,23 +77,17 @@ class Pkcs11TestSetup(Builder.Action):
     def _find_softhsm_lib(self):
         """Return path to SoftHSM2 shared lib, or None if not found"""
 
-        # Run `ldconfig` to refresh the shared-lib cache,
-        # so we can find SoftHSM2 if it JUST got installed.
-        # Continue if this fails, it requires root privileges
-        # but on a user machine it's probably already in the cache
-        self.env.shell.exec('ldconfig', check=False, quiet=True)
+        # note: not using `ldconfig --print-cache` to find it because
+        # some installers put it in weird places where ldconfig doesn't look
+        # (like in a subfolder under lib/)
 
-        # examine the shared-lib cache
-        output = self.env.shell.exec('ldconfig', '--print-cache', quiet=True).output
-
-        # each line of output looks like:
-        #      libsofthsm2.so (libc6,x86-64) => /lib64/libsofthsm2.so
-        for line in output.splitlines():
-            tokens = line.split()
-            if len(tokens) >= 2 and tokens[0] == 'libsofthsm2.so':
-                return tokens[-1]
-
-        # didn't find it
+        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
+            for base_dir in ['/usr/local', '/usr', '/',]:
+                search_dir = os.path.join(base_dir, lib_dir)
+                for root, dirs, files in os.walk(search_dir):
+                    for file_name in files:
+                        if 'libsofthsm2.so' in file_name:
+                            return os.path.join(root, file_name)
         return None
 
 
