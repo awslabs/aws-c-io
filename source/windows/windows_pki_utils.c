@@ -247,6 +247,8 @@ static int s_cert_context_import_rsa_private_key(
     PCCERT_CONTEXT certs,
     const BYTE *key,
     DWORD decoded_len,
+    bool is_client_mode,
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN],
     HCRYPTPROV *out_crypto_provider,
     HCRYPTKEY *out_private_key_handle) {
 
@@ -255,30 +257,65 @@ static int s_cert_context_import_rsa_private_key(
     HCRYPTPROV crypto_prov = 0;
     HCRYPTKEY h_key = 0;
 
-    /* use CRYPT_VERIFYCONTEXT so that keys are ephemeral (not stored to disk, registry, etc) */
-    if (!CryptAcquireContextW(&crypto_prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new rsa crypto context for key with errno %d",
-            (int)GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto on_error;
-    }
+    if (is_client_mode) {
+        /* use CRYPT_VERIFYCONTEXT so that keys are ephemeral (not stored to disk, registry, etc) */
+        if (!CryptAcquireContextW(&crypto_prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new rsa crypto context for key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
 
-    if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto on_error;
-    }
+        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
 
-    if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, &crypto_prov)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new certificate context for rsa key with errno %d",
-            (int)GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto on_error;
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *) crypto_prov)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new certificate context for rsa key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+    } else {
+        if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new rsa crypto context with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+
+        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: failed to import rsa key into crypto provider, error code %d",
+                GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+
+        CRYPT_KEY_PROV_INFO key_prov_info;
+        AWS_ZERO_STRUCT(key_prov_info);
+        key_prov_info.pwszContainerName = uuid_wstr;
+        key_prov_info.dwProvType = PROV_RSA_FULL;
+        key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
+
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new certificate context for key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
     }
 
     *out_crypto_provider = crypto_prov;
@@ -326,7 +363,7 @@ static int s_cert_context_import_ecc_private_key(
     struct aws_allocator *allocator,
     const BYTE *key,
     DWORD decoded_len,
-    char uuid_str[AWS_UUID_STR_LEN]) {
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN]) {
 
     (void)decoded_len;
 
@@ -417,11 +454,6 @@ static int s_cert_context_import_ecc_private_key(
         goto done;
     }
 
-    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
-    size_t converted_chars = 0;
-    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
-    (void)converted_chars;
-
     NCryptBuffer ncBuf = {sizeof(uuid_wstr), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
     NCryptBufferDesc ncBufDesc;
     ncBufDesc.ulVersion = 0;
@@ -441,8 +473,7 @@ static int s_cert_context_import_ecc_private_key(
     if (status != ERROR_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to import ecc key %s with status %d, last error %d",
-            uuid_str,
+            "static: failed to import ecc key with status %d, last error %d",
             status,
             (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -454,8 +485,7 @@ static int s_cert_context_import_ecc_private_key(
     if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to set cert context key provider, key %s, with last error %d",
-            uuid_str,
+            "static: failed to set cert context key provider, with last error %d",
             (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
@@ -492,6 +522,7 @@ int aws_import_key_pair_to_cert_context(
     struct aws_allocator *alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
+    bool is_client_mode,
     HCERTSTORE *store,
     PCCERT_CONTEXT *certs,
     HCRYPTPROV *crypto_provider,
@@ -639,7 +670,6 @@ int aws_import_key_pair_to_cert_context(
         goto clean_up;
     }
 
-    /* TODO: kill all uuid */
     struct aws_uuid uuid;
     if (aws_uuid_init(&uuid)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to create a uuid.");
@@ -651,15 +681,20 @@ int aws_import_key_pair_to_cert_context(
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
 
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = { 0 };
+    size_t converted_chars = 0;
+    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
+    (void)converted_chars;
+
     switch (cert_type) {
         case AWS_CT_X509_RSA:
             result =
-                s_cert_context_import_rsa_private_key(*certs, key, decoded_len, crypto_provider, private_key_handle);
+                s_cert_context_import_rsa_private_key(*certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
             break;
 
 #ifndef AWS_SUPPORT_WIN7
         case AWS_CT_X509_ECC:
-            result = s_cert_context_import_ecc_private_key(*certs, alloc, key, decoded_len, uuid_str);
+            result = s_cert_context_import_ecc_private_key(*certs, alloc, key, decoded_len, uuid_wstr);
             break;
 #endif /* AWS_SUPPORT_WIN7 */
 

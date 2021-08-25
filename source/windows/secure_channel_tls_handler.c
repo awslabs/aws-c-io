@@ -1998,6 +1998,7 @@ struct aws_tls_ctx *s_ctx_new(
             alloc,
             &cert_chain_cur,
             &pk_cur,
+            is_client_mode,
             &secure_channel_ctx->cert_store,
             &secure_channel_ctx->pcerts,
             &secure_channel_ctx->crypto_provider,
