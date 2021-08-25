@@ -454,7 +454,7 @@ static int s_cert_context_import_ecc_private_key(
         goto done;
     }
 
-    NCryptBuffer ncBuf = {sizeof(uuid_wstr), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
+    NCryptBuffer ncBuf = {AWS_UUID_STR_LEN * sizeof(wchar_t), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
     NCryptBufferDesc ncBufDesc;
     ncBufDesc.ulVersion = 0;
     ncBufDesc.cBuffers = 1;
