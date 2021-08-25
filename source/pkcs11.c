@@ -20,12 +20,11 @@
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
 
-/* At time of authoring (Aug 2021) 2.40 had been the latest stable version since 2014.
- * Let's just support that for now. We can probably support earlier,
- * but we'd have to reseach and confirm it's not a security risk. */
+/* Support older PKCS#11 versions, even if we're using newer headers.
+ * The PKCS#11 API is designed to be forward compatible. */
 #include <aws/io/private/pkcs11/v2.40/pkcs11.h>
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
-#define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 40
+#define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 20
 
 /* Return c-string for PKCS#11 CKR_* contants. */
 const char *s_ckr_str(CK_RV rv) {
@@ -309,6 +308,23 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         goto except;
     }
 
+    /* Check function list's API version */
+    CK_VERSION version = pkcs11_lib->function_list->version;
+    if ((version.major != AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR) ||
+        (version.minor < AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p: Library implements PKCS#11 version %" PRIu8 ".%" PRIu8 " but %d.%d compatibility is required",
+            (void *)pkcs11_lib,
+            version.major,
+            version.minor,
+            AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR,
+            AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR);
+
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+
     /* Call C_Initialize() (skip if omit_initialize is set) */
     if (!options->omit_initialize) {
         CK_C_INITIALIZE_ARGS init_args = {
@@ -330,7 +346,8 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         pkcs11_lib->should_finalize = true;
     }
 
-    /* Call C_GetInfo() */
+    /* Get info about the library and log it.
+     * This will be VERY useful for diagnosing user issues. */
     CK_INFO info;
     rv = pkcs11_lib->function_list->C_GetInfo(&info);
     if (rv != CKR_OK) {
@@ -338,23 +355,6 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         goto except;
     }
 
-    /* Check API version. */
-    if ((info.cryptokiVersion.major != AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR) ||
-        (info.cryptokiVersion.minor < AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11,
-            "id=%p: PKCS#11 library has cryptokiVersion %" PRIu8 ".%" PRIu8 " but %d.%d compatibility is required",
-            (void *)pkcs11_lib,
-            info.cryptokiVersion.major,
-            info.cryptokiVersion.minor,
-            AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR,
-            AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR);
-
-        aws_raise_error(AWS_IO_PKCS11_ERROR);
-        goto except;
-    }
-
-    /* Log info about the library, this will be VERY useful for diagnosing user issues. */
     AWS_LOGF_INFO(
         AWS_LS_IO_PKCS11,
         "id=%p: PKCS#11 loaded. file:'%s' cryptokiVersion:%" PRIu8 ".%" PRIu8 " manufacturerID:'" PRInSTR

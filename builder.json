@@ -13,8 +13,14 @@
         { "name": "aws-c-mqtt" },
         { "name": "aws-c-http" }
     ],
+    "targets": {
+        "linux": {
+            "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
+            "packages": ["softhsm"],
+            "+pre_build_steps": ["pkcs11-test-setup"]
+        }
+    },
     "build_env": {
-        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1",
-        "CMAKE_BUILD_PARALLEL_LEVEL": "2"
+        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions.txt:allow_addr2line=1"
     }
 }

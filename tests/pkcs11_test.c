@@ -3,13 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+/**
+ * See PKCS11.md for instructions on running these tests
+ */
+
 #include <aws/io/private/pkcs11_private.h>
 
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 #include <aws/testing/aws_test_harness.h>
 
-/* Environment variables that must be set for these tests (otherwise the tests are skipped) */
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_LIB, "TEST_PKCS11_LIB");
 
 /* Singleton that stores env-var values */
@@ -24,31 +27,27 @@ static void s_pkcs11_tester_clean_up(void) {
 }
 
 /* Read env-vars.
- * Raises false if the test should be skipped because the env-vars aren't set */
-static bool s_pkcs11_tester_init_or_skip(struct aws_allocator *allocator) {
+ * Raise an error if any necessary ones are missing */
+static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
     aws_io_library_init(allocator);
 
     const struct aws_string *env_var = TEST_PKCS11_LIB;
     aws_get_environment_value(allocator, env_var, &s_pkcs11_tester.filepath);
     if (s_pkcs11_tester.filepath == NULL) {
-        goto skip;
+        goto missing;
     }
 
-    return true;
+    return AWS_OP_SUCCESS;
 
-skip:
-    printf("Skipping test because '%s' env-var not found\n", aws_string_c_str(env_var));
-    s_pkcs11_tester_clean_up();
-    return false;
+missing:
+    printf("Missing required env-var '%s'\n", aws_string_c_str(env_var));
+    return aws_raise_error(AWS_ERROR_INVALID_STATE);
 }
 
 /* Simplest test: Loads and unloads library, calling C_Initialize() and C_Finalize() */
 static int s_test_pkcs11_lib_initialize(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    if (s_pkcs11_tester_init_or_skip(allocator) == false) {
-        return AWS_OP_SUCCESS; /* skip */
-    }
+    ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     /* Load library */
     struct aws_pkcs11_lib_options options = {
@@ -67,10 +66,7 @@ AWS_TEST_CASE(pkcs11_lib_initialize, s_test_pkcs11_lib_initialize)
 /* Test that we can use the `omit_initialize` option to have the library loaded multiple times */
 static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    if (s_pkcs11_tester_init_or_skip(allocator) == false) {
-        return AWS_OP_SUCCESS; /* skip */
-    }
+    ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     struct aws_pkcs11_lib_options options_normal = {
         .filename = aws_byte_cursor_from_string(s_pkcs11_tester.filepath),
