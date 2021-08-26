@@ -13,7 +13,7 @@
 #include <aws/io/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
-
+#include <openssl/rsa.h>
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
@@ -30,6 +30,29 @@
 #define KB_1 1024
 #define MAX_RECORD_SIZE (KB_1 * 16)
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
+#define S2N_RESULT_OK 0
+
+#define CK_PTR    *
+#define NULL_PTR    0
+#define CK_DEFINE_FUNCTION( returnType, name )             returnType name
+#define CK_DECLARE_FUNCTION( returnType, name )            returnType name
+#define CK_DECLARE_FUNCTION_POINTER( returnType, name )    returnType( CK_PTR name )
+#define CK_CALLBACK_FUNCTION( returnType, name )           returnType( CK_PTR name )
+#include "pkcs11/pkcs11.h"
+
+/*
+ * DER encoded DigestInfo value for SHA256 to be prefixed to the hash.
+ * See https://tools.ietf.org/html/rfc3447#page-43
+ */
+#define pkcs11SHA256_INFO_PREPEND_TO_RSA_SIG { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 }
+#define pkcs11SHA384_INFO_PREPEND_TO_RSA_SIG { 0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30 }
+#define pkcs11SHA512_INFO_PREPEND_TO_RSA_SIG { 0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40 }
+
+/* Test config. These parameters are configured to work with the S2N CI, either mimic the CI PKCS #11 setup or modify these to values that work in your setup. */
+#define pkcs11_test_slot 1
+#define pkcs11_pin "0000"
+#define pkcs11_rsa_key_label "rsa-privkey"
+#define pkcs11_ecdsa_key_label "ecdsa-privkey"
 
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
@@ -39,6 +62,25 @@ struct s2n_delayed_shutdown_task {
     struct aws_channel_slot *slot;
     int error;
 };
+
+struct s2n_blob_ptk {
+    /* The data for the s2n_blob */
+    uint8_t *data;
+
+    /* The size of the data */
+    uint32_t size;
+    uint32_t allocated;
+};
+
+int s2n_alloc_ptk(struct s2n_blob_ptk *b, uint32_t size)
+{
+    b->data = (uint8_t*)malloc(size);
+    b->size = size;
+    return 0;
+}
+CK_OBJECT_HANDLE key_handle = CK_INVALID_HANDLE;
+
+struct s2n_handler *s2n_handler_global;
 
 struct s2n_handler {
     struct aws_channel_handler handler;
@@ -60,12 +102,14 @@ struct s2n_handler {
     struct s2n_delayed_shutdown_task delayed_shutdown_task;
 };
 
+
 struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
 };
 
 static const char *s_determine_default_pki_dir(void) {
+    printf("Called function is: %s\n",__func__);
     /* debian variants */
     if (aws_path_exists("/etc/ssl/certs")) {
         return "/etc/ssl/certs";
@@ -95,6 +139,7 @@ static const char *s_determine_default_pki_dir(void) {
 }
 
 static const char *s_determine_default_pki_ca_file(void) {
+    printf("Called function is: %s\n",__func__);
     /* debian variants */
     if (aws_path_exists("/etc/ssl/certs/ca-certificates.crt")) {
         return "/etc/ssl/certs/ca-certificates.crt";
@@ -123,7 +168,60 @@ static const char *s_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+const char b64chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+size_t b64_encoded_size(size_t inlen)
+{
+	size_t ret;
+
+	ret = inlen;
+	if (inlen % 3 != 0)
+		ret += 3 - (inlen % 3);
+	ret /= 3;
+	ret *= 4;
+
+	return ret;
+}
+
+char *b64_encode(const unsigned char *in, size_t len)
+{
+	char   *out;
+	size_t  elen;
+	size_t  i;
+	size_t  j;
+	size_t  v;
+
+	if (in == NULL || len == 0)
+		return NULL;
+
+	elen = b64_encoded_size(len);
+	out  = malloc(elen+1);
+	out[elen] = '\0';
+
+	for (i=0, j=0; i<len; i+=3, j+=4) {
+		v = in[i];
+		v = i+1 < len ? v << 8 | in[i+1] : v << 8;
+		v = i+2 < len ? v << 8 | in[i+2] : v << 8;
+
+		out[j]   = b64chars[(v >> 18) & 0x3F];
+		out[j+1] = b64chars[(v >> 12) & 0x3F];
+		if (i+1 < len) {
+			out[j+2] = b64chars[(v >> 6) & 0x3F];
+		} else {
+			out[j+2] = '=';
+		}
+		if (i+2 < len) {
+			out[j+3] = b64chars[v & 0x3F];
+		} else {
+			out[j+3] = '=';
+		}
+	}
+
+	return out;
+}
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
+    printf("Called function is: %s\n",__func__);
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
@@ -149,6 +247,7 @@ bool aws_tls_is_alpn_available(void) {
 }
 
 bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    printf("Called function is: %s\n",__func__);
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             return true;
@@ -170,7 +269,6 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
 static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf) {
 
     size_t written = 0;
-
     while (!aws_linked_list_empty(&handler->input_queue) && written < buf->len) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&handler->input_queue);
         struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
@@ -203,6 +301,272 @@ static int s_generic_read(struct s2n_handler *handler, struct aws_byte_buf *buf)
     return -1;
 }
 
+
+struct s2n_async_pkey_op *pkey_op = NULL;
+struct s2n_connection *pkey_conn = NULL;
+
+static int prepend_id(s2n_tls_hash_algorithm alg,
+                            struct s2n_blob_ptk *hash,
+                            struct s2n_blob_ptk *hash_oid_buf)
+{
+    const uint8_t sha256_oid_sequence[] = pkcs11SHA256_INFO_PREPEND_TO_RSA_SIG;
+    const uint8_t sha384_oid_sequence[] = pkcs11SHA384_INFO_PREPEND_TO_RSA_SIG;
+    const uint8_t sha512_oid_sequence[] = pkcs11SHA512_INFO_PREPEND_TO_RSA_SIG;
+
+    const uint8_t * oid_sequence = NULL;
+    size_t oid_sequence_size = 0;
+
+    switch (alg) {
+        case S2N_TLS_HASH_SHA256:
+            oid_sequence = &sha256_oid_sequence[0];
+            oid_sequence_size = sizeof(sha256_oid_sequence);
+            break;
+        case S2N_TLS_HASH_SHA384:
+            oid_sequence = &sha384_oid_sequence[0];
+            oid_sequence_size = sizeof(sha384_oid_sequence);
+            break;
+        case S2N_TLS_HASH_SHA512:
+            oid_sequence = &sha512_oid_sequence[0];
+            oid_sequence_size = sizeof(sha512_oid_sequence);
+            break;
+        default:
+            printf("Received an unexpected hash algorithm for the integration test. Consider updating the integration"
+                    " for this new type.");
+            break;
+    }
+
+    s2n_alloc_ptk(hash_oid_buf, hash->size + oid_sequence_size);
+    memcpy(hash_oid_buf->data, oid_sequence, oid_sequence_size);
+    memcpy(&hash_oid_buf->data[oid_sequence_size], hash->data, hash->size);
+
+    return S2N_RESULT_OK;
+}
+static CK_SESSION_HANDLE session;
+static int pkcs11_sign_helper(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out,
+                  CK_MECHANISM mechanism)
+{
+    printf("Signing: %s, size: %d", in->data, in->size);
+    CK_RV rv;
+    rv = C_SignInit(session, &mechanism, key);
+    printf("C_SignInit: rv = 0x%.8X\n", rv);
+    if (rv != CKR_OK) {
+        printf("C_SignInit: FAiled\n");
+    }
+    CK_ULONG sig_len = 0;
+    rv = C_Sign(
+                 session,
+                 in->data,
+                 in->size,
+                 NULL,
+                 &sig_len);
+    printf("C_Sign: rv = 0x%.8X\n", rv);
+    s2n_alloc_ptk(out, sig_len);
+
+    rv = C_Sign(
+                 session,
+                 in->data,
+                 in->size,
+                 out->data,
+                 &sig_len);
+    out->size = sig_len;
+    printf("C_Sign: rv = 0x%.8X\n", rv);
+        FILE *fp1 = fopen( "/tmp/pkcs11_sign_helper.input" , "w");
+        fwrite(in->data, 1, in->size, fp1);
+        fclose(fp1);
+    FILE *fp = fopen( "/tmp/pkcs11_sign_helper.output" , "w");
+    fwrite(out->data, 1, out->size, fp);
+    fclose(fp);
+
+    char *enc = b64_encode((const unsigned char *)out->data, out->size);
+    printf("Signing: %s, size: %d", enc, out->size);
+    return S2N_RESULT_OK;
+}
+
+static int pkcs11_sign_rsa(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out,
+                  s2n_tls_hash_algorithm hash_type)
+{
+    if (CK_INVALID_HANDLE ==  key) { return -1;}
+
+    CK_MECHANISM mechanism = { CKM_RSA_PKCS, NULL, 0 };
+
+    struct s2n_blob_ptk hash_copy;
+    printf("prepend id value\n");
+    prepend_id(hash_type, in, &hash_copy);
+    printf("Getting ready to sign\n");
+    pkcs11_sign_helper(key, &hash_copy, out, mechanism);
+
+    return S2N_RESULT_OK;
+}
+
+static int pkcs11_sign(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out,
+                  s2n_tls_hash_algorithm hash_type)
+{
+    CK_KEY_TYPE keytype = 0;
+    CK_ATTRIBUTE template = { CKA_KEY_TYPE, &keytype, sizeof(keytype) };
+
+    C_GetAttributeValue(session, key, &template, 1);
+
+    if (keytype == CKK_RSA)
+    {
+        pkcs11_sign_rsa(key, in, out, hash_type);
+    } else {
+        //pkcs11_sign_ecdsa(key, in, out);
+        //pkcs11_sign_rsa(key, in, out, hash_type);
+        printf("ERROR:: keytype could not be found in TPM!!\n");
+    }
+
+    return S2N_RESULT_OK;
+}
+
+static int get_handshake_hash_alg(struct s2n_connection *conn, s2n_tls_hash_algorithm *alg)
+{
+    /* Try client cert object for the hash alg first, since this integration does mutual auth. If it is none, we will try the
+     * regular connection object for the hash algorithm, since this test is re-using functions for both the
+     * server and client. */
+    s2n_mode type = S2N_CLIENT;
+    s2n_tls_signature_algorithm sign_alg = S2N_TLS_SIGNATURE_ANONYMOUS;
+    if (type == S2N_CLIENT)
+    {
+        s2n_connection_get_selected_client_cert_digest_algorithm(conn, alg);
+        s2n_connection_get_selected_client_cert_signature_algorithm(conn, &sign_alg);
+    } else {
+        s2n_connection_get_selected_digest_algorithm(conn, alg);
+    }
+
+    return S2N_RESULT_OK;
+}
+
+static int pkcs11_decrypt_helper(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out,
+                  CK_MECHANISM mechanism)
+{
+    C_DecryptInit( session, &mechanism, key);
+
+    CK_ULONG out_len = 0;
+    C_Decrypt(
+                 session,
+                 (CK_BYTE_PTR)in->data,
+                 in->size,
+                 NULL,
+                 &out_len);
+    s2n_alloc_ptk(out, out_len);
+
+    C_Decrypt(
+                 session,
+                 (CK_BYTE_PTR)in->data,
+                 in->size,
+                 out->data,
+                 &out_len);
+
+    return S2N_RESULT_OK;
+}
+
+static int pkcs11_decrypt_rsa(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out)
+{
+    CK_MECHANISM mechanism = { CKM_RSA_PKCS, NULL, 0 };
+    pkcs11_decrypt_helper(key, in, out, mechanism);
+
+    return S2N_RESULT_OK;
+}
+
+static int pkcs11_decrypt(CK_OBJECT_HANDLE key,
+                  struct s2n_blob_ptk *in,
+                  struct s2n_blob_ptk *out)
+{
+    CK_KEY_TYPE keytype = 0;
+    CK_ATTRIBUTE template = { CKA_KEY_TYPE, &keytype, sizeof(keytype) };
+
+    C_GetAttributeValue( session, key, &template, 1);
+
+    if (keytype == CKK_RSA)
+    {
+        pkcs11_decrypt_rsa(key, in, out);
+    } else {
+        //EXPECT_OK(pkcs11_decrypt_ecdsa(key, in, out));
+    }
+    return S2N_RESULT_OK;
+}
+
+int is_initialized = 0;
+
+static int pkcs11_login(CK_SESSION_HANDLE session, CK_UTF8CHAR *pin, CK_ULONG pin_size)
+{
+    if (CK_INVALID_HANDLE == session) {
+        printf("Session is invalid :O");
+    }
+
+    C_Login( session, CKU_USER, pin, pin_size);
+    printf("logged in successfully \n");
+    return 0;
+}
+
+static int pkcs11_setup_session(CK_SESSION_HANDLE_PTR session)
+{
+    CK_ULONG slot_count = 0;
+    C_GetSlotList( CK_TRUE, NULL, &slot_count);
+    printf("got slot list : %ld\n", slot_count);
+    CK_SLOT_ID *slot_list = malloc(sizeof(CK_SLOT_ID) * (slot_count));
+
+    C_GetSlotList( CK_TRUE, slot_list, &slot_count);
+    C_OpenSession(
+                 slot_list[pkcs11_test_slot],
+                 CKF_SERIAL_SESSION | CKF_RW_SESSION,
+                 NULL,
+                 NULL,
+                 session);
+    printf("Opened session\n");
+    free(slot_list);
+
+    return 0;
+}
+
+static int pkcs11_setup(CK_SESSION_HANDLE_PTR session)
+{
+    if (is_initialized == 0) {
+        C_Initialize(NULL);
+
+        pkcs11_setup_session(session);
+        pkcs11_login(*session, (CK_UTF8CHAR_PTR)pkcs11_pin, sizeof(pkcs11_pin)-1UL);
+        is_initialized = 1;
+    }
+    return 0;
+}
+
+static int pkcs11_find_key(CK_SESSION_HANDLE session, const char *label, CK_ULONG label_size, CK_OBJECT_HANDLE_PTR key)
+{
+    CK_ULONG count = 0;
+    CK_OBJECT_CLASS key_class = CKO_PRIVATE_KEY;
+
+    CK_ATTRIBUTE template[] = {
+        { CKA_LABEL, (CK_VOID_PTR) label, label_size },
+        { CKA_CLASS, &key_class, sizeof(CK_OBJECT_CLASS) }
+    };
+
+    C_FindObjectsInit( session, template, sizeof(template) / sizeof(CK_ATTRIBUTE));
+
+    CK_OBJECT_HANDLE handle = CK_INVALID_HANDLE;
+    C_FindObjects( session, &handle, 1UL, &count);
+    printf("Got %ld keys in the slot with handle %ld!!\n", count, handle);
+    C_FindObjectsFinal( session);
+
+    if(handle == CK_INVALID_HANDLE || count == 0) {
+        printf("No keys fonud in pkcs11!!\n");
+    }
+    *key = handle;
+
+    return 0;
+}
+
+
 static int s_s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
     struct s2n_handler *handler = (struct s2n_handler *)io_context;
 
@@ -211,7 +575,6 @@ static int s_s2n_handler_recv(void *io_context, uint8_t *buf, uint32_t len) {
 }
 
 static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf) {
-
     struct aws_byte_cursor buffer_cursor = aws_byte_cursor_from_buf(buf);
 
     size_t processed = 0;
@@ -282,23 +645,24 @@ static void s_on_negotiation_result(
     void *user_data) {
 
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
     aws_on_tls_negotiation_completed(&s2n_handler->shared_state, error_code);
 
     if (s2n_handler->on_negotiation_result) {
         s2n_handler->on_negotiation_result(handler, slot, error_code, user_data);
     }
 }
+extern int s2n_alloc(struct s2n_blob *b, uint32_t size);
 
+
+struct aws_channel_handler *ptk_handler;
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
+    printf("Called function is: %s\n",__func__);
     aws_on_drive_tls_negotiation(&s2n_handler->shared_state);
-
+    ptk_handler = handler;
     s2n_blocked_status blocked = S2N_NOT_BLOCKED;
     do {
         int negotiation_code = s2n_negotiate(s2n_handler->connection, &blocked);
-
         int s2n_error = s2n_errno;
         if (negotiation_code == S2N_ERR_T_OK) {
             s2n_handler->negotiation_finished = true;
@@ -308,7 +672,6 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Alpn protocol negotiated as %s", (void *)handler, protocol);
                 s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
-
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
             if (server_name) {
@@ -370,10 +733,59 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     return AWS_OP_SUCCESS;
 }
 
+//static void pkey_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
+static void pkey_task() {
+        printf("Called function is: %s\n",__func__);
+        uint32_t input_len;
+        s2n_async_pkey_op_get_input_size(pkey_op, &input_len);
+        struct s2n_blob_ptk input = { 0 };
+        s2n_alloc_ptk(&input, input_len);
+        s2n_async_pkey_op_get_input(pkey_op, input.data, input.size);
+
+        s2n_async_pkey_op_type type;
+        s2n_async_pkey_op_get_op_type(pkey_op, &type);
+        FILE *fp = fopen( "/tmp/sign_input_s2n" , "w");
+        fwrite(input.data, 1, input.size, fp);
+        fclose(fp);
+
+        struct s2n_cert_chain_and_key *cert_key = s2n_connection_get_selected_cert(pkey_conn);
+        // Figure out how to put state in the s2n context correctly
+        CK_SESSION_HANDLE handle = *(CK_SESSION_HANDLE_PTR) s2n_cert_chain_and_key_get_ctx(cert_key);
+        printf("PTK USE HANDLE: %ld\n", key_handle);
+
+        struct s2n_blob_ptk out = { 0 };
+
+        if (type == S2N_ASYNC_DECRYPT) {
+            pkcs11_decrypt(key_handle, &input, &out);
+        } else {
+            s2n_tls_hash_algorithm alg = S2N_TLS_HASH_NONE;
+            get_handshake_hash_alg(pkey_conn, &alg);
+            pkcs11_sign(key_handle, &input, &out, alg);
+
+            char *enc = b64_encode((const unsigned char *)input.data, input.size);
+            char *enc1 = b64_encode((const unsigned char *)out.data, out.size);
+            printf("done with signing: input %s, output %s\n", enc, enc1);
+        }
+        s2n_async_pkey_op_set_output(pkey_op, out.data, out.size);
+        s2n_async_pkey_op_apply(pkey_op, pkey_conn);
+        s2n_async_pkey_op_free(pkey_op);
+        s_drive_negotiation(ptk_handler);
+}
+
+static int async_pkey_callback(struct s2n_connection *conn, struct s2n_async_pkey_op *op)
+{
+    pkey_conn = conn;
+    pkey_op = op;
+    aws_channel_task_init(
+        &s2n_handler_global->sequential_tasks, pkey_task, pkey_conn, "async_pkey_callback");
+    aws_channel_schedule_task_now(s2n_handler_global->slot->channel, &s2n_handler_global->sequential_tasks);
+
+    return S2N_SUCCESS;
+}
+
 static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_task_status status) {
     task->task_fn = NULL;
     task->arg = NULL;
-
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
         s_drive_negotiation(handler);
@@ -382,7 +794,6 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
         return s_drive_negotiation(handler);
@@ -401,7 +812,6 @@ static int s_s2n_handler_process_read_message(
     struct aws_io_message *message) {
 
     struct s2n_handler *s2n_handler = handler->impl;
-
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
 
@@ -497,7 +907,6 @@ static int s_s2n_handler_process_write_message(
     if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
     }
-
     s2n_handler->latest_message_on_completion = message->on_completion;
     s2n_handler->latest_message_completion_user_data = message->user_data;
 
@@ -523,7 +932,6 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
 
     struct aws_channel_handler *handler = arg;
     struct s2n_handler *s2n_handler = handler->impl;
-
     if (status == AWS_TASK_STATUS_RUN_READY) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in write direction", (void *)handler)
         s2n_blocked_status blocked;
@@ -542,7 +950,6 @@ static int s_s2n_do_delayed_shutdown(
     struct aws_channel_slot *slot,
     int error_code) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
     s2n_handler->delayed_shutdown_task.slot = slot;
     s2n_handler->delayed_shutdown_task.error = error_code;
 
@@ -566,7 +973,6 @@ static int s_s2n_handler_shutdown(
     int error_code,
     bool abort_immediately) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Scheduling delayed write direction shutdown", (void *)handler)
@@ -591,7 +997,6 @@ static int s_s2n_handler_shutdown(
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
     task->task_fn = NULL;
     task->arg = NULL;
-
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
@@ -693,7 +1098,6 @@ static int s_parse_protocol_preferences(
     size_t *protocol_count) {
     size_t max_count = *protocol_count;
     *protocol_count = 0;
-
     struct aws_byte_cursor alpn_list_buffer[4];
     AWS_ZERO_ARRAY(alpn_list_buffer);
     struct aws_array_list alpn_list;
@@ -748,7 +1152,6 @@ static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
 /* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
 static int s_s2n_tls_channel_handler_schedule_thread_local_cleanup(struct aws_channel_slot *slot) {
     struct aws_channel *channel = slot->channel;
-
     struct aws_event_loop_local_object existing_marker;
     AWS_ZERO_STRUCT(existing_marker);
 
@@ -772,7 +1175,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     s2n_mode mode) {
-
+    printf("Called function is: %s\n",__func__);
     AWS_ASSERT(options->ctx);
     struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
     if (!s2n_handler) {
@@ -870,6 +1273,7 @@ static struct aws_channel_handler *s_new_tls_handler(
         goto cleanup_conn;
     }
 
+    s2n_handler_global = s2n_handler;
     return &s2n_handler->handler;
 
 cleanup_conn:
@@ -885,7 +1289,6 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-
     return s_new_tls_handler(allocator, options, slot, S2N_CLIENT);
 }
 
@@ -893,7 +1296,6 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-
     return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
 }
 
@@ -924,15 +1326,18 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
     return 0;
 }
 
+
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
     s2n_mode mode) {
     struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
-
+    printf("Called function is: %s\n",__func__);
     if (!s2n_ctx) {
         return NULL;
     }
+
+    AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: PTK entered TLS", (void *)options);
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -1008,7 +1413,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->certificate.len && options->private_key.len) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
+        AWS_LOGF_WARN(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
@@ -1023,14 +1428,39 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         /* Ensure that what we pass to s2n is zero-terminated */
+        // Hopefully we wont use this stuff for tLS handshake because we are registering a callback
+        // instead of using the key which s2n has, it will hopefully use this callback instead to do private key operations
         struct aws_string *certificate_string = aws_string_new_from_buf(alloc, &options->certificate);
         struct aws_string *private_key_string = aws_string_new_from_buf(alloc, &options->private_key);
-
+        AWS_LOGF_WARN(AWS_LS_IO_TLS, "ctx: PTK Certificate: %s.\n", (const char *)certificate_string->bytes);
+        AWS_LOGF_WARN(AWS_LS_IO_TLS, "ctx: PTK key: %s.\n", (const char *)private_key_string->bytes);
+        printf("PTK: %s\n", (const char *)private_key_string->bytes);
         int err_code = s2n_config_add_cert_chain_and_key(
             s2n_ctx->s2n_config, (const char *)certificate_string->bytes, (const char *)private_key_string->bytes);
-
+        printf("s2n add cert and key %d\n", err_code);
+        struct s2n_cert_chain_and_key *chain_and_key;
+        chain_and_key = s2n_cert_chain_and_key_new();
+        //Try the new API
+        s2n_cert_chain_and_key_load_public_pem_bytes(chain_and_key, options->certificate.buffer, options->certificate.len);
+        //s2n_cert_chain_and_key_load_pem(chain_and_key, (const char *)certificate_string->bytes, (const char *)private_key_string->bytes);
+        // This setup works, I have tested it standalone.
+        // all the pkcs11 functions work. May be there is some issue with actual decrypt/hash because s2n is not giving us
+        // the right data. Worst case it could happen that s2n gives you encrypted text which is not encrypted by corresponding
+        // public key.
+        pkcs11_setup(&session);
+        printf("pkcs11_setup\n");
+        // as part of the nucleus test case, I always put the new key inside the TPM before I call this fn.
+        pkcs11_find_key(session, pkcs11_rsa_key_label, sizeof(pkcs11_rsa_key_label)-1, &key_handle);
+        printf("pkcs11_find_key done!!\n");
+        s2n_cert_chain_and_key_set_ctx(chain_and_key, &key_handle);
+        printf("s2n_cert_chain_and_key_set_ctx done!! %p , %ld\n", (void *)chain_and_key,
+            key_handle);
         aws_string_destroy(certificate_string);
         aws_string_destroy_secure(private_key_string);
+
+           // call back for s2n to call our stuff for pkcs 11
+        s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, chain_and_key);
+        s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, async_pkey_callback);
 
         if (mode == S2N_CLIENT) {
             s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
@@ -1183,11 +1613,13 @@ cleanup_s2n_ctx:
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    printf("Called function is: %s\n",__func__);
     aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    printf("Called function is: %s\n",__func__);
     aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }

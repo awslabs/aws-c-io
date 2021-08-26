@@ -202,6 +202,7 @@ aws_use_package(aws-c-common)
 aws_use_package(aws-c-cal)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
+target_link_libraries(${PROJECT_NAME} PRIVATE "/usr/lib64/libsofthsm2.so")
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
