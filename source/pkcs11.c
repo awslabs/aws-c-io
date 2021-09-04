@@ -337,7 +337,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
             .flags = CKF_OS_LOCKING_OK,
         };
 
-        CK_RV rv = pkcs11_lib->function_list->C_Initialize(&init_args);
+        rv = pkcs11_lib->function_list->C_Initialize(&init_args);
         if (rv != CKR_OK) {
             s_raise_ck_error(pkcs11_lib, "C_Initialize", rv);
             goto except;
