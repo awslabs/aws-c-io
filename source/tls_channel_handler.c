@@ -51,12 +51,7 @@ int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
 
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
         goto error;
@@ -88,12 +83,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     const char *cert_path,
     const char *pkey_path) {
 
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
         goto error;
@@ -117,6 +107,17 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
+}
+
+int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
+
+    AWS_ZERO_STRUCT(*options);
+    (void)allocator;
+    (void)pkcs11_options;
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
 #    if defined(__APPLE__)
@@ -185,11 +186,8 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *pkcs12,
     struct aws_byte_cursor *pkcs_pwd) {
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12, allocator, *pkcs12)) {
         return AWS_OP_ERR;

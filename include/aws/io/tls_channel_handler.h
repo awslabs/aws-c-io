@@ -288,44 +288,56 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
  * Instructions for binding this to high-level languages:
  * - Python: The members of this struct should be the keyword args to the init-with-pkcs11 functions.
  * - JavaScript: This should be an options map passed to init-with-pkcs11 functions.
- * - Java: Don't expose this struct, create function overloads with common combinations.
+ * - Java: This should be an options class passed to init-with-pkcs11 functions.
  * - C++: Same as Java
  */
 struct aws_tls_ctx_pkcs11_options {
     /**
      * The PKCS#11 library to use.
+     * This field is required.
      */
     struct aws_pkcs11_lib *pkcs11_lib;
 
     /**
-     * ID of slot containing token.
+     * User PIN, for logging into the PKCS#11 token (UTF-8).
+     * Zero out to log into a token with a "protected authentication path".
      */
-    uint32_t slot_id;
+    struct aws_byte_cursor user_pin;
 
     /**
-     * PIN for logging into the token (UTF-8).
+     * ID of slot containing PKCS#11 token.
+     * If set to NULL, the token will be chosen based on other criteria
+     * (such as token label).
      */
-    struct aws_byte_cursor pin;
+    uint32_t *slot_id;
+
+    /**
+     * Label of PKCS#11 token to use.
+     * If zeroed out, the token will be chosen based on other criteria
+     * (such as slot ID).
+     */
+    struct aws_byte_cursor token_label;
+
+    /**
+     * Label of private key object on PKCS#11 token (UTF-8).
+     * If zeroed out, the private key will be chosen based on other criteria
+     * (such as being the only available private key on the token).
+     */
+    struct aws_byte_cursor private_key_object_label;
 
     /**
      * Certificate's file path on disk (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
-     * Set NULL if passing in certificate by some other means.
+     * Zero out if passing in certificate by some other means (such as file contents).
      */
-    struct aws_byte_cursor *cert_file_path;
+    struct aws_byte_cursor cert_file_path;
 
     /**
      * Certificate's file contents (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
-     * Set NULL if passing in certificate by some other means.
+     * Zero out if passing in certificate by some other means (such as file path).
      */
-    struct aws_byte_cursor *cert_file_contents;
-
-    /**
-     * Label of private key on token (UTF-8).
-     * Set NULL if the private key has no label.
-     */
-    struct aws_byte_cursor *pkey_pkcs11_label;
+    struct aws_byte_cursor cert_file_contents;
 };
 
 /**

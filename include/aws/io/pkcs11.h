@@ -19,7 +19,7 @@ struct aws_pkcs11_lib;
 struct aws_pkcs11_lib_options {
     /**
      * Name of PKCS#11 library file to load (UTF-8).
-     * Set to empty if your application is compiled with PKCS#11 symbols linked in.
+     * Zero out if your application is compiled with PKCS#11 symbols linked in.
      */
     struct aws_byte_cursor filename;
 

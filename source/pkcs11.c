@@ -280,7 +280,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
      * or NULL if going to search the current application for PKCS#11 symbols. */
     struct aws_string *filename_storage = NULL;
     const char *filename = NULL;
-    if (options->filename.len > 0) {
+    if (options->filename.ptr != NULL) {
         filename_storage = aws_string_new_from_cursor(allocator, &options->filename);
         filename = aws_string_c_str(filename_storage);
     }
