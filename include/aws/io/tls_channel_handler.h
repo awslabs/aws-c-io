@@ -191,6 +191,19 @@ struct aws_tls_ctx_options {
      * implementation.
      */
     void *ctx_options_extension;
+
+    /**
+     * Set if using PKCS#11 for private key operations.
+     * See aws_tls_ctx_pkcs11_options for more details.
+     */
+    struct {
+        struct aws_pkcs11_lib *lib;                  /* required */
+        struct aws_string *user_pin;                 /* optional */
+        struct aws_string *token_label;              /* optional */
+        struct aws_string *private_key_object_label; /* optional */
+        uint32_t slot_id;                            /* optional */
+        bool has_slot_id;
+    } pkcs11;
 };
 
 struct aws_tls_negotiated_protocol_message {
