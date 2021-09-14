@@ -703,8 +703,8 @@ static void s_event_thread_main(void *user_data) {
             }
         } else {
             /* If no completion entries were dequeued then the timeout should have triggered */
-            int win_last_err = GetLastError();
-            if (win_last_err != WAIT_TIMEOUT) {
+            int win_last_error = GetLastError();
+            if (win_last_error != WAIT_TIMEOUT) {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_EVENT_LOOP,
                     "id=%p: GetQueuedCompletionStatusEx() raised WIN32 error code %d."
