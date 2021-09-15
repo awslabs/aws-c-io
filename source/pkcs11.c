@@ -130,15 +130,43 @@ const char *s_ckr_str(CK_RV rv) {
     /* clang-format on */
 }
 
+/* Translate from a CK_RV to an AWS error code */
+static int s_ck_to_aws_error(CK_RV rv) {
+    /* For now, we just have one AWS error code for all PKCS#11 errors */
+    (void)rv;
+    return AWS_IO_PKCS11_ERROR;
+}
+
 /* Log the failure of a PKCS#11 function, and call aws_raise_error() with the appropriate AWS error code */
 static int s_raise_ck_error(const struct aws_pkcs11_lib *pkcs11_lib, const char *fn_name, CK_RV rv) {
-    /* For now, we just have one AWS error code for all PKCS#11 errors */
-    int aws_err = AWS_IO_PKCS11_ERROR;
+    int aws_err = s_ck_to_aws_error(rv);
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_PKCS11,
         "id=%p: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
         (void *)pkcs11_lib,
+        fn_name,
+        s_ckr_str(rv),
+        rv,
+        aws_error_name(aws_err));
+
+    return aws_raise_error(aws_err);
+}
+
+/* Log the failure of a PKCS#11 session-handle function and call aws_raise_error() with the appropriate error code */
+static int s_raise_ck_session_error(
+    const struct aws_pkcs11_lib *pkcs11_lib,
+    const char *fn_name,
+    CK_SESSION_HANDLE session,
+    CK_RV rv) {
+
+    int aws_err = s_ck_to_aws_error(rv);
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_PKCS11,
+        "id=%p session=%lu: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
+        (void *)pkcs11_lib,
+        session,
         fn_name,
         s_ckr_str(rv),
         rv,
@@ -397,4 +425,210 @@ void aws_pkcs11_lib_release(struct aws_pkcs11_lib *pkcs11_lib) {
     if (pkcs11_lib) {
         aws_ref_count_release(&pkcs11_lib->ref_count);
     }
+}
+
+/**
+ * Find the slot that meets all criteria:
+ * - has a token
+ * - if match_slot_id is true, then slot_id must match
+ * - if token_label is non-null, then labels must match
+ * The function fails unless it finds exactly one slot meeting all criteria.
+ */
+int aws_pkcs11_lib_find_slot_with_token(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    bool match_slot_id,
+    aws_pkcs11_t slot_id,
+    const struct aws_string *token_label,
+    aws_pkcs11_t *out_slot_id) {
+
+    CK_SLOT_ID *slot_id_array = NULL;
+    CK_SLOT_ID *candidate = NULL;
+    CK_TOKEN_INFO info;
+    bool success = false;
+
+    /* query number of slots with tokens */
+    CK_ULONG num_slots = 0;
+    CK_RV rv = pkcs11_lib->function_list->C_GetSlotList(CK_TRUE /*tokenPresent*/, NULL /*pSlotList*/, &num_slots);
+    if (rv != CKR_OK) {
+        s_raise_ck_error(pkcs11_lib, "C_GetSlotList", rv);
+        goto except;
+    }
+
+    if (num_slots == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p: No PKCS#11 tokens present in any slot.", (void *)pkcs11_lib);
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_PKCS11, "id=%p: Found %lu slots with tokens. Picking one...", (void *)pkcs11_lib, num_slots);
+
+    /* allocate space for slot IDs */
+    slot_id_array = aws_mem_calloc(pkcs11_lib->allocator, num_slots, sizeof(CK_SLOT_ID));
+
+    /* query all slot IDs */
+    rv = pkcs11_lib->function_list->C_GetSlotList(CK_TRUE /*tokenPresent*/, slot_id_array, &num_slots);
+    if (rv != CKR_OK) {
+        s_raise_ck_error(pkcs11_lib, "C_GetSlotList", rv);
+        goto except;
+    }
+
+    for (size_t i = 0; i < num_slots; ++i) {
+        CK_SLOT_ID slot_id_i = slot_id_array[i];
+
+        /* if specific slot_id requested, and this isn't it, then skip */
+        if (match_slot_id && (slot_id != slot_id_i)) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_PKCS11,
+                "id=%p: Ignoring PKCS#11 token because slot %lu isn't %lu",
+                (void *)pkcs11_lib,
+                slot_id_i,
+                slot_id);
+            continue;
+        }
+
+        /* query token info */
+        CK_TOKEN_INFO token_info_i;
+        rv = pkcs11_lib->function_list->C_GetTokenInfo(slot_id_i, &token_info_i);
+        if (rv != CKR_OK) {
+            s_raise_ck_error(pkcs11_lib, "C_GetTokenInfo", rv);
+            goto except;
+        }
+
+        /* if specific token_label requested, and this isn't it, then skip */
+        if (token_label != NULL) {
+            struct aws_byte_cursor label_i = s_trim_padding(token_info_i.label, sizeof(token_info_i.label));
+            if (aws_string_eq_byte_cursor(token_label, &label_i) == false) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_PKCS11,
+                    "id=%p: Ignoring PKCS#11 token in slot %lu because label '" PRInSTR "' isn't '%s'",
+                    (void *)pkcs11_lib,
+                    slot_id_i,
+                    AWS_BYTE_CURSOR_PRI(label_i),
+                    aws_string_c_str(token_label));
+                continue;
+            }
+        }
+
+        /* this slot is a candidate! */
+
+        /* be sure there's only one candidate */
+        if (candidate != NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "id=%p: Failed to choose PKCS#11 token, multiple tokens match search criteria",
+                (void *)pkcs11_lib);
+            aws_raise_error(AWS_IO_PKCS11_ERROR);
+            goto except;
+        }
+
+        /* the new candidate! */
+        candidate = &slot_id_array[i];
+        memcpy(&info, &token_info_i, sizeof(CK_TOKEN_INFO));
+    }
+
+    if (candidate == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11, "id=%p: Failed to find PKCS#11 token which matches search criteria", (void *)pkcs11_lib);
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+
+    /* success! */
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_PKCS11,
+        "id=%p: Selected PKCS#11 token. slot:%lu label:'" PRInSTR "' manufacturerID:'" PRInSTR "' model:'" PRInSTR
+        "' serialNumber:'" PRInSTR "' flags:0x%08lX sessionCount:%lu/%lu rwSessionCount:%lu/%lu publicMemory:%lu/%lu"
+        " privateMemory:%lu/%lu hardwareVersion:%" PRIu8 ".%" PRIu8 " firmwareVersion:%" PRIu8 ".%" PRIu8,
+        (void *)pkcs11_lib,
+        *candidate,
+        AWS_BYTE_CURSOR_PRI(s_trim_padding(info.label, sizeof(info.label))),
+        AWS_BYTE_CURSOR_PRI(s_trim_padding(info.manufacturerID, sizeof(info.manufacturerID))),
+        AWS_BYTE_CURSOR_PRI(s_trim_padding(info.model, sizeof(info.model))),
+        AWS_BYTE_CURSOR_PRI(s_trim_padding(info.serialNumber, sizeof(info.serialNumber))),
+        info.flags,
+        info.ulSessionCount,
+        info.ulMaxSessionCount,
+        info.ulRwSessionCount,
+        info.ulMaxRwSessionCount,
+        info.ulFreePublicMemory,
+        info.ulTotalPublicMemory,
+        info.ulFreePrivateMemory,
+        info.ulTotalPrivateMemory,
+        info.hardwareVersion.major,
+        info.hardwareVersion.minor,
+        info.firmwareVersion.major,
+        info.firmwareVersion.minor);
+
+    *out_slot_id = *candidate;
+    success = true;
+    goto finally;
+
+except:
+finally:
+    aws_mem_release(pkcs11_lib->allocator, slot_id_array);
+    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
+int aws_pkcs11_lib_open_session(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    aws_pkcs11_t slot_id,
+    aws_pkcs11_t *out_session_handle) {
+
+    CK_RV rv = pkcs11_lib->function_list->C_OpenSession(
+        slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, out_session_handle);
+    if (rv != CKR_OK) {
+        return s_raise_ck_error(pkcs11_lib, "C_OpenSession", rv);
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_PKCS11,
+        "id=%p session=%lu: Session opened on slot %lu",
+        (void *)pkcs11_lib,
+        *out_session_handle,
+        slot_id);
+
+    return AWS_OP_SUCCESS;
+}
+
+void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, aws_pkcs11_t session_handle) {
+    CK_RV rv = pkcs11_lib->function_list->C_CloseSession(session_handle);
+    if (rv == CKR_OK) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: Session closed", (void *)pkcs11_lib, session_handle);
+    } else {
+        /* Log the error, but we can't really do anything about it */
+        AWS_LOGF_WARN(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Ignoring C_CloseSession() failure. PKCS#11 error: %s (0x%08lX).",
+            (void *)pkcs11_lib,
+            session_handle,
+            s_ckr_str(rv),
+            rv);
+    }
+}
+
+int aws_pkcs11_lib_login_user(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    aws_pkcs11_t session_handle,
+    const struct aws_string *optional_user_pin) {
+
+    CK_UTF8CHAR_PTR pin = NULL;
+    CK_ULONG pin_len = 0;
+    if (optional_user_pin) {
+        if (optional_user_pin->len > ULONG_MAX) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: PIN is too long.", (void *)pkcs11_lib, session_handle);
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+        pin = (CK_UTF8CHAR_PTR)optional_user_pin->bytes;
+        pin_len = optional_user_pin->len;
+    }
+
+    CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
+    if (rv != CKR_OK) {
+        return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
+    }
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+
+    return AWS_OP_SUCCESS;
 }
