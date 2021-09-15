@@ -78,7 +78,8 @@ struct s2n_ctx {
     struct {
         struct aws_pkcs11_lib *lib;
         struct aws_mutex session_lock;
-        unsigned long session_handle;
+        aws_pkcs11_t session_handle;
+        aws_pkcs11_t private_key_object_handle;
     } pkcs11;
 };
 
@@ -916,6 +917,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
+        if (s2n_ctx->pkcs11.session_handle != 0) {
+            aws_pkcs11_lib_close_session(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle);
+        }
         aws_mutex_clean_up(&s2n_ctx->pkcs11.session_lock);
         aws_pkcs11_lib_release(s2n_ctx->pkcs11.lib);
         s2n_config_free(s2n_ctx->s2n_config);
@@ -947,11 +951,11 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, struct aws_tls_ctx_op
     s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib);
     aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
 
+    aws_pkcs11_t match_slot_id = options->pkcs11.slot_id;
     aws_pkcs11_t slot_id;
     if (aws_pkcs11_lib_find_slot_with_token(
             s2n_ctx->pkcs11.lib,
-            options->pkcs11.has_slot_id,
-            options->pkcs11.slot_id,
+            options->pkcs11.has_slot_id ? &match_slot_id : NULL,
             options->pkcs11.token_label,
             &slot_id /*out*/)) {
         return AWS_OP_ERR;
@@ -962,6 +966,14 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, struct aws_tls_ctx_op
     }
 
     if (aws_pkcs11_lib_login_user(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle, options->pkcs11.user_pin)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_pkcs11_lib_find_private_key(
+            s2n_ctx->pkcs11.lib,
+            s2n_ctx->pkcs11.session_handle,
+            options->pkcs11.private_key_object_label,
+            &s2n_ctx->pkcs11.private_key_object_handle /*out*/)) {
         return AWS_OP_ERR;
     }
 

@@ -430,15 +430,14 @@ void aws_pkcs11_lib_release(struct aws_pkcs11_lib *pkcs11_lib) {
 /**
  * Find the slot that meets all criteria:
  * - has a token
- * - if match_slot_id is true, then slot_id must match
- * - if token_label is non-null, then labels must match
+ * - if match_slot_id is non-null, then slot IDs must match
+ * - if match_token_label is non-null, then labels must match
  * The function fails unless it finds exactly one slot meeting all criteria.
  */
 int aws_pkcs11_lib_find_slot_with_token(
     struct aws_pkcs11_lib *pkcs11_lib,
-    bool match_slot_id,
-    aws_pkcs11_t slot_id,
-    const struct aws_string *token_label,
+    const aws_pkcs11_t *match_slot_id,
+    const struct aws_string *match_token_label,
     aws_pkcs11_t *out_slot_id) {
 
     CK_SLOT_ID *slot_id_array = NULL;
@@ -477,13 +476,13 @@ int aws_pkcs11_lib_find_slot_with_token(
         CK_SLOT_ID slot_id_i = slot_id_array[i];
 
         /* if specific slot_id requested, and this isn't it, then skip */
-        if (match_slot_id && (slot_id != slot_id_i)) {
+        if ((match_slot_id != NULL) && (*match_slot_id != slot_id_i)) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_PKCS11,
                 "id=%p: Ignoring PKCS#11 token because slot %lu isn't %lu",
                 (void *)pkcs11_lib,
                 slot_id_i,
-                slot_id);
+                *match_slot_id);
             continue;
         }
 
@@ -495,17 +494,17 @@ int aws_pkcs11_lib_find_slot_with_token(
             goto except;
         }
 
-        /* if specific token_label requested, and this isn't it, then skip */
-        if (token_label != NULL) {
+        /* if specific token label requested, and this isn't it, then skip */
+        if (match_token_label != NULL) {
             struct aws_byte_cursor label_i = s_trim_padding(token_info_i.label, sizeof(token_info_i.label));
-            if (aws_string_eq_byte_cursor(token_label, &label_i) == false) {
+            if (aws_string_eq_byte_cursor(match_token_label, &label_i) == false) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_PKCS11,
                     "id=%p: Ignoring PKCS#11 token in slot %lu because label '" PRInSTR "' isn't '%s'",
                     (void *)pkcs11_lib,
                     slot_id_i,
                     AWS_BYTE_CURSOR_PRI(label_i),
-                    aws_string_c_str(token_label));
+                    aws_string_c_str(match_token_label));
                 continue;
             }
         }
@@ -575,12 +574,14 @@ int aws_pkcs11_lib_open_session(
     aws_pkcs11_t slot_id,
     aws_pkcs11_t *out_session_handle) {
 
+    CK_SESSION_HANDLE session_handle;
     CK_RV rv = pkcs11_lib->function_list->C_OpenSession(
-        slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, out_session_handle);
+        slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, &session_handle);
     if (rv != CKR_OK) {
         return s_raise_ck_error(pkcs11_lib, "C_OpenSession", rv);
     }
 
+    /* success! */
     AWS_LOGF_DEBUG(
         AWS_LS_IO_PKCS11,
         "id=%p session=%lu: Session opened on slot %lu",
@@ -588,6 +589,7 @@ int aws_pkcs11_lib_open_session(
         *out_session_handle,
         slot_id);
 
+    *out_session_handle = session_handle;
     return AWS_OP_SUCCESS;
 }
 
@@ -628,7 +630,111 @@ int aws_pkcs11_lib_login_user(
         return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
     }
 
+    /* Success! */
     AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
-
     return AWS_OP_SUCCESS;
+}
+
+/**
+ * Find the object that meets all criteria:
+ * - is private key
+ * - if match_label is non-null, then labels must match
+ * The function fails unless it finds exactly one object meeting all criteria.
+ */
+int aws_pkcs11_lib_find_private_key(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    aws_pkcs11_t session_handle,
+    const struct aws_string *match_label,
+    aws_pkcs11_t *out_key_object_handle) {
+
+    bool success = false;
+
+    /* whether C_FindObjectsFinal() must be run */
+    bool must_finalize_search = false;
+
+    /* set up search attributes */
+    CK_OBJECT_CLASS key_class = CKO_PRIVATE_KEY;
+    CK_ULONG num_attributes = 1;
+    CK_ATTRIBUTE attributes[2] = {
+        {
+            .type = CKA_CLASS,
+            .pValue = &key_class,
+            .ulValueLen = sizeof(key_class),
+        },
+    };
+
+    if (match_label != NULL) {
+        if (match_label->len > ULONG_MAX) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "id=%p session=%lu: private key label is too long.",
+                (void *)pkcs11_lib,
+                session_handle);
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto except;
+        }
+
+        CK_ATTRIBUTE *attr = &attributes[num_attributes++];
+        attr->type = CKA_LABEL;
+        attr->pValue = (void *)match_label->bytes;
+        attr->ulValueLen = (CK_ULONG)match_label->len;
+    }
+
+    /* initialize search */
+    CK_RV rv = pkcs11_lib->function_list->C_FindObjectsInit(session_handle, attributes, num_attributes);
+    if (rv != CKR_OK) {
+        s_raise_ck_session_error(pkcs11_lib, "C_FindObjectsInit", session_handle, rv);
+        goto except;
+    }
+
+    must_finalize_search = true;
+
+    /* get search results.
+     * note that we're asking for 2 objects max, so we can fail if we find more than one */
+    CK_OBJECT_HANDLE found_objects[2];
+    CK_ULONG num_found = 0;
+    rv = pkcs11_lib->function_list->C_FindObjects(session_handle, found_objects, 2 /*max*/, &num_found);
+    if (rv != CKR_OK) {
+        s_raise_ck_session_error(pkcs11_lib, "C_FindObjects", session_handle, rv);
+        goto except;
+    }
+
+    if (num_found == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: No private keys found on PKCS#11 token.",
+            (void *)pkcs11_lib,
+            session_handle);
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+    if (num_found > 1) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Failed to choose private key, multiple objects on PKCS#11 token match search criteria.",
+            (void *)pkcs11_lib,
+            session_handle);
+        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        goto except;
+    }
+
+    /* Success! */
+    AWS_LOGF_TRACE(AWS_LS_IO_PKCS11, "id=%p session=%lu: Found private key.", (void *)pkcs11_lib, session_handle);
+    *out_key_object_handle = found_objects[0];
+    success = true;
+    goto finally;
+
+except:
+finally:
+
+    if (must_finalize_search) {
+        rv = pkcs11_lib->function_list->C_FindObjectsFinal(session_handle);
+        /* don't bother reporting error if we were already failing */
+        if ((rv != CKR_OK) && (success == true)) {
+            s_raise_ck_session_error(pkcs11_lib, "C_FindObjectsFinal", session_handle, rv);
+            success = false;
+        }
+    }
+
+    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
