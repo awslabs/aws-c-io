@@ -298,11 +298,7 @@ static int s_cert_context_import_rsa_private_key(
         if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
             int last_error = GetLastError();
             aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptAcquireContextW()", last_error);
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new rsa crypto context for key %s with errno code %d",
-                uuid_str,
-                last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
