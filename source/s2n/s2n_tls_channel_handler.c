@@ -69,14 +69,15 @@ struct s2n_ctx {
     /* Use a single PKCS#11 session for all TLS connections on this s2n_ctx.
      * We do this because PKCS#11 tokens may only support a
      * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
-     * If this one shared session turns out to be a severe bottleneck, we could
-     * look into other setups (ex: 1 session per event-loop,
+     * If this one shared session turns out to be a severe bottleneck,
+     * we could look into other setups (ex: 1 session per event-loop,
      * 1 session per connection, etc).
      *
      * The lock must be held while performing session operations.
-     * Otherwise, it would not be safe for multiple threads to share a session
-     * (PKCS11-UG-v2.40 section 2.6.7). The lock isn't for setup and teardown
-     * though, since we ensure nothing parallel is going on at these times */
+     * Otherwise, it would not be safe for multiple threads to share a
+     * session (PKCS11-UG-v2.40 section 2.6.7). The lock isn't needed for
+     * setup and teardown though, since we ensure nothing parallel is going
+     * on at these times */
     struct {
         struct aws_pkcs11_lib *lib;
         struct aws_mutex session_lock;

@@ -618,8 +618,8 @@ int aws_pkcs11_lib_login_user(
             AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: PIN is too long.", (void *)pkcs11_lib, session_handle);
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         }
+        pin_len = (CK_ULONG)optional_user_pin->len;
         pin = (CK_UTF8CHAR_PTR)optional_user_pin->bytes;
-        pin_len = optional_user_pin->len;
     }
 
     CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
