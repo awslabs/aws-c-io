@@ -2,7 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 
 #include "darwin_error_message.h"
 #include <aws/common/mutex.h>

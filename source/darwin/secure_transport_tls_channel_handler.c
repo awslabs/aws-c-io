@@ -7,7 +7,7 @@
 #include "darwin_error_message.h"
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
