@@ -15,11 +15,11 @@ struct aws_string;
  * accessed from multiple .c files.
  */
 
-AWS_EXTERN_C_BEGIN
-
 /* aws_pkcs11_t: equivalent to CK_SLOT_ID / CK_SESSION_HANDLE / CK_OBJECT_HANDLE.
  * including PKCS#11 headers is weird, so outside of pkcs11.c we'll just use this typedef instead */
 typedef unsigned long aws_pkcs11_t;
+
+AWS_EXTERN_C_BEGIN
 
 /**
  * Find the slot that meets all criteria:

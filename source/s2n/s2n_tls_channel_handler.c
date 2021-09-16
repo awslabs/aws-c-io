@@ -5,11 +5,13 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/mutex.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/pkcs11_private.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
@@ -947,7 +949,7 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
     return 0;
 }
 
-static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, struct aws_tls_ctx_options *options) {
+static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_ctx_options *options) {
     /* anything initialized in this function is cleaned up during s_s2n_ctx_destroy()
      * so don't worry about cleaning up unless it's some tmp heap allocation */
 
@@ -984,7 +986,8 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, struct aws_tls_ctx_op
 }
 
 static void s_log_and_raise_s2n_errno(const char *msg) {
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "%s: %s (%s)", msg, s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno));
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS, "%s: %s (%s)", msg, s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
     aws_raise_error(AWS_IO_TLS_CTX_ERROR);
 }
 
@@ -1113,11 +1116,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         if (s_tls_ctx_pkcs11_setup(s2n_ctx, options)) {
             goto cleanup_s2n_config;
         }
+
         /* set callback so that we can do private key operations through PKCS#11 */
-        if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_pkcs11_async_pkey_callback)) {
+        /* TODO: if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_pkcs11_async_pkey_callback)) {
             s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
             goto cleanup_s2n_config;
         }
+        */
 
         /* set certificate.
          * lifetime note: s2n_config eventually takes ownership of chain_and_key,
