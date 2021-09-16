@@ -479,7 +479,7 @@ int aws_pkcs11_lib_find_slot_with_token(
         if ((match_slot_id != NULL) && (*match_slot_id != slot_id_i)) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_PKCS11,
-                "id=%p: Ignoring PKCS#11 token because slot %lu isn't %lu",
+                "id=%p: Ignoring PKCS#11 token because slot %lu doesn't match %lu",
                 (void *)pkcs11_lib,
                 slot_id_i,
                 *match_slot_id);
@@ -500,7 +500,7 @@ int aws_pkcs11_lib_find_slot_with_token(
             if (aws_string_eq_byte_cursor(match_token_label, &label_i) == false) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_PKCS11,
-                    "id=%p: Ignoring PKCS#11 token in slot %lu because label '" PRInSTR "' isn't '%s'",
+                    "id=%p: Ignoring PKCS#11 token in slot %lu because label '" PRInSTR "' doesn't match '%s'",
                     (void *)pkcs11_lib,
                     slot_id_i,
                     AWS_BYTE_CURSOR_PRI(label_i),
@@ -537,8 +537,9 @@ int aws_pkcs11_lib_find_slot_with_token(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_PKCS11,
         "id=%p: Selected PKCS#11 token. slot:%lu label:'" PRInSTR "' manufacturerID:'" PRInSTR "' model:'" PRInSTR
-        "' serialNumber:'" PRInSTR "' flags:0x%08lX sessionCount:%lu/%lu rwSessionCount:%lu/%lu publicMemory:%lu/%lu"
-        " privateMemory:%lu/%lu hardwareVersion:%" PRIu8 ".%" PRIu8 " firmwareVersion:%" PRIu8 ".%" PRIu8,
+        "' serialNumber:'" PRInSTR "' flags:0x%08lX sessionCount:%lu/%lu rwSessionCount:%lu/%lu"
+        " freePublicMemory:%lu/%lu freePrivateMemory:%lu/%lu"
+        " hardwareVersion:%" PRIu8 ".%" PRIu8 " firmwareVersion:%" PRIu8 ".%" PRIu8,
         (void *)pkcs11_lib,
         *candidate,
         AWS_BYTE_CURSOR_PRI(s_trim_padding(info.label, sizeof(info.label))),
@@ -583,11 +584,7 @@ int aws_pkcs11_lib_open_session(
 
     /* success! */
     AWS_LOGF_DEBUG(
-        AWS_LS_IO_PKCS11,
-        "id=%p session=%lu: Session opened on slot %lu",
-        (void *)pkcs11_lib,
-        *out_session_handle,
-        slot_id);
+        AWS_LS_IO_PKCS11, "id=%p session=%lu: Session opened on slot %lu", (void *)pkcs11_lib, session_handle, slot_id);
 
     *out_session_handle = session_handle;
     return AWS_OP_SUCCESS;
@@ -699,10 +696,10 @@ int aws_pkcs11_lib_find_private_key(
         goto except;
     }
 
-    if (num_found == 0) {
+    if ((num_found == 0) || (found_objects[0] == CK_INVALID_HANDLE)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11,
-            "id=%p session=%lu: No private keys found on PKCS#11 token.",
+            "id=%p session=%lu: Failed to find private key on PKCS#11 token which matches search criteria.",
             (void *)pkcs11_lib,
             session_handle);
         aws_raise_error(AWS_IO_PKCS11_ERROR);
