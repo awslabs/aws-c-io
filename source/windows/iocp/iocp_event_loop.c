@@ -205,7 +205,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         1);                   /* NumberOfConcurrentThreads */
     if (impl->iocp_handle == NULL) {
         int last_error = GetLastError();
-        aws_win_log_message(AWS_LL_FATAL, AWS_LS_IO_EVENT_LOOP, "CreateIoCompletionPort()", last_error);
         AWS_LOGF_FATAL(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIOCompletionPort failed with error %d",
@@ -537,7 +536,6 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
 
     if (!iocp_associated) {
         int last_error = GetLastError();
-        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_EVENT_LOOP, "CreateIoCompletionPort()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d",

@@ -9,7 +9,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <aws/io/logging.h>
 
-void aws_darwin_log_message(
+void aws_log_security_osstatus(
     enum aws_log_level log_level,
     aws_log_subject_t subject,
     const char *function_name,

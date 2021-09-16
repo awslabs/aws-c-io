@@ -93,7 +93,7 @@ static void s_on_standard_retry_token_acquired(
         AWS_LS_IO_STANDARD_RETRY_STRATEGY,
         "id=%p: token acquired callback invoked with error %s with token %p and nested token %p",
         (void *)retry_token->retry_token.retry_strategy,
-        aws_error_str(error_code),
+        aws_error_name(error_code),
         (void *)&retry_token->retry_token,
         (void *)token);
 
@@ -282,7 +282,7 @@ void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int
         AWS_LS_IO_STANDARD_RETRY_STRATEGY,
         "id=%p: invoking on_retry_ready callback with error %s, token %p, and nested token %p",
         (void *)token->retry_strategy,
-        aws_error_str(error_code),
+        aws_error_name(error_code),
         (void *)standard_retry_token,
         (void *)token);
     struct aws_retry_strategy *retry_strategy = token->retry_strategy;
