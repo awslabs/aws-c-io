@@ -1175,7 +1175,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 if (s2n_config_set_verification_ca_location(
                         s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
                     s_log_and_raise_s2n_errno("ctx: configuration error");
-
                     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
                     goto cleanup_s2n_config;
                 }
@@ -1232,8 +1231,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
         if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
-            AWS_LOGF_ERROR(AWS_IO_TLS_CTX_ERROR, "ctx: Failed to parse ALPN list");
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: Failed to parse ALPN list");
             goto cleanup_s2n_config;
         }
 
