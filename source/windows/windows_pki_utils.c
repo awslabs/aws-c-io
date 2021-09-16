@@ -320,10 +320,7 @@ static int s_cert_context_import_rsa_private_key(
             int last_error = GetLastError();
             aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertSetCertificateContextProperty()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new certificate context for key %s with error code %d",
-                uuid_str,
-                last_error);
+                AWS_LS_IO_PKI, "static: error creating a new certificate context for key with errno %d", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
