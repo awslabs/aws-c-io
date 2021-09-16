@@ -120,13 +120,16 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
 
-    aws_tls_ctx_options_init_default_client(options, allocator);
-
 #    if defined(_WIN32) || defined(__APPLE__)
+    (void)options;
+    (void)allocator;
+    (void)pkcs11_options;
+    AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
-    aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-    goto error;
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 #    else
+
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     /* pkcs11_lib is required */
     if (pkcs11_options->pkcs11_lib == NULL) {
@@ -188,10 +191,11 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
     /* Success! */
     return AWS_OP_SUCCESS;
-#    endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
+
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
+#    endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
 }
 
 #    if defined(__APPLE__)
