@@ -498,10 +498,7 @@ static int s_cert_context_import_ecc_private_key(
         int last_error = GetLastError();
         aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertSetCertificateContextProperty()", last_error);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to set cert context key provider, key %s, with last error code %d",
-            uuid_str,
-            last_error);
+            AWS_LS_IO_PKI, "static: failed to set cert context key provider, with last error %d", last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
