@@ -377,6 +377,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
     /* Get info about the library and log it.
      * This will be VERY useful for diagnosing user issues. */
     CK_INFO info;
+    AWS_ZERO_STRUCT(info);
     rv = pkcs11_lib->function_list->C_GetInfo(&info);
     if (rv != CKR_OK) {
         s_raise_ck_error(pkcs11_lib, "C_GetInfo", rv);
@@ -443,6 +444,7 @@ int aws_pkcs11_lib_find_slot_with_token(
     CK_SLOT_ID *slot_id_array = NULL;
     CK_SLOT_ID *candidate = NULL;
     CK_TOKEN_INFO info;
+    AWS_ZERO_STRUCT(info);
     bool success = false;
 
     /* query number of slots with tokens */
@@ -488,6 +490,7 @@ int aws_pkcs11_lib_find_slot_with_token(
 
         /* query token info */
         CK_TOKEN_INFO token_info_i;
+        AWS_ZERO_STRUCT(token_info_i);
         rv = pkcs11_lib->function_list->C_GetTokenInfo(slot_id_i, &token_info_i);
         if (rv != CKR_OK) {
             s_raise_ck_error(pkcs11_lib, "C_GetTokenInfo", rv);
@@ -644,9 +647,11 @@ int aws_pkcs11_lib_find_private_key(
     const struct aws_string *match_label,
     unsigned long *out_key_object_handle) {
 
+    /* gets set true after everything succeeds */
     bool success = false;
 
-    /* whether C_FindObjectsFinal() must be run */
+    /* gets set true after search initialized.
+     * indicates that C_FindObjectsFinal() must be run before function ends */
     bool must_finalize_search = false;
 
     /* set up search attributes */
@@ -688,7 +693,7 @@ int aws_pkcs11_lib_find_private_key(
 
     /* get search results.
      * note that we're asking for 2 objects max, so we can fail if we find more than one */
-    CK_OBJECT_HANDLE found_objects[2];
+    CK_OBJECT_HANDLE found_objects[2] = {0};
     CK_ULONG num_found = 0;
     rv = pkcs11_lib->function_list->C_FindObjects(session_handle, found_objects, 2 /*max*/, &num_found);
     if (rv != CKR_OK) {

@@ -137,7 +137,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
-    options->pkcs11.lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib);
+    options->pkcs11.lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib); /* cannot fail */
 
     /* user_pin is optional */
     if (pkcs11_options->user_pin.ptr != NULL) {
