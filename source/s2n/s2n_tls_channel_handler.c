@@ -951,10 +951,12 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
 }
 
 static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_ctx_options *options) {
+    /* PKCS#11 options were already sanitized (ie: check for required args) in tls_channel_handler.c */
+
     /* anything initialized in this function is cleaned up during s_s2n_ctx_destroy()
      * so don't worry about cleaning up unless it's some tmp heap allocation */
 
-    s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib);
+    s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib); /* cannot fail */
     aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
 
     aws_pkcs11_t match_slot_id = options->pkcs11.slot_id;

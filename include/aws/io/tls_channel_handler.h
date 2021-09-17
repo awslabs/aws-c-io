@@ -198,7 +198,7 @@ struct aws_tls_ctx_options {
      */
     struct {
         struct aws_pkcs11_lib *lib;                  /* required */
-        struct aws_string *user_pin;                 /* optional */
+        struct aws_string *user_pin;                 /* NULL if token uses "protected authentication path" */
         struct aws_string *token_label;              /* optional */
         struct aws_string *private_key_object_label; /* optional */
         uint32_t slot_id;                            /* optional */

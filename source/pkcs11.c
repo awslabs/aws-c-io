@@ -647,9 +647,11 @@ int aws_pkcs11_lib_find_private_key(
     const struct aws_string *match_label,
     aws_pkcs11_t *out_key_object_handle) {
 
+    /* gets set true after everything succeeds */
     bool success = false;
 
-    /* whether C_FindObjectsFinal() must be run */
+    /* gets set true after search initialized.
+     * indicates that C_FindObjectsFinal() must be run before function ends */
     bool must_finalize_search = false;
 
     /* set up search attributes */
