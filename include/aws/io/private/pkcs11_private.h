@@ -15,10 +15,6 @@ struct aws_string;
  * accessed from multiple .c files.
  */
 
-/* aws_pkcs11_t: equivalent to CK_SLOT_ID / CK_SESSION_HANDLE / CK_OBJECT_HANDLE.
- * including PKCS#11 headers is weird, so outside of pkcs11.c we'll just use this typedef instead */
-typedef unsigned long aws_pkcs11_t;
-
 AWS_EXTERN_C_BEGIN
 
 /**
@@ -31,23 +27,23 @@ AWS_EXTERN_C_BEGIN
 AWS_IO_API
 int aws_pkcs11_lib_find_slot_with_token(
     struct aws_pkcs11_lib *pkcs11_lib,
-    const aws_pkcs11_t *match_slot_id,
+    const unsigned long *match_slot_id,
     const struct aws_string *match_token_label,
-    aws_pkcs11_t *out_slot_id);
+    unsigned long *out_slot_id);
 
 AWS_IO_API
 int aws_pkcs11_lib_open_session(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t slot_id,
-    aws_pkcs11_t *out_session_handle);
+    unsigned long slot_id,
+    unsigned long *out_session_handle);
 
 AWS_IO_API
-void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, aws_pkcs11_t session_handle);
+void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, unsigned long session_handle);
 
 AWS_IO_API
 int aws_pkcs11_lib_login_user(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t session_handle,
+    unsigned long session_handle,
     const struct aws_string *optional_user_pin);
 
 /**
@@ -59,9 +55,9 @@ int aws_pkcs11_lib_login_user(
 AWS_IO_API
 int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t session_handle,
+    unsigned long session_handle,
     const struct aws_string *match_label,
-    aws_pkcs11_t *out_key_object_handle);
+    unsigned long *out_key_object_handle);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

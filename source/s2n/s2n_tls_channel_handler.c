@@ -70,8 +70,8 @@ struct s2n_ctx {
      * We do this because PKCS#11 tokens may only support a
      * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
      * If this one shared session turns out to be a severe bottleneck,
-     * we could look into other setups (ex: 1 session per event-loop,
-     * 1 session per connection, etc).
+     * we could look into other setups (ex: put session on its own thread,
+     * 1 session per event-loop, 1 session per connection, etc).
      *
      * The lock must be held while performing session operations.
      * Otherwise, it would not be safe for multiple threads to share a
@@ -81,8 +81,8 @@ struct s2n_ctx {
     struct {
         struct aws_pkcs11_lib *lib;
         struct aws_mutex session_lock;
-        aws_pkcs11_t session_handle;
-        aws_pkcs11_t private_key_object_handle;
+        unsigned long session_handle;
+        unsigned long private_key_object_handle;
     } pkcs11;
 };
 
@@ -957,8 +957,8 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_
     s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib);
     aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
 
-    aws_pkcs11_t match_slot_id = options->pkcs11.slot_id;
-    aws_pkcs11_t slot_id;
+    unsigned long match_slot_id = options->pkcs11.slot_id;
+    unsigned long slot_id;
     if (aws_pkcs11_lib_find_slot_with_token(
             s2n_ctx->pkcs11.lib,
             options->pkcs11.has_slot_id ? &match_slot_id : NULL,

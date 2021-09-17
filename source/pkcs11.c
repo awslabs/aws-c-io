@@ -436,9 +436,9 @@ void aws_pkcs11_lib_release(struct aws_pkcs11_lib *pkcs11_lib) {
  */
 int aws_pkcs11_lib_find_slot_with_token(
     struct aws_pkcs11_lib *pkcs11_lib,
-    const aws_pkcs11_t *match_slot_id,
+    const unsigned long *match_slot_id,
     const struct aws_string *match_token_label,
-    aws_pkcs11_t *out_slot_id) {
+    unsigned long *out_slot_id) {
 
     CK_SLOT_ID *slot_id_array = NULL;
     CK_SLOT_ID *candidate = NULL;
@@ -572,8 +572,8 @@ finally:
 
 int aws_pkcs11_lib_open_session(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t slot_id,
-    aws_pkcs11_t *out_session_handle) {
+    unsigned long slot_id,
+    unsigned long *out_session_handle) {
 
     CK_SESSION_HANDLE session_handle;
     CK_RV rv = pkcs11_lib->function_list->C_OpenSession(
@@ -590,7 +590,7 @@ int aws_pkcs11_lib_open_session(
     return AWS_OP_SUCCESS;
 }
 
-void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, aws_pkcs11_t session_handle) {
+void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, unsigned long session_handle) {
     CK_RV rv = pkcs11_lib->function_list->C_CloseSession(session_handle);
     if (rv == CKR_OK) {
         AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: Session closed", (void *)pkcs11_lib, session_handle);
@@ -608,7 +608,7 @@ void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, aws_pkcs11_
 
 int aws_pkcs11_lib_login_user(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t session_handle,
+    unsigned long session_handle,
     const struct aws_string *optional_user_pin) {
 
     CK_UTF8CHAR_PTR pin = NULL;
@@ -640,9 +640,9 @@ int aws_pkcs11_lib_login_user(
  */
 int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
-    aws_pkcs11_t session_handle,
+    unsigned long session_handle,
     const struct aws_string *match_label,
-    aws_pkcs11_t *out_key_object_handle) {
+    unsigned long *out_key_object_handle) {
 
     bool success = false;
 

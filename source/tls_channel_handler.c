@@ -146,7 +146,12 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
     /* slot_id is optional */
     if (pkcs11_options->slot_id != NULL) {
-        options->pkcs11.slot_id = *pkcs11_options->slot_id;
+        if (pkcs11_options->slot_id > ULONG_MAX) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: PKCS#11 slot ID is too large.");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto error;
+        }
+        options->pkcs11.slot_id = (unsigned long)*pkcs11_options->slot_id;
         options->pkcs11.has_slot_id = true;
     }
 
