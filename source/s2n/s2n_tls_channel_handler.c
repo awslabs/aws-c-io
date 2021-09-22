@@ -61,6 +61,7 @@ struct s2n_handler {
     bool advertise_alpn_message;
     bool negotiation_finished;
     struct s2n_delayed_shutdown_task delayed_shutdown_task;
+    struct aws_channel_task async_pkey_task;
 };
 
 struct s2n_ctx {
@@ -559,6 +560,138 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
         false);
 }
 
+static int s_s2n_pkcs11_decrypt(
+    struct s2n_handler *s2n_handler,
+    struct aws_byte_cursor input,
+    struct aws_byte_buf *output) {
+    (void)s2n_handler;
+    (void)input;
+    (void)output;
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static int s_s2n_pkcs11_sign(
+    struct s2n_handler *s2n_handler,
+    struct aws_byte_cursor input,
+    struct aws_byte_buf *output) {
+    (void)s2n_handler;
+    (void)input;
+    (void)output;
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static void s_s2n_pkcs11_async_pkey_task(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
+
+    struct s2n_handler *s2n_handler = AWS_CONTAINER_OF(channel_task, struct s2n_handler, async_pkey_task);
+    struct aws_channel_handler *handler = &s2n_handler->handler;
+    struct s2n_async_pkey_op *op = arg;
+    uint8_t *input_data = NULL;
+    struct aws_byte_buf output_buf;
+    AWS_ZERO_STRUCT(output_buf);
+    bool success = false;
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        goto clean_up;
+    }
+
+    // TODO: ensure connection/channel is still ok
+
+    // TODO: log probably impossibe s2n errors
+
+    uint32_t input_size;
+    if (s2n_async_pkey_op_get_input_size(op, &input_size)) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    input_data = aws_mem_acquire(handler->alloc, input_size);
+    if (s2n_async_pkey_op_get_input(op, input_data, input_size)) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_array(input_data, input_size);
+
+    s2n_async_pkey_op_type op_type;
+    if (s2n_async_pkey_op_get_op_type(op, &op_type)) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    switch (op_type) {
+        case S2N_ASYNC_DECRYPT:
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Performing async SIGN operation via PKCS#11. input-size:%" PRIu32,
+                (void *)handler,
+                input_size);
+            if (s_s2n_pkcs11_decrypt(s2n_handler, input_cursor, &output_buf)) {
+                goto error;
+            }
+            break;
+
+        case S2N_ASYNC_SIGN:
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Performing async DECRYPT operation via PKCS#11. input-size:%" PRIu32,
+                (void *)handler,
+                input_size);
+            if (s_s2n_pkcs11_sign(s2n_handler, input_cursor, &output_buf)) {
+                goto error;
+            }
+            break;
+
+        default:
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto error;
+    }
+
+    if (s2n_async_pkey_op_set_output(op, output_buf.buffer, output_buf.len)) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    if (s2n_async_pkey_op_apply(op, s2n_handler->connection)) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    success = true;
+    goto clean_up;
+
+error:
+    aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
+
+clean_up:
+    s2n_async_pkey_op_free(op);
+    aws_mem_release(handler->alloc, input_data);
+    aws_byte_buf_clean_up(&output_buf);
+
+    if (success) {
+        s_drive_negotiation(handler); // TODO: check result?
+    }
+}
+
+static int s_s2n_pkcs11_async_pkey_callback(struct s2n_connection *conn, struct s2n_async_pkey_op *op) {
+    /* TODO:
+     * - should we just store the op, and invoke PKCS11 stuff from negotiate()?
+         removes possibility of channel dying before task runs
+     */
+    struct s2n_handler *s2n_handler = s2n_connection_get_ctx(conn);
+    struct aws_channel_handler *handler = &s2n_handler->handler;
+
+    AWS_ASSERT(conn == s2n_handler->connection);
+    (void)conn;
+
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: async pkey callback received, scheduling PKCS#11 task", (void *)handler);
+
+    aws_channel_task_init(&s2n_handler->async_pkey_task, s_s2n_pkcs11_async_pkey_task, op, "s2n_pkcs11_async_pkey_op");
+    aws_channel_schedule_task_now(s2n_handler->slot->channel, &s2n_handler->async_pkey_task);
+
+    return S2N_SUCCESS;
+}
+
 static int s_s2n_do_delayed_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -841,6 +974,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_send_cb(s2n_handler->connection, s_s2n_handler_send);
     s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
+    s2n_connection_set_ctx(s2n_handler->connection, s2n_handler);
     s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
 
     if (options->alpn_list) {
@@ -1122,11 +1256,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         /* set callback so that we can do private key operations through PKCS#11 */
-        /* TODO: if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_pkcs11_async_pkey_callback)) {
+        if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_pkcs11_async_pkey_callback)) {
             s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
             goto cleanup_s2n_config;
         }
-        */
 
         /* set certificate.
          * lifetime note: s2n_config eventually takes ownership of chain_and_key,
