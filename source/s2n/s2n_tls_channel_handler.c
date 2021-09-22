@@ -11,6 +11,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/pkcs11.h>
 #include <aws/io/private/pkcs11_private.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
@@ -81,8 +82,8 @@ struct s2n_ctx {
     struct {
         struct aws_pkcs11_lib *lib;
         struct aws_mutex session_lock;
-        unsigned long session_handle;
-        unsigned long private_key_object_handle;
+        uint64_t session_handle;
+        uint64_t private_key_object_handle;
     } pkcs11;
 };
 
@@ -959,8 +960,8 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_
     s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib); /* cannot fail */
     aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
 
-    unsigned long match_slot_id = options->pkcs11.slot_id;
-    unsigned long slot_id;
+    uint64_t match_slot_id = options->pkcs11.slot_id;
+    uint64_t slot_id = 0;
     if (aws_pkcs11_lib_find_slot_with_token(
             s2n_ctx->pkcs11.lib,
             options->pkcs11.has_slot_id ? &match_slot_id : NULL,
