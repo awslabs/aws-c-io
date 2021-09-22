@@ -164,7 +164,7 @@ static int s_raise_ck_session_error(
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_PKCS11,
-        "id=%p session=%lu: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
+        "id=%p session=%" PRIu64 ": %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
         (void *)pkcs11_lib,
         session,
         fn_name,
@@ -599,12 +599,13 @@ void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, uint64_t se
 
     CK_RV rv = pkcs11_lib->function_list->C_CloseSession(session_handle);
     if (rv == CKR_OK) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: Session closed", (void *)pkcs11_lib, session_handle);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": Session closed", (void *)pkcs11_lib, session_handle);
     } else {
         /* Log the error, but we can't really do anything about it */
         AWS_LOGF_WARN(
             AWS_LS_IO_PKCS11,
-            "id=%p session=%lu: Ignoring C_CloseSession() failure. PKCS#11 error: %s (0x%08lX).",
+            "id=%p session=%" PRIu64 ": Ignoring C_CloseSession() failure. PKCS#11 error: %s (0x%08lX).",
             (void *)pkcs11_lib,
             session_handle,
             s_ckr_str(rv),
@@ -623,7 +624,8 @@ int aws_pkcs11_lib_login_user(
     CK_ULONG pin_len = 0;
     if (optional_user_pin) {
         if (optional_user_pin->len > ULONG_MAX) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: PIN is too long.", (void *)pkcs11_lib, session_handle);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": PIN is too long.", (void *)pkcs11_lib, session_handle);
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT); /* TODO: raise PIN_INCORRECT code */
         }
         pin_len = (CK_ULONG)optional_user_pin->len;
@@ -637,7 +639,7 @@ int aws_pkcs11_lib_login_user(
     }
 
     /* Success! */
-    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": User logged in", (void *)pkcs11_lib, session_handle);
     return AWS_OP_SUCCESS;
 }
 
