@@ -320,20 +320,20 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         options->omit_initialize ? "omit" : "yes");
 
     if (aws_shared_library_init(&pkcs11_lib->shared_lib, filename)) {
-        goto except;
+        goto error;
     }
 
     /* Find C_GetFunctionList() and call it to get the list of pointers to all the other functions */
     CK_C_GetFunctionList get_function_list = NULL;
     if (aws_shared_library_find_function(
             &pkcs11_lib->shared_lib, "C_GetFunctionList", (aws_generic_function *)&get_function_list)) {
-        goto except;
+        goto error;
     }
 
     CK_RV rv = get_function_list(&pkcs11_lib->function_list);
     if (rv != CKR_OK) {
         s_raise_ck_error(pkcs11_lib, "C_GetFunctionList", rv);
-        goto except;
+        goto error;
     }
 
     /* Check function list's API version */
@@ -350,7 +350,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
             AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR);
 
         aws_raise_error(AWS_IO_PKCS11_ERROR);
-        goto except;
+        goto error;
     }
 
     /* Call C_Initialize() (skip if omit_initialize is set) */
@@ -368,7 +368,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         rv = pkcs11_lib->function_list->C_Initialize(&init_args);
         if (rv != CKR_OK) {
             s_raise_ck_error(pkcs11_lib, "C_Initialize", rv);
-            goto except;
+            goto error;
         }
 
         pkcs11_lib->should_finalize = true;
@@ -381,7 +381,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
     rv = pkcs11_lib->function_list->C_GetInfo(&info);
     if (rv != CKR_OK) {
         s_raise_ck_error(pkcs11_lib, "C_GetInfo", rv);
-        goto except;
+        goto error;
     }
 
     AWS_LOGF_INFO(
@@ -400,9 +400,9 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         options->omit_initialize ? "omit" : "yes");
 
     /* Success! */
-    goto finally;
+    goto clean_up;
 
-except:
+error:
     AWS_LOGF_ERROR(
         AWS_LS_IO_PKCS11,
         "id=%p: Failed to initialize PKCS#11 library from '%s'",
@@ -412,7 +412,7 @@ except:
     aws_pkcs11_lib_release(pkcs11_lib);
     pkcs11_lib = NULL;
 
-finally:
+clean_up:
     aws_string_destroy(filename_storage);
     return pkcs11_lib;
 }
@@ -452,13 +452,13 @@ int aws_pkcs11_lib_find_slot_with_token(
     CK_RV rv = pkcs11_lib->function_list->C_GetSlotList(CK_TRUE /*tokenPresent*/, NULL /*pSlotList*/, &num_slots);
     if (rv != CKR_OK) {
         s_raise_ck_error(pkcs11_lib, "C_GetSlotList", rv);
-        goto except;
+        goto clean_up;
     }
 
     if (num_slots == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p: No PKCS#11 tokens present in any slot.", (void *)pkcs11_lib);
         aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
-        goto except;
+        goto clean_up;
     }
 
     AWS_LOGF_TRACE(
@@ -471,7 +471,7 @@ int aws_pkcs11_lib_find_slot_with_token(
     rv = pkcs11_lib->function_list->C_GetSlotList(CK_TRUE /*tokenPresent*/, slot_id_array, &num_slots);
     if (rv != CKR_OK) {
         s_raise_ck_error(pkcs11_lib, "C_GetSlotList", rv);
-        goto except;
+        goto clean_up;
     }
 
     for (size_t i = 0; i < num_slots; ++i) {
@@ -494,7 +494,7 @@ int aws_pkcs11_lib_find_slot_with_token(
         rv = pkcs11_lib->function_list->C_GetTokenInfo(slot_id_i, &token_info_i);
         if (rv != CKR_OK) {
             s_raise_ck_error(pkcs11_lib, "C_GetTokenInfo", rv);
-            goto except;
+            goto clean_up;
         }
 
         /* if specific token label requested, and this isn't it, then skip */
@@ -521,7 +521,7 @@ int aws_pkcs11_lib_find_slot_with_token(
                 "id=%p: Failed to choose PKCS#11 token, multiple tokens match search criteria",
                 (void *)pkcs11_lib);
             aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
-            goto except;
+            goto clean_up;
         }
 
         /* the new candidate! */
@@ -533,7 +533,7 @@ int aws_pkcs11_lib_find_slot_with_token(
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11, "id=%p: Failed to find PKCS#11 token which matches search criteria", (void *)pkcs11_lib);
         aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
-        goto except;
+        goto clean_up;
     }
 
     /* success! */
@@ -565,10 +565,8 @@ int aws_pkcs11_lib_find_slot_with_token(
 
     *out_slot_id = *candidate;
     success = true;
-    goto finally;
 
-except:
-finally:
+clean_up:
     aws_mem_release(pkcs11_lib->allocator, slot_id_array);
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
@@ -683,7 +681,7 @@ int aws_pkcs11_lib_find_private_key(
                 (void *)pkcs11_lib,
                 session_handle);
             aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
-            goto except;
+            goto clean_up;
         }
 
         CK_ATTRIBUTE *attr = &attributes[num_attributes++];
@@ -696,7 +694,7 @@ int aws_pkcs11_lib_find_private_key(
     CK_RV rv = pkcs11_lib->function_list->C_FindObjectsInit((CK_ULONG)session_handle, attributes, num_attributes);
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_FindObjectsInit", session_handle, rv);
-        goto except;
+        goto clean_up;
     }
 
     must_finalize_search = true;
@@ -708,7 +706,7 @@ int aws_pkcs11_lib_find_private_key(
     rv = pkcs11_lib->function_list->C_FindObjects((CK_ULONG)session_handle, found_objects, 2 /*max*/, &num_found);
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_FindObjects", session_handle, rv);
-        goto except;
+        goto clean_up;
     }
 
     if ((num_found == 0) || (found_objects[0] == CK_INVALID_HANDLE)) {
@@ -718,7 +716,7 @@ int aws_pkcs11_lib_find_private_key(
             (void *)pkcs11_lib,
             session_handle);
         aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
-        goto except;
+        goto clean_up;
     }
     if (num_found > 1) {
         AWS_LOGF_ERROR(
@@ -728,7 +726,7 @@ int aws_pkcs11_lib_find_private_key(
             (void *)pkcs11_lib,
             session_handle);
         aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
-        goto except;
+        goto clean_up;
     }
 
     /* Success! */
@@ -736,10 +734,8 @@ int aws_pkcs11_lib_find_private_key(
         AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": Found private key.", (void *)pkcs11_lib, session_handle);
     *out_key_object_handle = found_objects[0];
     success = true;
-    goto finally;
 
-except:
-finally:
+clean_up:
 
     if (must_finalize_search) {
         rv = pkcs11_lib->function_list->C_FindObjectsFinal((CK_ULONG)session_handle);
