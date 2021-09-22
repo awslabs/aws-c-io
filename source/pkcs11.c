@@ -837,6 +837,11 @@ int aws_pkcs11_lib_decrypt(
     AWS_ASSERT(encrypted_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
     AWS_ASSERT(out_data->allocator == NULL);
 
+    /* TODO: Revisit if these failures should be fatal */
+    if (session_handle == CK_INVALID_HANDLE || key_handle == CK_INVALID_HANDLE || encrypted_data.len == 0) {
+        return aws_raise_error(AWS_IO_PKCS11_ERROR);
+    }
+
     CK_MECHANISM mechanism;
     AWS_ZERO_STRUCT(mechanism);
 
@@ -984,6 +989,10 @@ int aws_pkcs11_lib_sign(
     AWS_ASSERT(input_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
     AWS_ASSERT(out_signature->allocator == NULL);
 
+    /* TODO: Revisit if these failures should be fatal */
+    if (session_handle == CK_INVALID_HANDLE || key_handle == CK_INVALID_HANDLE || input_data.len == 0) {
+        return aws_raise_error(AWS_IO_PKCS11_ERROR);
+    }
     switch (key_type) {
         case CKK_RSA:
             return s_pkcs11_sign_rsa(pkcs11_lib, session_handle, key_handle, input_data, allocator, out_signature);
