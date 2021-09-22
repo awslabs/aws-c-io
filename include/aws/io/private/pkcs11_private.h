@@ -8,7 +8,34 @@
 #include <aws/io/io.h>
 
 struct aws_pkcs11_lib;
+#include <aws/io/shared_library.h>
+#include <aws/common/ref_count.h>
+
+/* These defines must exist before the official PKCS#11 headers are included */
+#define CK_PTR *
+#define NULL_PTR 0
+#define CK_DEFINE_FUNCTION(returnType, name) returnType name
+#define CK_DECLARE_FUNCTION(returnType, name) returnType name
+#define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
+#define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
+
+/* Support older PKCS#11 versions, even if we're using newer headers.
+ * The PKCS#11 API is designed to be forward compatible. */
+#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
+
 struct aws_string;
+
+struct aws_pkcs11_lib {
+    struct aws_ref_count ref_count;
+    struct aws_allocator *allocator;
+
+    struct aws_shared_library shared_lib;
+
+    CK_FUNCTION_LIST_PTR function_list;
+
+    /* If true, C_Finalize() should be called when last ref-count is released */
+    bool should_finalize;
+};
 
 /**
  * pkcs11_private.h

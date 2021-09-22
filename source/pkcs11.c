@@ -13,17 +13,6 @@
 
 #include <inttypes.h>
 
-/* These defines must exist before the official PKCS#11 headers are included */
-#define CK_PTR *
-#define NULL_PTR 0
-#define CK_DEFINE_FUNCTION(returnType, name) returnType name
-#define CK_DECLARE_FUNCTION(returnType, name) returnType name
-#define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
-#define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
-
-/* Support older PKCS#11 versions, even if we're using newer headers.
- * The PKCS#11 API is designed to be forward compatible. */
-#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
 #define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 20
 
@@ -257,18 +246,6 @@ static CK_RV s_pkcs11_unlock_mutex(CK_VOID_PTR mutex_ptr) {
 
     return CKR_OK;
 }
-
-struct aws_pkcs11_lib {
-    struct aws_ref_count ref_count;
-    struct aws_allocator *allocator;
-
-    struct aws_shared_library shared_lib;
-
-    CK_FUNCTION_LIST_PTR function_list;
-
-    /* If true, C_Finalize() should be called when last ref-count is released */
-    bool should_finalize;
-};
 
 /* Invoked when last ref-count is released. Free all resources.
  * Note that this is also called if initialization fails half-way through */
@@ -665,7 +642,7 @@ int aws_pkcs11_lib_find_private_key(
     bool must_finalize_search = false;
 
     /* set up search attributes */
-    CK_OBJECT_CLASS key_class = CKO_PRIVATE_KEY;
+    CK_OBJECT_CLASS key_class = CKO_SECRET_KEY;
     CK_ULONG num_attributes = 1;
     CK_ATTRIBUTE attributes[2] = {
         {
