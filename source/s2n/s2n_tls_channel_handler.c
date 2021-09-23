@@ -614,8 +614,8 @@ static void s_s2n_pkcs11_async_pkey_task(
             if (aws_pkcs11_lib_decrypt(
                     s2n_handler->s2n_ctx->pkcs11.lib,
                     s2n_handler->s2n_ctx->pkcs11.session_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_object_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_mechanism_type,
+                    s2n_handler->s2n_ctx->pkcs11.private_key_handle,
+                    s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
                     &output_buf)) {
                 goto unlock;
@@ -626,8 +626,8 @@ static void s_s2n_pkcs11_async_pkey_task(
             if (aws_pkcs11_lib_sign(
                     s2n_handler->s2n_ctx->pkcs11.lib,
                     s2n_handler->s2n_ctx->pkcs11.session_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_object_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_mechanism_type,
+                    s2n_handler->s2n_ctx->pkcs11.private_key_handle,
+                    s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
                     &output_buf)) {
                 goto unlock;

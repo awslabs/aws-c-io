@@ -859,7 +859,7 @@ int aws_pkcs11_lib_decrypt(
         return s_raise_ck_session_error(pkcs11_lib, "C_Decrypt", session_handle, rv);
     }
 
-    aws_byte_buf_reserve(output, output_len);
+    aws_byte_buf_reserve(output, output_len); /* cannot fail */
 
     /* do actual decrypt */
     rv = pkcs11_lib->function_list->C_Decrypt(
