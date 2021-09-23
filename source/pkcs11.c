@@ -247,6 +247,18 @@ static CK_RV s_pkcs11_unlock_mutex(CK_VOID_PTR mutex_ptr) {
     return CKR_OK;
 }
 
+struct aws_pkcs11_lib {
+    struct aws_ref_count ref_count;
+    struct aws_allocator *allocator;
+
+    struct aws_shared_library shared_lib;
+
+    CK_FUNCTION_LIST_PTR function_list;
+
+    /* If true, C_Finalize() should be called when last ref-count is released */
+    bool should_finalize;
+};
+
 /* Invoked when last ref-count is released. Free all resources.
  * Note that this is also called if initialization fails half-way through */
 static void s_pkcs11_lib_destroy(void *user_data) {
@@ -402,6 +414,12 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_acquire(struct aws_pkcs11_lib *pkcs11_lib)
 void aws_pkcs11_lib_release(struct aws_pkcs11_lib *pkcs11_lib) {
     if (pkcs11_lib) {
         aws_ref_count_release(&pkcs11_lib->ref_count);
+    }
+}
+
+CK_FUNCTION_LIST_PTR aws_pkcs11_get_function_list(struct aws_pkcs11_lib *pkcs11_lib) {
+    if (pkcs11_lib) {
+        return pkcs11_lib->function_list;
     }
 }
 
