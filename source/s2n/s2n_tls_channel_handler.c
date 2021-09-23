@@ -86,7 +86,7 @@ struct s2n_ctx {
         struct aws_mutex session_lock;
         CK_SESSION_HANDLE session_handle;
         CK_OBJECT_HANDLE private_key_handle;
-        CK_KEY_TYPE private_key_mechanism_type;
+        CK_KEY_TYPE private_key_type;
     } pkcs11;
 };
 
@@ -1120,7 +1120,7 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_
             s2n_ctx->pkcs11.session_handle,
             options->pkcs11.private_key_object_label,
             &s2n_ctx->pkcs11.private_key_handle /*out*/,
-            &s2n_ctx->pkcs11.private_key_mechanism_type /*out*/)) {
+            &s2n_ctx->pkcs11.private_key_type /*out*/)) {
         return AWS_OP_ERR;
     }
 

@@ -689,7 +689,7 @@ int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
     CK_SESSION_HANDLE session_handle,
     const struct aws_string *match_label,
-    CK_OBJECT_HANDLE *out_key_object_handle,
+    CK_OBJECT_HANDLE *out_key_handle,
     CK_KEY_TYPE *out_key_type) {
 
     AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
@@ -781,7 +781,7 @@ int aws_pkcs11_lib_find_private_key(
     };
 
     rv = pkcs11_lib->function_list->C_GetAttributeValue(
-        (CK_SESSION_HANDLE)session_handle, key_handle, key_attributes, AWS_ARRAY_SIZE(key_attributes));
+    rv = pkcs11_lib->function_list->C_GetAttributeValue(session_handle, key_handle, key_attributes, AWS_ARRAY_SIZE(key_attributes));
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_GetAttributeValue", session_handle, rv);
         goto clean_up;
@@ -793,7 +793,7 @@ int aws_pkcs11_lib_find_private_key(
         default:
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKCS11,
-                "id=%p session=%" PRIu64 ": PKCS#11 private key type %s (0x%08lX) is currently unsupported",
+                "id=%p session=%lu: PKCS#11 private key type %s (0x%08lX) is currently unsupported",
                 (void *)pkcs11_lib,
                 session_handle,
                 s_ckk_str(key_type),
@@ -855,7 +855,8 @@ int aws_pkcs11_lib_decrypt(
 
     /* query needed capacity */
     CK_ULONG output_len = 0;
-    rv = pkcs11_lib->function_list->C_Decrypt(session_handle, input.ptr, (CK_ULONG)input.len, NULL/*pData*/, &output_len);
+    rv = pkcs11_lib->function_list->C_Decrypt(
+        session_handle, input.ptr, (CK_ULONG)input.len, NULL /*pData*/, &output_len);
     if (rv != CKR_OK) {
         return s_raise_ck_session_error(pkcs11_lib, "C_Decrypt", session_handle, rv);
     }
@@ -863,7 +864,8 @@ int aws_pkcs11_lib_decrypt(
     aws_byte_buf_reserve(output, output_len);
 
     /* do actual decrypt */
-    rv = pkcs11_lib->function_list->C_Decrypt(session_handle, input.ptr, (CK_ULONG)input.len, output->buffer, &output_len);
+    rv = pkcs11_lib->function_list->C_Decrypt(
+        session_handle, input.ptr, (CK_ULONG)input.len, output->buffer, &output_len);
     if (rv != CKR_OK) {
         return s_raise_ck_session_error(pkcs11_lib, "C_Decrypt", session_handle, rv);
     }
