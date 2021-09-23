@@ -13,14 +13,6 @@
 
 #include <inttypes.h>
 
-/* These defines must exist before the official PKCS#11 headers are included */
-#define CK_PTR *
-#define NULL_PTR 0
-#define CK_DEFINE_FUNCTION(returnType, name) returnType name
-#define CK_DECLARE_FUNCTION(returnType, name) returnType name
-#define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
-#define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
-
 /* NOTE 1: even though we currently include the v2.40 headers, they're compatible with any v2.x library.
  * NOTE 2: v3.x is backwards compatible with 2.x, and even claims to be 2.40 if you check its version the 2.x way */
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
@@ -568,6 +560,10 @@ int aws_pkcs11_lib_find_slot_with_token(
 clean_up:
     aws_mem_release(pkcs11_lib->allocator, slot_id_array);
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
+CK_FUNCTION_LIST *aws_pkcs11_lib_get_function_list(struct aws_pkcs11_lib *pkcs11_lib) {
+    return pkcs11_lib->function_list;
 }
 
 int aws_pkcs11_lib_open_session(
