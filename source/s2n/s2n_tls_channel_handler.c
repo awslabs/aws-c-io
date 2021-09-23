@@ -84,9 +84,9 @@ struct s2n_ctx {
     struct {
         struct aws_pkcs11_lib *lib;
         struct aws_mutex session_lock;
-        uint64_t session_handle;
-        uint64_t private_key_object_handle;
-        uint64_t private_key_mechanism_type;
+        CK_SESSION_HANDLE session_handle;
+        CK_OBJECT_HANDLE private_key_handle;
+        CK_KEY_TYPE private_key_mechanism_type;
     } pkcs11;
 };
 
@@ -1098,11 +1098,10 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_
     s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib); /* cannot fail */
     aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
 
-    uint64_t match_slot_id = options->pkcs11.slot_id;
-    uint64_t slot_id = 0;
+    CK_SLOT_ID slot_id = 0;
     if (aws_pkcs11_lib_find_slot_with_token(
             s2n_ctx->pkcs11.lib,
-            options->pkcs11.has_slot_id ? &match_slot_id : NULL,
+            options->pkcs11.has_slot_id ? &options->pkcs11.slot_id : NULL,
             options->pkcs11.token_label,
             &slot_id /*out*/)) {
         return AWS_OP_ERR;
@@ -1120,7 +1119,7 @@ static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_
             s2n_ctx->pkcs11.lib,
             s2n_ctx->pkcs11.session_handle,
             options->pkcs11.private_key_object_label,
-            &s2n_ctx->pkcs11.private_key_object_handle /*out*/,
+            &s2n_ctx->pkcs11.private_key_handle /*out*/,
             &s2n_ctx->pkcs11.private_key_mechanism_type /*out*/)) {
         return AWS_OP_ERR;
     }

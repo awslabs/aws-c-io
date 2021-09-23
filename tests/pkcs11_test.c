@@ -142,21 +142,22 @@ static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void 
     ASSERT_NOT_NULL(pkcs11_lib);
 
     /* Find token slot*/
-    uint64_t slot_id;
+    CK_SLOT_ID slot_id;
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, NULL /*match_slot_id*/, s_pkcs11_tester.token_label, &slot_id /*out*/));
 
     /* Open session */
-    uint64_t session_handle;
+    CK_SESSION_HANDLE session_handle;
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, slot_id, &session_handle /*out*/));
 
     /* Login user */
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(pkcs11_lib, session_handle, s_pkcs11_tester.pin));
 
     /* Find key */
-    uint64_t pkey_handle;
+    CK_OBJECT_HANDLE pkey_handle;
+    CK_KEY_TYPE pkey_type;
     ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_handle, s_pkcs11_tester.pkey_label, &pkey_handle));
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_handle, s_pkcs11_tester.pkey_label, &pkey_handle, &pkey_type));
 
     /* Clean up */
     aws_pkcs11_lib_close_session(pkcs11_lib, session_handle);
