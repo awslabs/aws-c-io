@@ -191,6 +191,19 @@ struct aws_tls_ctx_options {
      * implementation.
      */
     void *ctx_options_extension;
+
+    /**
+     * Set if using PKCS#11 for private key operations.
+     * See aws_tls_ctx_pkcs11_options for more details.
+     */
+    struct {
+        struct aws_pkcs11_lib *lib;                  /* required */
+        struct aws_string *user_pin;                 /* NULL if token uses "protected authentication path" */
+        struct aws_string *token_label;              /* optional */
+        struct aws_string *private_key_object_label; /* optional */
+        uint64_t slot_id;                            /* optional */
+        bool has_slot_id;
+    } pkcs11;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -285,11 +298,19 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
  * calling init-with-pkcs11 functions on aws_tls_ctx_options (this also makes
  * it easy to introduce optional arguments in the future).
  * Instances of this struct should only exist briefly on the stack.
+ *
  * Instructions for binding this to high-level languages:
  * - Python: The members of this struct should be the keyword args to the init-with-pkcs11 functions.
  * - JavaScript: This should be an options map passed to init-with-pkcs11 functions.
  * - Java: This should be an options class passed to init-with-pkcs11 functions.
  * - C++: Same as Java
+ *
+ * Notes on integer types:
+ * PKCS#11 uses `unsigned long` for IDs, handles, etc but we expose them as `uint64_t` in public APIs.
+ * We do this because sizeof(long) is inconsistent across platform/arch/language
+ * (ex: always 64bit in Java, always 32bit in C on Windows, matches CPU in C on Linux and Apple).
+ * By using uint64_t in our public API, we can keep the careful bounds-checking all in one
+ * place, instead of expecting each high-level language binding to get it just right.
  */
 struct aws_tls_ctx_pkcs11_options {
     /**
@@ -309,7 +330,7 @@ struct aws_tls_ctx_pkcs11_options {
      * If set to NULL, the token will be chosen based on other criteria
      * (such as token label).
      */
-    uint32_t *slot_id;
+    uint64_t *slot_id;
 
     /**
      * Label of PKCS#11 token to use.

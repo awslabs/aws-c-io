@@ -7,6 +7,7 @@
  * See PKCS11.md for instructions on running these tests
  */
 
+#include <aws/io/pkcs11.h>
 #include <aws/io/private/pkcs11_private.h>
 
 #include <aws/common/environment.h>
@@ -14,15 +15,24 @@
 #include <aws/testing/aws_test_harness.h>
 
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_LIB, "TEST_PKCS11_LIB");
+AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_TOKEN_LABEL, "TEST_PKCS11_TOKEN_LABEL");
+AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_PIN, "TEST_PKCS11_PIN");
+AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_PKEY_LABEL, "TEST_PKCS11_PKEY_LABEL");
 
 /* Singleton that stores env-var values */
 struct pkcs11_tester {
     struct aws_string *filepath;
+    struct aws_string *token_label;
+    struct aws_string *pin;
+    struct aws_string *pkey_label;
 };
 static struct pkcs11_tester s_pkcs11_tester;
 
 static void s_pkcs11_tester_clean_up(void) {
     aws_string_destroy(s_pkcs11_tester.filepath);
+    aws_string_destroy(s_pkcs11_tester.token_label);
+    aws_string_destroy(s_pkcs11_tester.pin);
+    aws_string_destroy(s_pkcs11_tester.pkey_label);
     aws_io_library_clean_up();
 }
 
@@ -34,6 +44,24 @@ static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
     const struct aws_string *env_var = TEST_PKCS11_LIB;
     aws_get_environment_value(allocator, env_var, &s_pkcs11_tester.filepath);
     if (s_pkcs11_tester.filepath == NULL) {
+        goto missing;
+    }
+
+    env_var = TEST_PKCS11_TOKEN_LABEL;
+    aws_get_environment_value(allocator, env_var, &s_pkcs11_tester.token_label);
+    if (s_pkcs11_tester.token_label == NULL) {
+        goto missing;
+    }
+
+    env_var = TEST_PKCS11_PIN;
+    aws_get_environment_value(allocator, env_var, &s_pkcs11_tester.pin);
+    if (s_pkcs11_tester.pin == NULL) {
+        goto missing;
+    }
+
+    env_var = TEST_PKCS11_PKEY_LABEL;
+    aws_get_environment_value(allocator, env_var, &s_pkcs11_tester.pkey_label);
+    if (s_pkcs11_tester.pkey_label == NULL) {
         goto missing;
     }
 
@@ -101,3 +129,39 @@ static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, vo
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(pkcs11_lib_omit_initialize, s_test_pkcs11_lib_omit_initialize)
+
+static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
+
+    /* Load library */
+    struct aws_pkcs11_lib_options options = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.filepath),
+    };
+    struct aws_pkcs11_lib *pkcs11_lib = aws_pkcs11_lib_new(allocator, &options);
+    ASSERT_NOT_NULL(pkcs11_lib);
+
+    /* Find token slot*/
+    CK_SLOT_ID slot_id;
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, NULL /*match_slot_id*/, s_pkcs11_tester.token_label, &slot_id /*out*/));
+
+    /* Open session */
+    CK_SESSION_HANDLE session_handle;
+    ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, slot_id, &session_handle /*out*/));
+
+    /* Login user */
+    ASSERT_SUCCESS(aws_pkcs11_lib_login_user(pkcs11_lib, session_handle, s_pkcs11_tester.pin));
+
+    /* Find key */
+    CK_OBJECT_HANDLE pkey_handle;
+    ASSERT_SUCCESS(
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_handle, s_pkcs11_tester.pkey_label, &pkey_handle));
+
+    /* Clean up */
+    aws_pkcs11_lib_close_session(pkcs11_lib, session_handle);
+    aws_pkcs11_lib_release(pkcs11_lib);
+    s_pkcs11_tester_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(pkcs11_find_private_key, s_test_pkcs11_find_private_key)

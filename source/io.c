@@ -158,7 +158,13 @@ static struct aws_error_info s_errors[] = {
        "Retry cannot be attempted because the retry strategy has prevented the operation."),
     AWS_DEFINE_ERROR_INFO_IO(
        AWS_IO_PKCS11_ERROR,
-       "PKCS#11 error"),
+       "A PKCS#11 library error occured, see log for more details."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_PKCS11_TOKEN_NOT_FOUND,
+        "Could not pick PKCS#11 token matching search criteria (none found, or multiple found)"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND,
+        "Could not pick PKCS#11 private key matching search criteria (none found, or multiple found)"),
 };
 /* clang-format on */
 

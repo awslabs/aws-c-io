@@ -5,11 +5,14 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/mutex.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/pkcs11.h>
+#include <aws/io/private/pkcs11_private.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
@@ -63,6 +66,25 @@ struct s2n_handler {
 struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
+
+    /* Use a single PKCS#11 session for all TLS connections on this s2n_ctx.
+     * We do this because PKCS#11 tokens may only support a
+     * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
+     * If this one shared session turns out to be a severe bottleneck,
+     * we could look into other setups (ex: put session on its own thread,
+     * 1 session per event-loop, 1 session per connection, etc).
+     *
+     * The lock must be held while performing session operations.
+     * Otherwise, it would not be safe for multiple threads to share a
+     * session (PKCS11-UG-v2.40 section 2.6.7). The lock isn't needed for
+     * setup and teardown though, since we ensure nothing parallel is going
+     * on at these times */
+    struct {
+        struct aws_pkcs11_lib *lib;
+        struct aws_mutex session_lock;
+        CK_SESSION_HANDLE session_handle;
+        CK_OBJECT_HANDLE private_key_object_handle;
+    } pkcs11;
 };
 
 static const char *s_determine_default_pki_dir(void) {
@@ -899,6 +921,11 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
+        if (s2n_ctx->pkcs11.session_handle != 0) {
+            aws_pkcs11_lib_close_session(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle);
+        }
+        aws_mutex_clean_up(&s2n_ctx->pkcs11.session_lock);
+        aws_pkcs11_lib_release(s2n_ctx->pkcs11.lib);
         s2n_config_free(s2n_ctx->s2n_config);
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
@@ -924,6 +951,49 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
     return 0;
 }
 
+static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_ctx_options *options) {
+    /* PKCS#11 options were already sanitized (ie: check for required args) in tls_channel_handler.c */
+
+    /* anything initialized in this function is cleaned up during s_s2n_ctx_destroy()
+     * so don't worry about cleaning up unless it's some tmp heap allocation */
+
+    s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib); /* cannot fail */
+    aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
+
+    CK_SLOT_ID slot_id = 0;
+    if (aws_pkcs11_lib_find_slot_with_token(
+            s2n_ctx->pkcs11.lib,
+            options->pkcs11.has_slot_id ? &options->pkcs11.slot_id : NULL,
+            options->pkcs11.token_label,
+            &slot_id /*out*/)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_pkcs11_lib_open_session(s2n_ctx->pkcs11.lib, slot_id, &s2n_ctx->pkcs11.session_handle)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_pkcs11_lib_login_user(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle, options->pkcs11.user_pin)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_pkcs11_lib_find_private_key(
+            s2n_ctx->pkcs11.lib,
+            s2n_ctx->pkcs11.session_handle,
+            options->pkcs11.private_key_object_label,
+            &s2n_ctx->pkcs11.private_key_object_handle /*out*/)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_log_and_raise_s2n_errno(const char *msg) {
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS, "%s: %s (%s)", msg, s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
+    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+}
+
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -946,16 +1016,19 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     s2n_ctx->s2n_config = s2n_config_new();
 
     if (!s2n_ctx->s2n_config) {
-        goto cleanup_s2n_ctx;
+        s_log_and_raise_s2n_errno("ctx: creation failed");
+        goto cleanup_s2n_config;
     }
 
     int set_clock_result = s2n_config_set_wall_clock(s2n_ctx->s2n_config, s2n_wall_clock_time_nanoseconds, NULL);
     if (set_clock_result != S2N_ERR_T_OK) {
+        s_log_and_raise_s2n_errno("ctx: failed to set wall clock");
         goto cleanup_s2n_config;
     }
 
     set_clock_result = s2n_config_set_monotonic_clock(s2n_ctx->s2n_config, s2n_monotonic_clock_time_nanoseconds, NULL);
     if (set_clock_result != S2N_ERR_T_OK) {
+        s_log_and_raise_s2n_errno("ctx: failed to set monotonic clock");
         goto cleanup_s2n_config;
     }
 
@@ -1038,12 +1111,41 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (err_code != S2N_ERR_T_OK) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "ctx: configuration error %s (%s)",
-                s2n_strerror(s2n_errno, "EN"),
-                s2n_strerror_debug(s2n_errno, "EN"));
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
+            goto cleanup_s2n_config;
+        }
+    } else if (options->pkcs11.lib != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: PKCS#11 has been set, setting it up now.");
+        if (s_tls_ctx_pkcs11_setup(s2n_ctx, options)) {
+            goto cleanup_s2n_config;
+        }
+
+        /* set callback so that we can do private key operations through PKCS#11 */
+        /* TODO: if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_pkcs11_async_pkey_callback)) {
+            s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
+            goto cleanup_s2n_config;
+        }
+        */
+
+        /* set certificate.
+         * lifetime note: s2n_config eventually takes ownership of chain_and_key,
+         * but if something goes wrong before then we have to clean it up */
+        struct s2n_cert_chain_and_key *chain_and_key = s2n_cert_chain_and_key_new();
+        if (!chain_and_key) {
+            s_log_and_raise_s2n_errno("ctx: creation failed");
+            goto cleanup_s2n_config;
+        }
+
+        if (s2n_cert_chain_and_key_load_public_pem_bytes(
+                chain_and_key, options->certificate.buffer, options->certificate.len)) {
+            s_log_and_raise_s2n_errno("ctx: failed to load certificate");
+            s2n_cert_chain_and_key_free(chain_and_key);
+            goto cleanup_s2n_config;
+        }
+
+        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, chain_and_key)) {
+            s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
+            s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
         }
     }
@@ -1051,24 +1153,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     if (options->verify_peer) {
         if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
             if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "ctx: ocsp status request cannot be set: %s (%s)",
-                    s2n_strerror(s2n_errno, "EN"),
-                    s2n_strerror_debug(s2n_errno, "EN"));
-                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
                 goto cleanup_s2n_config;
             }
         } else {
             if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
                 AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
             } else {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "ctx: cannot enable ocsp stapling: %s (%s)",
-                    s2n_strerror(s2n_errno, "EN"),
-                    s2n_strerror_debug(s2n_errno, "EN"));
-                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
                 goto cleanup_s2n_config;
             }
         }
@@ -1077,26 +1169,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             /* The user called an override_default_trust_store() function.
              * Begin by wiping anything that s2n loaded by default */
             if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "ctx: configuration error %s (%s)",
-                    s2n_strerror(s2n_errno, "EN"),
-                    s2n_strerror_debug(s2n_errno, "EN"));
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to wipe default trust store\n");
-                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                s_log_and_raise_s2n_errno("ctx: failed to wipe default trust store");
                 goto cleanup_s2n_config;
             }
 
             if (options->ca_path) {
                 if (s2n_config_set_verification_ca_location(
                         s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_TLS,
-                        "ctx: configuration error %s (%s)",
-                        s2n_strerror(s2n_errno, "EN"),
-                        s2n_strerror_debug(s2n_errno, "EN"));
+                    s_log_and_raise_s2n_errno("ctx: configuration error");
                     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
-                    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                     goto cleanup_s2n_config;
                 }
             }
@@ -1109,13 +1190,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 aws_string_destroy(ca_file_string);
 
                 if (set_ca_result) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_TLS,
-                        "ctx: configuration error %s (%s)",
-                        s2n_strerror(s2n_errno, "EN"),
-                        s2n_strerror_debug(s2n_errno, "EN"));
+                    s_log_and_raise_s2n_errno("ctx: configuration error");
                     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
-                    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                     goto cleanup_s2n_config;
                 }
             }
@@ -1129,25 +1205,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
              * to multiple flavors of Linux). Therefore, load the locations that
              * were found at library startup. */
             if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "ctx: configuration error %s (%s)",
-                    s2n_strerror(s2n_errno, "EN"),
-                    s2n_strerror_debug(s2n_errno, "EN"));
+                s_log_and_raise_s2n_errno("ctx: configuration error");
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
-                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
                 goto cleanup_s2n_config;
             }
         }
 
         if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "ctx: configuration error %s (%s)",
-                s2n_strerror(s2n_errno, "EN"),
-                s2n_strerror_debug(s2n_errno, "EN"));
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: failed to set client auth type");
             goto cleanup_s2n_config;
         }
     } else if (mode != S2N_SERVER) {
@@ -1156,7 +1222,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             "ctx: X.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.");
         if (s2n_config_disable_x509_verification(s2n_ctx->s2n_config)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: failed to disable x509 verification");
             goto cleanup_s2n_config;
         }
     }
@@ -1167,7 +1233,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
         if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: Failed to parse ALPN list");
             goto cleanup_s2n_config;
         }
 
@@ -1178,7 +1244,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         if (s2n_config_set_protocol_preferences(s2n_ctx->s2n_config, protocols, (int)protocols_size)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            s_log_and_raise_s2n_errno("ctx: Failed to set protocol preferences");
             goto cleanup_s2n_config;
         }
     }
@@ -1196,10 +1262,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     return &s2n_ctx->ctx;
 
 cleanup_s2n_config:
-    s2n_config_free(s2n_ctx->s2n_config);
-
-cleanup_s2n_ctx:
-    aws_mem_release(alloc, s2n_ctx);
+    s_s2n_ctx_destroy(s2n_ctx);
 
     return NULL;
 }
