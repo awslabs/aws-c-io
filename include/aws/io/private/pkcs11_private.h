@@ -55,7 +55,32 @@ int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
     uint64_t session_handle,
     const struct aws_string *match_label,
-    uint64_t *out_key_object_handle);
+    uint64_t *out_key_object_handle,
+    uint64_t *out_key_type);
+
+/**
+ * Decrypt into output.
+ * output should be passed in uninitialized.
+ * If successful, output will be initialized and contain the decrypted contents.
+ */
+AWS_IO_API
+int aws_pkcs11_lib_decrypt(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    uint64_t session_handle,
+    uint64_t private_key_object_handle,
+    uint64_t private_key_type,
+    struct aws_byte_cursor input,
+    struct aws_byte_buf *output);
+
+AWS_IO_API
+int aws_pkcs11_lib_sign(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    uint64_t session_handle,
+    uint64_t private_key_object_handle,
+    uint64_t private_key_type,
+    struct aws_byte_cursor input,
+    struct aws_byte_buf *output);
+
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

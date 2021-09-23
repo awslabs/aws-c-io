@@ -130,6 +130,56 @@ const char *s_ckr_str(CK_RV rv) {
     /* clang-format on */
 }
 
+/* Return c-string for PKCS#11 CKK_* contants. */
+static const char *s_ckk_str(CK_KEY_TYPE key_type) {
+    /* clang-format off */
+    switch(key_type) {
+        case (CKK_RSA): return "CKK_RSA";
+        case (CKK_DSA): return "CKK_DSA";
+        case (CKK_DH): return "CKK_DH";
+        case (CKK_EC): return "CKK_EC";
+        case (CKK_X9_42_DH): return "CKK_X9_42_DH";
+        case (CKK_KEA): return "CKK_KEA";
+        case (CKK_GENERIC_SECRET): return "CKK_GENERIC_SECRET";
+        case (CKK_RC2): return "CKK_RC2";
+        case (CKK_RC4): return "CKK_RC4";
+        case (CKK_DES): return "CKK_DES";
+        case (CKK_DES2): return "CKK_DES2";
+        case (CKK_DES3): return "CKK_DES3";
+        case (CKK_CAST): return "CKK_CAST";
+        case (CKK_CAST3): return "CKK_CAST3";
+        case (CKK_CAST128): return "CKK_CAST128";
+        case (CKK_RC5): return "CKK_RC5";
+        case (CKK_IDEA): return "CKK_IDEA";
+        case (CKK_SKIPJACK): return "CKK_SKIPJACK";
+        case (CKK_BATON): return "CKK_BATON";
+        case (CKK_JUNIPER): return "CKK_JUNIPER";
+        case (CKK_CDMF): return "CKK_CDMF";
+        case (CKK_AES): return "CKK_AES";
+        case (CKK_BLOWFISH): return "CKK_BLOWFISH";
+        case (CKK_TWOFISH): return "CKK_TWOFISH";
+        case (CKK_SECURID): return "CKK_SECURID";
+        case (CKK_HOTP): return "CKK_HOTP";
+        case (CKK_ACTI): return "CKK_ACTI";
+        case (CKK_CAMELLIA): return "CKK_CAMELLIA";
+        case (CKK_ARIA): return "CKK_ARIA";
+        case (CKK_MD5_HMAC): return "CKK_MD5_HMAC";
+        case (CKK_SHA_1_HMAC): return "CKK_SHA_1_HMAC";
+        case (CKK_RIPEMD128_HMAC): return "CKK_RIPEMD128_HMAC";
+        case (CKK_RIPEMD160_HMAC): return "CKK_RIPEMD160_HMAC";
+        case (CKK_SHA256_HMAC): return "CKK_SHA256_HMAC";
+        case (CKK_SHA384_HMAC): return "CKK_SHA384_HMAC";
+        case (CKK_SHA512_HMAC): return "CKK_SHA512_HMAC";
+        case (CKK_SHA224_HMAC): return "CKK_SHA224_HMAC";
+        case (CKK_SEED): return "CKK_SEED";
+        case (CKK_GOSTR3410): return "CKK_GOSTR3410";
+        case (CKK_GOSTR3411): return "CKK_GOSTR3411";
+        case (CKK_GOST28147): return "CKK_GOST28147";
+        default: return "<UNKNOWN KEY TYPE>";
+    }
+    /* clang-format on */
+}
+
 /* Translate from a CK_RV to an AWS error code */
 static int s_ck_to_aws_error(CK_RV rv) {
     /* For now, we just have one AWS error code for all PKCS#11 errors */
@@ -577,7 +627,7 @@ int aws_pkcs11_lib_open_session(struct aws_pkcs11_lib *pkcs11_lib, uint64_t slot
 
     CK_SESSION_HANDLE session_handle = CK_INVALID_HANDLE;
     CK_RV rv = pkcs11_lib->function_list->C_OpenSession(
-        (CK_ULONG)slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, &session_handle);
+        (CK_SLOT_ID)slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, &session_handle);
     if (rv != CKR_OK) {
         return s_raise_ck_error(pkcs11_lib, "C_OpenSession", rv);
     }
@@ -653,7 +703,8 @@ int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
     uint64_t session_handle,
     const struct aws_string *match_label,
-    uint64_t *out_key_object_handle) {
+    uint64_t *out_key_object_handle,
+    uint64_t *out_key_type) {
 
     AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
 
@@ -731,10 +782,50 @@ int aws_pkcs11_lib_find_private_key(
         goto clean_up;
     }
 
+    /* key found */
+    CK_OBJECT_HANDLE key_handle = found_objects[0];
+
+    /* query key-type */
+    CK_KEY_TYPE key_type = 0;
+    CK_ATTRIBUTE key_attributes[] = {
+        {
+            .type = CKA_KEY_TYPE,
+            .pValue = &key_type,
+            .ulValueLen = sizeof(key_type),
+        },
+    };
+
+    rv = pkcs11_lib->function_list->C_GetAttributeValue(
+        (CK_SESSION_HANDLE)session_handle, key_handle, key_attributes, AWS_ARRAY_SIZE(key_attributes));
+    if (rv != CKR_OK) {
+        s_raise_ck_session_error(pkcs11_lib, "C_GetAttributeValue", session_handle, rv);
+        goto clean_up;
+    }
+
+    switch (key_type) {
+        case CKK_RSA:
+            break;
+        default:
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "id=%p session=%" PRIu64 ": PKCS#11 private key type %s (0x%08lX) is currently unsupported",
+                (void *)pkcs11_lib,
+                session_handle,
+                s_ckk_str(key_type),
+                key_type);
+            aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_TYPE_UNSUPPORTED);
+            goto clean_up;
+    }
+
     /* Success! */
     AWS_LOGF_TRACE(
-        AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": Found private key.", (void *)pkcs11_lib, session_handle);
-    *out_key_object_handle = found_objects[0];
+        AWS_LS_IO_PKCS11,
+        "id=%p session=%" PRIu64 ": Found private key. type=%s",
+        (void *)pkcs11_lib,
+        session_handle,
+        s_ckk_str(key_type));
+    *out_key_object_handle = key_handle;
+    *out_key_type = key_type;
     success = true;
 
 clean_up:
@@ -749,4 +840,55 @@ clean_up:
     }
 
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
+int aws_pkcs11_lib_decrypt(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    uint64_t session_handle,
+    uint64_t private_key_object_handle,
+    uint64_t private_key_type,
+    struct aws_byte_cursor input,
+    struct aws_byte_buf *output) {
+
+    AWS_ASSERT(session_handle <= ULONG_MAX);             /* do real error checking if this becomes a public API */
+    AWS_ASSERT(private_key_object_handle <= ULONG_MAX);  /* do real error checking if this becomes a public API */
+    AWS_ASSERT(private_key_type <= ULONG_MAX);           /* do real error checking if this becomes a public API */
+    AWS_ASSERT(input.len <= ULONG_MAX);                  /* do real error checking if this becomes a public API */
+
+    CK_MECHANISM mechanism;
+    AWS_ZERO_STRUCT(mechanism);
+
+    switch (private_key_type) {
+        case CKK_RSA:
+            mechanism.mechanism = CKM_RSA_PKCS;
+            break;
+        default:
+            return aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_TYPE_UNSUPPORTED);
+    }
+
+    CK_RV rv = pkcs11_lib->function_list->C_DecryptInit(
+        (CK_SESSION_HANDLE)session_handle, &mechanism, (CK_OBJECT_HANDLE)private_key_object_handle);
+    if (rv != CKR_OK) {
+        return s_raise_ck_session_error(pkcs11_lib, "C_DecryptInit", session_handle, rv);
+    }
+
+    /* query needed capacity */
+    CK_ULONG output_len = 0;
+    rv = pkcs11_lib->function_list->C_Decrypt(
+        (CK_SESSION_HANDLE)session_handle, input.ptr, (CK_ULONG)input.len, NULL, &output_len);
+    if (rv != CKR_OK) {
+        return s_raise_ck_session_error(pkcs11_lib, "C_Decrypt", session_handle, rv);
+    }
+
+    aws_byte_buf_reserve(output, output_len);
+
+    /* do actual decrypt */
+    rv = pkcs11_lib->function_list->C_Decrypt(
+        (CK_SESSION_HANDLE)session_handle, input.ptr, (CK_ULONG)input.len, output->buffer, &output_len);
+    if (rv != CKR_OK) {
+        return s_raise_ck_session_error(pkcs11_lib, "C_Decrypt", session_handle, rv);
+    }
+
+    output->len = output_len;
+    return AWS_OP_SUCCESS;
 }
