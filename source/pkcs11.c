@@ -482,8 +482,8 @@ int aws_pkcs11_lib_find_slot_with_token(
     const struct aws_string *match_token_label,
     CK_SLOT_ID *out_slot_id) {
 
-    CK_SLOT_ID *slot_id_array = NULL;
-    CK_SLOT_ID *candidate = NULL;
+    CK_SLOT_ID *slot_id_array = NULL; /* array of IDs */
+    CK_SLOT_ID *candidate = NULL;     /* points to ID in slot_id_array */
     CK_TOKEN_INFO info;
     AWS_ZERO_STRUCT(info);
     bool success = false;
@@ -692,8 +692,6 @@ int aws_pkcs11_lib_find_private_key(
     CK_OBJECT_HANDLE *out_key_handle,
     CK_KEY_TYPE *out_key_type) {
 
-    AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
-
     /* gets set true after everything succeeds */
     bool success = false;
 
@@ -781,7 +779,7 @@ int aws_pkcs11_lib_find_private_key(
     };
 
     rv = pkcs11_lib->function_list->C_GetAttributeValue(
-    rv = pkcs11_lib->function_list->C_GetAttributeValue(session_handle, key_handle, key_attributes, AWS_ARRAY_SIZE(key_attributes));
+        session_handle, key_handle, key_attributes, AWS_ARRAY_SIZE(key_attributes));
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_GetAttributeValue", session_handle, rv);
         goto clean_up;
@@ -803,9 +801,9 @@ int aws_pkcs11_lib_find_private_key(
     }
 
     /* Success! */
-    AWS_LOGF_TRACE(AWS_LS_IO_PKCS11, "id=%p session=%lu: Found private key. type=%s", (void *)pkcs11_lib, session_handle);
+    AWS_LOGF_TRACE(
         AWS_LS_IO_PKCS11,
-        "id=%p session=%" PRIu64 ": Found private key. type=%s",
+        "id=%p session=%lu: Found private key. type=%s",
         (void *)pkcs11_lib,
         session_handle,
         s_ckk_str(key_type));
@@ -848,7 +846,7 @@ int aws_pkcs11_lib_decrypt(
             return aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_TYPE_UNSUPPORTED);
     }
 
-    CK_RV rv = pkcs11_lib->function_list->C_DecryptInit(session_handle, &mechanism, private_key_object_handle);
+    CK_RV rv = pkcs11_lib->function_list->C_DecryptInit(session_handle, &mechanism, private_key_handle);
     if (rv != CKR_OK) {
         return s_raise_ck_session_error(pkcs11_lib, "C_DecryptInit", session_handle, rv);
     }
