@@ -21,14 +21,13 @@
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
 
-/* Support older PKCS#11 versions, even if we're using newer headers.
- * The PKCS#11 API is designed to be forward compatible. */
-#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
+/* NOTE 1: even though we currently include the v2.40 headers, they're compatible with any v2.x library.
+ * NOTE 2: v3.x is backwards compatible with 2.x, and even claims to be 2.40 if you check its version the 2.x way */
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
 #define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 20
 
 /* Return c-string for PKCS#11 CKR_* contants. */
-const char *s_ckr_str(CK_RV rv) {
+const char *aws_pkcs11_ckr_str(CK_RV rv) {
     /* clang-format off */
     switch (rv) {
         case (CKR_OK): return "CKR_OK";
@@ -143,10 +142,10 @@ static int s_raise_ck_error(const struct aws_pkcs11_lib *pkcs11_lib, const char 
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_PKCS11,
-        "id=%p: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
+        "id=%p: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s",
         (void *)pkcs11_lib,
         fn_name,
-        s_ckr_str(rv),
+        aws_pkcs11_ckr_str(rv),
         rv,
         aws_error_name(aws_err));
 
@@ -157,18 +156,18 @@ static int s_raise_ck_error(const struct aws_pkcs11_lib *pkcs11_lib, const char 
 static int s_raise_ck_session_error(
     const struct aws_pkcs11_lib *pkcs11_lib,
     const char *fn_name,
-    uint64_t session,
+    CK_SESSION_HANDLE session,
     CK_RV rv) {
 
     int aws_err = s_ck_to_aws_error(rv);
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_PKCS11,
-        "id=%p session=%" PRIu64 ": %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s.",
+        "id=%p session=%lu: %s() failed. PKCS#11 error: %s (0x%08lX). AWS error: %s",
         (void *)pkcs11_lib,
         session,
         fn_name,
-        s_ckr_str(rv),
+        aws_pkcs11_ckr_str(rv),
         rv,
         aws_error_name(aws_err));
 
@@ -439,10 +438,10 @@ int aws_pkcs11_lib_find_slot_with_token(
     struct aws_pkcs11_lib *pkcs11_lib,
     const uint64_t *match_slot_id,
     const struct aws_string *match_token_label,
-    uint64_t *out_slot_id) {
+    CK_SLOT_ID *out_slot_id) {
 
-    CK_SLOT_ID *slot_id_array = NULL;
-    CK_SLOT_ID *candidate = NULL;
+    CK_SLOT_ID *slot_id_array = NULL; /* array of IDs */
+    CK_SLOT_ID *candidate = NULL;     /* points to ID in slot_id_array */
     CK_TOKEN_INFO info;
     AWS_ZERO_STRUCT(info);
     bool success = false;
@@ -456,7 +455,7 @@ int aws_pkcs11_lib_find_slot_with_token(
     }
 
     if (num_slots == 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p: No PKCS#11 tokens present in any slot.", (void *)pkcs11_lib);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p: No PKCS#11 tokens present in any slot", (void *)pkcs11_lib);
         aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
         goto clean_up;
     }
@@ -571,75 +570,66 @@ clean_up:
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
 
-int aws_pkcs11_lib_open_session(struct aws_pkcs11_lib *pkcs11_lib, uint64_t slot_id, uint64_t *out_session_handle) {
-
-    AWS_ASSERT(slot_id <= ULONG_MAX); /* do real error checking if this becomes a public API */
+int aws_pkcs11_lib_open_session(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    CK_SLOT_ID slot_id,
+    CK_SESSION_HANDLE *out_session_handle) {
 
     CK_SESSION_HANDLE session_handle = CK_INVALID_HANDLE;
     CK_RV rv = pkcs11_lib->function_list->C_OpenSession(
-        (CK_ULONG)slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, &session_handle);
+        slot_id, CKF_SERIAL_SESSION /*flags*/, NULL /*pApplication*/, NULL /*notify*/, &session_handle);
     if (rv != CKR_OK) {
         return s_raise_ck_error(pkcs11_lib, "C_OpenSession", rv);
     }
 
     /* success! */
     AWS_LOGF_DEBUG(
-        AWS_LS_IO_PKCS11,
-        "id=%p session=%lu: Session opened on slot %" PRIu64,
-        (void *)pkcs11_lib,
-        session_handle,
-        slot_id);
+        AWS_LS_IO_PKCS11, "id=%p session=%lu: Session opened on slot %lu", (void *)pkcs11_lib, session_handle, slot_id);
 
     *out_session_handle = session_handle;
     return AWS_OP_SUCCESS;
 }
 
-void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, uint64_t session_handle) {
-    AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
-
+void aws_pkcs11_lib_close_session(struct aws_pkcs11_lib *pkcs11_lib, CK_SESSION_HANDLE session_handle) {
     CK_RV rv = pkcs11_lib->function_list->C_CloseSession(session_handle);
     if (rv == CKR_OK) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": Session closed", (void *)pkcs11_lib, session_handle);
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: Session closed", (void *)pkcs11_lib, session_handle);
     } else {
         /* Log the error, but we can't really do anything about it */
         AWS_LOGF_WARN(
             AWS_LS_IO_PKCS11,
-            "id=%p session=%" PRIu64 ": Ignoring C_CloseSession() failure. PKCS#11 error: %s (0x%08lX).",
+            "id=%p session=%lu: Ignoring C_CloseSession() failure. PKCS#11 error: %s (0x%08lX)",
             (void *)pkcs11_lib,
             session_handle,
-            s_ckr_str(rv),
+            aws_pkcs11_ckr_str(rv),
             rv);
     }
 }
 
 int aws_pkcs11_lib_login_user(
     struct aws_pkcs11_lib *pkcs11_lib,
-    uint64_t session_handle,
+    CK_SESSION_HANDLE session_handle,
     const struct aws_string *optional_user_pin) {
-
-    AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
 
     CK_UTF8CHAR_PTR pin = NULL;
     CK_ULONG pin_len = 0;
     if (optional_user_pin) {
         if (optional_user_pin->len > ULONG_MAX) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": PIN is too long.", (void *)pkcs11_lib, session_handle);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: PIN is too long", (void *)pkcs11_lib, session_handle);
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT); /* TODO: raise PIN_INCORRECT code */
         }
         pin_len = (CK_ULONG)optional_user_pin->len;
         pin = (CK_UTF8CHAR_PTR)optional_user_pin->bytes;
     }
 
-    CK_RV rv = pkcs11_lib->function_list->C_Login((CK_ULONG)session_handle, CKU_USER, pin, pin_len);
+    CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
     if (rv != CKR_OK) {
         /* TODO: Login failure must have a real error code. Expose CKR_ codes as aws-error codes */
         return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
     }
 
     /* Success! */
-    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": User logged in", (void *)pkcs11_lib, session_handle);
+    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
     return AWS_OP_SUCCESS;
 }
 
@@ -651,11 +641,9 @@ int aws_pkcs11_lib_login_user(
  */
 int aws_pkcs11_lib_find_private_key(
     struct aws_pkcs11_lib *pkcs11_lib,
-    uint64_t session_handle,
+    CK_SESSION_HANDLE session_handle,
     const struct aws_string *match_label,
-    uint64_t *out_key_object_handle) {
-
-    AWS_ASSERT(session_handle <= ULONG_MAX); /* do real error checking if this becomes a public API */
+    CK_OBJECT_HANDLE *out_key_object_handle) {
 
     /* gets set true after everything succeeds */
     bool success = false;
@@ -679,7 +667,7 @@ int aws_pkcs11_lib_find_private_key(
         if (match_label->len > ULONG_MAX) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKCS11,
-                "id=%p session=%" PRIu64 ": private key label is too long.",
+                "id=%p session=%lu: private key label is too long",
                 (void *)pkcs11_lib,
                 session_handle);
             aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
@@ -693,7 +681,7 @@ int aws_pkcs11_lib_find_private_key(
     }
 
     /* initialize search */
-    CK_RV rv = pkcs11_lib->function_list->C_FindObjectsInit((CK_ULONG)session_handle, attributes, num_attributes);
+    CK_RV rv = pkcs11_lib->function_list->C_FindObjectsInit(session_handle, attributes, num_attributes);
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_FindObjectsInit", session_handle, rv);
         goto clean_up;
@@ -705,7 +693,7 @@ int aws_pkcs11_lib_find_private_key(
      * note that we're asking for 2 objects max, so we can fail if we find more than one */
     CK_OBJECT_HANDLE found_objects[2] = {0};
     CK_ULONG num_found = 0;
-    rv = pkcs11_lib->function_list->C_FindObjects((CK_ULONG)session_handle, found_objects, 2 /*max*/, &num_found);
+    rv = pkcs11_lib->function_list->C_FindObjects(session_handle, found_objects, 2 /*max*/, &num_found);
     if (rv != CKR_OK) {
         s_raise_ck_session_error(pkcs11_lib, "C_FindObjects", session_handle, rv);
         goto clean_up;
@@ -714,7 +702,7 @@ int aws_pkcs11_lib_find_private_key(
     if ((num_found == 0) || (found_objects[0] == CK_INVALID_HANDLE)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11,
-            "id=%p session=%" PRIu64 ": Failed to find private key on PKCS#11 token which matches search criteria.",
+            "id=%p session=%lu: Failed to find private key on PKCS#11 token which matches search criteria",
             (void *)pkcs11_lib,
             session_handle);
         aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
@@ -723,8 +711,7 @@ int aws_pkcs11_lib_find_private_key(
     if (num_found > 1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11,
-            "id=%p session=%" PRIu64
-            ": Failed to choose private key, multiple objects on PKCS#11 token match search criteria.",
+            "id=%p session=%lu: Failed to choose private key, multiple objects on PKCS#11 token match search criteria",
             (void *)pkcs11_lib,
             session_handle);
         aws_raise_error(AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND);
@@ -732,15 +719,14 @@ int aws_pkcs11_lib_find_private_key(
     }
 
     /* Success! */
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_PKCS11, "id=%p session=%" PRIu64 ": Found private key.", (void *)pkcs11_lib, session_handle);
+    AWS_LOGF_TRACE(AWS_LS_IO_PKCS11, "id=%p session=%lu: Found private key", (void *)pkcs11_lib, session_handle);
     *out_key_object_handle = found_objects[0];
     success = true;
 
 clean_up:
 
     if (must_finalize_search) {
-        rv = pkcs11_lib->function_list->C_FindObjectsFinal((CK_ULONG)session_handle);
+        rv = pkcs11_lib->function_list->C_FindObjectsFinal(session_handle);
         /* don't bother reporting error if we were already failing */
         if ((rv != CKR_OK) && (success == true)) {
             s_raise_ck_session_error(pkcs11_lib, "C_FindObjectsFinal", session_handle, rv);
