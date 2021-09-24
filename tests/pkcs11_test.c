@@ -155,8 +155,11 @@ static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void 
 
     /* Find key */
     CK_OBJECT_HANDLE pkey_handle;
-    ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_handle, s_pkcs11_tester.pkey_label, &pkey_handle));
+    CK_KEY_TYPE pkey_type;
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_private_key(
+        pkcs11_lib, session_handle, s_pkcs11_tester.pkey_label, &pkey_handle, &pkey_type));
+    ASSERT_TRUE(CK_INVALID_HANDLE != pkey_handle);
+    ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
     /* Clean up */
     aws_pkcs11_lib_close_session(pkcs11_lib, session_handle);
