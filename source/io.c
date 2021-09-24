@@ -136,7 +136,7 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_STREAM_READ_FAILED,
         "Stream failed to read from the underlying io source"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_INVALID_FILE_HANDLE,
+        DEPRECATED_AWS_IO_INVALID_FILE_HANDLE,
         "Operation failed because the file handle was invalid"),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SHARED_LIBRARY_LOAD_FAILURE,
