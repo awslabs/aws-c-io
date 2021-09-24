@@ -163,8 +163,11 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_PKCS11_TOKEN_NOT_FOUND,
         "Could not pick PKCS#11 token matching search criteria (none found, or multiple found)"),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_PKCS11_PRIVATE_KEY_NOT_FOUND,
-        "Could not pick PKCS#11 private key matching search criteria (none found, or multiple found)"),
+        AWS_IO_PKCS11_KEY_NOT_FOUND,
+        "Could not pick PKCS#11 key matching search criteria (none found, or multiple found)"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED,
+        "PKCS#11 key type not supported"),
 };
 /* clang-format on */
 
