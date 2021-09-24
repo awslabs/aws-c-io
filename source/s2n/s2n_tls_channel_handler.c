@@ -574,10 +574,8 @@ static void s_s2n_pkcs11_async_pkey_task(
     bool success = false;
 
     uint8_t *input_data = NULL; /* allocated later */
-
-    /* initialize with 0-capacity now, will be resized later */
-    struct aws_byte_buf output_buf;
-    aws_byte_buf_init(&output_buf, handler->alloc, 0);
+    struct aws_byte_buf output_buf; /* initialized later */
+    AWS_ZERO_STRUCT(output_buf);
 
     if (status != AWS_TASK_STATUS_RUN_READY) {
         goto clean_up;
@@ -617,6 +615,7 @@ static void s_s2n_pkcs11_async_pkey_task(
                     s2n_handler->s2n_ctx->pkcs11.private_key_handle,
                     s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
+                    handler->alloc,
                     &output_buf)) {
                 goto unlock;
             }
@@ -629,6 +628,7 @@ static void s_s2n_pkcs11_async_pkey_task(
                     s2n_handler->s2n_ctx->pkcs11.private_key_handle,
                     s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
+                    handler->alloc,
                     &output_buf)) {
                 goto unlock;
             }
@@ -671,7 +671,7 @@ error:
 clean_up:
     s2n_async_pkey_op_free(op);
     aws_mem_release(handler->alloc, input_data);
-    aws_byte_buf_clean_up_secure(&output_buf);
+    aws_byte_buf_clean_up(&output_buf);
 
     if (success) {
         s_drive_negotiation(handler); // TODO: check result?
@@ -1285,6 +1285,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
             s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
+        }
+
+        if (mode == S2N_CLIENT) {
+            s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
         }
     }
 
