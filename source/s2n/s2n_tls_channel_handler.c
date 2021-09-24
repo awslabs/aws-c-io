@@ -1152,8 +1152,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
     aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
-    s2n_ctx->s2n_config = s2n_config_new();
 
+    s2n_ctx->s2n_config = s2n_config_new();
     if (!s2n_ctx->s2n_config) {
         s_log_and_raise_s2n_errno("ctx: creation failed");
         goto cleanup_s2n_config;
