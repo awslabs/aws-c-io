@@ -78,52 +78,6 @@ class Pkcs11TestSetup(Builder.Action):
 
         return result
 
-
-    def _get_token_slots(self):
-        """Return array of IDs for slots with initialized tokens"""
-        token_slot_ids = []
-
-        output = self._exec_softhsm2_util('--show-slots', quiet=True).output
-
-        # --- output looks like ---
-        #Available slots:
-        #Slot 0
-        #    Slot info:
-        #        ...
-        #        Token present:    yes
-        #    Token info:
-        #        ...
-        #        Initialized:      yes
-        current_slot = None
-        current_info_block = None
-        for line in output.splitlines():
-            # check for start of "Slot <ID>" block
-            m = re.match(r"Slot ([0-9]+)", line)
-            if m:
-                current_slot = int(m.group(1))
-                current_info_block = None
-                continue
-
-            if current_slot is None:
-                continue
-
-            # check for start of next indented block, like "Token info"
-            m = re.match(r"    ([^ ].*)", line)
-            if m:
-                current_info_block = m.group(1)
-                continue
-
-            if current_info_block is None:
-                continue
-
-            # if we're in token block, check for "Initialized: yes"
-            if "Token info" in current_info_block:
-                if re.match(r" *Initialized: *yes", line):
-                    token_slot_ids.append(current_slot)
-
-        return token_slot_ids
-
-
     def _setenv(self, var, value):
         """
         Set environment variable now,
