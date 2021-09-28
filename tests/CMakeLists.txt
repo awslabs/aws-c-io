@@ -228,6 +228,11 @@ if (ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_lib_initialize)
     add_test_case(pkcs11_lib_omit_initialize)
     add_test_case(pkcs11_find_private_key)
+
+    # TLS with PKCS#11 not currently supported on every platform
+    if (USE_S2N)
+        add_test_case(pkcs11_tls_negotiation_succeeds)
+    endif()
 endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
