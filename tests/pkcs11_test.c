@@ -623,7 +623,7 @@ static int s_test_pkcs11_find_multiple_private_key(struct aws_allocator *allocat
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);;
+    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     const char* key_label_1 = "RSA_KEY";
@@ -854,7 +854,6 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
 
     /* clear softhsm and make sure that no tokens match with previous slot/label */
     pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, TRUE, pkcs11_lib);
-    pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with just the free token,
@@ -976,7 +975,7 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     CK_SLOT_ID created_slot = ULONG_MAX;
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
-    struct aws_pkcs11_lib *pkcs11_lib;
+    struct aws_pkcs11_lib *pkcs11_lib = NULL;
     setup_test(allocator, &pkcs11_lib, &created_slot, &session);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
@@ -1039,7 +1038,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     CK_SLOT_ID created_slot = ULONG_MAX;
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
-    struct aws_pkcs11_lib *pkcs11_lib;
+    struct aws_pkcs11_lib *pkcs11_lib = NULL;
     setup_test(allocator, &pkcs11_lib, &created_slot, &session);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
