@@ -330,7 +330,7 @@ missing:
     return aws_raise_error(AWS_ERROR_INVALID_STATE);
 }
 
-static int setup_test(struct aws_allocator *allocator, struct aws_pkcs11_lib **pkcs11_lib,
+static int s_setup_test(struct aws_allocator *allocator, struct aws_pkcs11_lib **pkcs11_lib,
                       CK_SLOT_ID *created_slot, CK_SESSION_HANDLE *session) {
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
@@ -430,11 +430,11 @@ static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ct
     CK_SESSION_HANDLE second_session = CK_INVALID_HANDLE;
     /* Now, creation of a session on a valid slot will be a success */
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &first_session /*out*/));
-    ASSERT_TRUE(first_session != ULONG_MAX);
+    ASSERT_TRUE(first_session != CK_INVALID_HANDLE);
 
     /* create one more session */
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &second_session /*out*/));
-    ASSERT_TRUE(second_session != ULONG_MAX);
+    ASSERT_TRUE(second_session != CK_INVALID_HANDLE);
     ASSERT_TRUE(first_session != second_session);
 
     /* Close both sessions */
@@ -803,7 +803,6 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
     struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
-    CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     /* softhsm does not like ;| as part of label */
     const char* const label_1 = "label!@#$%^&*-_=+{}[]<>?,./():_1";
@@ -976,7 +975,7 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     CK_SLOT_ID created_slot = ULONG_MAX;
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
     struct aws_pkcs11_lib *pkcs11_lib = NULL;
-    setup_test(allocator, &pkcs11_lib, &created_slot, &session);
+    s_setup_test(allocator, &pkcs11_lib, &created_slot, &session);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
@@ -1009,19 +1008,19 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     CK_KEY_TYPE unsupported_key_type = CKK_EC;
     aws_byte_buf_clean_up(&output_decrypted);
     AWS_ZERO_STRUCT(output_decrypted);
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, created_key, unsupported_key_type,
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, created_key, unsupported_key_type,
                                      cipher_text, allocator, &output_decrypted));
 
     /* Invalid session handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE,
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE,
                                      cipher_text, allocator, &output_decrypted));
 
     /* Invalid key handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE,
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE,
                                      cipher_text, allocator, &output_decrypted));
 
     struct aws_byte_cursor empty_message_to_decrypt = aws_byte_cursor_from_c_str("");
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE,
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE,
                                      empty_message_to_decrypt, allocator, &output_decrypted));
     /* Clean up */
     aws_byte_buf_clean_up(&output_buf);
@@ -1039,7 +1038,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     CK_SLOT_ID created_slot = ULONG_MAX;
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
     struct aws_pkcs11_lib *pkcs11_lib = NULL;
-    setup_test(allocator, &pkcs11_lib, &created_slot, &session);
+    s_setup_test(allocator, &pkcs11_lib, &created_slot, &session);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
@@ -1094,10 +1093,6 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     /* Invalid key handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE,
                                      message_to_sign, allocator, &signature));
-
-    struct aws_byte_cursor empty_message_to_sign = aws_byte_cursor_from_c_str("");
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE,
-                                     empty_message_to_sign, allocator, &signature));
 
     /* Clean up */
     aws_byte_buf_clean_up(&prefixed_input);
