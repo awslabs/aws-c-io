@@ -288,7 +288,7 @@ static int s_pkcs11_softhsm_create_slot(
         FAIL("C_Initialize fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
-    CK_SLOT_ID new_slot_id;
+    CK_SLOT_ID new_slot_id = (CK_SLOT_ID)-1;
     s_pkcs11_find_slot(pkcs11_function_list, tokenInfo, &new_slot_id);
     if (slot_id == new_slot_id) {
         printf("The token has been initialized on slot %lu\n", new_slot_id);
@@ -426,11 +426,11 @@ static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ct
     /* Try creating a session for an invalid slot */
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
     /* We havent created any slots and we are starting from a clean softhsm, so any slot value is invalid */
-    CK_SLOT_ID slot = 1UL;
+    CK_SLOT_ID slot = 1;
     ASSERT_FAILS(aws_pkcs11_lib_open_session(pkcs11_lib, slot, &session /*out*/));
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
-    CK_SLOT_ID created_slot = ULONG_MAX;
+    CK_SLOT_ID created_slot = (CK_SLOT_ID)-1;
     ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     CK_SESSION_HANDLE first_session = CK_INVALID_HANDLE;
@@ -463,7 +463,7 @@ static int s_test_pkcs11_login_tests(struct aws_allocator *allocator, void *ctx)
     struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
-    CK_SLOT_ID created_slot = ULONG_MAX;
+    CK_SLOT_ID created_slot = 0;
     ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     /* Try to login with in invalid session, we have not created any session on this token
@@ -764,7 +764,7 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     const char *const user_pin_2 = "ABCD";
     const char *const user_pin_3 = "0111";
 
-    CK_SLOT_ID slot_id = (CK_ULONG)-1;
+    CK_SLOT_ID slot_id = (CK_SLOT_ID)-1;
     /*
      * Softhsm always has one uninitialized token which is returned by the GetSlotList() API,
      * so there is no way to start without any slot at all
@@ -779,9 +779,9 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_1, so_pin_1, user_pin_1, &created_slot));
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but no matching criteria */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, NULL /*match_slot_id*/, NULL, &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but match the slot this time */
     uint64_t created_slot_64 = created_slot;
@@ -790,7 +790,7 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(created_slot, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but match the label this time */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     struct aws_string *match_label = aws_string_new_from_c_str(allocator, label_1);
     ASSERT_SUCCESS(
         aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, NULL /*match_slot_id*/, match_label, &slot_id /*out*/));
@@ -803,10 +803,10 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
      * Call aws_pkcs11_lib_find_slot_with_token with just the free token,
      * and assert that previous slot id does not match anymore
      * */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, &created_slot_64 /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
 
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with just the uninitialized token,
@@ -814,7 +814,7 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
      * */
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, NULL /*match_slot_id*/, match_label /*match_token_label*/, &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
 
     /* Create 2 new slots */
     CK_SESSION_HANDLE created_slot_1 = CK_INVALID_HANDLE;
@@ -826,10 +826,10 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
         s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_3, so_pin_3, user_pin_3, &created_slot_2));
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens on softhsm, but no matching criteria */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, NULL /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the slot 1 this time */
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
@@ -842,14 +842,14 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     ASSERT_INT_EQUALS(created_slot_2, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the label 1 this time */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     struct aws_string *match_label_1 = aws_string_new_from_c_str(allocator, label_2);
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, NULL /*match_slot_id*/, match_label_1 /*match_token_label*/, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the label 2 this time */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     struct aws_string *match_label_2 = aws_string_new_from_c_str(allocator, label_3);
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib, NULL /*match_slot_id*/, match_label_2 /*match_token_label*/, &slot_id /*out*/));
@@ -859,26 +859,26 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
      * Call aws_pkcs11_lib_find_slot_with_token with 3 tokens,
      * but a mismatch for a slot and label should return error
      * */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib,
         (uint64_t *)&created_slot_1 /*match_slot_id*/,
         match_label_2 /*match_token_label*/,
         &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
 
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib,
         (uint64_t *)&created_slot_2 /*match_slot_id*/,
         match_label_1 /*match_token_label*/,
         &slot_id /*out*/));
-    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
+    ASSERT_INT_EQUALS((CK_SLOT_ID)-1, slot_id);
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with 3 tokens,
      * but match for both, slot and label should return success
      * */
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib,
         (uint64_t *)&created_slot_1 /*match_slot_id*/,
@@ -886,7 +886,7 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
         &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_1, slot_id);
 
-    slot_id = (CK_ULONG)-1;
+    slot_id = (CK_SLOT_ID)-1;
     ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
         pkcs11_lib,
         (uint64_t *)&created_slot_2 /*match_slot_id*/,
