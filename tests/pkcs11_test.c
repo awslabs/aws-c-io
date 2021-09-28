@@ -7,10 +7,9 @@
  * See PKCS11.md for instructions on running these tests
  */
 
-#include <limits.h>
-#include <unistd.h>
 #include <aws/io/pkcs11.h>
 #include <aws/io/private/pkcs11_private.h>
+#include <unistd.h>
 
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
@@ -28,16 +27,16 @@ struct pkcs11_tester {
 
 static struct pkcs11_tester s_pkcs11_tester;
 CK_SLOT_ID next_free_slot_id = 0;
-const char* TOKEN_LABEL = "label";
-const char* SO_PIN = "qwerty";
-const char* USER_PIN = "341269504732";
-const char* DEFAULT_KEY_LABEL = "Key-Label";
-const char* DEFAULT_KEY_ID = "ABBCCDDEEFF";
+const char *TOKEN_LABEL = "label";
+const char *SO_PIN = "qwerty";
+const char *USER_PIN = "341269504732";
+const char *DEFAULT_KEY_LABEL = "Key-Label";
+const char *DEFAULT_KEY_ID = "ABBCCDDEEFF";
 CK_KEY_TYPE SUPPORTED_KEY_TYPE = CKK_RSA;
 
 struct pkcs11_key_creation_params {
-    const char* key_label;
-    const char* key_id;
+    const char *key_label;
+    const char *key_id;
     const CK_ULONG key_length;
 };
 
@@ -46,10 +45,10 @@ struct pkcs11_key_creation_params {
  * */
 
 /* Helper pkcs functions to provision/setup/clear softhsm tokens/keys */
-static void s_pkcs11_clear_softhsm() {
+static void s_pkcs11_clear_softhsm(void) {
     char cmd[120] = {'\0'};
     /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
-    const char* token_dir = aws_string_c_str(s_pkcs11_tester.token_dir);
+    const char *token_dir = aws_string_c_str(s_pkcs11_tester.token_dir);
     if (token_dir[s_pkcs11_tester.token_dir->len - 1] == '/') {
         sprintf(cmd, "rm -rf %s*", token_dir);
     } else {
@@ -60,9 +59,11 @@ static void s_pkcs11_clear_softhsm() {
     next_free_slot_id = 0;
 }
 
-static struct aws_pkcs11_lib *s_reload_hsm(struct aws_allocator *allocator,
-                                           bool is_already_loaded,
-                                           struct aws_pkcs11_lib* current_lib) {
+static struct aws_pkcs11_lib *s_reload_hsm(
+    struct aws_allocator *allocator,
+    bool is_already_loaded,
+    struct aws_pkcs11_lib *current_lib) {
+
     // Finalize if needed
     if (is_already_loaded) {
         /* Finalize to make sure that softhsm reads new tokens afresh */
@@ -76,19 +77,23 @@ static struct aws_pkcs11_lib *s_reload_hsm(struct aws_allocator *allocator,
     return pkcs11_lib;
 }
 
-static struct aws_pkcs11_lib *s_pkcs11_clear_softhsm_and_reload(struct aws_allocator *allocator,
-                                                                bool is_already_loaded,
-                                                                struct aws_pkcs11_lib* current_lib) {
+static struct aws_pkcs11_lib *s_pkcs11_clear_softhsm_and_reload(
+    struct aws_allocator *allocator,
+    bool is_already_loaded,
+    struct aws_pkcs11_lib *current_lib) {
+
     s_pkcs11_clear_softhsm();
     return s_reload_hsm(allocator, is_already_loaded, current_lib);
 }
 
-static int s_pkcs11_encrypt(CK_FUNCTION_LIST_PTR pkcs11_function_list,
-                                     struct aws_allocator *allocator,
-                                     struct aws_byte_cursor* message,
-                                     struct aws_byte_buf* cipher_text,
-                                     CK_SESSION_HANDLE session,
-                                     CK_OBJECT_HANDLE public_key) {
+static int s_pkcs11_encrypt(
+    CK_FUNCTION_LIST_PTR pkcs11_function_list,
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor *message,
+    struct aws_byte_buf *cipher_text,
+    CK_SESSION_HANDLE session,
+    CK_OBJECT_HANDLE public_key) {
+
     /* We only support RSA keys today. */
     CK_MECHANISM mechanism = {.mechanism = CKM_RSA_PKCS};
     CK_RV rv = pkcs11_function_list->C_EncryptInit(session, &mechanism, public_key);
@@ -97,21 +102,13 @@ static int s_pkcs11_encrypt(CK_FUNCTION_LIST_PTR pkcs11_function_list,
         FAIL("C_EncryptInit fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
     CK_ULONG cipher_len = 0;
-    rv = pkcs11_function_list->C_Encrypt(session,
-                                        (CK_BYTE_PTR)message->ptr,
-                                        message->len,
-                                        NULL,
-                                         &cipher_len);
+    rv = pkcs11_function_list->C_Encrypt(session, message->ptr, message->len, NULL, &cipher_len);
 
     if (rv != CKR_OK) {
         FAIL("C_Encrypt fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
     aws_byte_buf_init(cipher_text, allocator, cipher_len);
-    rv = pkcs11_function_list->C_Encrypt(session,
-                                         (CK_BYTE_PTR)message->ptr,
-                                         message->len,
-                                         (CK_BYTE_PTR)cipher_text->buffer,
-                                         &cipher_len);
+    rv = pkcs11_function_list->C_Encrypt(session, message->ptr, message->len, cipher_text->buffer, &cipher_len);
 
     if (rv != CKR_OK) {
         FAIL("C_Encrypt fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
@@ -120,11 +117,13 @@ static int s_pkcs11_encrypt(CK_FUNCTION_LIST_PTR pkcs11_function_list,
     return AWS_OP_SUCCESS;
 }
 
-static int s_pkcs11_verify_signature(CK_FUNCTION_LIST_PTR pkcs11_function_list,
-                                     struct aws_byte_cursor* message,
-                                     struct aws_byte_buf* signature,
-                                     CK_SESSION_HANDLE session,
-                                     CK_OBJECT_HANDLE public_key) {
+static int s_pkcs11_verify_signature(
+    CK_FUNCTION_LIST_PTR pkcs11_function_list,
+    struct aws_byte_cursor *message,
+    struct aws_byte_buf *signature,
+    CK_SESSION_HANDLE session,
+    CK_OBJECT_HANDLE public_key) {
+
     /* We only support RSA keys today. */
     CK_MECHANISM mechanism = {.mechanism = CKM_RSA_PKCS};
     CK_RV rv = pkcs11_function_list->C_VerifyInit(session, &mechanism, public_key);
@@ -133,11 +132,7 @@ static int s_pkcs11_verify_signature(CK_FUNCTION_LIST_PTR pkcs11_function_list,
         FAIL("C_VerifyInit fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
-    rv = pkcs11_function_list->C_Verify(session,
-                                        (CK_BYTE_PTR)message->ptr,
-                                        message->len,
-                                        (CK_BYTE_PTR)signature->buffer,
-                                        signature->len);
+    rv = pkcs11_function_list->C_Verify(session, message->ptr, message->len, signature->buffer, signature->len);
 
     if (rv != CKR_OK) {
         FAIL("C_Verify fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
@@ -145,13 +140,15 @@ static int s_pkcs11_verify_signature(CK_FUNCTION_LIST_PTR pkcs11_function_list,
     return AWS_OP_SUCCESS;
 }
 
-static int s_pkcs11_create_key(CK_FUNCTION_LIST_PTR pkcs11_function_list,
-                                            struct pkcs11_key_creation_params* params,
-                                            CK_SESSION_HANDLE session,
-                                            CK_OBJECT_HANDLE* created_private_key,
-                                            CK_OBJECT_HANDLE* created_public_key) {
+static int s_pkcs11_create_key(
+    CK_FUNCTION_LIST_PTR pkcs11_function_list,
+    struct pkcs11_key_creation_params *params,
+    CK_SESSION_HANDLE session,
+    CK_OBJECT_HANDLE *created_private_key,
+    CK_OBJECT_HANDLE *created_public_key) {
+
     /* We only support RSA keys today. */
-    CK_MECHANISM smech = { CKM_RSA_PKCS_KEY_PAIR_GEN, NULL_PTR, 0};
+    CK_MECHANISM smech = {CKM_RSA_PKCS_KEY_PAIR_GEN, NULL, 0};
     /* Define key template */
     static CK_BBOOL truevalue = TRUE;
     static CK_BBOOL falsevalue = FALSE;
@@ -165,18 +162,22 @@ static int s_pkcs11_create_key(CK_FUNCTION_LIST_PTR pkcs11_function_list,
     /* Set private key. The parameters here are kind of random, does not affect the test, but trying
      * to mimic what a real key would look like in terms of attributes */
     CK_ATTRIBUTE privatekey_template[] = {
-        {CKA_LABEL, (void *)params->key_label,  (CK_ULONG)strlen(params->key_label) },
-        {CKA_ID, (void *)params->key_id,  (CK_ULONG)strlen(params->key_id) },
+        {CKA_LABEL, (void *)params->key_label, (CK_ULONG)strlen(params->key_label)},
+        {CKA_ID, (void *)params->key_id, (CK_ULONG)strlen(params->key_id)},
         {CKA_SIGN, &truevalue, sizeof(truevalue)},
         {CKA_EXTRACTABLE, &falsevalue, sizeof(falsevalue)},
     };
     CK_OBJECT_HANDLE privatekey, publickey = CK_INVALID_HANDLE;
     /* Generate Key pair for signing/verifying */
-    CK_RV rv = pkcs11_function_list->C_GenerateKeyPair(session, &smech, publickey_template,
-                           (sizeof(publickey_template) / sizeof(CK_ATTRIBUTE)),
-                           privatekey_template,
-                           (sizeof(privatekey_template) / sizeof(CK_ATTRIBUTE)),
-                           &publickey, &privatekey);
+    CK_RV rv = pkcs11_function_list->C_GenerateKeyPair(
+        session,
+        &smech,
+        publickey_template,
+        AWS_ARRAY_SIZE(publickey_template),
+        privatekey_template,
+        AWS_ARRAY_SIZE(privatekey_template),
+        &publickey,
+        &privatekey);
     if (rv != CKR_OK) {
         FAIL("C_GenerateKeyPair fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -185,16 +186,19 @@ static int s_pkcs11_create_key(CK_FUNCTION_LIST_PTR pkcs11_function_list,
     return AWS_OP_SUCCESS;
 }
 
-static int s_pkcs11_find_slot(CK_FUNCTION_LIST_PTR pkcs11_function_list, CK_TOKEN_INFO tokenInfo, CK_SLOT_ID *out_slot) {
+static int s_pkcs11_find_slot(
+    CK_FUNCTION_LIST_PTR pkcs11_function_list,
+    CK_TOKEN_INFO tokenInfo,
+    CK_SLOT_ID *out_slot) {
+
     CK_ULONG ul_slot_count;
     CK_SLOT_ID slot_id = -1;
-    CK_RV rv = pkcs11_function_list->C_GetSlotList(CK_TRUE, NULL_PTR, &ul_slot_count);
+    CK_RV rv = pkcs11_function_list->C_GetSlotList(CK_TRUE, NULL, &ul_slot_count);
     if (rv != CKR_OK) {
         FAIL("ERROR: Could not get the number of slots.\n");
     }
 
-    CK_SLOT_ID_PTR p_slot_list = (CK_SLOT_ID_PTR)
-        aws_mem_acquire(s_pkcs11_tester.allocator, ul_slot_count * sizeof(CK_SLOT_ID));
+    CK_SLOT_ID_PTR p_slot_list = aws_mem_acquire(s_pkcs11_tester.allocator, ul_slot_count * sizeof(CK_SLOT_ID));
     if (p_slot_list == NULL) {
         FAIL("ERROR: Could not allocate memory.\n");
     }
@@ -235,12 +239,14 @@ static int s_pkcs11_find_slot(CK_FUNCTION_LIST_PTR pkcs11_function_list, CK_TOKE
 }
 
 /* Creation of slot requires a reload of softhsm, and hence need to re initialize the pkcs11_lib */
-static int s_pkcs11_softhsm_create_slot(struct aws_allocator *allocator,
-                                        struct aws_pkcs11_lib **pkcs11_lib, // Re initialize the library
-                                        const char *token_name,
-                                        const char *so_pin,
-                                        const char *user_pin,
-                                        CK_SLOT_ID *created_slot) {
+static int s_pkcs11_softhsm_create_slot(
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_lib **pkcs11_lib, // Re initialize the library
+    const char *token_name,
+    const char *so_pin,
+    const char *user_pin,
+    CK_SLOT_ID *created_slot) {
+
     ASSERT_NOT_NULL(*pkcs11_lib);
     CK_RV rv;
     CK_SLOT_ID slot_id = next_free_slot_id;
@@ -256,7 +262,7 @@ static int s_pkcs11_softhsm_create_slot(struct aws_allocator *allocator,
         FAIL("C_InitToken fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
     CK_SESSION_HANDLE session;
-    rv = pkcs11_function_list->C_OpenSession(slot_id, CKF_SERIAL_SESSION | CKF_RW_SESSION, NULL_PTR, NULL_PTR, &session);
+    rv = pkcs11_function_list->C_OpenSession(slot_id, CKF_SERIAL_SESSION | CKF_RW_SESSION, NULL, NULL, &session);
     if (rv != CKR_OK) {
         FAIL("C_OpenSession fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -301,7 +307,7 @@ static int s_pkcs11_softhsm_create_slot(struct aws_allocator *allocator,
 static void s_pkcs11_tester_clean_up(void) {
     aws_string_destroy(s_pkcs11_tester.shared_lib_path);
     aws_string_destroy(s_pkcs11_tester.token_dir);
-    s_pkcs11_tester.allocator = NULL_PTR;
+    s_pkcs11_tester.allocator = NULL;
     aws_io_library_clean_up();
 }
 
@@ -330,20 +336,22 @@ missing:
     return aws_raise_error(AWS_ERROR_INVALID_STATE);
 }
 
-static int s_setup_test(struct aws_allocator *allocator, struct aws_pkcs11_lib **pkcs11_lib,
-                      CK_SLOT_ID *created_slot, CK_SESSION_HANDLE *session) {
+static int s_setup_test(
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_lib **pkcs11_lib,
+    CK_SLOT_ID *created_slot,
+    CK_SESSION_HANDLE *session) {
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
     *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, created_slot));
 
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(*pkcs11_lib, *created_slot, session /*out*/));
 
     /* Login user */
-    struct aws_string* user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
+    struct aws_string *user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(*pkcs11_lib, *session, user_pin));
     aws_string_destroy(user_pin);
 
@@ -413,7 +421,7 @@ static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ct
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
 
     /* Try creating a session for an invalid slot */
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
@@ -423,8 +431,7 @@ static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ct
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     CK_SESSION_HANDLE first_session = CK_INVALID_HANDLE;
     CK_SESSION_HANDLE second_session = CK_INVALID_HANDLE;
@@ -453,16 +460,15 @@ static int s_test_pkcs11_login_tests(struct aws_allocator *allocator, void *ctx)
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     /* Try to login with in invalid session, we have not created any session on this token
      * So, any session value is invalid */
-    struct aws_string* pin = aws_string_new_from_c_str(allocator, USER_PIN);
+    struct aws_string *pin = aws_string_new_from_c_str(allocator, USER_PIN);
     CK_SESSION_HANDLE invalid_session = 1UL;
     ASSERT_FAILS(aws_pkcs11_lib_login_user(pkcs11_lib, invalid_session, pin));
 
@@ -471,7 +477,7 @@ static int s_test_pkcs11_login_tests(struct aws_allocator *allocator, void *ctx)
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &session /*out*/));
 
     /* Try an invalid pin on a valid slot */
-    struct aws_string* invalid_pin = aws_string_new_from_c_str(allocator, "INVALID_PIN");
+    struct aws_string *invalid_pin = aws_string_new_from_c_str(allocator, "INVALID_PIN");
     ASSERT_FAILS(aws_pkcs11_lib_login_user(pkcs11_lib, session, invalid_pin));
 
     /* Try a valid pin on a valid slot */
@@ -512,13 +518,12 @@ static int s_test_pkcs11_find_private_key_for_different_types(struct aws_allocat
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     /* Do not close the session while running a test, objects created by a session are cleaned up
      * when the session is closed.
@@ -531,77 +536,56 @@ static int s_test_pkcs11_find_private_key_for_different_types(struct aws_allocat
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &session_to_create_key /*out*/));
 
     /* Login user */
-    struct aws_string* user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
+    struct aws_string *user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(pkcs11_lib, session_to_access_key, user_pin));
 
     CK_OBJECT_HANDLE created_priv_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    char* key_label_1024 = "1024_Key";
-    char* key_id_1024 = "1024_id";
+    char *key_label_1024 = "1024_Key";
+    char *key_id_1024 = "1024_id";
     struct pkcs11_key_creation_params params_1024 = {
-        .key_label = key_label_1024,
-        .key_id = key_id_1024,
-        .key_length = 1024
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params_1024, session_to_create_key, &created_priv_key, &created_pub_key));
+        .key_label = key_label_1024, .key_id = key_id_1024, .key_length = 1024};
+    ASSERT_SUCCESS(s_pkcs11_create_key(
+        pkcs11_function_list, &params_1024, session_to_create_key, &created_priv_key, &created_pub_key));
 
     /* Find key */
     CK_OBJECT_HANDLE pkey_handle = CK_INVALID_HANDLE;
     CK_KEY_TYPE pkey_type;
-    struct aws_string* key_label_str = aws_string_new_from_c_str(allocator, key_label_1024);
+    struct aws_string *key_label_str = aws_string_new_from_c_str(allocator, key_label_1024);
     ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_str,
-                                        &pkey_handle,
-                                        &pkey_type));
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, key_label_str, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_priv_key, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
     /* Create another RSA key */
     CK_OBJECT_HANDLE created_key_2048 = CK_INVALID_HANDLE;
-    char* key_label_2048 = "2048_Key";
-    char* key_id_2048 = "2048_id";
+    char *key_label_2048 = "2048_Key";
+    char *key_id_2048 = "2048_id";
     struct pkcs11_key_creation_params params_2048 = {
-        .key_label = key_label_2048,
-        .key_id = key_id_2048,
-        .key_length = 2048
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params_2048, session_to_create_key, &created_key_2048, &created_pub_key));
+        .key_label = key_label_2048, .key_id = key_id_2048, .key_length = 2048};
+    ASSERT_SUCCESS(s_pkcs11_create_key(
+        pkcs11_function_list, &params_2048, session_to_create_key, &created_key_2048, &created_pub_key));
 
     /* Find key */
-    struct aws_string* key_label_str_2048 = aws_string_new_from_c_str(allocator, key_label_2048);
-    ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_str_2048,
-                                        &pkey_handle,
-                                        &pkey_type));
+    struct aws_string *key_label_str_2048 = aws_string_new_from_c_str(allocator, key_label_2048);
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_private_key(
+        pkcs11_lib, session_to_access_key, key_label_str_2048, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_key_2048, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
     /* Create another RSA key */
     CK_OBJECT_HANDLE created_key_4096 = CK_INVALID_HANDLE;
-    char* key_label_4096 = "4096_Key";
-    char* key_id_4096 = "4096_id";
+    char *key_label_4096 = "4096_Key";
+    char *key_id_4096 = "4096_id";
     struct pkcs11_key_creation_params params_4096 = {
-        .key_label = key_label_4096,
-        .key_id = key_id_4096,
-        .key_length = 4096
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params_4096, session_to_create_key, &created_key_4096, &created_pub_key));
+        .key_label = key_label_4096, .key_id = key_id_4096, .key_length = 4096};
+    ASSERT_SUCCESS(s_pkcs11_create_key(
+        pkcs11_function_list, &params_4096, session_to_create_key, &created_key_4096, &created_pub_key));
 
     /* Find key */
-    struct aws_string* key_label_str_4096 = aws_string_new_from_c_str(allocator, key_label_4096);
-    ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_str_4096,
-                                        &pkey_handle,
-                                        &pkey_type));
+    struct aws_string *key_label_str_4096 = aws_string_new_from_c_str(allocator, key_label_4096);
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_private_key(
+        pkcs11_lib, session_to_access_key, key_label_str_4096, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_key_4096, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
@@ -623,18 +607,17 @@ static int s_test_pkcs11_find_multiple_private_key(struct aws_allocator *allocat
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
-    const char* key_label_1 = "RSA_KEY";
-    const char* key_id_1 = "BEEFCAFE";
-    const char* key_label_2 = "DES_KEY_2";
-    const char* key_id_2 = "BEEFCAFEDEAD";
+    const char *key_label_1 = "RSA_KEY";
+    const char *key_id_1 = "BEEFCAFE";
+    const char *key_label_2 = "DES_KEY_2";
+    const char *key_id_2 = "BEEFCAFEDEAD";
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, TOKEN_LABEL, SO_PIN, USER_PIN, &created_slot));
 
     CK_SESSION_HANDLE session_to_access_key;
     CK_SESSION_HANDLE session_to_create_key_1;
@@ -647,59 +630,37 @@ static int s_test_pkcs11_find_multiple_private_key(struct aws_allocator *allocat
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &session_to_create_key_2 /*out*/));
 
     /* Login user */
-    struct aws_string* user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
+    struct aws_string *user_pin = aws_string_new_from_c_str(allocator, USER_PIN);
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(pkcs11_lib, session_to_access_key, user_pin));
 
     CK_OBJECT_HANDLE created_key_1 = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_key_2 = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    struct pkcs11_key_creation_params params_1 = {
-        .key_label = key_label_1,
-        .key_id = key_id_1,
-        .key_length = 1024
-    };
-    struct pkcs11_key_creation_params params_2 = {
-        .key_label = key_label_2,
-        .key_id = key_id_2,
-        .key_length = 1024
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params_1, session_to_create_key_1, &created_key_1, &created_pub_key));
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params_2, session_to_create_key_2, &created_key_2, &created_pub_key));
+    struct pkcs11_key_creation_params params_1 = {.key_label = key_label_1, .key_id = key_id_1, .key_length = 1024};
+    struct pkcs11_key_creation_params params_2 = {.key_label = key_label_2, .key_id = key_id_2, .key_length = 1024};
+    ASSERT_SUCCESS(s_pkcs11_create_key(
+        pkcs11_function_list, &params_1, session_to_create_key_1, &created_key_1, &created_pub_key));
+    ASSERT_SUCCESS(s_pkcs11_create_key(
+        pkcs11_function_list, &params_2, session_to_create_key_2, &created_key_2, &created_pub_key));
 
     /* Since there are 2 keys, a lookup without label should fail */
-    struct aws_string* key_label_str = aws_string_new_from_c_str(allocator, key_label_1);
-    struct aws_string* key_label_2_str = aws_string_new_from_c_str(allocator, key_label_2);
+    struct aws_string *key_label_str = aws_string_new_from_c_str(allocator, key_label_1);
+    struct aws_string *key_label_2_str = aws_string_new_from_c_str(allocator, key_label_2);
     CK_OBJECT_HANDLE pkey_handle = CK_INVALID_HANDLE;
     CK_KEY_TYPE pkey_type;
-    ASSERT_FAILS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        NULL,
-                                        &pkey_handle,
-                                        &pkey_type));
+    ASSERT_FAILS(aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, NULL, &pkey_handle, &pkey_type));
 
     /* a lookup with label for the first key should find the first key */
     pkey_handle = CK_INVALID_HANDLE;
     ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_str,
-                                        &pkey_handle,
-                                        &pkey_type));
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, key_label_str, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_key_1, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
-
 
     /* a lookup with label for the second key should find the second key */
     pkey_handle = CK_INVALID_HANDLE;
     ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_2_str,
-                                        &pkey_handle,
-                                        &pkey_type));
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, key_label_2_str, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_key_2, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
@@ -722,20 +683,19 @@ static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
     CK_FUNCTION_LIST_PTR pkcs11_function_list = aws_pkcs11_lib_get_function_list(pkcs11_lib);
 
-    const char* key_label_1 = "RSA_KEY";
-    const char* key_id_1 = "BEEFCAFE";
-    const char* label_1 = "label!@#$%^&*-_=+{}[]<>?,./():_1";
-    const char* so_pin_1 = "qwertyuioplaksjdhfgbn341269504732";
-    const char* user_pin_1 = "341269504732";
+    const char *key_label_1 = "RSA_KEY";
+    const char *key_id_1 = "BEEFCAFE";
+    const char *label_1 = "label!@#$%^&*-_=+{}[]<>?,./():_1";
+    const char *so_pin_1 = "qwertyuioplaksjdhfgbn341269504732";
+    const char *user_pin_1 = "341269504732";
 
     /* Create a new slot, Use values other than defaults for label/pins */
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_1, so_pin_1, user_pin_1, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_1, so_pin_1, user_pin_1, &created_slot));
 
     /* Do not close the session while running a test, objects created by a session are cleaned up
      * when the session is closed.
@@ -748,41 +708,28 @@ static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(pkcs11_lib, created_slot, &session_to_create_key /*out*/));
 
     /* Login user */
-    struct aws_string* user_pin = aws_string_new_from_c_str(allocator, user_pin_1);
+    struct aws_string *user_pin = aws_string_new_from_c_str(allocator, user_pin_1);
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(pkcs11_lib, session_to_access_key, user_pin));
 
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    struct pkcs11_key_creation_params params = {
-        .key_label = key_label_1,
-        .key_id = key_id_1,
-        .key_length = 1024
-    };
+    struct pkcs11_key_creation_params params = {.key_label = key_label_1, .key_id = key_id_1, .key_length = 1024};
     ASSERT_SUCCESS(
         s_pkcs11_create_key(pkcs11_function_list, &params, session_to_create_key, &created_key, &created_pub_key));
 
     /* Find key */
     CK_OBJECT_HANDLE pkey_handle = CK_INVALID_HANDLE;
     CK_KEY_TYPE pkey_type;
-    struct aws_string* key_label_str = aws_string_new_from_c_str(allocator, key_label_1);
+    struct aws_string *key_label_str = aws_string_new_from_c_str(allocator, key_label_1);
     ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        key_label_str,
-                                        &pkey_handle,
-                                        &pkey_type));
+        aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, key_label_str, &pkey_handle, &pkey_type));
     ASSERT_TRUE(CK_INVALID_HANDLE != pkey_handle);
     ASSERT_INT_EQUALS(created_key, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
     /* Since there is only one key, a lookup without label should also return the key */
     pkey_handle = CK_INVALID_HANDLE;
-    ASSERT_SUCCESS(
-        aws_pkcs11_lib_find_private_key(pkcs11_lib,
-                                        session_to_access_key,
-                                        NULL,
-                                        &pkey_handle,
-                                        &pkey_type));
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_private_key(pkcs11_lib, session_to_access_key, NULL, &pkey_handle, &pkey_type));
     ASSERT_INT_EQUALS(created_key, pkey_handle);
     ASSERT_INT_EQUALS(CKK_RSA, pkey_type);
 
@@ -802,22 +749,22 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
     /* Always start with a clean state, and get a handle to reloaded lib */
-    struct aws_pkcs11_lib* pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
+    struct aws_pkcs11_lib *pkcs11_lib = s_pkcs11_clear_softhsm_and_reload(allocator, FALSE, NULL);
 
     /* softhsm does not like ;| as part of label */
-    const char* const label_1 = "label!@#$%^&*-_=+{}[]<>?,./():_1";
-    const char* const label_2 = "label!@#$%^&*()_2";
-    const char* const label_3 = "label!@#$%^&*()_3";
+    const char *const label_1 = "label!@#$%^&*-_=+{}[]<>?,./():_1";
+    const char *const label_2 = "label!@#$%^&*()_2";
+    const char *const label_3 = "label!@#$%^&*()_3";
 
-    const char* const so_pin_1 = "qwertyuioplaksjdhfgbn341269504732";
-    const char* const so_pin_2 = "ABCD";
-    const char* const so_pin_3 = "0111";
+    const char *const so_pin_1 = "qwertyuioplaksjdhfgbn341269504732";
+    const char *const so_pin_2 = "ABCD";
+    const char *const so_pin_3 = "0111";
 
-    const char* const user_pin_1 = "341269504732";
-    const char* const user_pin_2 = "ABCD";
-    const char* const user_pin_3 = "0111";
+    const char *const user_pin_1 = "341269504732";
+    const char *const user_pin_2 = "ABCD";
+    const char *const user_pin_3 = "0111";
 
-    CK_SLOT_ID slot_id = ULONG_LONG_MAX;
+    CK_SLOT_ID slot_id = (CK_ULONG)-1;
     /*
      * Softhsm always has one uninitialized token which is returned by the GetSlotList() API,
      * so there is no way to start without any slot at all
@@ -829,26 +776,24 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = ULONG_MAX;
-    ASSERT_SUCCESS(
-        s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_1, so_pin_1, user_pin_1, &created_slot));
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_1, so_pin_1, user_pin_1, &created_slot));
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but no matching criteria */
-    slot_id = ULONG_LONG_MAX;
+    slot_id = (CK_ULONG)-1;
     ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, NULL /*match_slot_id*/, NULL, &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but match the slot this time */
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, (uint64_t*)&created_slot /*match_slot_id*/, NULL, &slot_id /*out*/));
+    uint64_t created_slot_64 = created_slot;
+    ASSERT_SUCCESS(
+        aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, &created_slot_64 /*match_slot_id*/, NULL, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot, slot_id);
 
-
     /* Call aws_pkcs11_lib_find_slot_with_token with 2 tokens, but match the label this time */
-    slot_id = ULONG_LONG_MAX;
+    slot_id = (CK_ULONG)-1;
     struct aws_string *match_label = aws_string_new_from_c_str(allocator, label_1);
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       NULL /*match_slot_id*/,
-                                                       match_label,
-                                                       &slot_id /*out*/));
+    ASSERT_SUCCESS(
+        aws_pkcs11_lib_find_slot_with_token(pkcs11_lib, NULL /*match_slot_id*/, match_label, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot, slot_id);
 
     /* clear softhsm and make sure that no tokens match with previous slot/label */
@@ -858,22 +803,18 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
      * Call aws_pkcs11_lib_find_slot_with_token with just the free token,
      * and assert that previous slot id does not match anymore
      * */
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                     (uint64_t*)&created_slot /*match_slot_id*/,
-                                                     NULL /*match_token_label*/,
-                                                     &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    slot_id = (CK_ULONG)-1;
+    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, &created_slot_64 /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
 
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with just the uninitialized token,
      * and assert that previous label does not match anymore
      * */
-    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       NULL /*match_slot_id*/,
-                                                       match_label /*match_token_label*/,
-                                                       &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, NULL /*match_slot_id*/, match_label /*match_token_label*/, &slot_id /*out*/));
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
 
     /* Create 2 new slots */
     CK_SESSION_HANDLE created_slot_1 = CK_INVALID_HANDLE;
@@ -885,78 +826,72 @@ static int s_test_pkcs11_find_slot(struct aws_allocator *allocator, void *ctx) {
         s_pkcs11_softhsm_create_slot(allocator, &pkcs11_lib, label_3, so_pin_3, user_pin_3, &created_slot_2));
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens on softhsm, but no matching criteria */
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                     NULL /*match_slot_id*/,
-                                                     NULL /*match_token_label*/,
-                                                     &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    slot_id = (CK_ULONG)-1;
+    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, NULL /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the slot 1 this time */
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       (uint64_t*)&created_slot_1 /*match_slot_id*/,
-                                                       NULL /*match_token_label*/,
-                                                       &slot_id /*out*/));
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, (uint64_t *)&created_slot_1 /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the slot 2 this time */
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       (uint64_t*)&created_slot_2 /*match_slot_id*/,
-                                                       NULL /*match_token_label*/,
-                                                       &slot_id /*out*/));
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, (uint64_t *)&created_slot_2 /*match_slot_id*/, NULL /*match_token_label*/, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_2, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the label 1 this time */
-    slot_id = ULONG_LONG_MAX;
+    slot_id = (CK_ULONG)-1;
     struct aws_string *match_label_1 = aws_string_new_from_c_str(allocator, label_2);
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       NULL /*match_slot_id*/,
-                                                       match_label_1 /*match_token_label*/,
-                                                       &slot_id /*out*/));
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, NULL /*match_slot_id*/, match_label_1 /*match_token_label*/, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_1, slot_id);
 
     /* Call aws_pkcs11_lib_find_slot_with_token with 3 tokens, but match the label 2 this time */
-    slot_id = ULONG_LONG_MAX;
+    slot_id = (CK_ULONG)-1;
     struct aws_string *match_label_2 = aws_string_new_from_c_str(allocator, label_3);
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       NULL /*match_slot_id*/,
-                                                       match_label_2 /*match_token_label*/,
-                                                       &slot_id /*out*/));
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib, NULL /*match_slot_id*/, match_label_2 /*match_token_label*/, &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_2, slot_id);
 
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with 3 tokens,
      * but a mismatch for a slot and label should return error
      * */
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                     (uint64_t*)&created_slot_1 /*match_slot_id*/,
-                                                       match_label_2 /*match_token_label*/,
-                                                       &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    slot_id = (CK_ULONG)-1;
+    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib,
+        (uint64_t *)&created_slot_1 /*match_slot_id*/,
+        match_label_2 /*match_token_label*/,
+        &slot_id /*out*/));
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
 
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                     (uint64_t*)&created_slot_2 /*match_slot_id*/,
-                                                     match_label_1 /*match_token_label*/,
-                                                     &slot_id /*out*/));
-    ASSERT_INT_EQUALS(ULONG_LONG_MAX, slot_id);
+    slot_id = (CK_ULONG)-1;
+    ASSERT_FAILS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib,
+        (uint64_t *)&created_slot_2 /*match_slot_id*/,
+        match_label_1 /*match_token_label*/,
+        &slot_id /*out*/));
+    ASSERT_INT_EQUALS((CK_ULONG)-1, slot_id);
     /*
      * Call aws_pkcs11_lib_find_slot_with_token with 3 tokens,
      * but match for both, slot and label should return success
      * */
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       (uint64_t*)&created_slot_1 /*match_slot_id*/,
-                                                     match_label_1 /*match_token_label*/,
-                                                     &slot_id /*out*/));
+    slot_id = (CK_ULONG)-1;
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib,
+        (uint64_t *)&created_slot_1 /*match_slot_id*/,
+        match_label_1 /*match_token_label*/,
+        &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_1, slot_id);
 
-    slot_id = ULONG_LONG_MAX;
-    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(pkcs11_lib,
-                                                       (uint64_t*)&created_slot_2 /*match_slot_id*/,
-                                                     match_label_2 /*match_token_label*/,
-                                                     &slot_id /*out*/));
+    slot_id = (CK_ULONG)-1;
+    ASSERT_SUCCESS(aws_pkcs11_lib_find_slot_with_token(
+        pkcs11_lib,
+        (uint64_t *)&created_slot_2 /*match_slot_id*/,
+        match_label_2 /*match_token_label*/,
+        &slot_id /*out*/));
     ASSERT_INT_EQUALS(created_slot_2, slot_id);
 
     /* Clean up */
@@ -981,12 +916,8 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
     struct pkcs11_key_creation_params params = {
-        .key_label = DEFAULT_KEY_LABEL,
-        .key_id = DEFAULT_KEY_ID,
-        .key_length = 2048
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params, session, &created_key, &created_pub_key));
+        .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 2048};
+    ASSERT_SUCCESS(s_pkcs11_create_key(pkcs11_function_list, &params, session, &created_key, &created_pub_key));
 
     struct aws_byte_cursor input_cursor = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
     struct aws_byte_buf output_buf; /* initialized later */
@@ -999,29 +930,28 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     struct aws_byte_cursor cipher_text = aws_byte_cursor_from_buf(&output_buf);
     struct aws_byte_buf output_decrypted; /* initialized later */
     AWS_ZERO_STRUCT(output_decrypted);
-    ASSERT_SUCCESS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE,
-                                          cipher_text, allocator, &output_decrypted));
+    ASSERT_SUCCESS(aws_pkcs11_lib_decrypt(
+        pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE, cipher_text, allocator, &output_decrypted));
 
     ASSERT_BIN_ARRAYS_EQUALS(output_decrypted.buffer, output_decrypted.len, input_cursor.ptr, input_cursor.len);
 
     /* Assert that sign fails for non RSA key type */
     CK_KEY_TYPE unsupported_key_type = CKK_EC;
     aws_byte_buf_clean_up(&output_decrypted);
-    AWS_ZERO_STRUCT(output_decrypted);
-    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, created_key, unsupported_key_type,
-                                     cipher_text, allocator, &output_decrypted));
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(
+        pkcs11_lib, session, created_key, unsupported_key_type, cipher_text, allocator, &output_decrypted));
 
     /* Invalid session handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE,
-                                     cipher_text, allocator, &output_decrypted));
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(
+        pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE, cipher_text, allocator, &output_decrypted));
 
     /* Invalid key handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE,
-                                     cipher_text, allocator, &output_decrypted));
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(
+        pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE, cipher_text, allocator, &output_decrypted));
 
     struct aws_byte_cursor empty_message_to_decrypt = aws_byte_cursor_from_c_str("");
-    ASSERT_FAILS(aws_pkcs11_lib_decrypt(pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE,
-                                     empty_message_to_decrypt, allocator, &output_decrypted));
+    ASSERT_FAILS(aws_pkcs11_lib_decrypt(
+        pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE, empty_message_to_decrypt, allocator, &output_decrypted));
     /* Clean up */
     aws_byte_buf_clean_up(&output_buf);
     aws_byte_buf_clean_up(&output_decrypted);
@@ -1044,28 +974,21 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
     struct pkcs11_key_creation_params params = {
-        .key_label = DEFAULT_KEY_LABEL,
-        .key_id = DEFAULT_KEY_ID,
-        .key_length = 2048
-    };
-    ASSERT_SUCCESS(
-        s_pkcs11_create_key(pkcs11_function_list, &params, session, &created_key, &created_pub_key));
+        .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 2048};
+    ASSERT_SUCCESS(s_pkcs11_create_key(pkcs11_function_list, &params, session, &created_key, &created_pub_key));
 
     struct aws_byte_cursor message_to_sign = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
     struct aws_byte_buf signature; /* initialized later */
     AWS_ZERO_STRUCT(signature);
 
     /* Sign a message */
-    ASSERT_SUCCESS(aws_pkcs11_lib_sign(pkcs11_lib,
-                                       session,
-                                       created_key,
-                                       SUPPORTED_KEY_TYPE,
-                                       message_to_sign,
-                                       allocator,
-                                       &signature));
+    ASSERT_SUCCESS(aws_pkcs11_lib_sign(
+        pkcs11_lib, session, created_key, SUPPORTED_KEY_TYPE, message_to_sign, allocator, &signature));
 
     /* There is no good way to validate without this, as we append this prefix internally before signing. */
+    /* clang-format off */
     const uint8_t sha256_prefix[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
+    /* clang-format on */
     struct aws_byte_buf prefixed_input;
     aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + sizeof(sha256_prefix));
     aws_byte_buf_write(&prefixed_input, sha256_prefix, sizeof(sha256_prefix));
@@ -1073,26 +996,22 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     struct aws_byte_cursor input_message_to_verify = aws_byte_cursor_from_buf(&prefixed_input);
 
     /* Verify the signature */
-    ASSERT_SUCCESS(s_pkcs11_verify_signature(pkcs11_function_list,
-                                             &input_message_to_verify,
-                                             &signature,
-                                             session,
-                                             created_pub_key));
+    ASSERT_SUCCESS(s_pkcs11_verify_signature(
+        pkcs11_function_list, &input_message_to_verify, &signature, session, created_pub_key));
 
     /* Assert that sign fails for non RSA key type */
     CK_KEY_TYPE unsupported_key_type = CKK_EC;
     aws_byte_buf_clean_up(&signature);
-    AWS_ZERO_STRUCT(signature);
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, created_key, unsupported_key_type,
-                                     message_to_sign, allocator, &signature));
+    ASSERT_FAILS(aws_pkcs11_lib_sign(
+        pkcs11_lib, session, created_key, unsupported_key_type, message_to_sign, allocator, &signature));
 
     /* Invalid session handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE,
-                                     message_to_sign, allocator, &signature));
+    ASSERT_FAILS(aws_pkcs11_lib_sign(
+        pkcs11_lib, CK_INVALID_HANDLE, created_key, SUPPORTED_KEY_TYPE, message_to_sign, allocator, &signature));
 
     /* Invalid key handle should fail */
-    ASSERT_FAILS(aws_pkcs11_lib_sign(pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE,
-                                     message_to_sign, allocator, &signature));
+    ASSERT_FAILS(aws_pkcs11_lib_sign(
+        pkcs11_lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE, message_to_sign, allocator, &signature));
 
     /* Clean up */
     aws_byte_buf_clean_up(&prefixed_input);
