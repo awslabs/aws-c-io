@@ -36,6 +36,9 @@ class Pkcs11TestSetup(Builder.Action):
         with open(conf_path, 'w') as conf_file:
             conf_file.write(f"directories.tokendir = {token_dir}\n")
 
+        # print SoftHSM version
+        self._exec_softhsm2_util('--version')
+
         # sanity check SoftHSM is working
         self._exec_softhsm2_util('--show-slots')
 
