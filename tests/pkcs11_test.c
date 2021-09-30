@@ -52,7 +52,7 @@ static void s_pkcs11_clear_softhsm(void) {
         token_dir[strlen(token_dir) - 1] = '\0';
     }
 
-    char cmd[512] = {'\0'};
+    char cmd[1024] = {'\0'};
     /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
     snprintf(cmd, sizeof(cmd), "rm -rf %s/*", token_dir);
     printf("Executing command: %s\n", cmd);
