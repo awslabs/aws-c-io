@@ -45,16 +45,22 @@ struct pkcs11_key_creation_params {
 
 /* Helper pkcs functions to provision/setup/clear softhsm tokens/keys */
 static void s_pkcs11_clear_softhsm(void) {
-    char cmd[120] = {'\0'};
-    /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
-    const char *token_dir = aws_string_c_str(s_pkcs11_tester.token_dir);
-    if (token_dir[s_pkcs11_tester.token_dir->len - 1] == '/') {
-        sprintf(cmd, "rm -rf %s*", token_dir);
-    } else {
-        sprintf(cmd, "rm -rf %s/*", token_dir);
+    /* trim trailing slash from token_dir if necessary */
+    char token_dir[512] = {'\0'};
+    strncpy(token_dir, aws_string_c_str(s_pkcs11_tester.token_dir), sizeof(token_dir));
+    if (token_dir[strlen(token_dir) - 1] == '/') {
+        token_dir[strlen(token_dir) - 1] = '\0';
     }
+
+    char cmd[512] = {'\0'};
+    /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
+    snprintf(cmd, sizeof(cmd), "rm -rf %s/*", token_dir);
     printf("Executing command: %s\n", cmd);
-    system(cmd);
+    AWS_FATAL_ASSERT(system(cmd) == 0);
+
+    snprintf(cmd, sizeof(cmd), "mkdir -p %s", token_dir);
+    printf("Executing command: %s\n", cmd);
+    AWS_FATAL_ASSERT(system(cmd) == 0);
 }
 
 static struct aws_pkcs11_lib *s_reload_hsm(
