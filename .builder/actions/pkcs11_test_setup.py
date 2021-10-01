@@ -11,13 +11,21 @@ import re
 class Pkcs11TestSetup(Builder.Action):
     """
     Set up this machine for running the PKCS#11 tests.
-    If SoftHSM2 is not installed, the tests are skipped.
+    If SoftHSM2 cannot be installed, the tests are skipped.
 
     This action should be run in the 'pre_build_steps' or 'build_steps' stage.
     """
 
     def run(self, env):
         self.env = env
+
+        # try to install softhsm
+        try:
+            softhsm_install_acion = Builder.InstallPackages(['softhsm'])
+            softhsm_install_acion.run(env)
+        except:
+            print("WARNING: softhsm could not be installed. PKCS#11 tests are disabled")
+            return
 
         softhsm_lib = self._find_softhsm_lib()
         if softhsm_lib is None:
