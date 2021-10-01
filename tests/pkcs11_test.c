@@ -24,6 +24,10 @@
 #include <aws/io/tls_channel_handler.h>
 #include <aws/testing/aws_test_harness.h>
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* allow strncpy() */
+#endif
+
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_LIB, "TEST_PKCS11_LIB");
 AWS_STATIC_STRING_FROM_LITERAL(TEST_PKCS11_TOKEN_DIR, "TEST_PKCS11_TOKEN_DIR");
 
@@ -1192,6 +1196,7 @@ static void s_on_tls_server_channel_shutdown(
 
 /* Connect a client client and server, where the client is using PKCS#11 for private key operations */
 static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     /* Create token with RSA key */
