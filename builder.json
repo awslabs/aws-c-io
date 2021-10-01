@@ -15,7 +15,6 @@
     "targets": {
         "linux": {
             "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
-            "packages": ["softhsm"],
             "+pre_build_steps": ["pkcs11-test-setup"]
         }
     },
