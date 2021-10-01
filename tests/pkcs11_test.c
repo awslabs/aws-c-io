@@ -9,7 +9,6 @@
 
 #include <aws/io/pkcs11.h>
 #include <aws/io/private/pkcs11_private.h>
-#include <unistd.h>
 
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
@@ -44,6 +43,14 @@ struct pkcs11_key_creation_params {
  * Helper functions to interact with softhsm begin
  * */
 
+#ifdef _WIN32
+/* TODO: Use cross-platform functions for clearing directory, these are still in review:
+ * https://github.com/awslabs/aws-c-common/pull/830 */
+static int s_pkcs11_clear_softhsm(void) {
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+#else
+#    include <unistd.h>
 /* Wipe out all existing tokens by deleting and recreating the SoftHSM token dir */
 static int s_pkcs11_clear_softhsm(void) {
     /* trim trailing slash from token_dir if necessary */
@@ -54,7 +61,6 @@ static int s_pkcs11_clear_softhsm(void) {
     }
 
     char cmd[1024] = {'\0'};
-    /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
     snprintf(cmd, sizeof(cmd), "rm -rf %s/*", token_dir);
     printf("Executing command: %s\n", cmd);
     if (system(cmd) != 0) {
@@ -63,6 +69,7 @@ static int s_pkcs11_clear_softhsm(void) {
 
     return AWS_OP_SUCCESS;
 }
+#endif
 
 static int s_reload_hsm(void) {
 
