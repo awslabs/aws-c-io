@@ -154,7 +154,7 @@ static int s_pkcs11_verify_signature(
     }
 
     rv = pkcs11_function_list->C_Verify(
-        session, message->ptr, (CK_ULONG)message->len, signature->buffer, signature->len);
+        session, message->ptr, (CK_ULONG)message->len, signature->buffer, (CK_ULONG)signature->len);
     if (rv != CKR_OK) {
         FAIL("C_Verify fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
