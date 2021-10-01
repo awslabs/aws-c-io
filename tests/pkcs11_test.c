@@ -14,6 +14,7 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/environment.h>
 #include <aws/common/mutex.h>
+#include <aws/common/process.h>
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
 #include <aws/io/channel_bootstrap.h>
@@ -39,7 +40,7 @@ const char *TOKEN_LABEL = "my-token";
 const char *SO_PIN = "1111";
 const char *USER_PIN = "0000";
 const char *DEFAULT_KEY_LABEL = "my-key";
-const char *DEFAULT_KEY_ID = "ABBCCDDEEFF";
+const char *DEFAULT_KEY_ID = "AABBCCDD";
 CK_KEY_TYPE SUPPORTED_KEY_TYPE = CKK_RSA;
 
 #define TIMEOUT_SEC 10
@@ -56,14 +57,23 @@ struct pkcs11_key_creation_params {
  * Helper functions to interact with softhsm begin
  * */
 
-#ifdef _WIN32
-/* TODO: Use cross-platform functions for clearing directory, these are still in review:
- * https://github.com/awslabs/aws-c-common/pull/830 */
-static int s_pkcs11_clear_softhsm(void) {
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+static int s_run_cmd(const char *fmt, ...) {
+    char cmd[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(cmd, sizeof(cmd), fmt, args);
+    va_end(args);
+
+    printf("Executing command: %s\n", cmd);
+    struct aws_run_command_options cmd_opts = {.command = cmd};
+    struct aws_run_command_result cmd_result;
+    ASSERT_SUCCESS(aws_run_command_result_init(s_pkcs11_tester.allocator, &cmd_result));
+    ASSERT_SUCCESS(aws_run_command(s_pkcs11_tester.allocator, &cmd_opts, &cmd_result));
+    int ret_code = cmd_result.ret_code;
+    aws_run_command_result_cleanup(&cmd_result);
+    return ret_code;
 }
-#else
-#    include <unistd.h>
+
 /* Wipe out all existing tokens by deleting and recreating the SoftHSM token dir */
 static int s_pkcs11_clear_softhsm(void) {
     /* trim trailing slash from token_dir if necessary */
@@ -73,16 +83,12 @@ static int s_pkcs11_clear_softhsm(void) {
         token_dir[strlen(token_dir) - 1] = '\0';
     }
 
-    char cmd[1024] = {'\0'};
-    snprintf(cmd, sizeof(cmd), "rm -rf %s/*", token_dir);
-    printf("Executing command: %s\n", cmd);
-    if (system(cmd) != 0) {
-        FAIL("Failed to clear token dir");
-    }
+    /* TODO: Use cross-platform functions for clearing directory, these are still in review:
+     * https://github.com/awslabs/aws-c-common/pull/830 */
+    ASSERT_SUCCESS(s_run_cmd("rm -rf %s/*", token_dir));
 
     return AWS_OP_SUCCESS;
 }
-#endif
 
 static int s_reload_hsm(void) {
 
@@ -354,7 +360,7 @@ static void s_pkcs11_tester_clean_up(void) {
     s_pkcs11_clear_softhsm();
     aws_string_destroy(s_pkcs11_tester.shared_lib_path);
     aws_string_destroy(s_pkcs11_tester.token_dir);
-    s_pkcs11_tester.allocator = NULL;
+    AWS_ZERO_STRUCT(s_pkcs11_tester);
     aws_io_library_clean_up();
 }
 
@@ -1186,9 +1192,33 @@ static void s_on_tls_server_channel_shutdown(
 
 /* Connect a client client and server, where the client is using PKCS#11 for private key operations */
 static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocator, void *ctx) {
-    /* Set up resources that aren't specific to server or client */
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
+    /* Create token with RSA key */
+
+    CK_SLOT_ID slot = 0;
+    ASSERT_SUCCESS(s_pkcs11_softhsm_create_slot(TOKEN_LABEL, SO_PIN, USER_PIN, &slot));
+
+    aws_pkcs11_lib_release(s_pkcs11_tester.lib);
+    s_pkcs11_tester.lib = NULL;
+
+    /* use softhsm2-util to import key */
+    ASSERT_SUCCESS(s_run_cmd(
+        "softhsm2-util --import %s --module \"%s\" --slot %lu --label %s --id %s --pin %s",
+        "unittests.p8",
+        aws_string_c_str(s_pkcs11_tester.shared_lib_path),
+        slot,
+        DEFAULT_KEY_LABEL,
+        DEFAULT_KEY_ID,
+        USER_PIN));
+
+    struct aws_pkcs11_lib_options options = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+    };
+    s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
+    ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
+
+    /* Set up resources that aren't specific to server or client */
     ASSERT_SUCCESS(aws_mutex_init(&s_tls_tester.synced.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_tls_tester.synced.cvar));
 
