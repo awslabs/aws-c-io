@@ -123,13 +123,14 @@ static int s_pkcs11_encrypt(
     }
 
     CK_ULONG cipher_len = 0;
-    rv = pkcs11_function_list->C_Encrypt(session, message->ptr, message->len, NULL, &cipher_len);
+    rv = pkcs11_function_list->C_Encrypt(session, message->ptr, (CK_ULONG)message->len, NULL, &cipher_len);
     if (rv != CKR_OK) {
         FAIL("C_Encrypt fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
     aws_byte_buf_init(cipher_text, allocator, cipher_len);
-    rv = pkcs11_function_list->C_Encrypt(session, message->ptr, message->len, cipher_text->buffer, &cipher_len);
+    rv = pkcs11_function_list->C_Encrypt(
+        session, message->ptr, (CK_ULONG)message->len, cipher_text->buffer, &cipher_len);
     if (rv != CKR_OK) {
         FAIL("C_Encrypt fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -152,7 +153,8 @@ static int s_pkcs11_verify_signature(
         FAIL("C_VerifyInit fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
-    rv = pkcs11_function_list->C_Verify(session, message->ptr, message->len, signature->buffer, signature->len);
+    rv = pkcs11_function_list->C_Verify(
+        session, message->ptr, (CK_ULONG)message->len, signature->buffer, signature->len);
     if (rv != CKR_OK) {
         FAIL("C_Verify fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -215,17 +217,17 @@ static int s_pkcs11_find_slot(const CK_TOKEN_INFO *tokenInfo, CK_SLOT_ID *out_sl
     CK_SLOT_ID slot_id = 0;
     CK_RV rv = pkcs11_function_list->C_GetSlotList(CK_TRUE, NULL, &ul_slot_count);
     if (rv != CKR_OK) {
-        FAIL("ERROR: Could not get the number of slots.\n");
+        FAIL("ERROR: Could not get the number of slots.");
     }
 
     CK_SLOT_ID_PTR p_slot_list = aws_mem_acquire(s_pkcs11_tester.allocator, ul_slot_count * sizeof(CK_SLOT_ID));
     if (p_slot_list == NULL) {
-        FAIL("ERROR: Could not allocate memory.\n");
+        FAIL("ERROR: Could not allocate memory.");
     }
 
     rv = pkcs11_function_list->C_GetSlotList(CK_FALSE, p_slot_list, &ul_slot_count);
     if (rv != CKR_OK) {
-        FAIL("ERROR: Could not get the slot list.\n");
+        FAIL("ERROR: Could not get the slot list.");
     }
 
     size_t counter = 0;
@@ -234,7 +236,7 @@ static int s_pkcs11_find_slot(const CK_TOKEN_INFO *tokenInfo, CK_SLOT_ID *out_sl
 
         rv = pkcs11_function_list->C_GetTokenInfo(p_slot_list[i], &curr_token_info);
         if (rv != CKR_OK) {
-            FAIL("ERROR: Could not get info about the token in slot %lu.\n", p_slot_list[i]);
+            FAIL("ERROR: Could not get info about the token in slot %lu.", p_slot_list[i]);
         }
 
         if (tokenInfo) {
@@ -256,9 +258,9 @@ static int s_pkcs11_find_slot(const CK_TOKEN_INFO *tokenInfo, CK_SLOT_ID *out_sl
     aws_mem_release(s_pkcs11_tester.allocator, p_slot_list);
 
     if (counter == 0) {
-        FAIL("ERROR: Could not find a slot/token using --serial, or --token\n");
+        FAIL("ERROR: Could not find a slot/token using --serial, or --token");
     } else if (counter > 1) {
-        FAIL("ERROR: Found multiple matching slots/tokens.\n");
+        FAIL("ERROR: Found multiple matching slots/tokens.");
     }
     /* We found just one matching slot */
     *out_slot = slot_id;
@@ -288,7 +290,7 @@ static int s_pkcs11_softhsm_create_slot(
     CK_SLOT_ID slot_id = 0;
     ASSERT_SUCCESS(s_pkcs11_find_free_slot(&slot_id));
 
-    rv = pkcs11_function_list->C_InitToken(slot_id, (CK_UTF8CHAR_PTR)so_pin, strlen(so_pin), paddedLabel);
+    rv = pkcs11_function_list->C_InitToken(slot_id, (CK_UTF8CHAR_PTR)so_pin, (CK_ULONG)strlen(so_pin), paddedLabel);
     if (rv != CKR_OK) {
         FAIL("C_InitToken fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -298,12 +300,12 @@ static int s_pkcs11_softhsm_create_slot(
         FAIL("C_OpenSession fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
-    rv = pkcs11_function_list->C_Login(session, CKU_SO, (CK_UTF8CHAR_PTR)so_pin, strlen(so_pin));
+    rv = pkcs11_function_list->C_Login(session, CKU_SO, (CK_UTF8CHAR_PTR)so_pin, (CK_ULONG)strlen(so_pin));
     if (rv != CKR_OK) {
         FAIL("C_Login fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
 
-    rv = pkcs11_function_list->C_InitPIN(session, (CK_UTF8CHAR_PTR)user_pin, strlen(user_pin));
+    rv = pkcs11_function_list->C_InitPIN(session, (CK_UTF8CHAR_PTR)user_pin, (CK_ULONG)strlen(user_pin));
     if (rv != CKR_OK) {
         FAIL("C_InitPIN fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
