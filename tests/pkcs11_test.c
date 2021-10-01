@@ -35,12 +35,16 @@ struct pkcs11_tester {
 };
 
 static struct pkcs11_tester s_pkcs11_tester;
-const char *TOKEN_LABEL = "label";
-const char *SO_PIN = "qwerty";
-const char *USER_PIN = "341269504732";
-const char *DEFAULT_KEY_LABEL = "Key-Label";
+const char *TOKEN_LABEL = "my-token";
+const char *SO_PIN = "1111";
+const char *USER_PIN = "0000";
+const char *DEFAULT_KEY_LABEL = "my-key";
 const char *DEFAULT_KEY_ID = "ABBCCDDEEFF";
 CK_KEY_TYPE SUPPORTED_KEY_TYPE = CKK_RSA;
+
+#define TIMEOUT_SEC 10
+#define TIMEOUT_MILLIS (AWS_TIMESTAMP_MILLIS * TIMEOUT_SEC)
+#define TIMEOUT_NANOS ((uint64_t)AWS_TIMESTAMP_NANOS * TIMEOUT_SEC)
 
 struct pkcs11_key_creation_params {
     const char *key_label;
@@ -1185,12 +1189,6 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     /* Set up resources that aren't specific to server or client */
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
-    struct aws_pkcs11_lib_options pkcs11_lib_opts = {
-        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.filepath),
-    };
-    struct aws_pkcs11_lib *pkcs11_lib = aws_pkcs11_lib_new(allocator, &pkcs11_lib_opts);
-    ASSERT_NOT_NULL(pkcs11_lib);
-
     ASSERT_SUCCESS(aws_mutex_init(&s_tls_tester.synced.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_tls_tester.synced.cvar));
 
@@ -1220,7 +1218,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     struct aws_socket_options sock_opts = {
         .type = AWS_SOCKET_STREAM,
         .domain = AWS_SOCKET_LOCAL,
-        .connect_timeout_ms = 3000,
+        .connect_timeout_ms = TIMEOUT_MILLIS,
     };
 
     /* Set up a server that does mutual TLS. The server will not use PKCS#11 */
@@ -1260,16 +1258,22 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
 
     /* Set up a client that does mutual TLS, using PKCS#11 for private key operations */
 
+    struct aws_tls_ctx_options client_tls_opts;
+
+#if 1 /* Toggle this to run without actually using PKCS#11. Useful for debugging this test. */
     struct aws_tls_ctx_pkcs11_options client_pkcs11_tls_opts = {
-        .pkcs11_lib = pkcs11_lib,
-        .token_label = aws_byte_cursor_from_string(s_pkcs11_tester.token_label),
-        .user_pin = aws_byte_cursor_from_string(s_pkcs11_tester.pin),
-        .private_key_object_label = aws_byte_cursor_from_string(s_pkcs11_tester.pkey_label),
+        .pkcs11_lib = s_pkcs11_tester.lib,
+        .token_label = aws_byte_cursor_from_c_str(TOKEN_LABEL),
+        .user_pin = aws_byte_cursor_from_c_str(USER_PIN),
+        .private_key_object_label = aws_byte_cursor_from_c_str(DEFAULT_KEY_LABEL),
         .cert_file_path = aws_byte_cursor_from_c_str("unittests.crt"),
     };
-    struct aws_tls_ctx_options client_tls_opts;
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_with_pkcs11(&client_tls_opts, allocator, &client_pkcs11_tls_opts));
+#else
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_init_client_mtls_from_path(&client_tls_opts, allocator, "unittests.crt", "unittests.key"));
+#endif
 
     /* trust the server's self-signed certificate */
     ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
@@ -1313,7 +1317,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
         ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
             &s_tls_tester.synced.cvar,
             &s_tls_tester.synced.mutex,
-            (int64_t)AWS_TIMESTAMP_NANOS * 10 /*10sec timeout*/,
+            (int64_t)TIMEOUT_NANOS,
             s_are_client_results_ready,
             NULL /*user_data*/));
         ASSERT_INT_EQUALS(0, s_tls_tester.synced.client_error_code);
@@ -1322,7 +1326,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
         ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
             &s_tls_tester.synced.cvar,
             &s_tls_tester.synced.mutex,
-            (int64_t)AWS_TIMESTAMP_NANOS * 10 /*10sec timeout*/,
+            (int64_t)TIMEOUT_NANOS,
             s_are_server_results_ready,
             NULL /*user_data*/));
         ASSERT_INT_EQUALS(0, s_tls_tester.synced.server_error_code);
@@ -1343,12 +1347,13 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     aws_host_resolver_release(host_resolver);
     aws_event_loop_group_release(event_loop_group);
 
+    /* wait for event-loop threads to wrap up */
+    aws_thread_set_managed_join_timeout_ns(TIMEOUT_NANOS);
     ASSERT_SUCCESS(aws_thread_join_all_managed());
 
     aws_condition_variable_clean_up(&s_tls_tester.synced.cvar);
     aws_mutex_clean_up(&s_tls_tester.synced.mutex);
-    aws_pkcs11_lib_release(pkcs11_lib);
-    s_pkcs11_tester_init(allocator);
+    s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(pkcs11_tls_negotiation_succeeds, s_test_pkcs11_tls_negotiation_succeeds)
