@@ -57,7 +57,9 @@ static int s_pkcs11_clear_softhsm(void) {
     /* TODO: Support this cross platform, leverage dir util methods from aws-c-common */
     snprintf(cmd, sizeof(cmd), "rm -rf %s/*", token_dir);
     printf("Executing command: %s\n", cmd);
-    system(cmd);
+    if (system(cmd) != 0) {
+        FAIL("Failed to clear token dir");
+    }
 
     return AWS_OP_SUCCESS;
 }
