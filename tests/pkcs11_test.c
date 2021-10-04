@@ -1081,6 +1081,8 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
 }
 AWS_TEST_CASE(pkcs11_sign, s_test_pkcs11_sign)
 
+#ifndef BYO_CRYPTO
+
 struct tls_tester {
     struct {
         struct aws_mutex mutex;
@@ -1295,7 +1297,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
 
     struct aws_tls_ctx_options client_tls_opts;
 
-#if 1 /* Toggle this to run without actually using PKCS#11. Useful for debugging this test. */
+#    if 1 /* Toggle this to run without actually using PKCS#11. Useful for debugging this test. */
     struct aws_tls_ctx_pkcs11_options client_pkcs11_tls_opts = {
         .pkcs11_lib = s_pkcs11_tester.lib,
         .token_label = aws_byte_cursor_from_c_str(TOKEN_LABEL),
@@ -1305,10 +1307,10 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     };
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_with_pkcs11(&client_tls_opts, allocator, &client_pkcs11_tls_opts));
-#else
+#    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_from_path(&client_tls_opts, allocator, "unittests.crt", "unittests.key"));
-#endif
+#    endif
 
     /* trust the server's self-signed certificate */
     ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
@@ -1392,3 +1394,4 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(pkcs11_tls_negotiation_succeeds, s_test_pkcs11_tls_negotiation_succeeds)
+#endif /* BYO_CRYPTO */
