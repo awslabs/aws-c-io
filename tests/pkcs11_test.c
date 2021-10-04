@@ -1114,7 +1114,7 @@ static void s_on_tls_client_channel_setup(
 
     (void)bootstrap;
     (void)user_data;
-    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS client setup. error_code=%s", aws_error_name(error_code));
+    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS test client setup. error_code=%s", aws_error_name(error_code));
 
     /* if negotiation succeds: shutdown channel nicely
      * if negotiation fails: store error code and notify main thread */
@@ -1139,7 +1139,7 @@ static void s_on_tls_client_channel_shutdown(
     (void)bootstrap;
     (void)channel;
     (void)user_data;
-    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS client shutdown. error_code=%s", aws_error_name(error_code));
+    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS test client shutdown. error_code=%s", aws_error_name(error_code));
 
     /* store error code and notify main thread  */
     aws_mutex_lock(&s_tls_tester.synced.mutex);
@@ -1159,7 +1159,7 @@ static void s_on_tls_server_channel_setup(
     (void)bootstrap;
     (void)channel;
     (void)user_data;
-    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS server setup. error_code=%s", aws_error_name(error_code));
+    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS test server setup. error_code=%s", aws_error_name(error_code));
 
     if (error_code == 0) {
         /* do nothing, the client will shut down this channel */
@@ -1184,7 +1184,7 @@ static void s_on_tls_server_channel_shutdown(
     (void)bootstrap;
     (void)channel;
     (void)user_data;
-    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS server shutdown. error_code=%s", aws_error_name(error_code));
+    AWS_LOGF_INFO(AWS_LS_IO_PKCS11, "TLS test server shutdown. error_code=%s", aws_error_name(error_code));
 
     /* store error code and notify main thread  */
     aws_mutex_lock(&s_tls_tester.synced.mutex);
