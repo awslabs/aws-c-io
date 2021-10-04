@@ -1171,7 +1171,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-#if 0 /* HACK 🙅‍♀️ DO 🙅 NOT 🙅‍♂️ MERGE 🙅‍♀️ THIS 🙅 TO 🙅‍♂️ MAIN 🙅‍♀️ MAIN 🙅 */
+#if 0  /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
     switch (options->minimum_tls_version) {
         case AWS_IO_SSLv3:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
@@ -1192,7 +1192,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         default:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
     }
-#else /* HACK 🙅‍♀️ DO 🙅 NOT 🙅‍♂️ MERGE 🙅‍♀️ THIS 🙅 TO 🙅‍♂️ MAIN 🙅‍♀️ MAIN 🙅 */
+#else  /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
     switch (options->minimum_tls_version) {
         case AWS_IO_SSLv3:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
@@ -1215,7 +1215,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         default:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
     }
-#endif /* HACK 🙅‍♀️ DO 🙅 NOT 🙅‍♂️ MERGE 🙅‍♀️ THIS 🙅 TO 🙅‍♂️ MAIN 🙅‍♀️ MAIN 🙅 */
+#endif /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
 
     switch (options->cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
