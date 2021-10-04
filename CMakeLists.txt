@@ -147,15 +147,19 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 
 endif()
 
-if (NOT BYO_CRYPTO AND USE_S2N)
+if (BYO_CRYPTO)
+    set(USE_S2N OFF)
+
+    if (APPLE OR WIN32)
+            message(FATAL_ERROR "BYO_CRYPTO is only for use with unix systems. It cannot be used on your current platform target")
+    endif()
+endif()
+
+if (USE_S2N)
     file(GLOB AWS_IO_TLS_SRC
             "source/s2n/*.c"
             )
     aws_use_package(s2n)
-endif()
-
-if (BYO_CRYPTO AND (APPLE OR WIN32))
-    message(FATAL_ERROR "BYO_CRYPTO is only for use with unix systems. It cannot be used on your current platform target")
 endif()
 
 file(GLOB IO_HEADERS
