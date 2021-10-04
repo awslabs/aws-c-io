@@ -1102,7 +1102,7 @@ static bool s_are_client_results_ready(void *user_data) {
 
 static bool s_are_server_results_ready(void *user_data) {
     (void)user_data;
-    return s_tls_tester.synced.client_results_ready;
+    return s_tls_tester.synced.server_results_ready;
 }
 
 /* callback when client TLS connection established (or failed) */
@@ -1383,7 +1383,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
     aws_event_loop_group_release(event_loop_group);
 
     /* wait for event-loop threads to wrap up */
-    aws_thread_set_managed_join_timeout_ns(TIMEOUT_NANOS);
+    aws_thread_set_managed_join_timeout_ns(TIMEOUT_NANOS * 10);
     ASSERT_SUCCESS(aws_thread_join_all_managed());
 
     aws_condition_variable_clean_up(&s_tls_tester.synced.cvar);
