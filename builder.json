@@ -4,7 +4,8 @@
         { "name": "aws-c-common" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"]
+            "targets": ["linux", "android"],
+            "revision": "v1.0.19", "_comment": "tls_double_channel test broken by 1.1.*"
         },
         { "name": "aws-c-cal" }
     ],
