@@ -320,10 +320,8 @@ static void s_on_negotiation_result(
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    /* Catch edge cases where a task was scheduled to continue negotiation,
-     * but something changed before the task could be run */
     if (s2n_handler->negotiation_failed || s2n_handler->negotiation_finished) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Cannot drive negotiation any more", (void *)handler);
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Connection is not in a state to continue negotiation", (void *)handler);
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
@@ -572,9 +570,8 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
 }
 
 /* This task performs the PKCS#11 private key operations.
- * This task is scheduled by the s2n_async_pkey_callback because the
- * operation is not allowed to complete synchronously. */
-static void s_s2n_pkcs11_async_pkey_task(
+ * This task is scheduled because the s2n async private key operation is not allowed to complete synchronously */
+pstatic void s_s2n_pkcs11_async_pkey_task(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
@@ -594,6 +591,9 @@ static void s_s2n_pkcs11_async_pkey_task(
     }
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Running PKCS#11 async pkey task", (void *)handler);
+
+    /* We check all s2n_async_pkey_op functions for success,
+     * but they shouldn't fail if they're called correctly */
 
     uint32_t input_size = 0;
     if (s2n_async_pkey_op_get_input_size(op, &input_size)) {
@@ -662,7 +662,7 @@ static void s_s2n_pkcs11_async_pkey_task(
 
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Unknown s2n_async_pkey_op_type:%d", (void *)handler, (int)op_type);
-            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             goto unlock;
     }
 
@@ -714,8 +714,8 @@ static int s_s2n_pkcs11_async_pkey_callback(struct s2n_connection *conn, struct 
     AWS_ASSERT(conn == s2n_handler->connection);
     (void)conn;
 
-    /* We must schedule a task to do further work because the
-     * operation is not allowed to complete synchronously */
+    /* Schedule a task to do further work.
+     * We can't do it now because the s2n async private key operation cannot complete synchronously */
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: async pkey callback received, scheduling PKCS#11 task", (void *)handler);
 
     aws_channel_task_init(&s2n_handler->async_pkey_task, s_s2n_pkcs11_async_pkey_task, op, "s2n_pkcs11_async_pkey_op");
