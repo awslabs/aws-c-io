@@ -86,8 +86,8 @@ AWS_IO_API int aws_input_stream_get_status(struct aws_input_stream *stream, stru
  */
 AWS_IO_API int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
 
-/*
- * Tears down the stream. (Deprecated)
+/* DEPRECATED
+ * Tears down the stream.
  */
 AWS_IO_API void aws_input_stream_destroy(struct aws_input_stream *stream);
 
