@@ -571,7 +571,7 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
 
 /* This task performs the PKCS#11 private key operations.
  * This task is scheduled because the s2n async private key operation is not allowed to complete synchronously */
-pstatic void s_s2n_pkcs11_async_pkey_task(
+static void s_s2n_pkcs11_async_pkey_task(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
@@ -593,7 +593,8 @@ pstatic void s_s2n_pkcs11_async_pkey_task(
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Running PKCS#11 async pkey task", (void *)handler);
 
     /* We check all s2n_async_pkey_op functions for success,
-     * but they shouldn't fail if they're called correctly */
+     * but they shouldn't fail if they're called correctly.
+     * Even if the output is bad, the failure will happen later in s2n_negotiate() */
 
     uint32_t input_size = 0;
     if (s2n_async_pkey_op_get_input_size(op, &input_size)) {
