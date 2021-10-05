@@ -716,7 +716,7 @@ static int s_s2n_pkcs11_async_pkey_callback(struct s2n_connection *conn, struct 
     (void)conn;
 
     /* Schedule a task to do further work.
-     * We can't do it now because the s2n async private key operation cannot complete synchronously */
+     * We can't just do the work now because the s2n async private key operation cannot complete synchronously */
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: async pkey callback received, scheduling PKCS#11 task", (void *)handler);
 
     aws_channel_task_init(&s2n_handler->async_pkey_task, s_s2n_pkcs11_async_pkey_task, op, "s2n_pkcs11_async_pkey_op");
