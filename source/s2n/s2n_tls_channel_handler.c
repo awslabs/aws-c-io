@@ -60,8 +60,11 @@ struct s2n_handler {
     aws_tls_on_error_fn *on_error;
     void *user_data;
     bool advertise_alpn_message;
-    bool negotiation_finished; /* true after negotiation succeeds */
-    bool negotiation_failed;
+    enum {
+        NEGOTIATION_ONGOING,
+        NEGOTIATION_FAILED,
+        NEGOTIATION_SUCCEEDED,
+    } state;
     struct s2n_delayed_shutdown_task delayed_shutdown_task;
     struct aws_channel_task async_pkey_task;
 };
@@ -320,10 +323,7 @@ static void s_on_negotiation_result(
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    if (s2n_handler->negotiation_failed || s2n_handler->negotiation_finished) {
-        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Connection is not in a state to continue negotiation", (void *)handler);
-        return aws_raise_error(AWS_ERROR_INVALID_STATE);
-    }
+    AWS_ASSERT(s2n_handler->state == NEGOTIATION_ONGOING);
 
     aws_on_drive_tls_negotiation(&s2n_handler->shared_state);
 
@@ -333,7 +333,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
         int s2n_error = s2n_errno;
         if (negotiation_code == S2N_ERR_T_OK) {
-            s2n_handler->negotiation_finished = true;
+            s2n_handler->state = NEGOTIATION_SUCCEEDED;
 
             const char *protocol = s2n_get_application_protocol(s2n_handler->connection);
             if (protocol) {
@@ -388,7 +388,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             const char *err_str = s2n_strerror_debug(s2n_error, NULL);
             (void)err_str;
-            s2n_handler->negotiation_failed = true;
+            s2n_handler->state = NEGOTIATION_FAILED;
 
             aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
 
@@ -408,7 +408,10 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
-        s_drive_negotiation(handler);
+        struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+        if (s2n_handler->state == NEGOTIATION_ONGOING) {
+            s_drive_negotiation(handler);
+        }
     }
 }
 
@@ -417,7 +420,10 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
-        return s_drive_negotiation(handler);
+        if (s2n_handler->state == NEGOTIATION_ONGOING) {
+            s_drive_negotiation(handler);
+        }
+        return AWS_OP_SUCCESS;
     }
 
     aws_channel_task_init(
@@ -434,10 +440,14 @@ static int s_s2n_handler_process_read_message(
 
     struct s2n_handler *s2n_handler = handler->impl;
 
+    if (AWS_UNLIKELY(s2n_handler->state == NEGOTIATION_FAILED)) {
+        return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+    }
+
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
 
-        if (!s2n_handler->negotiation_finished) {
+        if (s2n_handler->state == NEGOTIATION_ONGOING) {
             size_t message_len = message->message_data.len;
             if (!s_drive_negotiation(handler)) {
                 aws_channel_slot_increment_read_window(slot, message_len);
@@ -526,7 +536,7 @@ static int s_s2n_handler_process_write_message(
     (void)slot;
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    if (AWS_UNLIKELY(!s2n_handler->negotiation_finished)) {
+    if (AWS_UNLIKELY(s2n_handler->state != NEGOTIATION_SUCCEEDED)) {
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
     }
 
@@ -586,7 +596,7 @@ static void s_s2n_pkcs11_async_pkey_task(
     AWS_ZERO_STRUCT(output_buf);
 
     /* if things started failing since this task was scheduled, just clean up and bail out */
-    if (status != AWS_TASK_STATUS_RUN_READY || s2n_handler->negotiation_failed) {
+    if (status != AWS_TASK_STATUS_RUN_READY || s2n_handler->state != NEGOTIATION_ONGOING) {
         goto clean_up;
     }
 
@@ -599,14 +609,14 @@ static void s_s2n_pkcs11_async_pkey_task(
     uint32_t input_size = 0;
     if (s2n_async_pkey_op_get_input_size(op, &input_size)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey op size", (void *)handler);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
     input_data = aws_mem_acquire(handler->alloc, input_size);
     if (s2n_async_pkey_op_get_input(op, input_data, input_size)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey input", (void *)handler);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
     struct aws_byte_cursor input_cursor = aws_byte_cursor_from_array(input_data, input_size);
@@ -614,7 +624,7 @@ static void s_s2n_pkcs11_async_pkey_task(
     s2n_async_pkey_op_type op_type = 0;
     if (s2n_async_pkey_op_get_op_type(op, &op_type)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey op type", (void *)handler);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
@@ -663,7 +673,7 @@ static void s_s2n_pkcs11_async_pkey_task(
 
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Unknown s2n_async_pkey_op_type:%d", (void *)handler, (int)op_type);
-            aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
             goto unlock;
     }
 
@@ -681,13 +691,13 @@ unlock:
 
     if (s2n_async_pkey_op_set_output(op, output_buf.buffer, output_buf.len)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed setting output on s2n async pkey op", (void *)handler);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
     if (s2n_async_pkey_op_apply(op, s2n_handler->connection)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed applying s2n async pkey op", (void *)handler);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
@@ -715,8 +725,8 @@ static int s_s2n_pkcs11_async_pkey_callback(struct s2n_connection *conn, struct 
     AWS_ASSERT(conn == s2n_handler->connection);
     (void)conn;
 
-    /* Schedule a task to do further work.
-     * We can't just do the work now because the s2n async private key operation cannot complete synchronously */
+    /* Schedule a task to do the work.
+     * s2n can't deal with the async private key operation completing synchronously, so we can't just do it now */
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: async pkey callback received, scheduling PKCS#11 task", (void *)handler);
 
     aws_channel_task_init(&s2n_handler->async_pkey_task, s_s2n_pkcs11_async_pkey_task, op, "s2n_pkcs11_async_pkey_op");
@@ -767,8 +777,8 @@ static int s_s2n_handler_shutdown(
             AWS_LS_IO_TLS, "id=%p: Shutting down read direction with error code %d", (void *)handler, error_code);
 
         /* If negotiation hasn't succeeded yet, it's certainly not going to succeed now */
-        if (!s2n_handler->negotiation_finished) {
-            s2n_handler->negotiation_failed = true;
+        if (s2n_handler->state == NEGOTIATION_ONGOING) {
+            s2n_handler->state = NEGOTIATION_FAILED;
         }
 
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
@@ -819,7 +829,7 @@ static int s_s2n_handler_increment_read_window(
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (s2n_handler->negotiation_finished && !s2n_handler->sequential_tasks.node.next) {
+    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->sequential_tasks.node.next) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          *
@@ -1008,7 +1018,7 @@ static struct aws_channel_handler *s_new_tls_handler(
         }
     }
 
-    s2n_handler->negotiation_finished = false;
+    s2n_handler->state = NEGOTIATION_ONGOING;
 
     s2n_connection_set_recv_cb(s2n_handler->connection, s_s2n_handler_recv);
     s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
