@@ -1085,6 +1085,11 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
         }
     }
 
+    struct aws_socket *socket = channel_data->socket;
+    if (socket && socket->readable_fn) {
+        socket->readable_fn(socket, AWS_OP_SUCCESS, socket->readable_user_data);
+    }
+
     return AWS_OP_SUCCESS;
 }
 

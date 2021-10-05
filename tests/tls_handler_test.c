@@ -266,8 +266,9 @@ static void s_tls_handler_test_client_setup_callback(
         setup_test_args->last_error_code = error_code;
     }
 
+    struct aws_condition_variable *cv = setup_test_args->condition_variable;
     aws_mutex_unlock(setup_test_args->mutex);
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_condition_variable_notify_one(cv);
 }
 
 static void s_tls_handler_test_server_setup_callback(
@@ -353,9 +354,9 @@ static void s_tls_on_negotiated(
     (void)slot;
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
 
-    if (!err_code) {
-        aws_mutex_lock(setup_test_args->mutex);
+    aws_mutex_lock(setup_test_args->mutex);
 
+    if (!err_code) {
         if (aws_tls_is_alpn_available()) {
             setup_test_args->negotiated_protocol = aws_tls_handler_protocol(handler);
         }
@@ -364,9 +365,12 @@ static void s_tls_on_negotiated(
 
         s_aws_check_for_user_handler_setup(setup_test_args);
         s_on_tls_negotiated_next_tls_handler(setup_test_args);
-
-        aws_mutex_unlock(setup_test_args->mutex);
+    } else {
+        setup_test_args->error_invoked = true;
+        setup_test_args->last_error_code = err_code;
     }
+
+    aws_mutex_unlock(setup_test_args->mutex);
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
@@ -801,7 +805,7 @@ static int s_verify_negotiation_fails_helper(
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
-    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
+    // aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, NULL);
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_c_str(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
 
@@ -854,7 +858,6 @@ static int s_verify_negotiation_fails_helper(
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_TRUE(outgoing_args.error_invoked);
 
@@ -868,6 +871,8 @@ static int s_verify_negotiation_fails_helper(
             "Warning: the connection timed out and we're not completely certain"
             " that this fails for the right reasons. Maybe run the test again?\n");
     }
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
     aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_release(client_ctx);
@@ -2259,6 +2264,7 @@ static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
 
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 2* initial channel setup ");
 
+    ASSERT_FALSE(client_test_state.error_invoked);
     ASSERT_FALSE(endpoint_server_test_state.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
