@@ -1053,7 +1053,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
     const uint8_t sha384_prefix[] = pkcs11SHA384_PREFIX_TO_RSA_SIG;
     const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
     const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
-    const uint8_t* chosen_prefix = NULL;
+    const uint8_t *chosen_prefix = NULL;
     size_t chosen_prefix_size = 0;
 
     switch (digest_alg) {

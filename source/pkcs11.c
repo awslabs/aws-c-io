@@ -947,7 +947,7 @@ static int s_pkcs11_sign_rsa(
     const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
     const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
 
-    const uint8_t* chosen_prefix = NULL;
+    const uint8_t *chosen_prefix = NULL;
     size_t chosen_prefix_size = 0;
     bool success = false;
     switch (digest_alg) {
@@ -974,7 +974,8 @@ static int s_pkcs11_sign_rsa(
         default:
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKCS11,
-                "id=%p: %s() Unsupported client digest: %d for PKCS#11 signing. Supported digests are SHA1, SHA256, SHA384 and SHA512 AWS error: %s",
+                "id=%p: %s() Unsupported client digest: %d for PKCS#11 signing. Supported digests are SHA1, SHA256, "
+                "SHA384 and SHA512 AWS error: %s",
                 (void *)pkcs11_lib,
                 __func__,
                 digest_alg,
@@ -1030,13 +1031,8 @@ int aws_pkcs11_lib_sign(
 
     switch (key_type) {
         case CKK_RSA:
-            return s_pkcs11_sign_rsa(pkcs11_lib,
-                                     session_handle,
-                                     key_handle,
-                                     input_data,
-                                     allocator,
-                                     digest_alg,
-                                     out_signature);
+            return s_pkcs11_sign_rsa(
+                pkcs11_lib, session_handle, key_handle, input_data, allocator, digest_alg, out_signature);
         default:
             return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
     }
