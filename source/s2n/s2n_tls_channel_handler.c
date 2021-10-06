@@ -73,6 +73,9 @@ struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
 
+    /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
+    struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
+
     /* Use a single PKCS#11 session for all TLS connections on this s2n_ctx.
      * We do this because PKCS#11 tokens may only support a
      * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
@@ -1177,6 +1180,11 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
         aws_mutex_clean_up(&s2n_ctx->pkcs11.session_lock);
         aws_pkcs11_lib_release(s2n_ctx->pkcs11.lib);
         s2n_config_free(s2n_ctx->s2n_config);
+
+        if (s2n_ctx->custom_cert_chain_and_key) {
+            s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
+        }
+
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
 }
@@ -1403,24 +1411,21 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         /* set certificate.
-         * lifetime note: s2n_config eventually takes ownership of chain_and_key,
-         * but if something goes wrong before then we have to clean it up */
-        struct s2n_cert_chain_and_key *chain_and_key = s2n_cert_chain_and_key_new();
-        if (!chain_and_key) {
+         * we need to create a custom s2n_cert_chain_and_key that knows the cert but not the key */
+        s2n_ctx->custom_cert_chain_and_key = s2n_cert_chain_and_key_new();
+        if (!s2n_ctx->custom_cert_chain_and_key) {
             s_log_and_raise_s2n_errno("ctx: creation failed");
             goto cleanup_s2n_config;
         }
 
         if (s2n_cert_chain_and_key_load_public_pem_bytes(
-                chain_and_key, options->certificate.buffer, options->certificate.len)) {
+                s2n_ctx->custom_cert_chain_and_key, options->certificate.buffer, options->certificate.len)) {
             s_log_and_raise_s2n_errno("ctx: failed to load certificate");
-            s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
         }
 
-        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, chain_and_key)) {
+        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, s2n_ctx->custom_cert_chain_and_key)) {
             s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
-            s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
         }
 
