@@ -1048,41 +1048,13 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         &signature));
 
     /* There is no good way to validate without this, as we append this prefix internally before signing. */
-    const uint8_t sha1_prefix[] = pkcs11SHA1_PREFIX_TO_RSA_SIG;
-    const uint8_t sha256_prefix[] = pkcs11SHA256_PREFIX_TO_RSA_SIG;
-    const uint8_t sha384_prefix[] = pkcs11SHA384_PREFIX_TO_RSA_SIG;
-    const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
-    const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
-    const uint8_t *chosen_prefix = NULL;
     size_t chosen_prefix_size = 0;
+    struct aws_byte_cursor prefix;
+    ASSERT_SUCCESS(aws_pkcs11_get_rsa_signature_prefix(digest_alg, &prefix));
 
-    switch (digest_alg) {
-        case S2N_TLS_HASH_SHA1:
-            chosen_prefix = &sha1_prefix[0];
-            chosen_prefix_size = sizeof(sha1_prefix);
-            break;
-        case S2N_TLS_HASH_SHA224:
-            chosen_prefix = &sha224_prefix[0];
-            chosen_prefix_size = sizeof(sha224_prefix);
-            break;
-        case S2N_TLS_HASH_SHA256:
-            chosen_prefix = &sha256_prefix[0];
-            chosen_prefix_size = sizeof(sha256_prefix);
-            break;
-        case S2N_TLS_HASH_SHA384:
-            chosen_prefix = &sha384_prefix[0];
-            chosen_prefix_size = sizeof(sha384_prefix);
-            break;
-        case S2N_TLS_HASH_SHA512:
-            chosen_prefix = &sha512_prefix[0];
-            chosen_prefix_size = sizeof(sha512_prefix);
-            break;
-        default:
-            FAIL("Invalid test input for digest algorithm");
-    }
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + chosen_prefix_size); /* cannot fail */
-    aws_byte_buf_write(&prefixed_input, chosen_prefix, chosen_prefix_size);
+    aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + prefix.len); /* cannot fail */
+    aws_byte_buf_write(&prefixed_input, prefix.ptr, prefix.len);
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, message_to_sign);
     struct aws_byte_cursor input_message_to_verify = aws_byte_cursor_from_buf(&prefixed_input);
 

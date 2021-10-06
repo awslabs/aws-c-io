@@ -18,6 +18,18 @@
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
 #define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 20
 
+/* clang-format off */
+/*
+ * DER encoded DigestInfo value for SHA to be prefixed to the hash, used for RSA signing
+ * See https://tools.ietf.org/html/rfc3447#page-43
+ */
+static const uint8_t SHA1_PREFIX_TO_RSA_SIG[] = { 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14 };
+static const uint8_t SHA256_PREFIX_TO_RSA_SIG[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
+static const uint8_t SHA384_PREFIX_TO_RSA_SIG[] = { 0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30 };
+static const uint8_t SHA512_PREFIX_TO_RSA_SIG[] = { 0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40 };
+static const uint8_t SHA224_PREFIX_TO_RSA_SIG[] = { 0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c };
+/* clang-format on */
+
 /* Return c-string for PKCS#11 CKR_* contants. */
 const char *aws_pkcs11_ckr_str(CK_RV rv) {
     /* clang-format off */
@@ -677,7 +689,9 @@ int aws_pkcs11_lib_login_user(
 
     /* Success! */
     if (rv == CKR_USER_ALREADY_LOGGED_IN) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p User already logged in a session previously", (void *)pkcs11_lib);
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11,
+                       "id=%p session=%lu: User already logged in a session previously",
+                       (void *)pkcs11_lib);
     } else {
         AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
     }
@@ -932,6 +946,31 @@ error:
     return AWS_OP_ERR;
 }
 
+int aws_pkcs11_get_rsa_signature_prefix(
+    s2n_tls_hash_algorithm digest_alg,
+    struct aws_byte_cursor *out_prefix) {
+    switch (digest_alg) {
+        case S2N_TLS_HASH_SHA1:
+            *out_prefix = aws_byte_cursor_from_array(SHA1_PREFIX_TO_RSA_SIG, sizeof(SHA1_PREFIX_TO_RSA_SIG));
+            break;
+        case S2N_TLS_HASH_SHA224:
+            *out_prefix = aws_byte_cursor_from_array(SHA224_PREFIX_TO_RSA_SIG, sizeof(SHA224_PREFIX_TO_RSA_SIG));
+            break;
+        case S2N_TLS_HASH_SHA256:
+            *out_prefix = aws_byte_cursor_from_array(SHA256_PREFIX_TO_RSA_SIG, sizeof(SHA256_PREFIX_TO_RSA_SIG));
+            break;
+        case S2N_TLS_HASH_SHA384:
+            *out_prefix = aws_byte_cursor_from_array(SHA384_PREFIX_TO_RSA_SIG, sizeof(SHA384_PREFIX_TO_RSA_SIG));
+            break;
+        case S2N_TLS_HASH_SHA512:
+            *out_prefix = aws_byte_cursor_from_array(SHA512_PREFIX_TO_RSA_SIG, sizeof(SHA512_PREFIX_TO_RSA_SIG));
+            break;
+        default:
+            return aws_raise_error(AWS_IO_PKCS11_DIGEST_TYPE_UNSUPPORTED);
+    }
+    return AWS_OP_SUCCESS;
+}
+
 static int s_pkcs11_sign_rsa(
     struct aws_pkcs11_lib *pkcs11_lib,
     CK_SESSION_HANDLE session_handle,
@@ -941,51 +980,22 @@ static int s_pkcs11_sign_rsa(
     s2n_tls_hash_algorithm digest_alg,
     struct aws_byte_buf *out_signature) {
 
-    const uint8_t sha1_prefix[] = pkcs11SHA1_PREFIX_TO_RSA_SIG;
-    const uint8_t sha256_prefix[] = pkcs11SHA256_PREFIX_TO_RSA_SIG;
-    const uint8_t sha384_prefix[] = pkcs11SHA384_PREFIX_TO_RSA_SIG;
-    const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
-    const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
-
-    const uint8_t *chosen_prefix = NULL;
-    size_t chosen_prefix_size = 0;
-    bool success = false;
-    switch (digest_alg) {
-        case S2N_TLS_HASH_SHA1:
-            chosen_prefix = &sha1_prefix[0];
-            chosen_prefix_size = sizeof(sha1_prefix);
-            break;
-        case S2N_TLS_HASH_SHA224:
-            chosen_prefix = &sha224_prefix[0];
-            chosen_prefix_size = sizeof(sha224_prefix);
-            break;
-        case S2N_TLS_HASH_SHA256:
-            chosen_prefix = &sha256_prefix[0];
-            chosen_prefix_size = sizeof(sha256_prefix);
-            break;
-        case S2N_TLS_HASH_SHA384:
-            chosen_prefix = &sha384_prefix[0];
-            chosen_prefix_size = sizeof(sha384_prefix);
-            break;
-        case S2N_TLS_HASH_SHA512:
-            chosen_prefix = &sha512_prefix[0];
-            chosen_prefix_size = sizeof(sha512_prefix);
-            break;
-        default:
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKCS11,
-                "id=%p: %s() Unsupported client digest: %d for PKCS#11 signing. Supported digests are SHA1, SHA256, "
-                "SHA384 and SHA512 AWS error: %s",
-                (void *)pkcs11_lib,
-                __func__,
-                digest_alg,
-                aws_error_name(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED));
-            return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
+    struct aws_byte_cursor prefix;
+    if (aws_pkcs11_get_rsa_signature_prefix(digest_alg, &prefix)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11,
+                       "id=%p: Unsupported client digest: %d for PKCS#11 signing. Supported digests are SHA1,"
+                       " SHA256, SHA384 and SHA512. AWS error: %s",
+                       (void *)pkcs11_lib,
+                       digest_alg,
+                       aws_error_name(AWS_IO_PKCS11_DIGEST_TYPE_UNSUPPORTED));
+        return AWS_OP_ERR;
     }
 
+    bool success = false;
+
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, input_data.len + chosen_prefix_size); /* cannot fail */
-    aws_byte_buf_write(&prefixed_input, chosen_prefix, chosen_prefix_size);
+    aws_byte_buf_init(&prefixed_input, allocator, input_data.len + prefix.len); /* cannot fail */
+    aws_byte_buf_write(&prefixed_input, prefix.ptr, prefix.len);
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, input_data);
 
     /* We could get the original input and not the digest to sign and leverage CKM_SHA*_RSA_PKCS mechanisms

@@ -628,8 +628,27 @@ static void s_s2n_pkcs11_async_pkey_task(
         goto error;
     }
 
+    /* TODO: Add support for ECDSA */
+    s2n_tls_signature_algorithm sign_alg = S2N_TLS_SIGNATURE_ANONYMOUS;
+    if (s2n_connection_get_selected_client_cert_signature_algorithm(s2n_handler->connection, &sign_alg)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed getting s2n client cert digest algo", (void *)handler);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    if (sign_alg != S2N_TLS_SIGNATURE_RSA) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Unsupported Signature algo: %d, Supported algorithms: RSA",
+                       (void *)handler);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
     s2n_tls_hash_algorithm alg = S2N_TLS_HASH_NONE;
-    s2n_connection_get_selected_client_cert_digest_algorithm(s2n_handler->connection, &alg);
+    if (s2n_connection_get_selected_client_cert_digest_algorithm(s2n_handler->connection, &alg)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed getting s2n client cert digest algo", (void *)handler);
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
 
     /*********** BEGIN CRITICAL SECTION ***********/
     aws_mutex_lock(&s2n_handler->s2n_ctx->pkcs11.session_lock);
