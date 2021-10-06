@@ -628,6 +628,9 @@ static void s_s2n_pkcs11_async_pkey_task(
         goto error;
     }
 
+    s2n_tls_hash_algorithm alg = S2N_TLS_HASH_NONE;
+    s2n_connection_get_selected_client_cert_digest_algorithm(s2n_handler->connection, &alg);
+
     /*********** BEGIN CRITICAL SECTION ***********/
     aws_mutex_lock(&s2n_handler->s2n_ctx->pkcs11.session_lock);
     bool success_while_locked = false;
@@ -660,6 +663,7 @@ static void s_s2n_pkcs11_async_pkey_task(
                     s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
                     handler->alloc,
+                    alg,
                     &output_buf)) {
 
                 AWS_LOGF_ERROR(

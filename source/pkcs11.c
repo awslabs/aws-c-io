@@ -669,13 +669,18 @@ int aws_pkcs11_lib_login_user(
     }
 
     CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
-    if (rv != CKR_OK) {
+    /* Ignore if we are already logged in, this could happen if application using device sdk also logs in to pkcs11 */
+    if (rv != CKR_OK && rv != CKR_USER_ALREADY_LOGGED_IN) {
         /* TODO: Login failure must have a real error code. Expose CKR_ codes as aws-error codes */
         return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
     }
 
     /* Success! */
-    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+    if (rv == CKR_USER_ALREADY_LOGGED_IN) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p User already logged in a session previously", (void *)pkcs11_lib);
+    } else {
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+    }
     return AWS_OP_SUCCESS;
 }
 
@@ -933,22 +938,60 @@ static int s_pkcs11_sign_rsa(
     CK_OBJECT_HANDLE key_handle,
     struct aws_byte_cursor input_data,
     struct aws_allocator *allocator,
+    s2n_tls_hash_algorithm digest_alg,
     struct aws_byte_buf *out_signature) {
 
-    /* TODO: detect hash, support multiple hash types */
-    /* TODO: would CKM_SHA256_RSA_PKCS handle the prefix stuff for us? */
+    const uint8_t sha1_prefix[] = pkcs11SHA1_PREFIX_TO_RSA_SIG;
+    const uint8_t sha256_prefix[] = pkcs11SHA256_PREFIX_TO_RSA_SIG;
+    const uint8_t sha384_prefix[] = pkcs11SHA384_PREFIX_TO_RSA_SIG;
+    const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
+    const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
 
-    /* clang-format off */
-    const uint8_t sha256_prefix[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
-    /* clang-format on */
-
+    const uint8_t* chosen_prefix = NULL;
+    size_t chosen_prefix_size = 0;
     bool success = false;
+    switch (digest_alg) {
+        case S2N_TLS_HASH_SHA1:
+            chosen_prefix = &sha1_prefix[0];
+            chosen_prefix_size = sizeof(sha1_prefix);
+            break;
+        case S2N_TLS_HASH_SHA224:
+            chosen_prefix = &sha224_prefix[0];
+            chosen_prefix_size = sizeof(sha224_prefix);
+            break;
+        case S2N_TLS_HASH_SHA256:
+            chosen_prefix = &sha256_prefix[0];
+            chosen_prefix_size = sizeof(sha256_prefix);
+            break;
+        case S2N_TLS_HASH_SHA384:
+            chosen_prefix = &sha384_prefix[0];
+            chosen_prefix_size = sizeof(sha384_prefix);
+            break;
+        case S2N_TLS_HASH_SHA512:
+            chosen_prefix = &sha512_prefix[0];
+            chosen_prefix_size = sizeof(sha512_prefix);
+            break;
+        default:
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "id=%p: %s() Unsupported client digest: %d for PKCS#11 signing. Supported digests are SHA1, SHA256, SHA384 and SHA512 AWS error: %s",
+                (void *)pkcs11_lib,
+                __func__,
+                digest_alg,
+                aws_error_name(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED));
+            return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
+    }
 
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, input_data.len + sizeof(sha256_prefix)); /* cannot fail */
-    aws_byte_buf_write(&prefixed_input, sha256_prefix, sizeof(sha256_prefix));
+    aws_byte_buf_init(&prefixed_input, allocator, input_data.len + chosen_prefix_size); /* cannot fail */
+    aws_byte_buf_write(&prefixed_input, chosen_prefix, chosen_prefix_size);
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, input_data);
 
+    /* We could get the original input and not the digest to sign and leverage CKM_SHA*_RSA_PKCS mechanisms
+     * but the original input is too large (all the TLS handshake messages until clientCertVerify) and
+     * we do not want to perform the digest inside the TPM for performance reasons, therefore we only
+     * leverage CKM_RSA_PKCS mechanism and *only* sign the digest using TPM. Only signing requires
+     * additional prefix to the input to complete the digest part for RSA signing. */
     CK_MECHANISM mechanism = {.mechanism = CKM_RSA_PKCS};
 
     if (s_pkcs11_sign_helper(
@@ -979,6 +1022,7 @@ int aws_pkcs11_lib_sign(
     CK_KEY_TYPE key_type,
     struct aws_byte_cursor input_data,
     struct aws_allocator *allocator,
+    s2n_tls_hash_algorithm digest_alg,
     struct aws_byte_buf *out_signature) {
 
     AWS_ASSERT(input_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
@@ -986,7 +1030,13 @@ int aws_pkcs11_lib_sign(
 
     switch (key_type) {
         case CKK_RSA:
-            return s_pkcs11_sign_rsa(pkcs11_lib, session_handle, key_handle, input_data, allocator, out_signature);
+            return s_pkcs11_sign_rsa(pkcs11_lib,
+                                     session_handle,
+                                     key_handle,
+                                     input_data,
+                                     allocator,
+                                     digest_alg,
+                                     out_signature);
         default:
             return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
     }

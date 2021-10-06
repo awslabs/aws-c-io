@@ -537,23 +537,23 @@ static int s_test_pkcs11_login_tests(struct aws_allocator *allocator, void *ctx)
     /* Try a valid pin on a valid slot */
     ASSERT_SUCCESS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session, pin));
 
-    /* A re login should fail, as we are already logged in now */
-    ASSERT_FAILS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session, pin));
+    /* A re login should succeed, as we are already logged in now */
+    ASSERT_SUCCESS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session, pin));
 
     /* Now create one more session */
     CK_SESSION_HANDLE session_2 = CK_INVALID_HANDLE;
     ASSERT_SUCCESS(aws_pkcs11_lib_open_session(s_pkcs11_tester.lib, created_slot, &session_2 /*out*/));
 
-    /* A re login should fail, as we are already logged in another session and
-     * the spec only allows login once on any of the session in an application
+    /* A re login should succeed, as we are already logged in another session and
+     * the spec only requires login once on any of the session in an application
      * */
-    ASSERT_FAILS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session_2, pin));
+    ASSERT_SUCCESS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session_2, pin));
 
     /* Close the first session */
     aws_pkcs11_lib_close_session(s_pkcs11_tester.lib, session);
 
-    /* A re login should fail again on the second session, as login is only required once */
-    ASSERT_FAILS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session_2, pin));
+    /* A re login should succeed again on the second session, as login is only required once */
+    ASSERT_SUCCESS(aws_pkcs11_lib_login_user(s_pkcs11_tester.lib, session_2, pin));
 
     /* Close the second session */
     aws_pkcs11_lib_close_session(s_pkcs11_tester.lib, session_2);
@@ -1019,7 +1019,7 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
 }
 AWS_TEST_CASE(pkcs11_decrypt, s_test_pkcs11_decrypt)
 
-static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
+static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int digest_alg) {
     (void)ctx;
     /* Reset PKCS#11 tokens, load library */
     CK_SLOT_ID created_slot = 0;
@@ -1038,15 +1038,51 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
 
     /* Sign a message */
     ASSERT_SUCCESS(aws_pkcs11_lib_sign(
-        s_pkcs11_tester.lib, session, created_key, SUPPORTED_KEY_TYPE, message_to_sign, allocator, &signature));
+        s_pkcs11_tester.lib,
+        session,
+        created_key,
+        SUPPORTED_KEY_TYPE,
+        message_to_sign,
+        allocator,
+        digest_alg,
+        &signature));
 
     /* There is no good way to validate without this, as we append this prefix internally before signing. */
-    /* clang-format off */
-    const uint8_t sha256_prefix[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
-    /* clang-format on */
+    const uint8_t sha1_prefix[] = pkcs11SHA1_PREFIX_TO_RSA_SIG;
+    const uint8_t sha256_prefix[] = pkcs11SHA256_PREFIX_TO_RSA_SIG;
+    const uint8_t sha384_prefix[] = pkcs11SHA384_PREFIX_TO_RSA_SIG;
+    const uint8_t sha512_prefix[] = pkcs11SHA512_PREFIX_TO_RSA_SIG;
+    const uint8_t sha224_prefix[] = pkcs11SHA224_PREFIX_TO_RSA_SIG;
+    const uint8_t* chosen_prefix = NULL;
+    size_t chosen_prefix_size = 0;
+
+    switch (digest_alg) {
+        case S2N_TLS_HASH_SHA1:
+            chosen_prefix = &sha1_prefix[0];
+            chosen_prefix_size = sizeof(sha1_prefix);
+            break;
+        case S2N_TLS_HASH_SHA224:
+            chosen_prefix = &sha224_prefix[0];
+            chosen_prefix_size = sizeof(sha224_prefix);
+            break;
+        case S2N_TLS_HASH_SHA256:
+            chosen_prefix = &sha256_prefix[0];
+            chosen_prefix_size = sizeof(sha256_prefix);
+            break;
+        case S2N_TLS_HASH_SHA384:
+            chosen_prefix = &sha384_prefix[0];
+            chosen_prefix_size = sizeof(sha384_prefix);
+            break;
+        case S2N_TLS_HASH_SHA512:
+            chosen_prefix = &sha512_prefix[0];
+            chosen_prefix_size = sizeof(sha512_prefix);
+            break;
+        default:
+            FAIL("Invalid test input for digest algorithm");
+    }
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + sizeof(sha256_prefix));
-    aws_byte_buf_write(&prefixed_input, sha256_prefix, sizeof(sha256_prefix));
+    aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + chosen_prefix_size); /* cannot fail */
+    aws_byte_buf_write(&prefixed_input, chosen_prefix, chosen_prefix_size);
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, message_to_sign);
     struct aws_byte_cursor input_message_to_verify = aws_byte_cursor_from_buf(&prefixed_input);
 
@@ -1057,7 +1093,14 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     CK_KEY_TYPE unsupported_key_type = CKK_EC;
     aws_byte_buf_clean_up(&signature);
     ASSERT_FAILS(aws_pkcs11_lib_sign(
-        s_pkcs11_tester.lib, session, created_key, unsupported_key_type, message_to_sign, allocator, &signature));
+        s_pkcs11_tester.lib,
+        session,
+        created_key,
+        unsupported_key_type,
+        message_to_sign,
+        allocator,
+        digest_alg,
+        &signature));
 
     /* Invalid session handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_sign(
@@ -1067,11 +1110,19 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
         SUPPORTED_KEY_TYPE,
         message_to_sign,
         allocator,
+        digest_alg,
         &signature));
 
     /* Invalid key handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_sign(
-        s_pkcs11_tester.lib, session, CK_INVALID_HANDLE, SUPPORTED_KEY_TYPE, message_to_sign, allocator, &signature));
+        s_pkcs11_tester.lib,
+        session,
+        CK_INVALID_HANDLE,
+        SUPPORTED_KEY_TYPE,
+        message_to_sign,
+        allocator,
+        digest_alg,
+        &signature));
 
     /* Clean up */
     aws_byte_buf_clean_up(&prefixed_input);
@@ -1079,7 +1130,31 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx) {
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_sign, s_test_pkcs11_sign)
+
+static int s_test_pkcs11_sign_sha1(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA1);
+}
+AWS_TEST_CASE(pkcs11_sign_sha1, s_test_pkcs11_sign_sha1)
+
+static int s_test_pkcs11_sign_sha512(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA512);
+}
+AWS_TEST_CASE(pkcs11_sign_sha512, s_test_pkcs11_sign_sha512)
+
+static int s_test_pkcs11_sign_sha384(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA384);
+}
+AWS_TEST_CASE(pkcs11_sign_sha384, s_test_pkcs11_sign_sha384)
+
+static int s_test_pkcs11_sign_sha256(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA256);
+}
+AWS_TEST_CASE(pkcs11_sign_sha256, s_test_pkcs11_sign_sha256)
+
+static int s_test_pkcs11_sign_sha224(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA224);
+}
+AWS_TEST_CASE(pkcs11_sign_sha224, s_test_pkcs11_sign_sha224)
 
 #ifndef BYO_CRYPTO
 
