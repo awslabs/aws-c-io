@@ -157,6 +157,12 @@ static struct aws_error_info s_errors[] = {
        AWS_IO_RETRY_PERMISSION_DENIED,
        "Retry cannot be attempted because the retry strategy has prevented the operation."),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED,
+        "TLS digest was created with an unsupported algorithm"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED,
+        "TLS signature algorithm is currently unsupported."),
+    AWS_DEFINE_ERROR_INFO_IO(
        AWS_IO_PKCS11_ERROR,
        "A PKCS#11 library error occured, see log for more details."),
     AWS_DEFINE_ERROR_INFO_IO(

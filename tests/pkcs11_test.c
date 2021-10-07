@@ -1045,12 +1045,12 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         message_to_sign,
         allocator,
         digest_alg,
+        AWS_TLS_SIGNATURE_RSA,
         &signature));
 
     /* There is no good way to validate without this, as we append this prefix internally before signing. */
-    size_t chosen_prefix_size = 0;
     struct aws_byte_cursor prefix;
-    ASSERT_SUCCESS(aws_pkcs11_get_rsa_signature_prefix(digest_alg, &prefix));
+    ASSERT_SUCCESS(aws_get_prefix_to_rsa_sig(digest_alg, &prefix));
 
     struct aws_byte_buf prefixed_input;
     aws_byte_buf_init(&prefixed_input, allocator, message_to_sign.len + prefix.len); /* cannot fail */
@@ -1072,6 +1072,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         message_to_sign,
         allocator,
         digest_alg,
+        AWS_TLS_SIGNATURE_RSA,
         &signature));
 
     /* Invalid session handle should fail */
@@ -1083,6 +1084,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         message_to_sign,
         allocator,
         digest_alg,
+        AWS_TLS_SIGNATURE_RSA,
         &signature));
 
     /* Invalid key handle should fail */
@@ -1094,6 +1096,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         message_to_sign,
         allocator,
         digest_alg,
+        AWS_TLS_SIGNATURE_RSA,
         &signature));
 
     /* Clean up */
@@ -1104,27 +1107,27 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
 }
 
 static int s_test_pkcs11_sign_sha1(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA1);
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA1);
 }
 AWS_TEST_CASE(pkcs11_sign_sha1, s_test_pkcs11_sign_sha1)
 
 static int s_test_pkcs11_sign_sha512(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA512);
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA512);
 }
 AWS_TEST_CASE(pkcs11_sign_sha512, s_test_pkcs11_sign_sha512)
 
 static int s_test_pkcs11_sign_sha384(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA384);
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA384);
 }
 AWS_TEST_CASE(pkcs11_sign_sha384, s_test_pkcs11_sign_sha384)
 
 static int s_test_pkcs11_sign_sha256(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA256);
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA256);
 }
 AWS_TEST_CASE(pkcs11_sign_sha256, s_test_pkcs11_sign_sha256)
 
 static int s_test_pkcs11_sign_sha224(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, S2N_TLS_HASH_SHA224);
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA224);
 }
 AWS_TEST_CASE(pkcs11_sign_sha224, s_test_pkcs11_sign_sha224)
 
