@@ -18,6 +18,40 @@
 #define AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR 2
 #define AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR 20
 
+/* clang-format off */
+/*
+ * DER encoded DigestInfo value to be prefixed to the hash, used for RSA signing
+ * See https://tools.ietf.org/html/rfc3447#page-43
+ */
+static const uint8_t SHA1_PREFIX_TO_RSA_SIG[] = { 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14 };
+static const uint8_t SHA256_PREFIX_TO_RSA_SIG[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
+static const uint8_t SHA384_PREFIX_TO_RSA_SIG[] = { 0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30 };
+static const uint8_t SHA512_PREFIX_TO_RSA_SIG[] = { 0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40 };
+static const uint8_t SHA224_PREFIX_TO_RSA_SIG[] = { 0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c };
+/* clang-format on */
+
+const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash) {
+    /* clang-format off */
+    switch (hash) {
+        case (AWS_TLS_HASH_SHA1): return "SHA1";
+        case (AWS_TLS_HASH_SHA224): return "SHA224";
+        case (AWS_TLS_HASH_SHA256): return "SHA256";
+        case (AWS_TLS_HASH_SHA384): return "SHA384";
+        case (AWS_TLS_HASH_SHA512): return "SHA512";
+        default: return "<UNKNOWN HASH ALGORITHM>";
+    }
+    /* clang-format on */
+}
+
+const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature) {
+    /* clang-format off */
+    switch (signature) {
+        case (AWS_TLS_SIGNATURE_RSA): return "RSA";
+        default: return "<UNKNOWN SIGNATURE ALGORITHM>";
+    }
+    /* clang-format on */
+}
+
 /* Return c-string for PKCS#11 CKR_* contants. */
 const char *aws_pkcs11_ckr_str(CK_RV rv) {
     /* clang-format off */
@@ -669,13 +703,19 @@ int aws_pkcs11_lib_login_user(
     }
 
     CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
-    if (rv != CKR_OK) {
+    /* Ignore if we are already logged in, this could happen if application using device sdk also logs in to pkcs11 */
+    if (rv != CKR_OK && rv != CKR_USER_ALREADY_LOGGED_IN) {
         /* TODO: Login failure must have a real error code. Expose CKR_ codes as aws-error codes */
         return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
     }
 
     /* Success! */
-    AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+    if (rv == CKR_USER_ALREADY_LOGGED_IN) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_PKCS11, "id=%p session=%lu: User was already logged in", (void *)pkcs11_lib, session_handle);
+    } else {
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKCS11, "id=%p session=%lu: User logged in", (void *)pkcs11_lib, session_handle);
+    }
     return AWS_OP_SUCCESS;
 }
 
@@ -927,28 +967,75 @@ error:
     return AWS_OP_ERR;
 }
 
+int aws_get_prefix_to_rsa_sig(enum aws_tls_hash_algorithm digest_alg, struct aws_byte_cursor *out_prefix) {
+    switch (digest_alg) {
+        case AWS_TLS_HASH_SHA1:
+            *out_prefix = aws_byte_cursor_from_array(SHA1_PREFIX_TO_RSA_SIG, sizeof(SHA1_PREFIX_TO_RSA_SIG));
+            break;
+        case AWS_TLS_HASH_SHA224:
+            *out_prefix = aws_byte_cursor_from_array(SHA224_PREFIX_TO_RSA_SIG, sizeof(SHA224_PREFIX_TO_RSA_SIG));
+            break;
+        case AWS_TLS_HASH_SHA256:
+            *out_prefix = aws_byte_cursor_from_array(SHA256_PREFIX_TO_RSA_SIG, sizeof(SHA256_PREFIX_TO_RSA_SIG));
+            break;
+        case AWS_TLS_HASH_SHA384:
+            *out_prefix = aws_byte_cursor_from_array(SHA384_PREFIX_TO_RSA_SIG, sizeof(SHA384_PREFIX_TO_RSA_SIG));
+            break;
+        case AWS_TLS_HASH_SHA512:
+            *out_prefix = aws_byte_cursor_from_array(SHA512_PREFIX_TO_RSA_SIG, sizeof(SHA512_PREFIX_TO_RSA_SIG));
+            break;
+        default:
+            return aws_raise_error(AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED);
+    }
+    return AWS_OP_SUCCESS;
+}
+
 static int s_pkcs11_sign_rsa(
     struct aws_pkcs11_lib *pkcs11_lib,
     CK_SESSION_HANDLE session_handle,
     CK_OBJECT_HANDLE key_handle,
-    struct aws_byte_cursor input_data,
+    struct aws_byte_cursor digest_data,
     struct aws_allocator *allocator,
+    enum aws_tls_hash_algorithm digest_alg,
+    enum aws_tls_signature_algorithm signature_alg,
     struct aws_byte_buf *out_signature) {
 
-    /* TODO: detect hash, support multiple hash types */
-    /* TODO: would CKM_SHA256_RSA_PKCS handle the prefix stuff for us? */
+    if (signature_alg != AWS_TLS_SIGNATURE_RSA) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Signature algorithm '%s' is currently unsupported for PKCS#11 RSA keys. "
+            "Supported algorithms are: RSA",
+            (void *)pkcs11_lib,
+            session_handle,
+            aws_tls_signature_algorithm_str(signature_alg));
+        return aws_raise_error(AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED);
+    }
 
-    /* clang-format off */
-    const uint8_t sha256_prefix[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
-    /* clang-format on */
+    struct aws_byte_cursor prefix;
+    if (aws_get_prefix_to_rsa_sig(digest_alg, &prefix)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Unsupported digest '%s' for PKCS#11 RSA signing. "
+            "Supported digests are: SHA1, SHA256, SHA384 and SHA512. AWS error: %s",
+            (void *)pkcs11_lib,
+            session_handle,
+            aws_tls_hash_algorithm_str(digest_alg),
+            aws_error_name(aws_last_error()));
+        return AWS_OP_ERR;
+    }
 
     bool success = false;
 
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, input_data.len + sizeof(sha256_prefix)); /* cannot fail */
-    aws_byte_buf_write(&prefixed_input, sha256_prefix, sizeof(sha256_prefix));
-    aws_byte_buf_write_from_whole_cursor(&prefixed_input, input_data);
+    aws_byte_buf_init(&prefixed_input, allocator, digest_data.len + prefix.len); /* cannot fail */
+    aws_byte_buf_write_from_whole_cursor(&prefixed_input, prefix);
+    aws_byte_buf_write_from_whole_cursor(&prefixed_input, digest_data);
 
+    /* We could get the original input and not the digest to sign and leverage CKM_SHA*_RSA_PKCS mechanisms
+     * but the original input is too large (all the TLS handshake messages until clientCertVerify) and
+     * we do not want to perform the digest inside the TPM for performance reasons, therefore we only
+     * leverage CKM_RSA_PKCS mechanism and *only* sign the digest using TPM. Only signing requires
+     * additional prefix to the input to complete the digest part for RSA signing. */
     CK_MECHANISM mechanism = {.mechanism = CKM_RSA_PKCS};
 
     if (s_pkcs11_sign_helper(
@@ -977,16 +1064,26 @@ int aws_pkcs11_lib_sign(
     CK_SESSION_HANDLE session_handle,
     CK_OBJECT_HANDLE key_handle,
     CK_KEY_TYPE key_type,
-    struct aws_byte_cursor input_data,
+    struct aws_byte_cursor digest_data,
     struct aws_allocator *allocator,
+    enum aws_tls_hash_algorithm digest_alg,
+    enum aws_tls_signature_algorithm signature_alg,
     struct aws_byte_buf *out_signature) {
 
-    AWS_ASSERT(input_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
+    AWS_ASSERT(digest_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
     AWS_ASSERT(out_signature->allocator == NULL);
 
     switch (key_type) {
         case CKK_RSA:
-            return s_pkcs11_sign_rsa(pkcs11_lib, session_handle, key_handle, input_data, allocator, out_signature);
+            return s_pkcs11_sign_rsa(
+                pkcs11_lib,
+                session_handle,
+                key_handle,
+                digest_data,
+                allocator,
+                digest_alg,
+                signature_alg,
+                out_signature);
         default:
             return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
     }

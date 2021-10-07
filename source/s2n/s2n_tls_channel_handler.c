@@ -579,6 +579,32 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
         false);
 }
 
+static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls_signature_algorithm s2n_alg) {
+    switch (s2n_alg) {
+        case S2N_TLS_SIGNATURE_RSA:
+            return AWS_TLS_SIGNATURE_RSA;
+        default:
+            return AWS_TLS_SIGNATURE_UNKNOWN;
+    }
+}
+
+static enum aws_tls_hash_algorithm s_s2n_to_aws_hash_algorithm(s2n_tls_hash_algorithm s2n_alg) {
+    switch (s2n_alg) {
+        case (S2N_TLS_HASH_SHA1):
+            return AWS_TLS_HASH_SHA1;
+        case (S2N_TLS_HASH_SHA224):
+            return AWS_TLS_HASH_SHA224;
+        case (S2N_TLS_HASH_SHA256):
+            return AWS_TLS_HASH_SHA256;
+        case (S2N_TLS_HASH_SHA384):
+            return AWS_TLS_HASH_SHA384;
+        case (S2N_TLS_HASH_SHA512):
+            return AWS_TLS_HASH_SHA512;
+        default:
+            return AWS_TLS_HASH_UNKNOWN;
+    }
+}
+
 /* This task performs the PKCS#11 private key operations.
  * This task is scheduled because the s2n async private key operation is not allowed to complete synchronously */
 static void s_s2n_pkcs11_async_pkey_task(
@@ -628,6 +654,47 @@ static void s_s2n_pkcs11_async_pkey_task(
         goto error;
     }
 
+    /* Gather additional information if this is a SIGN operation */
+    enum aws_tls_signature_algorithm aws_sign_alg = 0;
+    enum aws_tls_hash_algorithm aws_digest_alg = 0;
+    if (op_type == S2N_ASYNC_SIGN) {
+        s2n_tls_signature_algorithm s2n_sign_alg = 0;
+        if (s2n_connection_get_selected_client_cert_signature_algorithm(s2n_handler->connection, &s2n_sign_alg)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed getting s2n client cert signature algorithm", (void *)handler);
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto error;
+        }
+
+        aws_sign_alg = s_s2n_to_aws_signature_algorithm(s2n_sign_alg);
+        if (aws_sign_alg == AWS_TLS_SIGNATURE_UNKNOWN) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS,
+                "id=%p: Cannot sign with s2n_tls_signature_algorithm=%d. Algorithm currently unsupported",
+                (void *)handler,
+                s2n_sign_alg);
+            aws_raise_error(AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED);
+            goto error;
+        }
+
+        s2n_tls_hash_algorithm s2n_digest_alg = 0;
+        if (s2n_connection_get_selected_client_cert_digest_algorithm(s2n_handler->connection, &s2n_digest_alg)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed getting s2n client cert digest algorithm", (void *)handler);
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto error;
+        }
+
+        aws_digest_alg = s_s2n_to_aws_hash_algorithm(s2n_digest_alg);
+        if (aws_digest_alg == AWS_TLS_HASH_UNKNOWN) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS,
+                "id=%p: Cannot sign digest created with s2n_tls_hash_algorithm=%d. Algorithm currently unsupported",
+                (void *)handler,
+                s2n_digest_alg);
+            aws_raise_error(AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED);
+            goto error;
+        }
+    }
+
     /*********** BEGIN CRITICAL SECTION ***********/
     aws_mutex_lock(&s2n_handler->s2n_ctx->pkcs11.session_lock);
     bool success_while_locked = false;
@@ -660,6 +727,8 @@ static void s_s2n_pkcs11_async_pkey_task(
                     s2n_handler->s2n_ctx->pkcs11.private_key_type,
                     input_cursor,
                     handler->alloc,
+                    aws_digest_alg,
+                    aws_sign_alg,
                     &output_buf)) {
 
                 AWS_LOGF_ERROR(
