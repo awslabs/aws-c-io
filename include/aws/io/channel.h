@@ -120,6 +120,10 @@ struct aws_channel_handler_vtable {
      */
     void (*gather_statistics)(struct aws_channel_handler *handler, struct aws_array_list *stats_list);
 
+    /*
+     * If this handler represents a source of data (like the socket_handler), then this will trigger a read
+     * from the data source.
+     */
     void (*trigger_read)(struct aws_channel_handler *handler);
 };
 
