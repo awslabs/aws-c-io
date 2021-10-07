@@ -1085,6 +1085,16 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
         }
     }
 
+    /*
+     * Server-side channels can reach this point in execution and actually have the CLIENT_HELLO payload already
+     * on the socket in a signalled state, but there was no socket handler or read handler at the time of signal.
+     * So we need to manually trigger a read here to cover that case, otherwise the negotiation will time out because
+     * we will not receive any more data/notifications (unless we read and react).
+     */
+    if (aws_channel_trigger_read(channel)) {
+        return AWS_OP_ERR;
+    }
+
     return AWS_OP_SUCCESS;
 }
 
