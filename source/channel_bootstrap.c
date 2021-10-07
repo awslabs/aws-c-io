@@ -1085,6 +1085,8 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
         }
     }
 
+    aws_channel_trigger_read(channel);
+
     return AWS_OP_SUCCESS;
 }
 
