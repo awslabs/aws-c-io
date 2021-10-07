@@ -73,6 +73,9 @@ struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
 
+    /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
+    struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
+
     /* Use a single PKCS#11 session for all TLS connections on this s2n_ctx.
      * We do this because PKCS#11 tokens may only support a
      * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
@@ -1177,6 +1180,11 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
         aws_mutex_clean_up(&s2n_ctx->pkcs11.session_lock);
         aws_pkcs11_lib_release(s2n_ctx->pkcs11.lib);
         s2n_config_free(s2n_ctx->s2n_config);
+
+        if (s2n_ctx->custom_cert_chain_and_key) {
+            s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
+        }
+
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
 }
@@ -1283,51 +1291,51 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-#if 0  /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
-    switch (options->minimum_tls_version) {
-        case AWS_IO_SSLv3:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
-            break;
-        case AWS_IO_TLSv1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
-            break;
-        case AWS_IO_TLSv1_1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1");
-            break;
-        case AWS_IO_TLSv1_2:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2");
-            break;
-        case AWS_IO_TLSv1_3:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3");
-            break;
-        case AWS_IO_TLS_VER_SYS_DEFAULTS:
-        default:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+    if (options->pkcs11.lib != NULL) {
+        /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
+                break;
+            case AWS_IO_TLSv1:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2014");
+                break;
+            case AWS_IO_TLSv1_1:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
+                break;
+            case AWS_IO_TLSv1_2:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-2-Ext-2018-06");
+                break;
+            case AWS_IO_TLSv1_3:
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 with PKCS#11 is not supported yet.");
+                aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
+                goto cleanup_s2n_config;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            default:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
+        }
+    } else {
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
+                break;
+            case AWS_IO_TLSv1:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+                break;
+            case AWS_IO_TLSv1_1:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1");
+                break;
+            case AWS_IO_TLSv1_2:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2");
+                break;
+            case AWS_IO_TLSv1_3:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3");
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            default:
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+        }
     }
-#else  /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
-    switch (options->minimum_tls_version) {
-        case AWS_IO_SSLv3:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
-            break;
-        case AWS_IO_TLSv1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2014");
-            break;
-        case AWS_IO_TLSv1_1:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
-            break;
-        case AWS_IO_TLSv1_2:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-2-Ext-2018-06");
-            break;
-        case AWS_IO_TLSv1_3:
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 is not supported yet.");
-            /* sorry guys, we'll add this as soon as s2n does. */
-            aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-            goto cleanup_s2n_config;
-        case AWS_IO_TLS_VER_SYS_DEFAULTS:
-        default:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
-    }
-#endif /* HACK - DO - NOT - MERGE - THIS - TO - MAIN */
 
     switch (options->cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
@@ -1403,24 +1411,21 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
 
         /* set certificate.
-         * lifetime note: s2n_config eventually takes ownership of chain_and_key,
-         * but if something goes wrong before then we have to clean it up */
-        struct s2n_cert_chain_and_key *chain_and_key = s2n_cert_chain_and_key_new();
-        if (!chain_and_key) {
+         * we need to create a custom s2n_cert_chain_and_key that knows the cert but not the key */
+        s2n_ctx->custom_cert_chain_and_key = s2n_cert_chain_and_key_new();
+        if (!s2n_ctx->custom_cert_chain_and_key) {
             s_log_and_raise_s2n_errno("ctx: creation failed");
             goto cleanup_s2n_config;
         }
 
         if (s2n_cert_chain_and_key_load_public_pem_bytes(
-                chain_and_key, options->certificate.buffer, options->certificate.len)) {
+                s2n_ctx->custom_cert_chain_and_key, options->certificate.buffer, options->certificate.len)) {
             s_log_and_raise_s2n_errno("ctx: failed to load certificate");
-            s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
         }
 
-        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, chain_and_key)) {
+        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, s2n_ctx->custom_cert_chain_and_key)) {
             s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
-            s2n_cert_chain_and_key_free(chain_and_key);
             goto cleanup_s2n_config;
         }
 
