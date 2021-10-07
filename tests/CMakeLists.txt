@@ -181,8 +181,6 @@ add_test_case(test_uri_encode_path_rfc3986)
 add_test_case(test_uri_encode_query)
 add_test_case(test_uri_decode)
 
-add_test_case(test_home_directory_not_null)
-
 add_test_case(test_input_stream_memory_simple)
 add_test_case(test_input_stream_memory_iterate)
 add_test_case(test_input_stream_memory_seek_beginning)
