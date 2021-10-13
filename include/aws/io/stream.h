@@ -25,7 +25,7 @@ struct aws_stream_status {
 };
 
 struct aws_input_stream_vtable {
-    int (*seek)(void *user_data, int64_t offset, enum aws_stream_seek_basis basis);
+    int (*seek)(void *stream_impl, int64_t offset, enum aws_stream_seek_basis basis);
     /**
      * Stream as much data as will fit into the destination buffer and update its length.
      * The destination buffer's capacity MUST NOT be changed.
@@ -36,16 +36,16 @@ struct aws_input_stream_vtable {
      * If no more data is currently available, or the end of the stream has been reached, simply return AWS_OP_SUCCESS
      * without touching the destination buffer.
      */
-    int (*read)(void *user_data, struct aws_byte_buf *dest);
-    int (*get_status)(void *user_data, struct aws_stream_status *status);
-    int (*get_length)(void *user_data, int64_t *out_length);
-    void (*destroy)(void *user_data);
+    int (*read)(void *stream_impl, struct aws_byte_buf *dest);
+    int (*get_status)(void *stream_impl, struct aws_stream_status *status);
+    int (*get_length)(void *stream_impl, int64_t *out_length);
+    void (*destroy)(void *stream_impl);
 };
 
 struct aws_input_stream_options {
     struct aws_allocator *allocator;
     struct aws_input_stream_vtable *vtable;
-    void *user_data;
+    void *stream_impl;
 };
 
 AWS_EXTERN_C_BEGIN
