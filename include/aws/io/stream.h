@@ -39,7 +39,7 @@ struct aws_input_stream_vtable {
     int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
     int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
     int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
-    void (*destroy)(struct aws_input_stream *stream);
+    void (*impl_destroy)(struct aws_input_stream *stream);
 };
 
 struct aws_input_stream_options {

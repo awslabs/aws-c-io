@@ -68,9 +68,9 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
 
 void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
-        AWS_ASSERT(stream->vtable && stream->vtable->destroy);
+        AWS_ASSERT(stream->vtable && stream->vtable->impl_destroy);
 
-        stream->vtable->destroy(stream);
+        stream->vtable->impl_destroy(stream);
         aws_mem_release(stream->allocator, stream);
     }
 }
@@ -228,7 +228,7 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .read = s_aws_input_stream_byte_cursor_read,
     .get_status = s_aws_input_stream_byte_cursor_get_status,
     .get_length = s_aws_input_stream_byte_cursor_get_length,
-    .destroy = s_aws_input_stream_byte_cursor_destroy,
+    .impl_destroy = s_aws_input_stream_byte_cursor_destroy,
 };
 
 struct aws_input_stream *aws_input_stream_new_from_cursor(
@@ -322,7 +322,7 @@ static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
     .read = s_aws_input_stream_file_read,
     .get_status = s_aws_input_stream_file_get_status,
     .get_length = s_aws_input_stream_file_get_length,
-    .destroy = s_aws_input_stream_file_destroy,
+    .impl_destroy = s_aws_input_stream_file_destroy,
 };
 
 struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *allocator, const char *file_name) {
