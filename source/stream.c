@@ -364,6 +364,10 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
     return aws_input_stream_new(&options);
 }
 
+void *aws_input_stream_get_impl(const struct aws_input_stream *input_stream) {
+    return input_stream->stream_impl;
+}
+
 struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
     if (stream != NULL) {
         aws_ref_count_acquire(&stream->ref_count);

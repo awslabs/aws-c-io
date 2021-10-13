@@ -117,6 +117,11 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct a
  */
 AWS_IO_API struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_options *options);
 
+/*
+ * Get stream_impl from the input stream
+ */
+AWS_IO_API void *aws_input_stream_get_impl(const struct aws_input_stream *input_stream);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_STREAM_H */
