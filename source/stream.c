@@ -12,7 +12,7 @@
 
 struct aws_input_stream {
     struct aws_allocator *allocator;
-    void *impl;
+    void *user_data;
     struct aws_input_stream_vtable *vtable;
     struct aws_ref_count ref_count;
 };
@@ -20,7 +20,7 @@ struct aws_input_stream {
 int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->seek);
 
-    return stream->vtable->seek(stream->impl, offset, basis);
+    return stream->vtable->seek(stream->user_data, offset, basis);
 }
 
 int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
@@ -39,7 +39,7 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     const size_t safe_buf_capacity = dest->capacity - dest->len;
     struct aws_byte_buf safe_buf = aws_byte_buf_from_empty_array(safe_buf_start, safe_buf_capacity);
 
-    int read_result = stream->vtable->read(stream->impl, &safe_buf);
+    int read_result = stream->vtable->read(stream->user_data, &safe_buf);
 
     /* Ensure the implementation did not commit forbidden acts upon the buffer */
     AWS_FATAL_ASSERT(
@@ -57,20 +57,20 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
 int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->get_status);
 
-    return stream->vtable->get_status(stream->impl, status);
+    return stream->vtable->get_status(stream->user_data, status);
 }
 
 int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->get_length);
 
-    return stream->vtable->get_length(stream->impl, out_length);
+    return stream->vtable->get_length(stream->user_data, out_length);
 }
 
 void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
         AWS_ASSERT(stream->vtable && stream->vtable->destroy);
 
-        stream->vtable->destroy(stream->impl);
+        stream->vtable->destroy(stream->user_data);
         aws_mem_release(stream->allocator, stream);
     }
 }
@@ -90,7 +90,7 @@ struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_opti
 
     input_stream->allocator = options->allocator;
     input_stream->vtable = options->vtable;
-    input_stream->impl = options->user_data;
+    input_stream->user_data = options->user_data;
 
     s_input_stream_ref_count_init(input_stream);
 
@@ -226,11 +226,6 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .destroy = s_aws_input_stream_byte_cursor_destroy,
 };
 
-static void s_input_stream_ref_count_init(struct aws_input_stream *input_stream) {
-    aws_ref_count_init(
-        &input_stream->ref_count, input_stream, (aws_simple_completion_callback *)s_aws_input_stream_destroy);
-}
-
 struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor) {
@@ -245,7 +240,6 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
     impl->allocator = allocator;
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
-    s_input_stream_ref_count_init(input_stream);
 
     struct aws_input_stream_options options = {
         .allocator = allocator,
@@ -368,23 +362,6 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
         .vtable = &s_aws_input_stream_file_vtable,
     };
     return aws_input_stream_new(&options);
-}
-
-struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_acquire(&stream->ref_count);
-    }
-    return stream;
-}
-
-void aws_input_stream_release(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_release(&stream->ref_count);
-    }
-}
-
-void aws_input_stream_destroy(struct aws_input_stream *stream) {
-    aws_input_stream_release(stream);
 }
 
 struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
