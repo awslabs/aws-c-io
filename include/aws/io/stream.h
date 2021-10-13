@@ -25,7 +25,7 @@ struct aws_stream_status {
 };
 
 struct aws_input_stream_vtable {
-    int (*seek)(void *stream_impl, int64_t offset, enum aws_stream_seek_basis basis);
+    int (*seek)(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis);
     /**
      * Stream as much data as will fit into the destination buffer and update its length.
      * The destination buffer's capacity MUST NOT be changed.
@@ -36,16 +36,16 @@ struct aws_input_stream_vtable {
      * If no more data is currently available, or the end of the stream has been reached, simply return AWS_OP_SUCCESS
      * without touching the destination buffer.
      */
-    int (*read)(void *stream_impl, struct aws_byte_buf *dest);
-    int (*get_status)(void *stream_impl, struct aws_stream_status *status);
-    int (*get_length)(void *stream_impl, int64_t *out_length);
-    void (*destroy)(void *stream_impl);
+    int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
+    int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
+    int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
+    void (*destroy)(struct aws_input_stream *stream);
 };
 
 struct aws_input_stream_options {
     struct aws_allocator *allocator;
     struct aws_input_stream_vtable *vtable;
-    void *stream_impl;
+    void *impl;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -118,7 +118,7 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct a
 AWS_IO_API struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_options *options);
 
 /*
- * Get stream_impl from the input stream
+ * Get impl from the input stream
  */
 AWS_IO_API void *aws_input_stream_get_impl(const struct aws_input_stream *input_stream);
 
