@@ -25,7 +25,7 @@ struct aws_stream_status {
 };
 
 struct aws_input_stream_vtable {
-    int (*seek)(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis);
+    int (*seek)(void *user_data, int64_t offset, enum aws_stream_seek_basis basis);
     /**
      * Stream as much data as will fit into the destination buffer and update its length.
      * The destination buffer's capacity MUST NOT be changed.
@@ -36,17 +36,16 @@ struct aws_input_stream_vtable {
      * If no more data is currently available, or the end of the stream has been reached, simply return AWS_OP_SUCCESS
      * without touching the destination buffer.
      */
-    int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
-    int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
-    int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
-    void (*destroy)(struct aws_input_stream *stream);
+    int (*read)(void *user_data, struct aws_byte_buf *dest);
+    int (*get_status)(void *user_data, struct aws_stream_status *status);
+    int (*get_length)(void *user_data, int64_t *out_length);
+    void (*destroy)(void *user_data);
 };
 
-struct aws_input_stream {
+struct aws_input_stream_options {
     struct aws_allocator *allocator;
-    void *impl;
     struct aws_input_stream_vtable *vtable;
-    struct aws_ref_count ref_count;
+    void *user_data;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -111,6 +110,12 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_file(
  * Destruction does not close the file.
  */
 AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
+
+/*
+ * Creates an input stream with your own implementation.
+ * Caller has the default reference to the input stream.
+ */
+AWS_IO_API struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_options *options);
 
 AWS_EXTERN_C_END
 
