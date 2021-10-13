@@ -342,7 +342,7 @@ struct aws_pkcs11_lib {
     CK_FUNCTION_LIST_PTR function_list;
 
     /* If true, C_Finalize() should be called when last ref-count is released */
-    bool should_finalize;
+    bool finalize_on_cleanup;
 };
 
 /* Invoked when last ref-count is released. Free all resources.
@@ -354,9 +354,9 @@ static void s_pkcs11_lib_destroy(void *user_data) {
         AWS_LS_IO_PKCS11,
         "id=%p: Unloading PKCS#11. C_Finalize:%s",
         (void *)pkcs11_lib,
-        pkcs11_lib->should_finalize ? "yes" : "omit");
+        pkcs11_lib->finalize_on_cleanup ? "yes" : "omit");
 
-    if (pkcs11_lib->should_finalize) {
+    if (pkcs11_lib->finalize_on_cleanup) {
         CK_RV rv = pkcs11_lib->function_list->C_Finalize(NULL);
         if (rv != CKR_OK) {
             /* Log about it, but continue cleaning up */
@@ -392,7 +392,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         AWS_LS_IO_PKCS11,
         "Loading PKCS#11. file:'%s' C_Initialize:%s",
         filename ? filename : "<MAIN PROGRAM>",
-        options->omit_initialize ? "omit" : "yes");
+        (options->initialize_finalize_behavior == AWS_PKCS11_LIB_OMIT_INITIALIZE) ? "omit" : "yes");
 
     if (aws_shared_library_init(&pkcs11_lib->shared_lib, filename)) {
         goto error;
@@ -428,8 +428,9 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         goto error;
     }
 
-    /* Call C_Initialize() (skip if omit_initialize is set) */
-    if (!options->omit_initialize) {
+    /* Call C_Initialize() */
+    const char *init_logging_str = "omit";
+    if (options->initialize_finalize_behavior != AWS_PKCS11_LIB_OMIT_INITIALIZE) {
         CK_C_INITIALIZE_ARGS init_args = {
             /* encourage lib to use our locks */
             .CreateMutex = s_pkcs11_create_mutex,
@@ -442,11 +443,20 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
 
         rv = pkcs11_lib->function_list->C_Initialize(&init_args);
         if (rv != CKR_OK) {
-            s_raise_ck_error(pkcs11_lib, "C_Initialize", rv);
-            goto error;
+            /* Ignore already-initialized errors (unless user wants STRICT behavior) */
+            if (rv != CKR_CRYPTOKI_ALREADY_INITIALIZED ||
+                options->initialize_finalize_behavior == AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE) {
+
+                s_raise_ck_error(pkcs11_lib, "C_Initialize", rv);
+                goto error;
+            }
         }
 
-        pkcs11_lib->should_finalize = true;
+        init_logging_str = aws_pkcs11_ckr_str(rv);
+
+        if (options->initialize_finalize_behavior == AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE) {
+            pkcs11_lib->finalize_on_cleanup = true;
+        }
     }
 
     /* Get info about the library and log it.
@@ -472,7 +482,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
         AWS_BYTE_CURSOR_PRI(s_trim_padding(info.libraryDescription, sizeof(info.libraryDescription))),
         info.libraryVersion.major,
         info.libraryVersion.minor,
-        options->omit_initialize ? "omit" : "yes");
+        init_logging_str);
 
     /* Success! */
     goto clean_up;

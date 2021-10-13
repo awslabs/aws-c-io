@@ -103,6 +103,7 @@ static int s_reload_hsm(void) {
     /* Load library again */
     struct aws_pkcs11_lib_options options = {
         .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
     };
     s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
     ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
@@ -120,11 +121,7 @@ static int s_pkcs11_clear_softhsm_and_reload(void) {
     ASSERT_SUCCESS(s_pkcs11_clear_softhsm());
 
     /* Load library again */
-    struct aws_pkcs11_lib_options options = {
-        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
-    };
-    s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
-    ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
+    ASSERT_SUCCESS(s_reload_hsm());
 
     return AWS_OP_SUCCESS;
 }
@@ -370,8 +367,8 @@ static void s_pkcs11_tester_clean_up(void) {
 
 /* Read env-vars, raise an error if any necessary ones are missing.
  * Clear SoftHSM's token dir so that each test starts fresh.
- * Load PKCS#11 lib. */
-static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
+ * DO NOT load PKCS#11 lib. */
+static int s_pkcs11_tester_init_without_load(struct aws_allocator *allocator) {
     aws_io_library_init(allocator);
 
     const struct aws_string *env_var = TEST_PKCS11_LIB;
@@ -390,8 +387,18 @@ static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
 
     ASSERT_SUCCESS(s_pkcs11_clear_softhsm());
 
+    return AWS_OP_SUCCESS;
+}
+
+/* Read env-vars, raise an error if any necessary ones are missing.
+ * Clear SoftHSM's token dir so that each test starts fresh.
+ * Load PKCS#11 lib. */
+static int s_pkcs11_tester_init(struct aws_allocator *allocator) {
+    ASSERT_SUCCESS(s_pkcs11_tester_init_without_load(allocator));
+
     struct aws_pkcs11_lib_options options = {
         .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
     };
     s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
     ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
@@ -421,59 +428,122 @@ static int s_pkcs11_tester_init_with_session_login(
 }
 
 /* Simplest test: Loads and unloads library, calling C_Initialize() and C_Finalize() */
-static int s_test_pkcs11_lib_initialize(struct aws_allocator *allocator, void *ctx) {
+static int s_test_pkcs11_lib_sanity_check(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
-
-    /* the tester_init() helper function should have loaded the library */
-    ASSERT_NOT_NULL(s_pkcs11_tester.lib);
-
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_lib_initialize, s_test_pkcs11_lib_initialize)
+AWS_TEST_CASE(pkcs11_lib_sanity_check, s_test_pkcs11_lib_sanity_check)
 
-/* Test that we can use the `omit_initialize` option to have the library loaded multiple times */
-static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, void *ctx) {
+/* Stress test the DEFAULT_BEHAVIOR for C_Initialize() / C_Finalize() calls */
+static int s_test_pkcs11_lib_behavior_default(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+    ASSERT_SUCCESS(s_pkcs11_tester_init_without_load(allocator));
 
-    /* This loads the library normally as s_pkcs11_tester.lib */
-    ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
-
-    struct aws_pkcs11_lib_options options_normal = {
+    struct aws_pkcs11_lib_options options_default_behavior = {
         .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_DEFAULT_BEHAVIOR,
     };
+    struct aws_pkcs11_lib *lib_1 = aws_pkcs11_lib_new(allocator, &options_default_behavior);
+    ASSERT_NOT_NULL(lib_1, "Failed to load PKCS#11 lib");
+
+    /* Loading the lib a 2nd time with DEFAULT_BEHAVIOR should be fine,
+     * since CKR_CRYPTOKI_ALREADY_INITIALIZED should be ignored. */
+    struct aws_pkcs11_lib *lib_2 = aws_pkcs11_lib_new(allocator, &options_default_behavior);
+    ASSERT_NOT_NULL(lib_2, "Failed to load a 2nd PKCS#11 lib");
+
+    /* lib_2 should keep working if lib_1 is freed, since C_Finalize() is not called with DEFAULT_BEHAVIOR.
+     * (call C_GetInfo() to confirm the lib_2 still works) */
+    aws_pkcs11_lib_release(lib_1);
+    lib_1 = NULL;
+
+    CK_INFO info;
+    ASSERT_INT_EQUALS(CKR_OK, aws_pkcs11_lib_get_function_list(lib_2)->C_GetInfo(&info));
+
+    /* If all libs are unloaded, and another comes online. That should be fine */
+    aws_pkcs11_lib_release(lib_2);
+    lib_2 = NULL;
+
+    struct aws_pkcs11_lib *lib_3 = aws_pkcs11_lib_new(allocator, &options_default_behavior);
+    ASSERT_NOT_NULL(lib_3, "Failed to load a 3rd PKCS#11 lib");
+
+    /* Clean up */
+    aws_pkcs11_lib_release(lib_3);
+    s_pkcs11_tester_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(pkcs11_lib_behavior_default, s_test_pkcs11_lib_behavior_default)
+
+/* Stress test the OMIT_INITIALIZE behavior, where neither C_Initialize() or C_Finalize() is called */
+static int s_test_pkcs11_lib_behavior_omit_initialize(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(s_pkcs11_tester_init_without_load(allocator));
 
     struct aws_pkcs11_lib_options options_omit_initialize = {
         .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
-        .omit_initialize = true,
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_OMIT_INITIALIZE,
     };
 
-    /* Test that omit_initialize is required if someone else already initialized the library */
-    struct aws_pkcs11_lib *pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_normal);
+    /* Test that we fail gracefully if OMIT_INITIALIZE behavior is used,
+     * but no one else has initialized the underlying PKCS#11 library */
+    struct aws_pkcs11_lib *pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
     ASSERT_NULL(pkcs11_lib_should_fail);
     ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
 
-    /* Test that we can load the library twice by using omit_initialize the second time we load it */
-    struct aws_pkcs11_lib *pkcs11_lib_2 = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
-    ASSERT_NOT_NULL(pkcs11_lib_2);
+    /* Test that it's fine to use OMIT_INITIALIZE behavior to have the library loaded multiple times. */
 
-    /* Now unload all instances so we can test that we fail gracefully if
-     * we omit_initialize, but no one else has initialized it yet either */
-    aws_pkcs11_lib_release(pkcs11_lib_2);
-    pkcs11_lib_2 = NULL;
-    aws_pkcs11_lib_release(s_pkcs11_tester.lib);
-    s_pkcs11_tester.lib = NULL;
+    /* First create a lib that DOES call C_Initialize() */
+    struct aws_pkcs11_lib_options options_initialize_finalize = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
+    };
+    struct aws_pkcs11_lib *lib_initialize_finalize = aws_pkcs11_lib_new(allocator, &options_initialize_finalize);
+    ASSERT_NOT_NULL(lib_initialize_finalize);
 
-    pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
-    ASSERT_NULL(pkcs11_lib_should_fail);
-    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+    /* Now test that it's fine to create a 2nd lib using OMIT_INITIALIZE */
+    struct aws_pkcs11_lib *lib_2 = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
+    ASSERT_NOT_NULL(lib_2);
 
     /* Clean up */
+    aws_pkcs11_lib_release(lib_2);
+    aws_pkcs11_lib_release(lib_initialize_finalize);
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_lib_omit_initialize, s_test_pkcs11_lib_omit_initialize)
+AWS_TEST_CASE(pkcs11_lib_behavior_omit_initialize, s_test_pkcs11_lib_behavior_omit_initialize)
+
+/* Stress test the STRICT_INITIALIZE_FINALIZE behavior */
+static int s_test_pkcs11_lib_behavior_strict_initialize_finalize(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(s_pkcs11_tester_init_without_load(allocator));
+
+    /* Creating the 1st lib should succeed */
+    struct aws_pkcs11_lib_options options_initialize_finalize = {
+        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
+        .initialize_finalize_behavior = AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
+    };
+    struct aws_pkcs11_lib *lib_1 = aws_pkcs11_lib_new(allocator, &options_initialize_finalize);
+    ASSERT_NOT_NULL(lib_1);
+
+    /* Creating the 2nd lib should fail due to already-initialized errors */
+    struct aws_pkcs11_lib *lib_2_should_fail = aws_pkcs11_lib_new(allocator, &options_initialize_finalize);
+    ASSERT_NULL(lib_2_should_fail);
+    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error()); /* TODO: more granular errors */
+
+    /* It should be safe to release a STRICT lib, then create another */
+    aws_pkcs11_lib_release(lib_1);
+    lib_1 = NULL;
+
+    struct aws_pkcs11_lib *lib_2_should_succeed = aws_pkcs11_lib_new(allocator, &options_initialize_finalize);
+    ASSERT_NOT_NULL(lib_2_should_succeed);
+
+    /* Clean up */
+    aws_pkcs11_lib_release(lib_2_should_succeed);
+    s_pkcs11_tester_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(pkcs11_lib_behavior_strict_initialize_finalize, s_test_pkcs11_lib_behavior_strict_initialize_finalize)
 
 static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1269,11 +1339,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds(struct aws_allocator *allocato
         DEFAULT_KEY_ID,
         USER_PIN));
 
-    struct aws_pkcs11_lib_options options = {
-        .filename = aws_byte_cursor_from_string(s_pkcs11_tester.shared_lib_path),
-    };
-    s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
-    ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
+    ASSERT_SUCCESS(s_reload_hsm());
 
     /* Set up resources that aren't specific to server or client */
     ASSERT_SUCCESS(aws_mutex_init(&s_tls_tester.synced.mutex));
