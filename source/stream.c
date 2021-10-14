@@ -59,7 +59,7 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
     return stream->vtable->get_length(stream, out_length);
 }
 
-void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
+void aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
         AWS_ASSERT(stream->vtable && stream->vtable->destroy);
 
@@ -198,11 +198,6 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .get_length = s_aws_input_stream_byte_cursor_get_length,
     .destroy = s_aws_input_stream_byte_cursor_destroy};
 
-static void s_input_stream_ref_count_init(struct aws_input_stream *input_stream) {
-    aws_ref_count_init(
-        &input_stream->ref_count, input_stream, (aws_simple_completion_callback *)s_aws_input_stream_destroy);
-}
-
 struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor) {
@@ -231,7 +226,6 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
 
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
-    s_input_stream_ref_count_init(input_stream);
 
     return input_stream;
 }
@@ -332,7 +326,6 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
     }
 
     impl->close_on_clean_up = true;
-    s_input_stream_ref_count_init(input_stream);
 
     return input_stream;
 
@@ -363,24 +356,6 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
 
     impl->file = file;
     impl->close_on_clean_up = false;
-    s_input_stream_ref_count_init(input_stream);
 
     return input_stream;
-}
-
-struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_acquire(&stream->ref_count);
-    }
-    return stream;
-}
-
-void aws_input_stream_release(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_release(&stream->ref_count);
-    }
-}
-
-void aws_input_stream_destroy(struct aws_input_stream *stream) {
-    aws_input_stream_release(stream);
 }
