@@ -66,7 +66,7 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
     return stream->vtable->get_length(stream, out_length);
 }
 
-void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
+void aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
         AWS_ASSERT(stream->vtable && stream->vtable->impl_destroy);
 
@@ -374,21 +374,4 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
 
 void *aws_input_stream_get_impl(const struct aws_input_stream *input_stream) {
     return input_stream->impl;
-}
-
-struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_acquire(&stream->ref_count);
-    }
-    return stream;
-}
-
-void aws_input_stream_release(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        aws_ref_count_release(&stream->ref_count);
-    }
-}
-
-void aws_input_stream_destroy(struct aws_input_stream *stream) {
-    aws_input_stream_release(stream);
 }

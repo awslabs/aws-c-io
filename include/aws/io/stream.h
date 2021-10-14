@@ -6,7 +6,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
 struct aws_input_stream;
@@ -50,18 +49,6 @@ struct aws_input_stream_options {
 
 AWS_EXTERN_C_BEGIN
 
-/**
- * Increments the reference count on the input stream, allowing the caller to take a reference to it.
- *
- * Returns the same input stream passed in.
- */
-AWS_IO_API struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream);
-
-/**
- * Decrements a input stream's ref count.  When the ref count drops to zero, the input stream will be destroyed.
- */
-AWS_IO_API void aws_input_stream_release(struct aws_input_stream *stream);
-
 /*
  * Seek to a position within a stream; analagous to fseek() and its relatives
  */
@@ -85,8 +72,8 @@ AWS_IO_API int aws_input_stream_get_status(struct aws_input_stream *stream, stru
  */
 AWS_IO_API int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
 
-/* DEPRECATED
- * Tears down the stream. Equivalent to aws_input_stream_release()
+/*
+ * Tears down the stream
  */
 AWS_IO_API void aws_input_stream_destroy(struct aws_input_stream *stream);
 
