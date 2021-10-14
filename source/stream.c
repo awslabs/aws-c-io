@@ -231,11 +231,6 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .impl_destroy = s_aws_input_stream_byte_cursor_destroy,
 };
 
-static void s_input_stream_ref_count_init(struct aws_input_stream *input_stream) {
-    aws_ref_count_init(
-        &input_stream->ref_count, input_stream, (aws_simple_completion_callback *)s_aws_input_stream_destroy);
-}
-
 struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor) {
@@ -250,7 +245,6 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
     impl->allocator = allocator;
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
-    s_input_stream_ref_count_init(input_stream);
 
     struct aws_input_stream_options options = {
         .allocator = allocator,
