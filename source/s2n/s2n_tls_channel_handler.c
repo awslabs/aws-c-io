@@ -97,59 +97,71 @@ struct s2n_ctx {
     } pkcs11;
 };
 
+AWS_STATIC_STRING_FROM_LITERAL(s_debian_path, "/etc/ssl/certs");
+AWS_STATIC_STRING_FROM_LITERAL(s_rhel_path, "/etc/pki/tls/certs");
+AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
+AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
+AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
+
 static const char *s_determine_default_pki_dir(void) {
     /* debian variants */
-    if (aws_path_exists("/etc/ssl/certs")) {
-        return "/etc/ssl/certs";
+    if (aws_path_exists(s_debian_path)) {
+        return aws_string_c_str(s_debian_path);
     }
 
     /* RHEL variants */
-    if (aws_path_exists("/etc/pki/tls/certs")) {
-        return "/etc/pki/tls/certs";
+    if (aws_path_exists(s_rhel_path)) {
+        return aws_string_c_str(s_rhel_path);
     }
 
     /* android */
-    if (aws_path_exists("/system/etc/security/cacerts")) {
-        return "/system/etc/security/cacerts";
+    if (aws_path_exists(s_android_path)) {
+        return aws_string_c_str(s_android_path);
     }
 
     /* Free BSD */
-    if (aws_path_exists("/usr/local/share/certs")) {
-        return "/usr/local/share/certs";
+    if (aws_path_exists(s_free_bsd_path)) {
+        return aws_string_c_str(s_free_bsd_path);
     }
 
     /* Net BSD */
-    if (aws_path_exists("/etc/openssl/certs")) {
-        return "/etc/openssl/certs";
+    if (aws_path_exists(s_net_bsd_path)) {
+        return aws_string_c_str(s_net_bsd_path);
     }
 
     return NULL;
 }
 
+AWS_STATIC_STRING_FROM_LITERAL(s_debian_ca_file_path, "/etc/ssl/certs/ca-certificates.crt");
+AWS_STATIC_STRING_FROM_LITERAL(s_old_rhel_ca_file_path, "/etc/pki/tls/certs/ca-bundle.crt");
+AWS_STATIC_STRING_FROM_LITERAL(s_open_suse_ca_file_path, "/etc/ssl/ca-bundle.pem");
+AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pem");
+AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
+
 static const char *s_determine_default_pki_ca_file(void) {
     /* debian variants */
-    if (aws_path_exists("/etc/ssl/certs/ca-certificates.crt")) {
-        return "/etc/ssl/certs/ca-certificates.crt";
+    if (aws_path_exists(s_debian_ca_file_path)) {
+        return aws_string_c_str(s_debian_ca_file_path);
     }
 
     /* Old RHEL variants */
-    if (aws_path_exists("/etc/pki/tls/certs/ca-bundle.crt")) {
-        return "/etc/pki/tls/certs/ca-bundle.crt";
+    if (aws_path_exists(s_old_rhel_ca_file_path)) {
+        return aws_string_c_str(s_old_rhel_ca_file_path);
     }
 
     /* Open SUSE */
-    if (aws_path_exists("/etc/ssl/ca-bundle.pem")) {
-        return "/etc/ssl/ca-bundle.pem";
+    if (aws_path_exists(s_open_suse_ca_file_path)) {
+        return aws_string_c_str(s_open_suse_ca_file_path);
     }
 
     /* Open ELEC */
-    if (aws_path_exists("/etc/pki/tls/cacert.pem")) {
-        return "/etc/pki/tls/cacert.pem";
+    if (aws_path_exists(s_open_elec_ca_file_path)) {
+        return aws_string_c_str(s_open_elec_ca_file_path);
     }
 
     /* Modern RHEL variants */
-    if (aws_path_exists("/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem")) {
-        return "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem";
+    if (aws_path_exists(s_modern_rhel_ca_file_path)) {
+        return aws_string_c_str(s_modern_rhel_ca_file_path);
     }
 
     return NULL;
@@ -191,6 +203,7 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
         case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             return true;
 #endif
 
