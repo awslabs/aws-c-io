@@ -222,8 +222,10 @@ add_test_case(test_standard_retry_strategy_failure_recovers)
 
 # See PKCS11.md for instructions on running these tests
 if (ENABLE_PKCS11_TESTS)
-    add_test_case(pkcs11_lib_initialize)
-    add_test_case(pkcs11_lib_omit_initialize)
+    add_test_case(pkcs11_lib_sanity_check)
+    add_test_case(pkcs11_lib_behavior_default)
+    add_test_case(pkcs11_lib_behavior_omit_initialize)
+    add_test_case(pkcs11_lib_behavior_strict_initialize_finalize)
     add_test_case(pkcs11_find_private_key)
     add_test_case(pkcs11_find_private_key_for_different_types)
     add_test_case(pkcs11_find_multiple_private_key)

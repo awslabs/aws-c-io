@@ -14,6 +14,33 @@ struct aws_allocator;
 struct aws_pkcs11_lib;
 
 /**
+ * Controls how aws_pkcs11_lib calls C_Initialize() and C_Finalize() on the PKCS#11 library.
+ */
+enum aws_pcks11_lib_behavior {
+    /**
+     * Default behavior that accommodates most use cases.
+     * C_Initialize() is called on creation, and "already-initialized" errors are ignored.
+     * C_Finalize() is never called, just in case another part of your
+     * application is still using the PKCS#11 library.
+     */
+    AWS_PKCS11_LIB_DEFAULT_BEHAVIOR,
+
+    /**
+     * Skip calling C_Initialize() and C_Finalize().
+     * Use this if your application has already initialized the PKCS#11 library,
+     * and you do not want C_Initialize() called again.
+     */
+    AWS_PKCS11_LIB_OMIT_INITIALIZE,
+
+    /**
+     * C_Initialize() is called on creation and C_Finalize() is called on cleanup.
+     * If C_Initialize() reports that's it's already initialized, this is treated as an error.
+     * Use this if you need perfect cleanup (ex: running valgrind with --leak-check).
+     */
+    AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
+};
+
+/**
  * Options for aws_pkcs11_lib_new()
  */
 struct aws_pkcs11_lib_options {
@@ -24,10 +51,9 @@ struct aws_pkcs11_lib_options {
     struct aws_byte_cursor filename;
 
     /**
-     * Set true to skip calling C_Initialize() and C_Finalize() on the PKCS#11 library.
-     * Use this only if your application has already initialized the PKCS#11 library.
+     * Behavior for calling C_Initialize() and C_Finalize() on the PKCS#11 library.
      */
-    bool omit_initialize;
+    enum aws_pcks11_lib_behavior initialize_finalize_behavior;
 };
 
 AWS_EXTERN_C_BEGIN
