@@ -21,7 +21,7 @@
 /* clang-format off */
 /*
  * DER encoded DigestInfo value to be prefixed to the hash, used for RSA signing
- * See https://tools.ietf.org/html/rfc3447#page-43
+ * See https://datatracker.ietf.org/doc/html/rfc8017#page-47
  */
 static const uint8_t SHA1_PREFIX_TO_RSA_SIG[] = { 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14 };
 static const uint8_t SHA256_PREFIX_TO_RSA_SIG[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
@@ -47,6 +47,7 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
     /* clang-format off */
     switch (signature) {
         case (AWS_TLS_SIGNATURE_RSA): return "RSA";
+        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA";
         default: return "<UNKNOWN SIGNATURE ALGORITHM>";
     }
     /* clang-format on */
@@ -828,6 +829,8 @@ int aws_pkcs11_lib_find_private_key(
     switch (key_type) {
         case CKK_RSA:
             break;
+        case CKK_EC:
+            break;
         default:
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKCS11,
@@ -874,7 +877,6 @@ int aws_pkcs11_lib_decrypt(
     struct aws_allocator *allocator,
     struct aws_byte_buf *out_data) {
 
-    AWS_ASSERT(encrypted_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
     AWS_ASSERT(out_data->allocator == NULL);
 
     CK_MECHANISM mechanism;
@@ -885,8 +887,23 @@ int aws_pkcs11_lib_decrypt(
             mechanism.mechanism = CKM_RSA_PKCS;
             break;
         default:
+            /* NOTE: CKK_EC does not support decrypt. [PKCS11-curr-v2.40] section 2.3 Elliptic Curve */
+
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "id=%p session=%lu: Key type %s does not support decrypt.",
+                (void *)pkcs11_lib,
+                session_handle,
+                s_ckk_str(key_type));
             aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
             goto error;
+    }
+
+    if (encrypted_data.len > ULONG_MAX) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11, "id=%p session=%lu: Data is too long to decrypt.", (void *)pkcs11_lib, session_handle);
+        aws_raise_error(AWS_ERROR_OVERFLOW_DETECTED);
+        goto error;
     }
 
     /* initialize the decryption operation */
@@ -932,6 +949,12 @@ static int s_pkcs11_sign_helper(
     struct aws_byte_cursor input_data,
     struct aws_allocator *allocator,
     struct aws_byte_buf *out_signature) {
+
+    if (input_data.len > ULONG_MAX) {
+        aws_raise_error(AWS_ERROR_OVERFLOW_DETECTED);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: Digest is too long.", (void *)pkcs11_lib, session_handle);
+        goto error;
+    }
 
     /* initialize signing operation */
     CK_RV rv = pkcs11_lib->function_list->C_SignInit(session_handle, &mechanism, key_handle);
@@ -1026,8 +1049,17 @@ static int s_pkcs11_sign_rsa(
 
     bool success = false;
 
+    /* put prefix and digest together in the same contiguous buffer */
     struct aws_byte_buf prefixed_input;
-    aws_byte_buf_init(&prefixed_input, allocator, digest_data.len + prefix.len); /* cannot fail */
+    AWS_ZERO_STRUCT(prefixed_input);
+
+    size_t total_len;
+    if (aws_add_size_checked(prefix.len, digest_data.len, &total_len)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: Digest is too long.", (void *)pkcs11_lib, session_handle);
+        goto error;
+    }
+
+    aws_byte_buf_init(&prefixed_input, allocator, total_len); /* cannot fail */
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, prefix);
     aws_byte_buf_write_from_whole_cursor(&prefixed_input, digest_data);
 
@@ -1059,6 +1091,39 @@ clean_up:
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
 
+static int s_pkcs11_sign_ec(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    CK_SESSION_HANDLE session_handle,
+    CK_OBJECT_HANDLE key_handle,
+    struct aws_byte_cursor digest_data,
+    struct aws_allocator *allocator,
+    enum aws_tls_hash_algorithm digest_alg,
+    enum aws_tls_signature_algorithm signature_alg,
+    struct aws_byte_buf *out_signature) {
+
+    if (signature_alg != AWS_TLS_SIGNATURE_ECDSA) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Signature algorithm '%s' is currently unsupported for PKCS#11 EC keys. "
+            "Supported algorithms are: ECDSA",
+            (void *)pkcs11_lib,
+            session_handle,
+            aws_tls_signature_algorithm_str(signature_alg));
+        return aws_raise_error(AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED);
+    }
+
+    (void)digest_alg; /* TODO: validate digest hash? */
+
+    CK_MECHANISM mechanism = {.mechanism = CKM_ECDSA};
+
+    if (s_pkcs11_sign_helper(
+            pkcs11_lib, session_handle, key_handle, mechanism, digest_data, allocator, out_signature)) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_pkcs11_lib_sign(
     struct aws_pkcs11_lib *pkcs11_lib,
     CK_SESSION_HANDLE session_handle,
@@ -1070,12 +1135,21 @@ int aws_pkcs11_lib_sign(
     enum aws_tls_signature_algorithm signature_alg,
     struct aws_byte_buf *out_signature) {
 
-    AWS_ASSERT(digest_data.len <= ULONG_MAX); /* do real error checking if this becomes a public API */
     AWS_ASSERT(out_signature->allocator == NULL);
 
     switch (key_type) {
         case CKK_RSA:
             return s_pkcs11_sign_rsa(
+                pkcs11_lib,
+                session_handle,
+                key_handle,
+                digest_data,
+                allocator,
+                digest_alg,
+                signature_alg,
+                out_signature);
+        case CKK_EC:
+            return s_pkcs11_sign_ec(
                 pkcs11_lib,
                 session_handle,
                 key_handle,

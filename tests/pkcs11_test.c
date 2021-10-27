@@ -45,16 +45,16 @@ const char *SO_PIN = "1111";
 const char *USER_PIN = "0000";
 const char *DEFAULT_KEY_LABEL = "my-key";
 const char *DEFAULT_KEY_ID = "AABBCCDD";
-CK_KEY_TYPE SUPPORTED_KEY_TYPE = CKK_RSA;
 
 #define TIMEOUT_SEC 10
 #define TIMEOUT_MILLIS (AWS_TIMESTAMP_MILLIS * TIMEOUT_SEC)
 #define TIMEOUT_NANOS ((uint64_t)AWS_TIMESTAMP_NANOS * TIMEOUT_SEC)
 
 struct pkcs11_key_creation_params {
+    const CK_KEY_TYPE key_type;
     const char *key_label;
     const char *key_id;
-    const CK_ULONG key_length;
+    const CK_ULONG key_length; /* RSA only */
 };
 
 /*
@@ -133,13 +133,20 @@ static int s_pkcs11_encrypt(
     struct aws_byte_cursor *message,
     struct aws_byte_buf *cipher_text,
     CK_SESSION_HANDLE session,
-    CK_OBJECT_HANDLE public_key) {
+    CK_OBJECT_HANDLE public_key,
+    CK_KEY_TYPE key_type) {
 
     CK_FUNCTION_LIST *pkcs11_function_list = aws_pkcs11_lib_get_function_list(s_pkcs11_tester.lib);
     struct aws_allocator *allocator = s_pkcs11_tester.allocator;
 
     /* We only support RSA keys today. */
-    CK_MECHANISM mechanism = {.mechanism = CKM_RSA_PKCS};
+    CK_MECHANISM mechanism;
+    AWS_ZERO_STRUCT(mechanism);
+    if (key_type == CKK_RSA) {
+        mechanism.mechanism = CKM_RSA_PKCS;
+    } else {
+        mechanism.mechanism = CKM_ECDSA;
+    }
     CK_RV rv = pkcs11_function_list->C_EncryptInit(session, &mechanism, public_key);
     if (rv != CKR_OK) {
         FAIL("C_EncryptInit fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
@@ -192,37 +199,49 @@ static int s_pkcs11_create_key(
 
     CK_FUNCTION_LIST *pkcs11_function_list = aws_pkcs11_lib_get_function_list(s_pkcs11_tester.lib);
 
-    /* We only support RSA keys today. */
-    CK_MECHANISM smech = {CKM_RSA_PKCS_KEY_PAIR_GEN, NULL, 0};
+    CK_MECHANISM smech;
+    AWS_ZERO_STRUCT(smech);
+
     /* Define key template */
-    static CK_BBOOL truevalue = TRUE;
-    static CK_BBOOL falsevalue = FALSE;
+    CK_BBOOL truevalue = TRUE;
+    CK_BBOOL falsevalue = FALSE;
 
     /* Set public key. Not sure if setting modulus_bits actually generates key as per that. */
-    CK_ATTRIBUTE publickey_template[] = {
-        {CKA_VERIFY, &truevalue, sizeof(truevalue)},
-        {CKA_MODULUS_BITS, (CK_VOID_PTR)&params->key_length, sizeof(params->key_length)},
-    };
+    CK_ULONG n_pub_attr = 0;
+    CK_ATTRIBUTE pub_attrs[10];
+    AWS_ZERO_ARRAY(pub_attrs);
+    pub_attrs[n_pub_attr++] = (CK_ATTRIBUTE){CKA_VERIFY, &truevalue, sizeof(CK_BBOOL)};
 
     /* Set private key. The parameters here are kind of random, does not affect the test, but trying
      * to mimic what a real key would look like in terms of attributes */
-    CK_ATTRIBUTE privatekey_template[] = {
-        {CKA_LABEL, (void *)params->key_label, (CK_ULONG)strlen(params->key_label)},
-        {CKA_ID, (void *)params->key_id, (CK_ULONG)strlen(params->key_id)},
-        {CKA_SIGN, &truevalue, sizeof(truevalue)},
-        {CKA_EXTRACTABLE, &falsevalue, sizeof(falsevalue)},
-    };
+    CK_ULONG n_priv_attr = 0;
+    CK_ATTRIBUTE priv_attrs[10];
+    AWS_ZERO_ARRAY(priv_attrs);
+    priv_attrs[n_priv_attr++] =
+        (CK_ATTRIBUTE){CKA_LABEL, (void *)params->key_label, (CK_ULONG)strlen(params->key_label)};
+    priv_attrs[n_priv_attr++] = (CK_ATTRIBUTE){CKA_ID, (void *)params->key_id, (CK_ULONG)strlen(params->key_id)};
+    priv_attrs[n_priv_attr++] = (CK_ATTRIBUTE){CKA_SIGN, &truevalue, sizeof(CK_BBOOL)};
+    priv_attrs[n_priv_attr++] = (CK_ATTRIBUTE){CKA_EXTRACTABLE, &falsevalue, sizeof(CK_BBOOL)};
+
     CK_OBJECT_HANDLE privatekey, publickey = CK_INVALID_HANDLE;
+
+    if (params->key_type == CKK_RSA) {
+        smech.mechanism = CKM_RSA_PKCS_KEY_PAIR_GEN;
+
+        pub_attrs[n_pub_attr++] =
+            (CK_ATTRIBUTE){CKA_MODULUS_BITS, (void *)&params->key_length, sizeof(params->key_length)};
+    } else if (params->key_type == CKK_ECDSA) {
+        smech.mechanism = CKM_EC_KEY_PAIR_GEN;
+
+        /* prime256v1 */
+        uint8_t ec_params[] = {0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07};
+
+        pub_attrs[n_pub_attr++] = (CK_ATTRIBUTE){CKA_EC_PARAMS, ec_params, sizeof(ec_params)};
+    }
+
     /* Generate Key pair for signing/verifying */
     CK_RV rv = pkcs11_function_list->C_GenerateKeyPair(
-        session,
-        &smech,
-        publickey_template,
-        AWS_ARRAY_SIZE(publickey_template),
-        privatekey_template,
-        AWS_ARRAY_SIZE(privatekey_template),
-        &publickey,
-        &privatekey);
+        session, &smech, pub_attrs, n_pub_attr, priv_attrs, n_priv_attr, &publickey, &privatekey);
     if (rv != CKR_OK) {
         FAIL("C_GenerateKeyPair fails: PKCS#11 error: %s (0x%08lX)", aws_pkcs11_ckr_str(rv), rv);
     }
@@ -594,7 +613,11 @@ static int s_test_pkcs11_find_private_key_for_different_types(struct aws_allocat
     char *key_label_1024 = "1024_Key";
     char *key_id_1024 = "1024_id";
     struct pkcs11_key_creation_params params_1024 = {
-        .key_label = key_label_1024, .key_id = key_id_1024, .key_length = 1024};
+        .key_type = CKK_RSA,
+        .key_label = key_label_1024,
+        .key_id = key_id_1024,
+        .key_length = 1024,
+    };
     ASSERT_SUCCESS(s_pkcs11_create_key(&params_1024, session_to_create_key, &created_priv_key, &created_pub_key));
 
     /* Find key */
@@ -611,7 +634,11 @@ static int s_test_pkcs11_find_private_key_for_different_types(struct aws_allocat
     char *key_label_2048 = "2048_Key";
     char *key_id_2048 = "2048_id";
     struct pkcs11_key_creation_params params_2048 = {
-        .key_label = key_label_2048, .key_id = key_id_2048, .key_length = 2048};
+        .key_type = CKK_RSA,
+        .key_label = key_label_2048,
+        .key_id = key_id_2048,
+        .key_length = 2048,
+    };
     ASSERT_SUCCESS(s_pkcs11_create_key(&params_2048, session_to_create_key, &created_key_2048, &created_pub_key));
 
     /* Find key */
@@ -626,7 +653,11 @@ static int s_test_pkcs11_find_private_key_for_different_types(struct aws_allocat
     char *key_label_4096 = "4096_Key";
     char *key_id_4096 = "4096_id";
     struct pkcs11_key_creation_params params_4096 = {
-        .key_label = key_label_4096, .key_id = key_id_4096, .key_length = 4096};
+        .key_type = CKK_RSA,
+        .key_label = key_label_4096,
+        .key_id = key_id_4096,
+        .key_length = 4096,
+    };
     ASSERT_SUCCESS(s_pkcs11_create_key(&params_4096, session_to_create_key, &created_key_4096, &created_pub_key));
 
     /* Find key */
@@ -677,8 +708,18 @@ static int s_test_pkcs11_find_multiple_private_key(struct aws_allocator *allocat
     CK_OBJECT_HANDLE created_key_1 = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_key_2 = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    struct pkcs11_key_creation_params params_1 = {.key_label = key_label_1, .key_id = key_id_1, .key_length = 1024};
-    struct pkcs11_key_creation_params params_2 = {.key_label = key_label_2, .key_id = key_id_2, .key_length = 1024};
+    struct pkcs11_key_creation_params params_1 = {
+        .key_type = CKK_RSA,
+        .key_label = key_label_1,
+        .key_id = key_id_1,
+        .key_length = 1024,
+    };
+    struct pkcs11_key_creation_params params_2 = {
+        .key_type = CKK_RSA,
+        .key_label = key_label_2,
+        .key_id = key_id_2,
+        .key_length = 1024,
+    };
     ASSERT_SUCCESS(s_pkcs11_create_key(&params_1, session_to_create_key_1, &created_key_1, &created_pub_key));
     ASSERT_SUCCESS(s_pkcs11_create_key(&params_2, session_to_create_key_2, &created_key_2, &created_pub_key));
 
@@ -748,7 +789,12 @@ static int s_test_pkcs11_find_private_key(struct aws_allocator *allocator, void 
 
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    struct pkcs11_key_creation_params params = {.key_label = key_label_1, .key_id = key_id_1, .key_length = 1024};
+    struct pkcs11_key_creation_params params = {
+        .key_type = CKK_RSA,
+        .key_label = key_label_1,
+        .key_id = key_id_1,
+        .key_length = 1024,
+    };
     ASSERT_SUCCESS(s_pkcs11_create_key(&params, session_to_create_key, &created_key, &created_pub_key));
 
     /* Find key */
@@ -948,7 +994,10 @@ static int s_test_pkcs11_find_slot_many_tokens(struct aws_allocator *allocator, 
 }
 AWS_TEST_CASE(pkcs11_find_slot_many_tokens, s_test_pkcs11_find_slot_many_tokens)
 
-static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
+static int s_test_pkcs11_decrypt(
+    struct aws_allocator *allocator,
+    void *ctx,
+    struct pkcs11_key_creation_params key_params) {
     (void)ctx;
     /* Reset PKCS#11 tokens, load library */
     CK_SLOT_ID created_slot = 0;
@@ -957,37 +1006,43 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
 
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
-    struct pkcs11_key_creation_params params = {
-        .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 2048};
-    ASSERT_SUCCESS(s_pkcs11_create_key(&params, session, &created_key, &created_pub_key));
+    ASSERT_SUCCESS(s_pkcs11_create_key(&key_params, session, &created_key, &created_pub_key));
 
     struct aws_byte_cursor input_cursor = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
     struct aws_byte_buf output_buf; /* initialized later */
     AWS_ZERO_STRUCT(output_buf);
 
     /* Encrypt our text */
-    ASSERT_SUCCESS(s_pkcs11_encrypt(&input_cursor, &output_buf, session, created_pub_key));
+    ASSERT_SUCCESS(s_pkcs11_encrypt(&input_cursor, &output_buf, session, created_pub_key, key_params.key_type));
 
     struct aws_byte_cursor cipher_text = aws_byte_cursor_from_buf(&output_buf);
     struct aws_byte_buf output_decrypted; /* initialized later */
     AWS_ZERO_STRUCT(output_decrypted);
     ASSERT_SUCCESS(aws_pkcs11_lib_decrypt(
-        s_pkcs11_tester.lib, session, created_key, SUPPORTED_KEY_TYPE, cipher_text, allocator, &output_decrypted));
+        s_pkcs11_tester.lib, session, created_key, key_params.key_type, cipher_text, allocator, &output_decrypted));
 
     ASSERT_BIN_ARRAYS_EQUALS(output_decrypted.buffer, output_decrypted.len, input_cursor.ptr, input_cursor.len);
 
     /* Assert that sign fails for non RSA key type */
-    CK_KEY_TYPE unsupported_key_type = CKK_EC;
+    CK_KEY_TYPE unsupported_key_type = CKK_DSA;
     aws_byte_buf_clean_up(&output_decrypted);
-    ASSERT_FAILS(aws_pkcs11_lib_decrypt(
-        s_pkcs11_tester.lib, session, created_key, unsupported_key_type, cipher_text, allocator, &output_decrypted));
+    ASSERT_ERROR(
+        AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED,
+        aws_pkcs11_lib_decrypt(
+            s_pkcs11_tester.lib,
+            session,
+            created_key,
+            unsupported_key_type,
+            cipher_text,
+            allocator,
+            &output_decrypted));
 
     /* Invalid session handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_decrypt(
         s_pkcs11_tester.lib,
         CK_INVALID_HANDLE,
         created_key,
-        SUPPORTED_KEY_TYPE,
+        key_params.key_type,
         cipher_text,
         allocator,
         &output_decrypted));
@@ -997,7 +1052,7 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
         s_pkcs11_tester.lib,
         session,
         CK_INVALID_HANDLE,
-        SUPPORTED_KEY_TYPE,
+        key_params.key_type,
         cipher_text,
         allocator,
         &output_decrypted));
@@ -1007,7 +1062,7 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
         s_pkcs11_tester.lib,
         session,
         created_key,
-        SUPPORTED_KEY_TYPE,
+        key_params.key_type,
         empty_message_to_decrypt,
         allocator,
         &output_decrypted));
@@ -1017,9 +1072,24 @@ static int s_test_pkcs11_decrypt(struct aws_allocator *allocator, void *ctx) {
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_decrypt, s_test_pkcs11_decrypt)
 
-static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int digest_alg) {
+static int s_test_pkcs11_decrypt_rsa(struct aws_allocator *allocator, void *ctx) {
+    struct pkcs11_key_creation_params params = {
+        .key_type = CKK_RSA,
+        .key_label = DEFAULT_KEY_LABEL,
+        .key_id = DEFAULT_KEY_ID,
+        .key_length = 2048,
+    };
+    return s_test_pkcs11_decrypt(allocator, ctx, params);
+}
+AWS_TEST_CASE(pkcs11_decrypt_rsa, s_test_pkcs11_decrypt_rsa);
+
+static int s_test_pkcs11_sign(
+    struct aws_allocator *allocator,
+    void *ctx,
+    enum aws_tls_signature_algorithm sign_alg,
+    enum aws_tls_hash_algorithm digest_alg) {
+
     (void)ctx;
     /* Reset PKCS#11 tokens, load library */
     CK_SLOT_ID created_slot = 0;
@@ -1029,7 +1099,15 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
     CK_OBJECT_HANDLE created_key = CK_INVALID_HANDLE;
     CK_OBJECT_HANDLE created_pub_key = CK_INVALID_HANDLE;
     struct pkcs11_key_creation_params params = {
-        .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 2048};
+        .key_label = DEFAULT_KEY_LABEL,
+        .key_id = DEFAULT_KEY_ID,
+    };
+    if (sign_alg == AWS_TLS_SIGNATURE_RSA) {
+        params.key_type = CKK_RSA;
+        params.key_length = 2048;
+    } else if (sign_alg == AWS_TLS_SIGNATURE_ECDSA) {
+        params.key_type = CKK_EC;
+    }
     ASSERT_SUCCESS(s_pkcs11_create_key(&params, session, &created_key, &created_pub_key));
 
     struct aws_byte_cursor message_to_sign = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
@@ -1041,11 +1119,11 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         s_pkcs11_tester.lib,
         session,
         created_key,
-        SUPPORTED_KEY_TYPE,
+        params.key_type,
         message_to_sign,
         allocator,
         digest_alg,
-        AWS_TLS_SIGNATURE_RSA,
+        sign_alg,
         &signature));
 
     /* There is no good way to validate without this, as we append this prefix internally before signing. */
@@ -1062,7 +1140,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
     ASSERT_SUCCESS(s_pkcs11_verify_signature(&input_message_to_verify, &signature, session, created_pub_key));
 
     /* Assert that sign fails for non RSA key type */
-    CK_KEY_TYPE unsupported_key_type = CKK_EC;
+    CK_KEY_TYPE unsupported_key_type = CKK_DSA;
     aws_byte_buf_clean_up(&signature);
     ASSERT_FAILS(aws_pkcs11_lib_sign(
         s_pkcs11_tester.lib,
@@ -1072,7 +1150,7 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         message_to_sign,
         allocator,
         digest_alg,
-        AWS_TLS_SIGNATURE_RSA,
+        sign_alg,
         &signature));
 
     /* Invalid session handle should fail */
@@ -1080,11 +1158,11 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         s_pkcs11_tester.lib,
         CK_INVALID_HANDLE,
         created_key,
-        SUPPORTED_KEY_TYPE,
+        params.key_type,
         message_to_sign,
         allocator,
         digest_alg,
-        AWS_TLS_SIGNATURE_RSA,
+        sign_alg,
         &signature));
 
     /* Invalid key handle should fail */
@@ -1092,11 +1170,11 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
         s_pkcs11_tester.lib,
         session,
         CK_INVALID_HANDLE,
-        SUPPORTED_KEY_TYPE,
+        params.key_type,
         message_to_sign,
         allocator,
         digest_alg,
-        AWS_TLS_SIGNATURE_RSA,
+        sign_alg,
         &signature));
 
     /* Clean up */
@@ -1106,30 +1184,30 @@ static int s_test_pkcs11_sign(struct aws_allocator *allocator, void *ctx, int di
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_pkcs11_sign_sha1(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA1);
+static int s_test_pkcs11_sign_rsa_sha1(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_SIGNATURE_RSA, AWS_TLS_HASH_SHA1);
 }
-AWS_TEST_CASE(pkcs11_sign_sha1, s_test_pkcs11_sign_sha1)
+AWS_TEST_CASE(pkcs11_sign_rsa_sha1, s_test_pkcs11_sign_rsa_sha1)
 
-static int s_test_pkcs11_sign_sha512(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA512);
+static int s_test_pkcs11_sign_rsa_sha512(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_SIGNATURE_RSA, AWS_TLS_HASH_SHA512);
 }
-AWS_TEST_CASE(pkcs11_sign_sha512, s_test_pkcs11_sign_sha512)
+AWS_TEST_CASE(pkcs11_sign_rsa_sha512, s_test_pkcs11_sign_rsa_sha512)
 
-static int s_test_pkcs11_sign_sha384(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA384);
+static int s_test_pkcs11_sign_rsa_sha384(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_SIGNATURE_RSA, AWS_TLS_HASH_SHA384);
 }
-AWS_TEST_CASE(pkcs11_sign_sha384, s_test_pkcs11_sign_sha384)
+AWS_TEST_CASE(pkcs11_sign_rsa_sha384, s_test_pkcs11_sign_rsa_sha384)
 
-static int s_test_pkcs11_sign_sha256(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA256);
+static int s_test_pkcs11_sign_rsa_sha256(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_SIGNATURE_RSA, AWS_TLS_HASH_SHA256);
 }
-AWS_TEST_CASE(pkcs11_sign_sha256, s_test_pkcs11_sign_sha256)
+AWS_TEST_CASE(pkcs11_sign_rsa_sha256, s_test_pkcs11_sign_rsa_sha256)
 
-static int s_test_pkcs11_sign_sha224(struct aws_allocator *allocator, void *ctx) {
-    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_HASH_SHA224);
+static int s_test_pkcs11_sign_rsa_sha224(struct aws_allocator *allocator, void *ctx) {
+    return s_test_pkcs11_sign(allocator, ctx, AWS_TLS_SIGNATURE_RSA, AWS_TLS_HASH_SHA224);
 }
-AWS_TEST_CASE(pkcs11_sign_sha224, s_test_pkcs11_sign_sha224)
+AWS_TEST_CASE(pkcs11_sign_rsa_sha224, s_test_pkcs11_sign_rsa_sha224)
 
 #ifndef BYO_CRYPTO
 
