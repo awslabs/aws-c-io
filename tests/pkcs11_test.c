@@ -452,7 +452,7 @@ static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, vo
     /* Test that omit_initialize is required if someone else already initialized the library */
     struct aws_pkcs11_lib *pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_normal);
     ASSERT_NULL(pkcs11_lib_should_fail);
-    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+    ASSERT_INT_EQUALS(AWS_ERROR_PKCS11_CKR_CRYPTOKI_ALREADY_INITIALIZED, aws_last_error());
 
     /* Test that we can load the library twice by using omit_initialize the second time we load it */
     struct aws_pkcs11_lib *pkcs11_lib_2 = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
@@ -467,7 +467,7 @@ static int s_test_pkcs11_lib_omit_initialize(struct aws_allocator *allocator, vo
 
     pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
     ASSERT_NULL(pkcs11_lib_should_fail);
-    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+    ASSERT_INT_EQUALS(AWS_ERROR_PKCS11_CKR_CRYPTOKI_NOT_INITIALIZED, aws_last_error());
 
     /* Clean up */
     s_pkcs11_tester_clean_up();
