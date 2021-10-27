@@ -150,7 +150,110 @@ const char *aws_pkcs11_ckr_str(CK_RV rv) {
         case (CKR_PIN_TOO_WEAK): return "CKR_PIN_TOO_WEAK";
         case (CKR_PUBLIC_KEY_INVALID): return "CKR_PUBLIC_KEY_INVALID";
         case (CKR_FUNCTION_REJECTED): return "CKR_FUNCTION_REJECTED";
-        default: return "<UNKNOWN ERROR CODE>";
+        default: return "<UNKNOWN RETURN VALUE>";
+    }
+    /* clang-format on */
+}
+
+/* Translate from a CK_RV to an AWS error code */
+static int s_ck_to_aws_error(CK_RV rv) {
+    AWS_ASSERT(rv != CKR_OK);
+    /* clang-format off */
+    switch (rv) {
+        case (CKR_CANCEL): return AWS_ERROR_PKCS11_CKR_CANCEL;
+        case (CKR_HOST_MEMORY): return AWS_ERROR_PKCS11_CKR_HOST_MEMORY;
+        case (CKR_SLOT_ID_INVALID): return AWS_ERROR_PKCS11_CKR_SLOT_ID_INVALID;
+        case (CKR_GENERAL_ERROR): return AWS_ERROR_PKCS11_CKR_GENERAL_ERROR;
+        case (CKR_FUNCTION_FAILED): return AWS_ERROR_PKCS11_CKR_FUNCTION_FAILED;
+        case (CKR_ARGUMENTS_BAD): return AWS_ERROR_PKCS11_CKR_ARGUMENTS_BAD;
+        case (CKR_NO_EVENT): return AWS_ERROR_PKCS11_CKR_NO_EVENT;
+        case (CKR_NEED_TO_CREATE_THREADS): return AWS_ERROR_PKCS11_CKR_NEED_TO_CREATE_THREADS;
+        case (CKR_CANT_LOCK): return AWS_ERROR_PKCS11_CKR_CANT_LOCK;
+        case (CKR_ATTRIBUTE_READ_ONLY): return AWS_ERROR_PKCS11_CKR_ATTRIBUTE_READ_ONLY;
+        case (CKR_ATTRIBUTE_SENSITIVE): return AWS_ERROR_PKCS11_CKR_ATTRIBUTE_SENSITIVE;
+        case (CKR_ATTRIBUTE_TYPE_INVALID): return AWS_ERROR_PKCS11_CKR_ATTRIBUTE_TYPE_INVALID;
+        case (CKR_ATTRIBUTE_VALUE_INVALID): return AWS_ERROR_PKCS11_CKR_ATTRIBUTE_VALUE_INVALID;
+        case (CKR_ACTION_PROHIBITED): return AWS_ERROR_PKCS11_CKR_ACTION_PROHIBITED;
+        case (CKR_DATA_INVALID): return AWS_ERROR_PKCS11_CKR_DATA_INVALID;
+        case (CKR_DATA_LEN_RANGE): return AWS_ERROR_PKCS11_CKR_DATA_LEN_RANGE;
+        case (CKR_DEVICE_ERROR): return AWS_ERROR_PKCS11_CKR_DEVICE_ERROR;
+        case (CKR_DEVICE_MEMORY): return AWS_ERROR_PKCS11_CKR_DEVICE_MEMORY;
+        case (CKR_DEVICE_REMOVED): return AWS_ERROR_PKCS11_CKR_DEVICE_REMOVED;
+        case (CKR_ENCRYPTED_DATA_INVALID): return AWS_ERROR_PKCS11_CKR_ENCRYPTED_DATA_INVALID;
+        case (CKR_ENCRYPTED_DATA_LEN_RANGE): return AWS_ERROR_PKCS11_CKR_ENCRYPTED_DATA_LEN_RANGE;
+        case (CKR_FUNCTION_CANCELED): return AWS_ERROR_PKCS11_CKR_FUNCTION_CANCELED;
+        case (CKR_FUNCTION_NOT_PARALLEL): return AWS_ERROR_PKCS11_CKR_FUNCTION_NOT_PARALLEL;
+        case (CKR_FUNCTION_NOT_SUPPORTED): return AWS_ERROR_PKCS11_CKR_FUNCTION_NOT_SUPPORTED;
+        case (CKR_KEY_HANDLE_INVALID): return AWS_ERROR_PKCS11_CKR_KEY_HANDLE_INVALID;
+        case (CKR_KEY_SIZE_RANGE): return AWS_ERROR_PKCS11_CKR_KEY_SIZE_RANGE;
+        case (CKR_KEY_TYPE_INCONSISTENT): return AWS_ERROR_PKCS11_CKR_KEY_TYPE_INCONSISTENT;
+        case (CKR_KEY_NOT_NEEDED): return AWS_ERROR_PKCS11_CKR_KEY_NOT_NEEDED;
+        case (CKR_KEY_CHANGED): return AWS_ERROR_PKCS11_CKR_KEY_CHANGED;
+        case (CKR_KEY_NEEDED): return AWS_ERROR_PKCS11_CKR_KEY_NEEDED;
+        case (CKR_KEY_INDIGESTIBLE): return AWS_ERROR_PKCS11_CKR_KEY_INDIGESTIBLE;
+        case (CKR_KEY_FUNCTION_NOT_PERMITTED): return AWS_ERROR_PKCS11_CKR_KEY_FUNCTION_NOT_PERMITTED;
+        case (CKR_KEY_NOT_WRAPPABLE): return AWS_ERROR_PKCS11_CKR_KEY_NOT_WRAPPABLE;
+        case (CKR_KEY_UNEXTRACTABLE): return AWS_ERROR_PKCS11_CKR_KEY_UNEXTRACTABLE;
+        case (CKR_MECHANISM_INVALID): return AWS_ERROR_PKCS11_CKR_MECHANISM_INVALID;
+        case (CKR_MECHANISM_PARAM_INVALID): return AWS_ERROR_PKCS11_CKR_MECHANISM_PARAM_INVALID;
+        case (CKR_OBJECT_HANDLE_INVALID): return AWS_ERROR_PKCS11_CKR_OBJECT_HANDLE_INVALID;
+        case (CKR_OPERATION_ACTIVE): return AWS_ERROR_PKCS11_CKR_OPERATION_ACTIVE;
+        case (CKR_OPERATION_NOT_INITIALIZED): return AWS_ERROR_PKCS11_CKR_OPERATION_NOT_INITIALIZED;
+        case (CKR_PIN_INCORRECT): return AWS_ERROR_PKCS11_CKR_PIN_INCORRECT;
+        case (CKR_PIN_INVALID): return AWS_ERROR_PKCS11_CKR_PIN_INVALID;
+        case (CKR_PIN_LEN_RANGE): return AWS_ERROR_PKCS11_CKR_PIN_LEN_RANGE;
+        case (CKR_PIN_EXPIRED): return AWS_ERROR_PKCS11_CKR_PIN_EXPIRED;
+        case (CKR_PIN_LOCKED): return AWS_ERROR_PKCS11_CKR_PIN_LOCKED;
+        case (CKR_SESSION_CLOSED): return AWS_ERROR_PKCS11_CKR_SESSION_CLOSED;
+        case (CKR_SESSION_COUNT): return AWS_ERROR_PKCS11_CKR_SESSION_COUNT;
+        case (CKR_SESSION_HANDLE_INVALID): return AWS_ERROR_PKCS11_CKR_SESSION_HANDLE_INVALID;
+        case (CKR_SESSION_PARALLEL_NOT_SUPPORTED): return AWS_ERROR_PKCS11_CKR_SESSION_PARALLEL_NOT_SUPPORTED;
+        case (CKR_SESSION_READ_ONLY): return AWS_ERROR_PKCS11_CKR_SESSION_READ_ONLY;
+        case (CKR_SESSION_EXISTS): return AWS_ERROR_PKCS11_CKR_SESSION_EXISTS;
+        case (CKR_SESSION_READ_ONLY_EXISTS): return AWS_ERROR_PKCS11_CKR_SESSION_READ_ONLY_EXISTS;
+        case (CKR_SESSION_READ_WRITE_SO_EXISTS): return AWS_ERROR_PKCS11_CKR_SESSION_READ_WRITE_SO_EXISTS;
+        case (CKR_SIGNATURE_INVALID): return AWS_ERROR_PKCS11_CKR_SIGNATURE_INVALID;
+        case (CKR_SIGNATURE_LEN_RANGE): return AWS_ERROR_PKCS11_CKR_SIGNATURE_LEN_RANGE;
+        case (CKR_TEMPLATE_INCOMPLETE): return AWS_ERROR_PKCS11_CKR_TEMPLATE_INCOMPLETE;
+        case (CKR_TEMPLATE_INCONSISTENT): return AWS_ERROR_PKCS11_CKR_TEMPLATE_INCONSISTENT;
+        case (CKR_TOKEN_NOT_PRESENT): return AWS_ERROR_PKCS11_CKR_TOKEN_NOT_PRESENT;
+        case (CKR_TOKEN_NOT_RECOGNIZED): return AWS_ERROR_PKCS11_CKR_TOKEN_NOT_RECOGNIZED;
+        case (CKR_TOKEN_WRITE_PROTECTED): return AWS_ERROR_PKCS11_CKR_TOKEN_WRITE_PROTECTED;
+        case (CKR_UNWRAPPING_KEY_HANDLE_INVALID): return AWS_ERROR_PKCS11_CKR_UNWRAPPING_KEY_HANDLE_INVALID;
+        case (CKR_UNWRAPPING_KEY_SIZE_RANGE): return AWS_ERROR_PKCS11_CKR_UNWRAPPING_KEY_SIZE_RANGE;
+        case (CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT): return AWS_ERROR_PKCS11_CKR_UNWRAPPING_KEY_TYPE_INCONSISTENT;
+        case (CKR_USER_ALREADY_LOGGED_IN): return AWS_ERROR_PKCS11_CKR_USER_ALREADY_LOGGED_IN;
+        case (CKR_USER_NOT_LOGGED_IN): return AWS_ERROR_PKCS11_CKR_USER_NOT_LOGGED_IN;
+        case (CKR_USER_PIN_NOT_INITIALIZED): return AWS_ERROR_PKCS11_CKR_USER_PIN_NOT_INITIALIZED;
+        case (CKR_USER_TYPE_INVALID): return AWS_ERROR_PKCS11_CKR_USER_TYPE_INVALID;
+        case (CKR_USER_ANOTHER_ALREADY_LOGGED_IN): return AWS_ERROR_PKCS11_CKR_USER_ANOTHER_ALREADY_LOGGED_IN;
+        case (CKR_USER_TOO_MANY_TYPES): return AWS_ERROR_PKCS11_CKR_USER_TOO_MANY_TYPES;
+        case (CKR_WRAPPED_KEY_INVALID): return AWS_ERROR_PKCS11_CKR_WRAPPED_KEY_INVALID;
+        case (CKR_WRAPPED_KEY_LEN_RANGE): return AWS_ERROR_PKCS11_CKR_WRAPPED_KEY_LEN_RANGE;
+        case (CKR_WRAPPING_KEY_HANDLE_INVALID): return AWS_ERROR_PKCS11_CKR_WRAPPING_KEY_HANDLE_INVALID;
+        case (CKR_WRAPPING_KEY_SIZE_RANGE): return AWS_ERROR_PKCS11_CKR_WRAPPING_KEY_SIZE_RANGE;
+        case (CKR_WRAPPING_KEY_TYPE_INCONSISTENT): return AWS_ERROR_PKCS11_CKR_WRAPPING_KEY_TYPE_INCONSISTENT;
+        case (CKR_RANDOM_SEED_NOT_SUPPORTED): return AWS_ERROR_PKCS11_CKR_RANDOM_SEED_NOT_SUPPORTED;
+        case (CKR_RANDOM_NO_RNG): return AWS_ERROR_PKCS11_CKR_RANDOM_NO_RNG;
+        case (CKR_DOMAIN_PARAMS_INVALID): return AWS_ERROR_PKCS11_CKR_DOMAIN_PARAMS_INVALID;
+        case (CKR_CURVE_NOT_SUPPORTED): return AWS_ERROR_PKCS11_CKR_CURVE_NOT_SUPPORTED;
+        case (CKR_BUFFER_TOO_SMALL): return AWS_ERROR_PKCS11_CKR_BUFFER_TOO_SMALL;
+        case (CKR_SAVED_STATE_INVALID): return AWS_ERROR_PKCS11_CKR_SAVED_STATE_INVALID;
+        case (CKR_INFORMATION_SENSITIVE): return AWS_ERROR_PKCS11_CKR_INFORMATION_SENSITIVE;
+        case (CKR_STATE_UNSAVEABLE): return AWS_ERROR_PKCS11_CKR_STATE_UNSAVEABLE;
+        case (CKR_CRYPTOKI_NOT_INITIALIZED): return AWS_ERROR_PKCS11_CKR_CRYPTOKI_NOT_INITIALIZED;
+        case (CKR_CRYPTOKI_ALREADY_INITIALIZED): return AWS_ERROR_PKCS11_CKR_CRYPTOKI_ALREADY_INITIALIZED;
+        case (CKR_MUTEX_BAD): return AWS_ERROR_PKCS11_CKR_MUTEX_BAD;
+        case (CKR_MUTEX_NOT_LOCKED): return AWS_ERROR_PKCS11_CKR_MUTEX_NOT_LOCKED;
+        case (CKR_NEW_PIN_MODE): return AWS_ERROR_PKCS11_CKR_NEW_PIN_MODE;
+        case (CKR_NEXT_OTP): return AWS_ERROR_PKCS11_CKR_NEXT_OTP;
+        case (CKR_EXCEEDED_MAX_ITERATIONS): return AWS_ERROR_PKCS11_CKR_EXCEEDED_MAX_ITERATIONS;
+        case (CKR_FIPS_SELF_TEST_FAILED): return AWS_ERROR_PKCS11_CKR_FIPS_SELF_TEST_FAILED;
+        case (CKR_LIBRARY_LOAD_FAILED): return AWS_ERROR_PKCS11_CKR_LIBRARY_LOAD_FAILED;
+        case (CKR_PIN_TOO_WEAK): return AWS_ERROR_PKCS11_CKR_PIN_TOO_WEAK;
+        case (CKR_PUBLIC_KEY_INVALID): return AWS_ERROR_PKCS11_CKR_PUBLIC_KEY_INVALID;
+        case (CKR_FUNCTION_REJECTED): return AWS_ERROR_PKCS11_CKR_FUNCTION_REJECTED;
+        default: return AWS_ERROR_PKCS11_UNKNOWN_CRYPTOKI_RETURN_VALUE;
     }
     /* clang-format on */
 }
@@ -203,13 +306,6 @@ static const char *s_ckk_str(CK_KEY_TYPE key_type) {
         default: return "<UNKNOWN KEY TYPE>";
     }
     /* clang-format on */
-}
-
-/* Translate from a CK_RV to an AWS error code */
-static int s_ck_to_aws_error(CK_RV rv) {
-    /* For now, we just have one AWS error code for all PKCS#11 errors */
-    (void)rv;
-    return AWS_IO_PKCS11_ERROR;
 }
 
 /* Log the failure of a PKCS#11 function, and call aws_raise_error() with the appropriate AWS error code */
@@ -424,7 +520,7 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
             AWS_SUPPORTED_CRYPTOKI_VERSION_MAJOR,
             AWS_MIN_SUPPORTED_CRYPTOKI_VERSION_MINOR);
 
-        aws_raise_error(AWS_IO_PKCS11_ERROR);
+        aws_raise_error(AWS_ERROR_PKCS11_VERSION_UNSUPPORTED);
         goto error;
     }
 
@@ -542,7 +638,7 @@ int aws_pkcs11_lib_find_slot_with_token(
 
     if (num_slots == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p: No PKCS#11 tokens present in any slot", (void *)pkcs11_lib);
-        aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
+        aws_raise_error(AWS_ERROR_PKCS11_TOKEN_NOT_FOUND);
         goto clean_up;
     }
 
@@ -605,7 +701,7 @@ int aws_pkcs11_lib_find_slot_with_token(
                 AWS_LS_IO_PKCS11,
                 "id=%p: Failed to choose PKCS#11 token, multiple tokens match search criteria",
                 (void *)pkcs11_lib);
-            aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
+            aws_raise_error(AWS_ERROR_PKCS11_TOKEN_NOT_FOUND);
             goto clean_up;
         }
 
@@ -617,7 +713,7 @@ int aws_pkcs11_lib_find_slot_with_token(
     if (candidate == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11, "id=%p: Failed to find PKCS#11 token which matches search criteria", (void *)pkcs11_lib);
-        aws_raise_error(AWS_IO_PKCS11_TOKEN_NOT_FOUND);
+        aws_raise_error(AWS_ERROR_PKCS11_TOKEN_NOT_FOUND);
         goto clean_up;
     }
 
@@ -706,7 +802,7 @@ int aws_pkcs11_lib_login_user(
     if (optional_user_pin) {
         if (optional_user_pin->len > ULONG_MAX) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "id=%p session=%lu: PIN is too long", (void *)pkcs11_lib, session_handle);
-            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT); /* TODO: raise PIN_INCORRECT code */
+            return aws_raise_error(AWS_ERROR_PKCS11_CKR_PIN_INCORRECT);
         }
         pin_len = (CK_ULONG)optional_user_pin->len;
         pin = (CK_UTF8CHAR_PTR)optional_user_pin->bytes;
@@ -715,7 +811,6 @@ int aws_pkcs11_lib_login_user(
     CK_RV rv = pkcs11_lib->function_list->C_Login(session_handle, CKU_USER, pin, pin_len);
     /* Ignore if we are already logged in, this could happen if application using device sdk also logs in to pkcs11 */
     if (rv != CKR_OK && rv != CKR_USER_ALREADY_LOGGED_IN) {
-        /* TODO: Login failure must have a real error code. Expose CKR_ codes as aws-error codes */
         return s_raise_ck_session_error(pkcs11_lib, "C_Login", session_handle, rv);
     }
 
@@ -767,7 +862,7 @@ int aws_pkcs11_lib_find_private_key(
                 "id=%p session=%lu: private key label is too long",
                 (void *)pkcs11_lib,
                 session_handle);
-            aws_raise_error(AWS_IO_PKCS11_KEY_NOT_FOUND);
+            aws_raise_error(AWS_ERROR_PKCS11_KEY_NOT_FOUND);
             goto clean_up;
         }
 
@@ -802,7 +897,7 @@ int aws_pkcs11_lib_find_private_key(
             "id=%p session=%lu: Failed to find private key on PKCS#11 token which matches search criteria",
             (void *)pkcs11_lib,
             session_handle);
-        aws_raise_error(AWS_IO_PKCS11_KEY_NOT_FOUND);
+        aws_raise_error(AWS_ERROR_PKCS11_KEY_NOT_FOUND);
         goto clean_up;
     }
     if (num_found > 1) {
@@ -811,7 +906,7 @@ int aws_pkcs11_lib_find_private_key(
             "id=%p session=%lu: Failed to choose private key, multiple objects on PKCS#11 token match search criteria",
             (void *)pkcs11_lib,
             session_handle);
-        aws_raise_error(AWS_IO_PKCS11_KEY_NOT_FOUND);
+        aws_raise_error(AWS_ERROR_PKCS11_KEY_NOT_FOUND);
         goto clean_up;
     }
 
@@ -846,7 +941,7 @@ int aws_pkcs11_lib_find_private_key(
                 session_handle,
                 s_ckk_str(key_type),
                 key_type);
-            aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
+            aws_raise_error(AWS_ERROR_PKCS11_KEY_TYPE_UNSUPPORTED);
             goto clean_up;
     }
 
@@ -895,7 +990,7 @@ int aws_pkcs11_lib_decrypt(
             mechanism.mechanism = CKM_RSA_PKCS;
             break;
         default:
-            aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
+            aws_raise_error(AWS_ERROR_PKCS11_KEY_TYPE_UNSUPPORTED);
             goto error;
     }
 
@@ -1095,6 +1190,6 @@ int aws_pkcs11_lib_sign(
                 signature_alg,
                 out_signature);
         default:
-            return aws_raise_error(AWS_IO_PKCS11_KEY_TYPE_UNSUPPORTED);
+            return aws_raise_error(AWS_ERROR_PKCS11_KEY_TYPE_UNSUPPORTED);
     }
 }

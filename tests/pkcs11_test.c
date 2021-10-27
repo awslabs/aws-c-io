@@ -489,7 +489,7 @@ static int s_test_pkcs11_lib_behavior_omit_initialize(struct aws_allocator *allo
      * but no one else has initialized the underlying PKCS#11 library */
     struct aws_pkcs11_lib *pkcs11_lib_should_fail = aws_pkcs11_lib_new(allocator, &options_omit_initialize);
     ASSERT_NULL(pkcs11_lib_should_fail);
-    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error());
+    ASSERT_INT_EQUALS(AWS_ERROR_PKCS11_CKR_CRYPTOKI_ALREADY_INITIALIZED, aws_last_error());
 
     /* Test that it's fine to use OMIT_INITIALIZE behavior to have the library loaded multiple times. */
 
@@ -529,7 +529,7 @@ static int s_test_pkcs11_lib_behavior_strict_initialize_finalize(struct aws_allo
     /* Creating the 2nd lib should fail due to already-initialized errors */
     struct aws_pkcs11_lib *lib_2_should_fail = aws_pkcs11_lib_new(allocator, &options_initialize_finalize);
     ASSERT_NULL(lib_2_should_fail);
-    ASSERT_INT_EQUALS(AWS_IO_PKCS11_ERROR, aws_last_error()); /* TODO: more granular errors */
+    ASSERT_INT_EQUALS(AWS_ERROR_PKCS11_CKR_CRYPTOKI_ALREADY_INITIALIZED, aws_last_error());
 
     /* It should be safe to release a STRICT lib, then create another */
     aws_pkcs11_lib_release(lib_1);
