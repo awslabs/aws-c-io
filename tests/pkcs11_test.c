@@ -13,6 +13,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/environment.h>
+#include <aws/common/file.h>
 #include <aws/common/mutex.h>
 #include <aws/common/process.h>
 #include <aws/common/string.h>
@@ -61,36 +62,12 @@ struct pkcs11_key_creation_params {
  * Helper functions to interact with softhsm begin
  * */
 
-static int s_run_cmd(const char *fmt, ...) {
-    char cmd[1024];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(cmd, sizeof(cmd), fmt, args);
-    va_end(args);
-
-    printf("Executing command: %s\n", cmd);
-    struct aws_run_command_options cmd_opts = {.command = cmd};
-    struct aws_run_command_result cmd_result;
-    ASSERT_SUCCESS(aws_run_command_result_init(s_pkcs11_tester.allocator, &cmd_result));
-    ASSERT_SUCCESS(aws_run_command(s_pkcs11_tester.allocator, &cmd_opts, &cmd_result));
-    int ret_code = cmd_result.ret_code;
-    aws_run_command_result_cleanup(&cmd_result);
-    return ret_code;
-}
+static int s_run_cmd(const char *fmt, ...);
 
 /* Wipe out all existing tokens by deleting and recreating the SoftHSM token dir */
 static int s_pkcs11_clear_softhsm(void) {
-    /* trim trailing slash from token_dir if necessary */
-    char token_dir[512] = {'\0'};
-    strncpy(token_dir, aws_string_c_str(s_pkcs11_tester.token_dir), sizeof(token_dir));
-    if (token_dir[strlen(token_dir) - 1] == '/') {
-        token_dir[strlen(token_dir) - 1] = '\0';
-    }
-
-    /* TODO: Use cross-platform functions for clearing directory, these are still in review:
-     * https://github.com/awslabs/aws-c-common/pull/830 */
-    ASSERT_SUCCESS(s_run_cmd("rm -rf %s/*", token_dir));
-
+    ASSERT_SUCCESS(aws_directory_delete(s_pkcs11_tester.token_dir, true /*recursive*/));
+    ASSERT_SUCCESS(aws_directory_create(s_pkcs11_tester.token_dir));
     return AWS_OP_SUCCESS;
 }
 
@@ -1215,6 +1192,23 @@ static int s_test_pkcs11_sign_sha224(struct aws_allocator *allocator, void *ctx)
 AWS_TEST_CASE(pkcs11_sign_sha224, s_test_pkcs11_sign_sha224)
 
 #ifndef BYO_CRYPTO
+
+static int s_run_cmd(const char *fmt, ...) {
+    char cmd[1024];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(cmd, sizeof(cmd), fmt, args);
+    va_end(args);
+
+    printf("Executing command: %s\n", cmd);
+    struct aws_run_command_options cmd_opts = {.command = cmd};
+    struct aws_run_command_result cmd_result;
+    ASSERT_SUCCESS(aws_run_command_result_init(s_pkcs11_tester.allocator, &cmd_result));
+    ASSERT_SUCCESS(aws_run_command(s_pkcs11_tester.allocator, &cmd_opts, &cmd_result));
+    int ret_code = cmd_result.ret_code;
+    aws_run_command_result_cleanup(&cmd_result);
+    return ret_code;
+}
 
 struct tls_tester {
     struct {
