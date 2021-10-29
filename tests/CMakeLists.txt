@@ -1,6 +1,9 @@
 include(AwsTestHarness)
 enable_testing()
 
+# See PKCS11.md for instructions on running these tests
+option(ENABLE_PKCS11_TESTS "Build and run PKCS#11 tests" OFF)
+
 file(GLOB TEST_SRC "*.c")
 file(GLOB TEST_HDRS "*.h")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
@@ -216,6 +219,32 @@ add_test_case(test_exponential_backoff_retry_invalid_options)
 add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
+
+# See PKCS11.md for instructions on running these tests
+if (ENABLE_PKCS11_TESTS)
+    add_test_case(pkcs11_lib_sanity_check)
+    add_test_case(pkcs11_lib_behavior_default)
+    add_test_case(pkcs11_lib_behavior_omit_initialize)
+    add_test_case(pkcs11_lib_behavior_strict_initialize_finalize)
+    add_test_case(pkcs11_find_private_key)
+    add_test_case(pkcs11_find_private_key_for_different_types)
+    add_test_case(pkcs11_find_multiple_private_key)
+    add_test_case(pkcs11_sign_sha1)
+    add_test_case(pkcs11_sign_sha224)
+    add_test_case(pkcs11_sign_sha256)
+    add_test_case(pkcs11_sign_sha384)
+    add_test_case(pkcs11_sign_sha512)
+    add_test_case(pkcs11_decrypt)
+    add_test_case(pkcs11_find_slot)
+    add_test_case(pkcs11_find_slot_many_tokens)
+    add_test_case(pkcs11_session_tests)
+    add_test_case(pkcs11_login_tests)
+
+    # TLS with PKCS#11 not currently supported on every platform
+    if (USE_S2N)
+        add_test_case(pkcs11_tls_negotiation_succeeds)
+    endif()
+endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
