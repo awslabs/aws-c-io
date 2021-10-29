@@ -6,6 +6,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/pkcs11.h>
 #include <aws/io/private/pem_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/tls_channel_handler.h>
@@ -40,6 +41,11 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
     aws_string_destroy(options->alpn_list);
 
+    aws_pkcs11_lib_release(options->pkcs11.lib);
+    aws_string_destroy_secure(options->pkcs11.user_pin);
+    aws_string_destroy(options->pkcs11.token_label);
+    aws_string_destroy(options->pkcs11.private_key_object_label);
+
     AWS_ZERO_STRUCT(*options);
 }
 
@@ -51,12 +57,7 @@ int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
 
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert)) {
         goto error;
@@ -88,12 +89,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     const char *cert_path,
     const char *pkey_path) {
 
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
         goto error;
@@ -117,6 +113,89 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
+}
+
+int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
+
+#    if defined(_WIN32) || defined(__APPLE__)
+    (void)options;
+    (void)allocator;
+    (void)pkcs11_options;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+#    else
+
+    aws_tls_ctx_options_init_default_client(options, allocator);
+
+    /* pkcs11_lib is required */
+    if (pkcs11_options->pkcs11_lib == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A PKCS#11 library must be specified.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+    options->pkcs11.lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib); /* cannot fail */
+
+    /* user_pin is optional */
+    if (pkcs11_options->user_pin.ptr != NULL) {
+        options->pkcs11.user_pin = aws_string_new_from_cursor(allocator, &pkcs11_options->user_pin);
+    }
+
+    /* slot_id is optional */
+    if (pkcs11_options->slot_id != NULL) {
+        options->pkcs11.slot_id = *pkcs11_options->slot_id;
+        options->pkcs11.has_slot_id = true;
+    }
+
+    /* token_label is optional */
+    if (pkcs11_options->token_label.ptr != NULL) {
+        options->pkcs11.token_label = aws_string_new_from_cursor(allocator, &pkcs11_options->token_label);
+    }
+
+    /* private_key_object_label is optional */
+    if (pkcs11_options->private_key_object_label.ptr != NULL) {
+        options->pkcs11.private_key_object_label =
+            aws_string_new_from_cursor(allocator, &pkcs11_options->private_key_object_label);
+    }
+
+    /* certificate required, but there are multiple ways to pass it in */
+    if ((pkcs11_options->cert_file_path.ptr != NULL) && (pkcs11_options->cert_file_contents.ptr != NULL)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "static: Both certificate filepath and contents are specified. Only one may be set.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    } else if (pkcs11_options->cert_file_path.ptr != NULL) {
+        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
+        int op = aws_byte_buf_init_from_file(&options->certificate, allocator, aws_string_c_str(tmp_string));
+        aws_string_destroy(tmp_string);
+        if (op != AWS_OP_SUCCESS) {
+            goto error;
+        }
+    } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
+        if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, pkcs11_options->cert_file_contents)) {
+            goto error;
+        }
+    } else {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+
+    if (aws_sanitize_pem(&options->certificate, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
+        goto error;
+    }
+
+    /* Success! */
+    return AWS_OP_SUCCESS;
+
+error:
+    aws_tls_ctx_options_clean_up(options);
+    return AWS_OP_ERR;
+#    endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
 }
 
 #    if defined(__APPLE__)
@@ -185,11 +264,8 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *pkcs12,
     struct aws_byte_cursor *pkcs_pwd) {
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12, allocator, *pkcs12)) {
         return AWS_OP_ERR;
