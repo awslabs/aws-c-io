@@ -31,7 +31,7 @@ int aws_default_dns_resolve(
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
     /* Android would prefer NO HINTS IF YOU DON'T MIND, SIR */
-#ifdef ANDROID
+#if defined(ANDROID) || defined(AWS_OS_APPLE)
     int err_code = getaddrinfo(hostname_cstr, NULL, NULL, &result);
 #else
     struct addrinfo hints;
