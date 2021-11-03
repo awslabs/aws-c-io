@@ -45,7 +45,7 @@ int aws_default_dns_resolve(
 
     if (err_code) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d: ", err_code, gai_strerror(err_code));
+            AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d: %s", err_code, gai_strerror(err_code));
         goto clean_up;
     }
 
