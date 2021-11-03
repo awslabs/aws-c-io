@@ -32,7 +32,7 @@ int aws_default_dns_resolve(
 
     /* Android would prefer NO HINTS IF YOU DON'T MIND, SIR */
 #if defined(ANDROID)
-    int err_code = getaddrinfo(hostname_cstr, "80", NULL, &result);
+    int err_code = getaddrinfo(hostname_cstr, NULL, NULL, &result);
 #else
     struct addrinfo hints;
     AWS_ZERO_STRUCT(hints);
