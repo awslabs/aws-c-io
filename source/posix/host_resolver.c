@@ -31,7 +31,7 @@ int aws_default_dns_resolve(
     AWS_LOGF_DEBUG(AWS_LS_IO_DNS, "static: resolving host %s", hostname_cstr);
 
     /* Android would prefer NO HINTS IF YOU DON'T MIND, SIR */
-#if defined(ANDROID) || defined(AWS_OS_APPLE)
+#if defined(ANDROID)
     int err_code = getaddrinfo(hostname_cstr, "80", NULL, &result);
 #else
     struct addrinfo hints;
@@ -39,6 +39,7 @@ int aws_default_dns_resolve(
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_ALL | AI_V4MAPPED;
+    hints.ai_protocol = IPPROTO_TCP;
 
     int err_code = getaddrinfo(hostname_cstr, NULL, &hints, &result);
 #endif
