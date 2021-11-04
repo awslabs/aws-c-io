@@ -34,6 +34,27 @@ enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
+enum aws_tls_hash_algorithm {
+    AWS_TLS_HASH_UNKNOWN,
+    AWS_TLS_HASH_SHA1,
+    AWS_TLS_HASH_SHA224,
+    AWS_TLS_HASH_SHA256,
+    AWS_TLS_HASH_SHA384,
+    AWS_TLS_HASH_SHA512,
+};
+
+enum aws_tls_signature_algorithm {
+    AWS_TLS_SIGNATURE_UNKNOWN,
+    AWS_TLS_SIGNATURE_RSA,
+    /* TODO: add support for additional algorithms (ECDSA) */
+};
+
+enum aws_tls_key_operation_type {
+    AWS_TLS_KEY_OPERATION_UNKNOWN,
+    AWS_TLS_KEY_OPERATION_SIGN,
+    AWS_TLS_KEY_OPERATION_DECRYPT,
+};
+
 struct aws_tls_ctx {
     struct aws_allocator *alloc;
     void *impl;
@@ -93,6 +114,16 @@ struct aws_tls_connection_options {
     bool advertise_alpn_message;
     uint32_t timeout_ms;
 };
+
+/**
+ * TODO: describe
+ */
+struct aws_tls_key_operation;
+
+/**
+ * TODO: describe
+ */
+typedef void(aws_tls_on_key_operation_fn)(struct aws_tls_key_operation *operation, void *user_data);
 
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
@@ -191,6 +222,13 @@ struct aws_tls_ctx_options {
      * implementation.
      */
     void *ctx_options_extension;
+
+    /**
+     * Set if using custom private key operations.
+     * See aws_tls_on_key_operation_fn for more details
+     */
+    aws_tls_on_key_operation_fn *on_key_operation;
+    void *user_data;
 
     /**
      * Set if using PKCS#11 for private key operations.
@@ -292,6 +330,50 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
+
+/**
+ * TODO: describe
+ */
+struct aws_tls_ctx_custom_key_operations_options {
+
+    /**
+     * TODO: describe
+     * This field is required
+     */
+    aws_tls_on_key_operation_fn *on_key_operation;
+
+    /**
+     * User data for on_key_operation callback.
+     */
+    void *user_data;
+
+    /**
+     * Certificate's file path on disk (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file contents).
+     */
+    struct aws_byte_cursor cert_file_path;
+
+    /**
+     * Certificate's file contents (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file path).
+     */
+    struct aws_byte_cursor cert_file_contents;
+};
+
+/**
+ * Initializes options for use with mutual TLS in client mode,
+ * where private key operations are handled by custom code.
+ *
+ * @param options           aws_tls_ctx_options to be initialized.
+ * @param allocator         Allocator to use.
+ * @param custom            Options for custom key operations.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_custom_key_operations_options *custom);
 
 /**
  * This struct exists as a graceful way to pass many arguments when
@@ -686,6 +768,57 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handl
  */
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);
 
+/**************************** TLS KEY OPERATION *******************************/
+
+/* TODO: s2n allows multiple cert/key pairs to be set but CRT assumes
+         the user knows which key is being used. Is this an issue? */
+
+/* TODO: have a way to indicate connection/thread/etc?
+         in case user wants to do some kind of pooling? */
+
+/* TODO: have a way to indicate creation/destruction of ctx/options/connection/etc
+         in case user wants to tear down some piece of their handler */
+
+/* TODO: rework get_input() API to avoid a copy? */
+
+/* TODO: document how this operation can be performed asynchronously,
+         and document the threading rules (op is thread safe, don't block, etc) */
+
+/**
+ * Complete a successful TLS private key operation by providing its output.
+ * The output is copied into the TLS connection.
+ * The operation is freed by this call.
+ *
+ * You MUST call this or aws_tls_key_operation_complete_with_error().
+ * Failure to do so will stall the TLS connection indefinitely and leak memory.
+ */
+AWS_IO_API
+void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output);
+
+/**
+ * Complete an failed TLS private key operation.
+ * The TLS connection will fail.
+ * The operation is freed by this call.
+ *
+ * You MUST call this or aws_tls_key_operation_complete().
+ * Failure to do so will stall the TLS connection indefinitely and leak memory.
+ */
+AWS_IO_API
+void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code);
+
+AWS_IO_API
+struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation);
+
+AWS_IO_API
+enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation);
+
+AWS_IO_API
+enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
+    const struct aws_tls_key_operation *operation);
+
+AWS_IO_API
+enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation);
+
 /********************************* Misc TLS related *********************************/
 
 /*
@@ -697,6 +830,24 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_ha
 AWS_IO_API int aws_channel_setup_client_tls(
     struct aws_channel_slot *right_of_slot,
     struct aws_tls_connection_options *tls_options);
+
+/**
+ * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
+ */
+AWS_IO_API
+const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash);
+
+/**
+ * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ */
+AWS_IO_API
+const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature);
+
+/**
+ * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ */
+AWS_IO_API
+const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 AWS_EXTERN_C_END
 

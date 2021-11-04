@@ -115,12 +115,75 @@ error:
     return AWS_OP_ERR;
 }
 
+int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_custom_key_operations_options *custom) {
+
+#    if !USE_S2N
+    (void)options;
+    (void)allocator;
+    (void)custom;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS, "static: This platform does not currently support TLS with custom private key operations.");
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+#    else
+
+    aws_tls_ctx_options_init_default_client(options, allocator);
+
+    /* on_key_operation is required */
+    if (custom->on_key_operation == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+    options->on_key_operation = custom->on_key_operation;
+    options->user_data = custom->user_data;
+
+    /* certificate required, but there are multiple ways to pass it in */
+    if ((custom->cert_file_path.ptr != NULL) && (custom->cert_file_contents.ptr != NULL)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "static: Both certificate filepath and contents are specified. Only one may be set.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    } else if (custom->cert_file_path.ptr != NULL) {
+        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &custom->cert_file_path);
+        int op = aws_byte_buf_init_from_file(&options->certificate, allocator, aws_string_c_str(tmp_string));
+        aws_string_destroy(tmp_string);
+        if (op != AWS_OP_SUCCESS) {
+            goto error;
+        }
+    } else if (custom->cert_file_contents.ptr != NULL) {
+        if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, custom->cert_file_contents)) {
+            goto error;
+        }
+    } else {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+
+    if (aws_sanitize_pem(&options->certificate, allocator)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+    aws_tls_ctx_options_clean_up(options);
+    return AWS_OP_ERR;
+
+#    endif /* PLATFORM-SUPPORTS-CUSTOM-KEY-OPERATIONS */
+}
+
 int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
 
-#    if defined(_WIN32) || defined(__APPLE__)
+#    if !USE_S2N
     (void)options;
     (void)allocator;
     (void)pkcs11_options;
@@ -676,3 +739,69 @@ void aws_tls_ctx_release(struct aws_tls_ctx *ctx) {
         aws_ref_count_release(&ctx->ref_count);
     }
 }
+
+const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash) {
+    /* clang-format off */
+    switch (hash) {
+        case (AWS_TLS_HASH_SHA1): return "SHA1";
+        case (AWS_TLS_HASH_SHA224): return "SHA224";
+        case (AWS_TLS_HASH_SHA256): return "SHA256";
+        case (AWS_TLS_HASH_SHA384): return "SHA384";
+        case (AWS_TLS_HASH_SHA512): return "SHA512";
+        default: return "<UNKNOWN HASH ALGORITHM>";
+    }
+    /* clang-format on */
+}
+
+const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature) {
+    /* clang-format off */
+    switch (signature) {
+        case (AWS_TLS_SIGNATURE_RSA): return "RSA";
+        default: return "<UNKNOWN SIGNATURE ALGORITHM>";
+    }
+    /* clang-format on */
+}
+
+const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type) {
+    /* clang-format off */
+    switch (operation_type) {
+        case (AWS_TLS_KEY_OPERATION_SIGN): return "SIGN";
+        case (AWS_TLS_KEY_OPERATION_DECRYPT): return "DECRYPT";
+        default: return "<UNKNOWN OPERATION TYPE>";
+    }
+    /* clang-format on */
+}
+
+#if !USE_S2N
+void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
+    (void)operation;
+    (void)output;
+}
+
+void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
+    (void)operation;
+    (void)error_code;
+}
+
+struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
+    (void)operation;
+    return aws_byte_cursor_from_array(NULL, 0);
+}
+
+enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
+    (void)operation;
+    return AWS_TLS_KEY_OPERATION_UNKNOWN;
+}
+
+enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
+    const struct aws_tls_key_operation *operation) {
+    (void)operation;
+    return AWS_TLS_SIGNATURE_UNKNOWN;
+}
+
+enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation) {
+    (void)operation;
+    return AWS_TLS_HASH_UNKNOWN;
+}
+
+#endif
