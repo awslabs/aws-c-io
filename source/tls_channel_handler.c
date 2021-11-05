@@ -139,6 +139,7 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
         goto error;
     }
     options->on_key_operation = custom->on_key_operation;
+    options->on_ctx_destroy = custom->on_ctx_destroy;
     options->user_data = custom->user_data;
 
     /* certificate required, but there are multiple ways to pass it in */

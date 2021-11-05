@@ -76,6 +76,7 @@ struct s2n_ctx {
 
     /* TODO: document */
     aws_tls_on_key_operation_fn *on_key_operation;
+    aws_simple_completion_callback *on_ctx_destroy;
     void *user_data;
     struct aws_pkcs11_tls_op_handler *pkcs11_handler;
 };
@@ -1225,7 +1226,14 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
 
+        aws_simple_completion_callback *on_ctx_destroy = s2n_ctx->on_ctx_destroy;
+        void *user_data = s2n_ctx->user_data;
+
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
+
+        if (on_ctx_destroy) {
+            on_ctx_destroy(user_data);
+        }
     }
 }
 
@@ -1420,6 +1428,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s2n_ctx->user_data = s2n_ctx->pkcs11_handler;
         } else {
             s2n_ctx->on_key_operation = options->on_key_operation;
+            s2n_ctx->on_ctx_destroy = options->on_ctx_destroy;
             s2n_ctx->user_data = options->user_data;
         }
 

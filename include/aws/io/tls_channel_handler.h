@@ -228,6 +228,7 @@ struct aws_tls_ctx_options {
      * See aws_tls_on_key_operation_fn for more details
      */
     aws_tls_on_key_operation_fn *on_key_operation;
+    aws_simple_completion_callback *on_ctx_destroy;
     void *user_data;
 
     /**
@@ -343,7 +344,15 @@ struct aws_tls_ctx_custom_key_operation_options {
     aws_tls_on_key_operation_fn *on_key_operation;
 
     /**
-     * User data for on_key_operation callback.
+     * TODO: the lifetime stuff here is a nightmare.
+     * in the binding we need to create a new thing per CTX
+     * but we're setting this in the OPTIONS, and in theory an OPTIONS could be
+     * used to make multiple CTX, oh and this is the OPTIONS for an OPTIONS so ughghhg
+     */
+    aws_simple_completion_callback *on_ctx_destroy;
+
+    /**
+     * User data for callbacks.
      */
     void *user_data;
 
