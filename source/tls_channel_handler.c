@@ -118,7 +118,7 @@ error:
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_tls_ctx_custom_key_operations_options *custom) {
+    const struct aws_tls_ctx_custom_key_operation_options *custom) {
 
 #    if !USE_S2N
     (void)options;

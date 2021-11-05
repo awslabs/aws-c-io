@@ -334,7 +334,7 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 /**
  * TODO: describe
  */
-struct aws_tls_ctx_custom_key_operations_options {
+struct aws_tls_ctx_custom_key_operation_options {
 
     /**
      * TODO: describe
@@ -373,7 +373,7 @@ struct aws_tls_ctx_custom_key_operations_options {
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_tls_ctx_custom_key_operations_options *custom);
+    const struct aws_tls_ctx_custom_key_operation_options *custom);
 
 /**
  * This struct exists as a graceful way to pass many arguments when
