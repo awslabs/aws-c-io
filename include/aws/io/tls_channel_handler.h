@@ -120,10 +120,17 @@ struct aws_tls_connection_options {
  */
 struct aws_tls_key_operation;
 
-/**
- * TODO: describe
- */
-typedef void(aws_tls_on_key_operation_fn)(struct aws_tls_key_operation *operation, void *user_data);
+struct aws_tls_key_operation_handler {
+    struct aws_tls_key_operation_handler_vtable *vtable;
+    struct aws_allocator *alloc;
+    struct aws_ref_count ref_count;
+    void *impl;
+};
+
+struct aws_tls_key_operation_handler_vtable {
+    void (*perform_operation)(struct aws_tls_key_operation_handler *handler, struct aws_tls_key_operation *operation);
+    void (*destroy)(struct aws_tls_key_operation_handler *handler);
+};
 
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
@@ -225,11 +232,8 @@ struct aws_tls_ctx_options {
 
     /**
      * Set if using custom private key operations.
-     * See aws_tls_on_key_operation_fn for more details
      */
-    aws_tls_on_key_operation_fn *on_key_operation;
-    aws_simple_completion_callback *on_ctx_destroy;
-    void *user_data;
+    struct aws_tls_key_operation_handler *key_operation_handler;
 
     /**
      * Set if using PKCS#11 for private key operations.
@@ -341,20 +345,7 @@ struct aws_tls_ctx_custom_key_operation_options {
      * TODO: describe
      * This field is required
      */
-    aws_tls_on_key_operation_fn *on_key_operation;
-
-    /**
-     * TODO: the lifetime stuff here is a nightmare.
-     * in the binding we need to create a new thing per CTX
-     * but we're setting this in the OPTIONS, and in theory an OPTIONS could be
-     * used to make multiple CTX, oh and this is the OPTIONS for an OPTIONS so ughghhg
-     */
-    aws_simple_completion_callback *on_ctx_destroy;
-
-    /**
-     * User data for callbacks.
-     */
-    void *user_data;
+    struct aws_tls_key_operation_handler *operation_handler;
 
     /**
      * Certificate's file path on disk (UTF-8).
@@ -827,6 +818,20 @@ enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
 
 AWS_IO_API
 enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation);
+
+struct aws_tls_key_operation_handler *aws_tls_key_operation_handler_new(
+    struct aws_allocator *allocator,
+    const struct aws_tls_key_operation_handler_vtable *vtable,
+    void *impl);
+
+struct aws_tls_key_operation_handler *aws_tls_key_operation_handler_acquire(
+    struct aws_tls_key_operation_handler *operation_handler);
+
+void aws_tls_key_operation_handler_release(struct aws_tls_key_operation_handler *operation_handler);
+
+void aws_tls_key_operation_handler_perform_operation(
+    struct aws_tls_key_operation_handler *operation_handler,
+    struct aws_tls_key_operation *operation);
 
 /********************************* Misc TLS related *********************************/
 

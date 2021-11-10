@@ -75,6 +75,7 @@ struct s2n_ctx {
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
 
     /* TODO: document */
+    struct aws_tls_key_operation_handler *key_operation_handler;
     aws_tls_on_key_operation_fn *on_key_operation;
     aws_simple_completion_callback *on_ctx_destroy;
     void *user_data;
