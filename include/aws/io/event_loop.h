@@ -49,9 +49,9 @@ struct aws_win32_OVERLAPPED {
             uint32_t Offset;
             uint32_t OffsetHigh;
         } s;
-        void* Pointer;
+        void *Pointer;
     } u;
-    void* hEvent;
+    void *hEvent;
 };
 
 /**
