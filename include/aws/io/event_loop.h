@@ -162,7 +162,7 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped);
  * Casts an aws_overlapped pointer for use as a LPOVERLAPPED parameter to Windows API functions
  */
 AWS_IO_API
-struct _OVERLAPPED *aws_overlapped_LPOVERLAPPED(struct aws_overlapped *overlapped);
+struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped);
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**

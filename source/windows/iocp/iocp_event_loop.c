@@ -125,7 +125,7 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped) {
     AWS_ZERO_STRUCT(overlapped->overlapped);
 }
 
-struct _OVERLAPPED *aws_overlapped_LPOVERLAPPED(struct aws_overlapped *overlapped) {
+struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped) {
     return (struct _OVERLAPPED *)&overlapped->overlapped;
 }
 

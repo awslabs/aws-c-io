@@ -953,7 +953,7 @@ static inline int s_tcp_connect(
         &fake_buffer,
         0,
         NULL,
-        aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
+        aws_overlapped_to_windows_overlapped(&socket_impl->read_io_data->signal));
 
     uint64_t time_to_run = 0;
     /* if the connect succeeded immediately, let the timeout task still run, but it can run immediately. This is cleaner
@@ -1720,7 +1720,7 @@ static void s_incoming_pipe_connection_event(
 
         socket_impl->read_io_data->in_use = true;
         BOOL res = ConnectNamedPipe(
-            socket->io_handle.data.handle, aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
+            socket->io_handle.data.handle, aws_overlapped_to_windows_overlapped(&socket_impl->read_io_data->signal));
 
         continue_accept_loop = false;
 
@@ -1805,7 +1805,7 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
             SOCK_STORAGE_SIZE,
             SOCK_STORAGE_SIZE,
             NULL,
-            aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
+            aws_overlapped_to_windows_overlapped(&socket_impl->read_io_data->signal));
 
         if (!res) {
             int win_err = WSAGetLastError();
@@ -2166,7 +2166,7 @@ static int s_local_start_accept(
     }
 
     BOOL res = ConnectNamedPipe(
-        socket->io_handle.data.handle, aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
+        socket->io_handle.data.handle, aws_overlapped_to_windows_overlapped(&socket_impl->read_io_data->signal));
 
     if (!res) {
         int error_code = GetLastError();
@@ -2671,7 +2671,7 @@ static int s_stream_subscribe_to_read(
         &fake_buffer,
         0,
         NULL,
-        aws_overlapped_LPOVERLAPPED(&iocp_socket->read_io_data->signal));
+        aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
     if (!success) {
         int wsa_err = WSAGetLastError();
         if (wsa_err != ERROR_IO_PENDING) {
@@ -2727,7 +2727,7 @@ static int s_dgram_subscribe_to_read(
         1,
         NULL,
         &flags,
-        aws_overlapped_LPOVERLAPPED(&iocp_socket->read_io_data->signal),
+        aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal),
         NULL);
 
     if (err) {
@@ -2785,7 +2785,7 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
                 &fake_buffer,
                 0,
                 NULL,
-                aws_overlapped_LPOVERLAPPED(&iocp_socket->read_io_data->signal));
+                aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
             if (!success) {
                 int wsa_err = GetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
@@ -2909,7 +2909,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
                 &fake_buffer,
                 0,
                 NULL,
-                aws_overlapped_LPOVERLAPPED(&iocp_socket->read_io_data->signal));
+                aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
             if (!success) {
                 int wsa_err = GetLastError();
                 if (wsa_err != ERROR_IO_PENDING) {
@@ -3012,7 +3012,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
                 1,
                 NULL,
                 &flags,
-                aws_overlapped_LPOVERLAPPED(&iocp_socket->read_io_data->signal),
+                aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal),
                 NULL);
             if (err) {
                 int wsa_err = WSAGetLastError();
@@ -3166,7 +3166,7 @@ int aws_socket_write(
         cursor->ptr,
         (DWORD)cursor->len,
         NULL,
-        aws_overlapped_LPOVERLAPPED(&write_cb_data->io_data.signal));
+        aws_overlapped_to_windows_overlapped(&write_cb_data->io_data.signal));
 
     if (!res) {
         int error_code = GetLastError();
