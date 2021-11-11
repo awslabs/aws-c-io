@@ -53,13 +53,15 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                  .mutex = AWS_MUTEX_INIT,
-                                  .invoked = false,
-                                  .was_in_thread = false,
-                                  .status = -1,
-                                  .loop = event_loop,
-                                  .thread_id = 0};
+    struct task_args task_args = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .invoked = false,
+        .was_in_thread = false,
+        .status = -1,
+        .loop = event_loop,
+        .thread_id = 0,
+    };
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args, "xthread_scheduled_tasks_execute");
@@ -111,20 +113,25 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task1_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                   .mutex = AWS_MUTEX_INIT,
-                                   .invoked = false,
-                                   .was_in_thread = false,
-                                   .status = -1,
-                                   .loop = event_loop,
-                                   .thread_id = 0};
-    struct task_args task2_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                   .mutex = AWS_MUTEX_INIT,
-                                   .invoked = false,
-                                   .was_in_thread = false,
-                                   .status = -1,
-                                   .loop = event_loop,
-                                   .thread_id = 0};
+    struct task_args task1_args = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .invoked = false,
+        .was_in_thread = false,
+        .status = -1,
+        .loop = event_loop,
+        .thread_id = 0,
+    };
+
+    struct task_args task2_args = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .invoked = false,
+        .was_in_thread = false,
+        .status = -1,
+        .loop = event_loop,
+        .thread_id = 0,
+    };
 
     struct aws_task task1;
     aws_task_init(&task1, s_test_task, &task1_args, "canceled_tasks_run_in_el_thread1");
@@ -275,7 +282,8 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
     /* Do async write */
     const char msg[] = "Cherry Pie";
-    bool write_success = WriteFile(write_handle.data.handle, msg, sizeof(msg), NULL, aws_overlapped_to_windows_overlapped(&overlapped.overlapped));
+    bool write_success = WriteFile(
+        write_handle.data.handle, msg, sizeof(msg), NULL, aws_overlapped_to_windows_overlapped(&overlapped.overlapped));
     ASSERT_TRUE(write_success || GetLastError() == ERROR_IO_PENDING);
 
     /* Wait for completion callbacks */
@@ -972,13 +980,15 @@ static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                  .mutex = AWS_MUTEX_INIT,
-                                  .invoked = false,
-                                  .was_in_thread = false,
-                                  .status = -1,
-                                  .loop = event_loop,
-                                  .thread_id = 0};
+    struct task_args task_args = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .invoked = false,
+        .was_in_thread = false,
+        .status = -1,
+        .loop = event_loop,
+        .thread_id = 0,
+    };
 
     struct aws_task task;
     aws_task_init(&task, s_test_task, &task_args, "stop_then_restart");
@@ -1127,14 +1137,16 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
      * Small chicken-and-egg problem here: the task args needs the event loop group and loop, but
      * creating the event loop group needs shutdown options that refer to the task args.
      */
-    struct task_args task_args = {.condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                  .mutex = AWS_MUTEX_INIT,
-                                  .invoked = false,
-                                  .was_in_thread = false,
-                                  .status = -1,
-                                  .loop = NULL,
-                                  .el_group = NULL,
-                                  .thread_id = 0};
+    struct task_args task_args = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .invoked = false,
+        .was_in_thread = false,
+        .status = -1,
+        .loop = NULL,
+        .el_group = NULL,
+        .thread_id = 0,
+    };
     aws_atomic_init_int(&task_args.thread_complete, false);
 
     struct aws_shutdown_callback_options async_shutdown_options;
