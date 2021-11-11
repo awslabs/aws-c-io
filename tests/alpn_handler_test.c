@@ -129,7 +129,8 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .mutex = AWS_MUTEX_INIT,
         .setup_completed = false,
-        .shutdown_finished = false};
+        .shutdown_finished = false,
+    };
 
     struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
@@ -167,7 +168,8 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
             (const uint8_t *)&protocol_message, sizeof(struct aws_tls_negotiated_protocol_message)),
         .copy_mark = 0,
         .on_completion = NULL,
-        .message_type = AWS_IO_MESSAGE_APPLICATION_DATA};
+        .message_type = AWS_IO_MESSAGE_APPLICATION_DATA,
+    };
 
     ASSERT_SUCCESS(aws_channel_handler_process_read_message(handler, slot, &message));
     ASSERT_BIN_ARRAYS_EQUALS(
@@ -317,7 +319,8 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
             (const uint8_t *)&protocol_message, sizeof(struct aws_tls_negotiated_protocol_message)),
         .copy_mark = 0,
         .on_completion = NULL,
-        .message_type = AWS_IO_MESSAGE_APPLICATION_DATA};
+        .message_type = AWS_IO_MESSAGE_APPLICATION_DATA,
+    };
 
     struct alpn_test_on_negotiation_args on_negotiation_args = {
         .new_slot = NULL, .protocol = {0}, .new_handler = NULL, .allocator = allocator};
