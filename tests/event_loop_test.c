@@ -282,8 +282,8 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
     /* Do async write */
     const char msg[] = "Cherry Pie";
-    bool write_success = WriteFile(
-        write_handle.data.handle, msg, sizeof(msg), NULL, aws_overlapped_to_windows_overlapped(&overlapped.overlapped));
+    bool write_success =
+        WriteFile(write_handle.data.handle, msg, sizeof(msg), NULL, aws_overlapped_to_windows_overlapped(&overlapped));
     ASSERT_TRUE(write_success || GetLastError() == ERROR_IO_PENDING);
 
     /* Wait for completion callbacks */

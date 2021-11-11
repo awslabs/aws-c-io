@@ -124,11 +124,12 @@ static int s_test_alpn_successfully_negotiates(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
     struct aws_channel *channel;
 
-    struct alpn_channel_setup_test_args test_args = {.error_code = 0,
-                                                     .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                                     .mutex = AWS_MUTEX_INIT,
-                                                     .setup_completed = false,
-                                                     .shutdown_finished = false};
+    struct alpn_channel_setup_test_args test_args = {
+        .error_code = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .setup_completed = false,
+        .shutdown_finished = false};
 
     struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
@@ -199,10 +200,12 @@ static int s_test_alpn_no_protocol_message(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
     struct aws_channel *channel;
 
-    struct alpn_channel_setup_test_args test_args = {.error_code = 0,
-                                                     .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                                     .mutex = AWS_MUTEX_INIT,
-                                                     .shutdown_finished = false};
+    struct alpn_channel_setup_test_args test_args = {
+        .error_code = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .shutdown_finished = false,
+    };
 
     struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
@@ -279,10 +282,12 @@ static int s_test_alpn_error_creating_handler(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
     struct aws_channel *channel;
 
-    struct alpn_channel_setup_test_args test_args = {.error_code = 0,
-                                                     .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-                                                     .mutex = AWS_MUTEX_INIT,
-                                                     .shutdown_finished = false};
+    struct alpn_channel_setup_test_args test_args = {
+        .error_code = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+        .shutdown_finished = false,
+    };
 
     struct aws_channel_options args = {
         .on_setup_completed = s_alpn_channel_setup_test_on_setup_completed,
