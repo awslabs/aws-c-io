@@ -752,10 +752,10 @@ int aws_pipe_write(
     aws_overlapped_init(&write->overlapped, s_write_end_on_write_completion, write_end);
 
     bool write_success = WriteFile(
-        write_impl->handle.data.handle, /*hFile*/
-        src_buffer.ptr,                 /*lpBuffer*/
-        num_bytes_to_write,             /*nNumberOfBytesToWrite*/
-        NULL,                           /*lpNumberOfBytesWritten*/
+        write_impl->handle.data.handle,                   /*hFile*/
+        src_buffer.ptr,                                   /*lpBuffer*/
+        num_bytes_to_write,                               /*nNumberOfBytesToWrite*/
+        NULL,                                             /*lpNumberOfBytesWritten*/
         aws_overlapped_LPOVERLAPPED(&write->overlapped)); /*lpOverlapped*/
 
     /* Overlapped WriteFile() calls may succeed immediately, or they may queue the work. In either of these cases, IOCP

@@ -2165,8 +2165,8 @@ static int s_local_start_accept(
         return AWS_OP_ERR;
     }
 
-    BOOL res =
-        ConnectNamedPipe(socket->io_handle.data.handle, aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
+    BOOL res = ConnectNamedPipe(
+        socket->io_handle.data.handle, aws_overlapped_LPOVERLAPPED(&socket_impl->read_io_data->signal));
 
     if (!res) {
         int error_code = GetLastError();
