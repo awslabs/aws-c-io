@@ -25,7 +25,6 @@ struct aws_task;
 struct aws_thread_options;
 
 #if AWS_USE_IO_COMPLETION_PORTS
-#    include <Windows.h>
 
 struct aws_overlapped;
 
@@ -36,6 +35,26 @@ typedef void(aws_event_loop_on_completion_fn)(
     size_t num_bytes_transferred);
 
 /**
+ * The aws_win32_OVERLAPPED struct is layout-compatible with OVERLAPPED as defined in <Windows.h>. It is used
+ * here to avoid pulling in a dependency on <Windows.h> which would also bring along a lot of bad macros, such
+ * as redefinitions of GetMessage and GetObject. Note that the OVERLAPPED struct layout in the Windows SDK can
+ * never be altered without breaking binary compatibility for every existing third-party executable, so there
+ * is no need to worry about keeping this definition in sync.
+ */
+struct aws_win32_OVERLAPPED {
+    uintptr_t Internal;
+    uintptr_t InternalHigh;
+    union {
+        struct {
+            uint32_t Offset;
+            uint32_t OffsetHigh;
+        } s;
+        void* Pointer;
+    } u;
+    void* hEvent;
+};
+
+/**
  * Use aws_overlapped when a handle connected to the event loop needs an OVERLAPPED struct.
  * OVERLAPPED structs are needed to make OS-level async I/O calls.
  * When the I/O completes, the assigned aws_event_loop_on_completion_fn is called from the event_loop's thread.
@@ -44,7 +63,7 @@ typedef void(aws_event_loop_on_completion_fn)(
  * aws_overlapped_reset() or aws_overlapped_init() between uses.
  */
 struct aws_overlapped {
-    OVERLAPPED overlapped;
+    struct aws_win32_OVERLAPPED overlapped;
     aws_event_loop_on_completion_fn *on_completion;
     void *user_data;
 };
@@ -138,6 +157,12 @@ void aws_overlapped_init(
  */
 AWS_IO_API
 void aws_overlapped_reset(struct aws_overlapped *overlapped);
+
+/**
+ * Casts an aws_overlapped pointer for use as a LPOVERLAPPED parameter to Windows API functions
+ */
+AWS_IO_API
+struct _OVERLAPPED *aws_overlapped_LPOVERLAPPED(struct aws_overlapped *overlapped);
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**

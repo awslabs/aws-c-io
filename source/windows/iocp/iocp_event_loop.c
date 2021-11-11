@@ -12,6 +12,8 @@
 
 #include <aws/io/logging.h>
 
+#include <Windows.h>
+
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
     due to winsock. Also some of the definitions here aren't in the public API
@@ -121,6 +123,10 @@ void aws_overlapped_init(
 void aws_overlapped_reset(struct aws_overlapped *overlapped) {
     AWS_ASSERT(overlapped);
     AWS_ZERO_STRUCT(overlapped->overlapped);
+}
+
+struct _OVERLAPPED *aws_overlapped_LPOVERLAPPED(struct aws_overlapped *overlapped) {
+    return (struct _OVERLAPPED *)&overlapped->overlapped;
 }
 
 struct aws_event_loop_vtable s_iocp_vtable = {
