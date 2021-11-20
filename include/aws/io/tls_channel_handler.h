@@ -330,7 +330,7 @@ struct aws_tls_ctx_pkcs11_options {
      * If set to NULL, the token will be chosen based on other criteria
      * (such as token label).
      */
-    uint64_t *slot_id;
+    const uint64_t *slot_id;
 
     /**
      * Label of PKCS#11 token to use.
