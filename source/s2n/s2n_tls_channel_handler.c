@@ -702,6 +702,11 @@ done:
 }
 
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS key operation complete with %zu bytes of output data",
+        (void *)operation->s2n_handler,
+        output.len);
     s_tls_key_operation_complete_common(operation, 0, &output);
 }
 
@@ -714,6 +719,13 @@ void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *ope
             (void *)operation->s2n_handler,
             aws_error_name(error_code));
     }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS key operation complete with error %s",
+        (void *)operation->s2n_handler,
+        aws_error_name(error_code));
+
     s_tls_key_operation_complete_common(operation, error_code, NULL);
 }
 
@@ -846,6 +858,14 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
     }
 
     /* TODO: logging pass */
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: Begin TLS key operation. type=%s input_data.len=%zu signature=%s digest=%s",
+        (void *)operation,
+        aws_tls_key_operation_type_str(operation->operation_type),
+        operation->input_data.len,
+        aws_tls_signature_algorithm_str(operation->signature_algorithm),
+        aws_tls_hash_algorithm_str(operation->digest_algorithm));
 
     s2n_handler->s2n_ctx->on_key_operation(operation, s2n_handler->s2n_ctx->user_data);
 
