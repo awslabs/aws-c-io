@@ -702,7 +702,7 @@ done:
 }
 
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
-    AWS_LOGF_ERROR(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_TLS,
         "id=%p: TLS key operation complete with %zu bytes of output data",
         (void *)operation->s2n_handler,
