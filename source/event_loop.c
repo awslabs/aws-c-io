@@ -67,6 +67,7 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
 
     struct aws_thread_options thread_options;
     AWS_ZERO_STRUCT(thread_options);
+    thread_options.cpu_id = -1;
     thread_options.join_strategy = AWS_TJS_MANAGED;
 
     AWS_FATAL_ASSERT(
