@@ -318,7 +318,9 @@ static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
         if (s2n_handler->connection) {
             s2n_connection_free(s2n_handler->connection);
         }
-        aws_tls_ctx_release(&s2n_handler->s2n_ctx->ctx);
+        if (s2n_handler->s2n_ctx) {
+            aws_tls_ctx_release(&s2n_handler->s2n_ctx->ctx);
+        }
         aws_mem_release(handler->alloc, (void *)s2n_handler);
     }
 }
