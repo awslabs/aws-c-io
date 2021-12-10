@@ -315,7 +315,9 @@ static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
     if (handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
         aws_tls_channel_handler_shared_clean_up(&s2n_handler->shared_state);
-        s2n_connection_free(s2n_handler->connection);
+        if (s2n_handler->connection) {
+            s2n_connection_free(s2n_handler->connection);
+        }
         aws_tls_ctx_release(&s2n_handler->s2n_ctx->ctx);
         aws_mem_release(handler->alloc, (void *)s2n_handler);
     }
@@ -1063,9 +1065,10 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     AWS_ASSERT(options->ctx);
     struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
-    if (!s2n_handler) {
-        return NULL;
-    }
+    s2n_handler->handler.impl = s2n_handler;
+    s2n_handler->handler.alloc = allocator;
+    s2n_handler->handler.vtable = &s_handler_vtable;
+    s2n_handler->handler.slot = slot;
 
     aws_tls_ctx_acquire(options->ctx);
     s2n_handler->s2n_ctx = options->ctx->impl;
@@ -1078,10 +1081,6 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     aws_tls_channel_handler_shared_init(&s2n_handler->shared_state, &s2n_handler->handler, options);
 
-    s2n_handler->handler.impl = s2n_handler;
-    s2n_handler->handler.alloc = allocator;
-    s2n_handler->handler.vtable = &s_handler_vtable;
-    s2n_handler->handler.slot = slot;
     s2n_handler->user_data = options->user_data;
     s2n_handler->on_data_read = options->on_data_read;
     s2n_handler->on_error = options->on_error;
