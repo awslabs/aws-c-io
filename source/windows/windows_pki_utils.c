@@ -9,6 +9,8 @@
 
 #include <aws/io/logging.h>
 
+#include "windows_error_message.h"
+
 #include <Windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -88,11 +90,13 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         CERT_STORE_PROV_SYSTEM_A, 0, (HCRYPTPROV)NULL, CERT_STORE_OPEN_EXISTING_FLAG | store_val, store_path);
 
     if (!*cert_store) {
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertOpenStore()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. Failed to load cert store with error code %d",
             cert_path,
-            (int)GetLastError());
+            last_error);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -123,12 +127,14 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         *cert_store, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_HASH, &cert_hash, NULL);
 
     if (!*certs) {
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertFindCertificateInStore()", last_error);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
             "static: invalid certificate path %s. "
-            "The referenced certificate was not found in the certificate store, error code %d",
+            "The referenced certificate was not found in the certificate store, error code %d ",
             cert_path,
-            (int)GetLastError());
+            last_error);
         aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
         goto on_error;
     }
@@ -172,8 +178,9 @@ int aws_import_trusted_certificates(
         CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
     *cert_store = tmp_cert_store;
     if (!*cert_store) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to create temporary cert store, error code %d", (int)GetLastError());
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertOpenStore()", last_error);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to create temporary cert store, error code %d", last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -204,16 +211,18 @@ int aws_import_trusted_certificates(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", (int)GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptQueryObject()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to parse certificate blob, error code %d", last_error);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*cert_store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to add certificate to store, error code %d", (int)GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertAddCertificateContextToStore()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to add certificate to store, error code %d", last_error);
         }
 
         CertFreeCertificateContext(cert_context);
@@ -269,8 +278,10 @@ static int s_cert_context_import_rsa_private_key(
         }
 
         if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptImportKey()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
+                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
@@ -285,8 +296,9 @@ static int s_cert_context_import_rsa_private_key(
         }
     } else {
         if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", (int)GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptAcquireContextW()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
@@ -305,10 +317,10 @@ static int s_cert_context_import_rsa_private_key(
         key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
 
         if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertSetCertificateContextProperty()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new certificate context for key with errno %d",
-                (int)GetLastError());
+                AWS_LS_IO_PKI, "static: error creating a new certificate context for key with errno %d", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
@@ -380,9 +392,9 @@ static int s_cert_context_import_ecc_private_key(
     }
 
     /*
-     * Per rfc5480#section-2.2, the public key section of the encoding consists of a single byte that tells whether or
-     * not the public key is compressed, followed by the raw key data itself.  Windows doesn't seem to support importing
-     * compressed keys directly, so for now check and fail if it's a compressed key.
+     * Per rfc5480#section-2.2, the public key section of the encoding consists of a single byte that tells whether
+     * or not the public key is compressed, followed by the raw key data itself.  Windows doesn't seem to support
+     * importing compressed keys directly, so for now check and fail if it's a compressed key.
      *
      * Given that we're pulling the data from a windows internal structure generated by CryptQueryObject, it is
      * not known whether it's even possible to see a compressed tag here or if Windows automatically uncompresses a
@@ -399,9 +411,9 @@ static int s_cert_context_import_ecc_private_key(
     }
 
     /*
-     * Now we want everything but the first byte, so dec the length and bump the pointer.  I was more comfortable doing
-     * it the manual way rather than with cursors because using cursors would force us to do multiple narrowing casts
-     * back when configuring win32 data.
+     * Now we want everything but the first byte, so dec the length and bump the pointer.  I was more comfortable
+     * doing it the manual way rather than with cursors because using cursors would force us to do multiple
+     * narrowing casts back when configuring win32 data.
      */
     public_key_blob_length--;
     struct aws_byte_cursor public_blob_cursor = {
@@ -444,8 +456,9 @@ static int s_cert_context_import_ecc_private_key(
 
     status = NCryptOpenStorageProvider(&crypto_prov, MS_KEY_STORAGE_PROVIDER, 0);
     if (status != ERROR_SUCCESS) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: could not open ncrypt key storage provider, error %d", (int)GetLastError());
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "NCryptOpenStorageProvider()", last_error);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: could not open ncrypt key storage provider, error code %d", last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -467,11 +480,10 @@ static int s_cert_context_import_ecc_private_key(
         NCRYPT_OVERWRITE_KEY_FLAG);
 
     if (status != ERROR_SUCCESS) {
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "NCryptImportKey()", last_error);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to import ecc key with status %d, last error %d",
-            status,
-            (int)GetLastError());
+            AWS_LS_IO_PKI, "static: failed to import ecc key with status %d, last error %d", status, last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -479,8 +491,10 @@ static int s_cert_context_import_ecc_private_key(
     CRYPT_KEY_PROV_INFO key_prov_info = {uuid_wstr, MS_KEY_STORAGE_PROVIDER, 0, 0, 0, NULL, 0};
 
     if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertSetCertificateContextProperty()", last_error);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to set cert context key provider, with last error %d", (int)GetLastError());
+            AWS_LS_IO_PKI, "static: failed to set cert context key provider, with last error %d", last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -540,7 +554,9 @@ int aws_import_key_pair_to_cert_context(
 
     if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &certificates)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
+            AWS_LS_IO_PKI,
+            "static: failed to decode cert pem to buffer list with error code %d",
+            (int)aws_last_error());
         goto clean_up;
     }
 
@@ -550,7 +566,7 @@ int aws_import_key_pair_to_cert_context(
 
     if (aws_decode_pem_to_buffer_list(alloc, private_key, &private_keys)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error %d", (int)aws_last_error());
+            AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error code %d", (int)aws_last_error());
         goto clean_up;
     }
 
@@ -559,10 +575,10 @@ int aws_import_key_pair_to_cert_context(
     *store = CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
 
     if (!*store) {
+        int last_error = GetLastError();
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertOpenStore()", last_error);
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to load in-memory/ephemeral certificate store, error code %d",
-            GetLastError());
+            AWS_LS_IO_PKI, "static: failed to load in-memory/ephemeral certificate store, error code %d", last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -592,14 +608,18 @@ int aws_import_key_pair_to_cert_context(
             (const void **)&cert_context);
 
         if (!query_res || cert_context == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d.", GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CryptQueryObject()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate blob, error code %d", last_error);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto clean_up;
         }
 
         BOOL add_result = CertAddCertificateContextToStore(*store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d.", GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_PKI, "CertAddCertificateContextToStore()", last_error);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d.", last_error);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 

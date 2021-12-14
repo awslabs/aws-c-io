@@ -10,6 +10,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include "../windows_error_message.h "
 #include <aws/io/logging.h>
 
 #include <Windows.h>
@@ -209,11 +210,12 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         0,                    /* CompletionKey: should be 0 when file handle is invalid */
         1);                   /* NumberOfConcurrentThreads */
     if (impl->iocp_handle == NULL) {
+        int last_error = GetLastError();
         AWS_LOGF_FATAL(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIOCompletionPort failed with error %d",
             (void *)event_loop,
-            (int)GetLastError());
+            (int)last_error);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto clean_up;
     }
@@ -539,11 +541,12 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     /* clang-format on */
 
     if (!iocp_associated) {
+        int last_error = GetLastError();
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: CreateIoCompletionPort() failed with error %d",
             (void *)event_loop,
-            (int)GetLastError());
+            last_error);
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 

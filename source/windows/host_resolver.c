@@ -7,6 +7,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include "windows_error_message.h"
 #include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/logging.h>
@@ -35,7 +36,7 @@ int aws_default_dns_resolve(
     int res_error = GetAddrInfoA(hostname_cstr, NULL, &hints, &result);
 
     if (res_error) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "static: getaddrinfo failed with error_code %d", res_error);
+        aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_DNS, "GetAddrInfoA()", res_error);
         goto clean_up;
     }
 

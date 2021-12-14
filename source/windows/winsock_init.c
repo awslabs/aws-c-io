@@ -13,6 +13,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <MSWSock.h>
 // clang-format on
 
+#include "windows_error_message.h"
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
@@ -29,8 +30,9 @@ void aws_check_and_init_winsock(void) {
         WORD requested_version = MAKEWORD(2, 2);
         WSADATA wsa_data;
         if (WSAStartup(requested_version, &wsa_data)) {
-            AWS_LOGF_FATAL(
-                AWS_LS_IO_SOCKET, "static: WinSock initialization failed with error %d", (int)GetLastError());
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_FATAL, AWS_LS_IO_SOCKET, "WSAStartup()", last_error);
+            AWS_LOGF_FATAL(AWS_LS_IO_SOCKET, "static: WinSock initialization failed with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }
@@ -53,8 +55,10 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSAIoctl()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET, "static: failed to load WSAID_CONNECTEX function with error %d", (int)GetLastError());
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_CONNECTEX function with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }
@@ -74,8 +78,10 @@ void aws_check_and_init_winsock(void) {
             NULL);
 
         if (rc) {
+            int last_error = GetLastError();
+            aws_win_log_message(AWS_LL_ERROR, AWS_LS_IO_SOCKET, "WSAIoctl()", last_error);
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET, "static: failed to load WSAID_ACCEPTEX function with error %d", (int)GetLastError());
+                AWS_LS_IO_SOCKET, "static: failed to load WSAID_ACCEPTEX function with error %d", last_error);
             AWS_ASSERT(0);
             exit(-1);
         }
