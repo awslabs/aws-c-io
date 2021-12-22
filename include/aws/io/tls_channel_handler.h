@@ -411,10 +411,12 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_byte_cursor *pkey);
 
 /**
- * Initializes options for use with mutual tls in client mode. This function only works on
- * Windows. cert_reg_path is the path to a system
+ * Initializes options for use with mutual tls in client mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_system_path(
     struct aws_tls_ctx_options *options,
@@ -422,10 +424,12 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_system_path(
     const char *cert_reg_path);
 
 /**
- * Initializes options for use with server mode. This function only works on
- * Windows. cert_reg_path is the path to a system
+ * Initializes options for use with server mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
 AWS_IO_API int aws_tls_ctx_options_init_default_server_from_system_path(
     struct aws_tls_ctx_options *options,
@@ -433,9 +437,11 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server_from_system_path(
     const char *cert_reg_path);
 
 /**
- * Initializes options for use with mutual tls in client mode. This function only works on
- * Apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -444,9 +450,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use with mutual tls in client mode. This function only works on
- * Apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_tls_ctx_options *options,
@@ -455,9 +463,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use in server mode. This function only works on
- * Apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use in server mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -466,9 +476,11 @@ AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_password);
 
 /**
- * Initializes options for use in server mode. This function only works on
- * Apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use in server mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12(
     struct aws_tls_ctx_options *options,
