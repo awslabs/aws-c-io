@@ -88,7 +88,7 @@ error:
     (void)pkey;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -130,7 +130,7 @@ error:
     (void)pkey_path;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -144,7 +144,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     (void)pkcs11_options;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #else
 
     aws_tls_ctx_options_init_default_client(options, allocator);
@@ -231,7 +231,7 @@ int aws_tls_ctx_options_set_keychain_path(
     (void)options;
     (void)keychain_path_cursor;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -249,7 +249,7 @@ int aws_tls_ctx_options_init_client_mtls_from_system_path(
     (void)cert_reg_path;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: System certificate path can only be set on Windows.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -289,7 +289,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     (void)pkcs_pwd;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PKCS#12 files.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -318,7 +318,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     (void)pkcs_pwd;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PKCS#12 files.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -367,7 +367,7 @@ int aws_tls_ctx_options_init_default_server_from_path(
     (void)pkey_path;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot create a server on this platform.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
@@ -390,7 +390,7 @@ int aws_tls_ctx_options_init_default_server(
     (void)pkey;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot create a server on this platform.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif
 }
 
