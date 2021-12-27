@@ -173,7 +173,18 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
-    s2n_init();
+
+    /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
+     *
+     * By default, s2n uses an ataexit handler and doesn't fully clean up until the program exits.
+     * This can cause a crash if s2n is compiled into a shared library and
+     * that library is unloaded before the appexit handler runs. */
+    s2n_disable_atexit();
+
+    if (s2n_init() != S2N_SUCCESS) {
+        fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+        AWS_FATAL_ASSERT(0 && "s2n_init() failed");
+    }
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
