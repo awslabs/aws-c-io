@@ -49,13 +49,13 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     AWS_ZERO_STRUCT(*options);
 }
 
-#if !defined(AWS_OS_IOS)
-
 int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
+
+#if !defined(AWS_OS_IOS)
 
     aws_tls_ctx_options_init_default_client(options, allocator);
 
@@ -81,6 +81,15 @@ int aws_tls_ctx_options_init_client_mtls(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
+
+#else
+    (void)allocator;
+    (void)cert;
+    (void)pkey;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_path(
@@ -89,6 +98,7 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     const char *cert_path,
     const char *pkey_path) {
 
+#if !defined(AWS_OS_IOS)
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
@@ -113,6 +123,15 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
+
+#else
+    (void)allocator;
+    (void)cert_path;
+    (void)pkey_path;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
@@ -120,14 +139,13 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
 
-#    if defined(_WIN32) || defined(__APPLE__)
-    (void)options;
+#if defined(_WIN32) || defined(__APPLE__)
     (void)allocator;
     (void)pkcs11_options;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-#    else
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#else
 
     aws_tls_ctx_options_init_default_client(options, allocator);
 
@@ -195,57 +213,65 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
-#    endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
+#endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
 }
 
-#    if defined(__APPLE__)
 int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor) {
+
+#if defined(__APPLE__) && !defined(AWS_OS_IOS)
     options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
     if (!options->keychain_path) {
         return AWS_OP_ERR;
     }
 
     return AWS_OP_SUCCESS;
+#else
+    (void)options;
+    (void)keychain_path_cursor;
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
-#    endif /* __APPLE__ */
 
-#endif /* !AWS_OS_IOS */
+int aws_tls_ctx_options_init_client_mtls_from_system_path(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const char *cert_reg_path) {
 
 #ifdef _WIN32
-void aws_tls_ctx_options_init_client_mtls_from_system_path(
-    struct aws_tls_ctx_options *options,
-    struct aws_allocator *allocator,
-    const char *cert_reg_path) {
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+    aws_tls_ctx_options_init_default_client(options, allocator);
     options->system_certificate_path = cert_reg_path;
+    return AWS_OP_SUCCESS;
+#else
+    (void)allocator;
+    (void)cert_reg_path;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: System certificate path can only be set on Windows.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
-void aws_tls_ctx_options_init_default_server_from_system_path(
+int aws_tls_ctx_options_init_default_server_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_reg_path) {
-    aws_tls_ctx_options_init_client_mtls_from_system_path(options, allocator, cert_reg_path);
+    if (aws_tls_ctx_options_init_client_mtls_from_system_path(options, allocator, cert_reg_path)) {
+        return AWS_OP_ERR;
+    }
     options->verify_peer = false;
+    return AWS_OP_SUCCESS;
 }
-#endif /* _WIN32 */
 
-#ifdef __APPLE__
 int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *pkcs12_path,
     struct aws_byte_cursor *pkcs_pwd) {
-    AWS_ZERO_STRUCT(*options);
-    options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    options->verify_peer = true;
-    options->allocator = allocator;
-    options->max_fragment_size = g_aws_channel_max_fragment_size;
+
+#ifdef __APPLE__
+    aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->pkcs12, allocator, pkcs12_path)) {
         return AWS_OP_ERR;
@@ -257,6 +283,14 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     }
 
     return AWS_OP_SUCCESS;
+#else
+    (void)allocator;
+    (void)pkcs12_path;
+    (void)pkcs_pwd;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PKCS#12 files.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_pkcs12(
@@ -265,6 +299,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_byte_cursor *pkcs12,
     struct aws_byte_cursor *pkcs_pwd) {
 
+#ifdef __APPLE__
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_copy_from_cursor(&options->pkcs12, allocator, *pkcs12)) {
@@ -277,6 +312,14 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12(
     }
 
     return AWS_OP_SUCCESS;
+#else
+    (void)allocator;
+    (void)pkcs12;
+    (void)pkcs_pwd;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PKCS#12 files.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
 int aws_tls_ctx_options_init_server_pkcs12_from_path(
@@ -305,21 +348,27 @@ int aws_tls_ctx_options_init_server_pkcs12(
     return AWS_OP_SUCCESS;
 }
 
-#endif /* __APPLE__ */
-
-#if !defined(AWS_OS_IOS)
-
 int aws_tls_ctx_options_init_default_server_from_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path) {
+
+#if !defined(AWS_OS_IOS)
     if (aws_tls_ctx_options_init_client_mtls_from_path(options, allocator, cert_path, pkey_path)) {
         return AWS_OP_ERR;
     }
 
     options->verify_peer = false;
     return AWS_OP_SUCCESS;
+#else
+    (void)allocator;
+    (void)cert_path;
+    (void)pkey_path;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot create a server on this platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
 
 int aws_tls_ctx_options_init_default_server(
@@ -327,15 +376,23 @@ int aws_tls_ctx_options_init_default_server(
     struct aws_allocator *allocator,
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey) {
+
+#if !defined(AWS_OS_IOS)
     if (aws_tls_ctx_options_init_client_mtls(options, allocator, cert, pkey)) {
         return AWS_OP_ERR;
     }
 
     options->verify_peer = false;
     return AWS_OP_SUCCESS;
+#else
+    (void)allocator;
+    (void)cert;
+    (void)pkey;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot create a server on this platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
 }
-
-#endif /* AWS_OS_IOS */
 
 int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list) {
     options->alpn_list = aws_string_new_from_c_str(options->allocator, alpn_list);

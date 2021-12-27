@@ -268,13 +268,13 @@ AWS_IO_API void aws_tls_ctx_options_init_default_client(
  */
 AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
 
-#if !defined(AWS_OS_IOS)
-
 /**
  * Initializes options for use with mutual tls in client mode.
  * cert_path and pkey_path are paths to files on disk. cert_path
  * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
  * from disk and stored in buffers internally.
+ *
+ * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_tls_ctx_options *options,
@@ -286,6 +286,8 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
  * Initializes options for use with mutual tls in client mode.
  * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
  * armored.
+ *
+ * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
@@ -365,6 +367,8 @@ struct aws_tls_ctx_pkcs11_options {
  * Initializes options for use with mutual TLS in client mode,
  * where a PKCS#11 library provides access to the private key.
  *
+ * NOTE: This only works on Unix devices.
+ *
  * @param options           aws_tls_ctx_options to be initialized.
  * @param allocator         Allocator to use.
  * @param pkcs11_options    Options for using PKCS#11 (contents are copied)
@@ -374,14 +378,14 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options);
 
-#    ifdef __APPLE__
 /**
  * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
+ *
+ * NOTE: This only works on MacOS.
  */
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor);
-#    endif
 
 /**
  * Initializes options for use with in server mode.
@@ -406,37 +410,38 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey);
 
-#endif /* AWS_OS_IOS */
-
-#ifdef _WIN32
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * windows. cert_reg_path is the path to a system
+ * Initializes options for use with mutual tls in client mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls_from_system_path(
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_reg_path);
 
 /**
- * Initializes options for use with server mode. This function is only available on
- * windows. cert_reg_path is the path to a system
+ * Initializes options for use with server mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
-AWS_IO_API void aws_tls_ctx_options_init_default_server_from_system_path(
+AWS_IO_API int aws_tls_ctx_options_init_default_server_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_reg_path);
-#endif /* _WIN32 */
 
-#ifdef __APPLE__
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -445,9 +450,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_tls_ctx_options *options,
@@ -456,9 +463,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use in server mode. This function is only available on
- * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use in server mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -467,16 +476,17 @@ AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_password);
 
 /**
- * Initializes options for use in server mode. This function is only available on
- * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use in server mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *pkcs12,
     struct aws_byte_cursor *pkcs_password);
-#endif /* __APPLE__ */
 
 /**
  * Sets alpn list in the form <protocol1;protocol2;...>. A maximum of 4 protocols are supported.
