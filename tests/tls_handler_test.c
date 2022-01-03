@@ -788,7 +788,7 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     aws_tls_ctx_options_clean_up(&client_ctx_options);
-    
+
     return AWS_OP_SUCCESS;
 }
 
