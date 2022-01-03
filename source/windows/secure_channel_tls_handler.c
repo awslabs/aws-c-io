@@ -1897,7 +1897,6 @@ struct aws_tls_ctx *s_ctx_new(
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
             case AWS_IO_TLSv1:
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
             case AWS_IO_TLSv1_1:
