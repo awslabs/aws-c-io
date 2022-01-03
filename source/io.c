@@ -274,6 +274,10 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_PKCS11_CKR(CKR_PIN_TOO_WEAK),
     AWS_DEFINE_ERROR_PKCS11_CKR(CKR_PUBLIC_KEY_INVALID),
     AWS_DEFINE_ERROR_PKCS11_CKR(CKR_FUNCTION_REJECTED),
+
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_ERROR_IO_PINNED_EVENT_LOOP_MISMATCH,
+        "A connection was requested on an event loop that is not associated with the client bootstrap's event loop group."),
 };
 /* clang-format on */
 
