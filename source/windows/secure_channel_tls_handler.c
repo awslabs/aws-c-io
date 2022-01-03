@@ -119,19 +119,6 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
-static bool s_is_windows_version_at_least(OSVERSIONINFOEX *os_version) {
-    DWORDLONG condition_mask = 0;
-    VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_GREATER_EQUAL);
-    VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
-    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
-    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMINOR, VER_GREATER_EQUAL);
-
-    return VerifyVersionInfo(
-               os_version,
-               VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR,
-               condition_mask) != 0;
-}
-
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
@@ -142,13 +129,23 @@ bool aws_tls_is_alpn_available(void) {
         "probing OS to see what we're actually running on.");
     /* make sure we're on windows 8.1 or later. */
     OSVERSIONINFOEX os_version;
+    DWORDLONG condition_mask = 0;
+    VER_SET_CONDITION(condition_mask, VER_MAJORVERSION, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_MINORVERSION, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
+    VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMINOR, VER_GREATER_EQUAL);
+
     AWS_ZERO_STRUCT(os_version);
     os_version.dwMajorVersion = HIBYTE(_WIN32_WINNT_WIN8);
     os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
     os_version.wServicePackMajor = 0;
     os_version.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
 
-    if (s_is_windows_version_at_least(&os_version)) {
+    if (VerifyVersionInfo(
+            &os_version,
+            VER_MAJORVERSION | VER_MINORVERSION | VER_SERVICEPACKMAJOR | VER_SERVICEPACKMINOR,
+            condition_mask)) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: We're running on Windows 8.1 or later. ALPN is available.");
         return true;
     }
 
@@ -1908,15 +1905,10 @@ struct aws_tls_ctx *s_ctx_new(
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_CLIENT)
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
-#else
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "static: tls1.3 client support requested, but no tls1.3 support exists at build time");
-                aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-                goto cleanup;
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
                 break;
         }
     } else {
@@ -1934,15 +1926,10 @@ struct aws_tls_ctx *s_ctx_new(
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_SERVER)
                 secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
-#else
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "static: tls1.3 server support requested, but no tls1.3 support exists at build time");
-                aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-                goto cleanup;
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
                 break;
         }
     }
