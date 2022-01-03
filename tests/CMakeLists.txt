@@ -122,6 +122,7 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
+add_test_case(socket_pinned_event_loop)
 
 if (NOT BYO_CRYPTO)
     # Badssl-based tests (https://badssl.com/dashboard/) - use remote endpoints for now, later transition to
