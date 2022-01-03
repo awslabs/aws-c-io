@@ -5,7 +5,7 @@
 
 #include <aws/testing/aws_test_harness.h>
 
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 
 static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

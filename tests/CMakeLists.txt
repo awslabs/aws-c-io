@@ -1,6 +1,9 @@
 include(AwsTestHarness)
 enable_testing()
 
+# See PKCS11.md for instructions on running these tests
+option(ENABLE_PKCS11_TESTS "Build and run PKCS#11 tests" OFF)
+
 file(GLOB TEST_SRC "*.c")
 file(GLOB TEST_HDRS "*.h")
 file(GLOB TESTS ${TEST_HDRS} ${TEST_SRC})
@@ -113,7 +116,9 @@ add_test_case(test_pem_invalid_parse)
 add_test_case(test_pem_valid_data_invalid_parse)
 add_test_case(test_pem_invalid_in_chain_parse)
 
-add_test_case(test_pem_util_comments_around_pem_object)
+add_test_case(pem_sanitize_comments_around_pem_object_removed)
+add_test_case(pem_sanitize_empty_file_rejected)
+add_test_case(pem_sanitize_wrong_format_rejected)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
@@ -138,6 +143,7 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
     add_net_test_case(tls_client_channel_negotiation_error_self_signed)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
+    add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
     add_net_test_case(tls_client_channel_negotiation_no_verify_expired)
     add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
     add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
@@ -168,9 +174,9 @@ if (NOT BYO_CRYPTO)
     # Badssl - Secure uncommon suite
     # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based
     # TLS implementations
+    # We skip 1000san because the public badssl certificate is expired and we haven't migrated to internal hosting yet
     # We also defer the incomplete chain test for now until we can do some further study on how to get it to
     # properly fail on windows and osx.
-    add_net_test_case(tls_client_channel_negotiation_success_1000sans)
     add_net_test_case(tls_client_channel_negotiation_success_sha384)
     add_net_test_case(tls_client_channel_negotiation_success_sha512)
     add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
@@ -198,7 +204,6 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_server_hangup_during_negotiation)
     add_net_test_case(tls_client_channel_no_verify)
     add_net_test_case(test_tls_negotiation_timeout)
-    add_net_test_case(tls_double_channel)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
@@ -219,6 +224,8 @@ add_test_case(uri_no_query_parse)
 add_test_case(uri_minimal_parse)
 add_test_case(uri_root_only_parse)
 add_test_case(uri_path_and_query_only_parse)
+add_test_case(uri_userinfo_no_password_parse)
+add_test_case(uri_empty_user_parse)
 add_test_case(uri_query_params)
 add_test_case(uri_invalid_scheme_parse)
 add_test_case(uri_invalid_port_parse)
@@ -228,8 +235,6 @@ add_test_case(uri_builder_from_string)
 add_test_case(test_uri_encode_path_rfc3986)
 add_test_case(test_uri_encode_query)
 add_test_case(test_uri_decode)
-
-add_test_case(test_home_directory_not_null)
 
 add_test_case(test_input_stream_memory_simple)
 add_test_case(test_input_stream_memory_iterate)
@@ -267,6 +272,32 @@ add_test_case(test_exponential_backoff_retry_invalid_options)
 add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
+
+# See PKCS11.md for instructions on running these tests
+if (ENABLE_PKCS11_TESTS)
+    add_test_case(pkcs11_lib_sanity_check)
+    add_test_case(pkcs11_lib_behavior_default)
+    add_test_case(pkcs11_lib_behavior_omit_initialize)
+    add_test_case(pkcs11_lib_behavior_strict_initialize_finalize)
+    add_test_case(pkcs11_find_private_key)
+    add_test_case(pkcs11_find_private_key_for_different_types)
+    add_test_case(pkcs11_find_multiple_private_key)
+    add_test_case(pkcs11_sign_sha1)
+    add_test_case(pkcs11_sign_sha224)
+    add_test_case(pkcs11_sign_sha256)
+    add_test_case(pkcs11_sign_sha384)
+    add_test_case(pkcs11_sign_sha512)
+    add_test_case(pkcs11_decrypt)
+    add_test_case(pkcs11_find_slot)
+    add_test_case(pkcs11_find_slot_many_tokens)
+    add_test_case(pkcs11_session_tests)
+    add_test_case(pkcs11_login_tests)
+
+    # TLS with PKCS#11 not currently supported on every platform
+    if (USE_S2N)
+        add_test_case(pkcs11_tls_negotiation_succeeds)
+    endif()
+endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
