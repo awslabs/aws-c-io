@@ -158,24 +158,6 @@ static void s_socket_handler_test_server_setup_callback(
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
-static void s_socket_pinning_test_client_setup_callback(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
-
-    (void)bootstrap;
-    (void)error_code;
-
-    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
-
-    aws_mutex_lock(setup_test_args->mutex);
-    setup_test_args->channel = channel;
-    aws_mutex_unlock(setup_test_args->mutex);
-
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
-}
-
 static void s_socket_handler_test_client_shutdown_callback(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -354,11 +336,19 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
 
     s_socket_common_tester_init(allocator, &c_tester);
 
+    struct aws_channel_handler *outgoing_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
+    ASSERT_NOT_NULL(outgoing_rw_handler);
+
+    struct aws_channel_handler *incoming_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
+    ASSERT_NOT_NULL(outgoing_rw_handler);
+
     struct socket_test_args incoming_args;
-    ASSERT_SUCCESS(s_socket_test_args_init(&incoming_args, &c_tester, NULL));
+    ASSERT_SUCCESS(s_socket_test_args_init(&incoming_args, &c_tester, incoming_rw_handler));
 
     struct socket_test_args outgoing_args;
-    ASSERT_SUCCESS(s_socket_test_args_init(&outgoing_args, &c_tester, NULL));
+    ASSERT_SUCCESS(s_socket_test_args_init(&outgoing_args, &c_tester, outgoing_rw_handler));
 
     struct local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
@@ -378,7 +368,7 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
     channel_options.host_name = local_server_tester.endpoint.address;
     channel_options.port = 0;
     channel_options.socket_options = &local_server_tester.socket_options;
-    channel_options.setup_callback = s_socket_pinning_test_client_setup_callback;
+    channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
     channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
     channel_options.enable_read_back_pressure = false;
     channel_options.requested_event_loop = pinned_event_loop;
