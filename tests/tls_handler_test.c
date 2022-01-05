@@ -2021,7 +2021,7 @@ static void s_import_cert(void *ctx) {
 #    endif /* !AWS_OS_IOS */
 }
 
-#    define NUM_PAIRS 1
+#    define NUM_PAIRS 8
 static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* temporarily disable this on apple until we can fix importing to be more robust */
