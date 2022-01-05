@@ -135,11 +135,23 @@ static void s_socket_handler_test_server_setup_callback(
 
     setup_test_args->channel = channel;
 
+<<<<<<< HEAD
     struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
     aws_channel_slot_insert_end(channel, rw_slot);
 
     aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
     aws_atomic_store_ptr(&setup_test_args->rw_slot, rw_slot);
+=======
+    if (setup_test_args->rw_handler != NULL) {
+        struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+        aws_channel_slot_insert_end(channel, rw_slot);
+
+        aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+        aws_atomic_store_ptr(&setup_test_args->rw_slot, rw_slot);
+    }
+
+    aws_mutex_unlock(setup_test_args->mutex);
+>>>>>>> main
 
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
@@ -317,6 +329,88 @@ static int s_local_server_tester_clean_up(struct local_server_tester *tester) {
     return AWS_OP_SUCCESS;
 }
 
+<<<<<<< HEAD
+=======
+static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    s_socket_common_tester_init(allocator, &c_tester);
+
+    struct aws_channel_handler *outgoing_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
+    ASSERT_NOT_NULL(outgoing_rw_handler);
+
+    struct aws_channel_handler *incoming_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
+    ASSERT_NOT_NULL(outgoing_rw_handler);
+
+    struct socket_test_args incoming_args;
+    ASSERT_SUCCESS(s_socket_test_args_init(&incoming_args, &c_tester, incoming_rw_handler));
+
+    struct socket_test_args outgoing_args;
+    ASSERT_SUCCESS(s_socket_test_args_init(&outgoing_args, &c_tester, outgoing_rw_handler));
+
+    struct local_server_tester local_server_tester;
+    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true));
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = NULL,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    struct aws_event_loop *pinned_event_loop = aws_event_loop_group_get_next_loop(c_tester.el_group);
+
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
+    channel_options.enable_read_back_pressure = false;
+    channel_options.requested_event_loop = pinned_event_loop;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_pinned_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_pinned_channel_setup_predicate, &outgoing_args));
+
+    /* Verify the client channel was placed on the requested event loop */
+    ASSERT_PTR_EQUALS(pinned_event_loop, aws_channel_get_event_loop(outgoing_args.channel));
+
+    ASSERT_SUCCESS(aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS));
+    ASSERT_SUCCESS(aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS));
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &outgoing_args));
+    aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &incoming_args));
+
+    aws_mutex_unlock(&c_tester.mutex);
+
+    /* clean up */
+    ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
+
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socket_pinned_event_loop, s_socket_pinned_event_loop_test)
+
+>>>>>>> main
 static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
