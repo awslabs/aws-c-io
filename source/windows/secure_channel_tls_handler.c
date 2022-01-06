@@ -1963,6 +1963,9 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
 
+    /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
+    secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
+
     /* if using a system store. */
     if (options->system_certificate_path) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: assuming certificate is in a system store, loading now.");
