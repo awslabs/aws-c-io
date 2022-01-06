@@ -10,9 +10,19 @@ unittests.conf: configuration for generating unittests.crt
 unittests.p8: private key, pkcs#8 syntax
 unittests.p12: pkcs#12 file bundling the certificate and private key. Password is "1234"
 
+certchain.key: root key
+certchain.crt: root certificate
+certchain.pem: certificate chain containing the root certificate and intermediate certificate
+certchainroot.cnf: configuration for generating root certificate
+certchain.cnf: configuration for generating intermediate certificate
+
 Apple won't trust any certificate whose lifetime is over 825 days.
 Once it expires unit tests will start failing and it will need to be updated like so:
 
 $ openssl req -x509 -new -key unittests.key -config unittests.conf -out unittests.crt -days 824
 $ openssl pkcs8 -topk8 -out unittests.p8 -in unittests.key -nocrypt
 $ openssl pkcs12 -export -out unittests.p12 -inkey unittests.key -in unittests.crt -password pass:1234
+Add note about need to change hex checks in pki_utils_test.c
+
+Add notes about how to create cert chain CA and intermediate certificates
+Instructions are located here: https://jamielinux.com/docs/openssl-certificate-authority/create-the-root-pair.html
