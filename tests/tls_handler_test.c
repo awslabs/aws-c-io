@@ -64,41 +64,29 @@ struct tls_opt_tester {
     struct aws_tls_connection_options opt;
 };
 
-static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
-
-#    ifdef __APPLE__
-    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
-    ASSERT_SUCCESS(
-        aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
-#    else
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
-#    endif /* __APPLE__ */
-    aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
-    tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
-    ASSERT_NOT_NULL(tester->ctx);
-
-    aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_certificate_chain_server_opt_tester_init(
+static int s_tls_server_opt_tester_init(
     struct aws_allocator *allocator,
-    struct tls_opt_tester *tester) {
-    printf("TESTING DEBUG TESTING starting s_tls_certificate_chain_server_opt_tester_init\n");
+    struct tls_opt_tester *tester,
+    bool enable_certificate_chain_test) {
 
 #    ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
 #    else
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "certchain.crt", "certchain.key"));
+    if (enable_certificate_chain_test) {
+        ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
+            &tester->ctx_options, allocator, "certchain.crt", "certchain.key"));
+    } else {
+        ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
+            &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
+    }
 #    endif /* __APPLE__ */
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
     printf("TESTING DEBUG TESTING starting ASSERT_NOT_NULL, fails on this check\n");
     ASSERT_NOT_NULL(tester->ctx);
+
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
     return AWS_OP_SUCCESS;
 }
@@ -398,45 +386,11 @@ static int s_tls_local_server_tester_init(
     struct tls_test_args *args,
     struct tls_common_tester *tls_c_tester,
     bool enable_back_pressure,
+    bool enable_certificate_chain_test,
     int server_index) {
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
-    aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
-    tester->socket_options.connect_timeout_ms = 3000;
-    tester->socket_options.type = AWS_SOCKET_STREAM;
-    tester->socket_options.domain = AWS_SOCKET_LOCAL;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp, server_index);
-    tester->server_bootstrap = aws_server_bootstrap_new(allocator, tls_c_tester->el_group);
-    ASSERT_NOT_NULL(tester->server_bootstrap);
-
-    struct aws_server_socket_channel_bootstrap_options bootstrap_options = {
-        .bootstrap = tester->server_bootstrap,
-        .enable_read_back_pressure = enable_back_pressure,
-        .port = tester->endpoint.port,
-        .host_name = tester->endpoint.address,
-        .socket_options = &tester->socket_options,
-        .incoming_callback = s_tls_handler_test_server_setup_callback,
-        .shutdown_callback = s_tls_handler_test_server_shutdown_callback,
-        .destroy_callback = s_tls_handler_test_server_listener_destroy_callback,
-        .tls_options = &tester->server_tls_opt_tester.opt,
-        .user_data = args,
-    };
-    tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
-    ASSERT_NOT_NULL(tester->listener);
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_tls_certificate_chain_local_server_tester_init(
-    struct aws_allocator *allocator,
-    struct tls_local_server_tester *tester,
-    struct tls_test_args *args,
-    struct tls_common_tester *tls_c_tester,
-    bool enable_back_pressure,
-    int server_index) {
-    AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(s_tls_certificate_chain_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
+    ASSERT_SUCCESS(
+        s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester, enable_certificate_chain_test));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
@@ -562,7 +516,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
 
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true, 1));
+    ASSERT_SUCCESS(
+        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true, false, 1));
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
         allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len / 2, &outgoing_rw_args);
@@ -1455,7 +1410,7 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
 
     struct tls_local_server_tester local_server_tester;
     ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, false, 1));
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
@@ -1496,8 +1451,8 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
-    /* no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
-     * wait for the event to fire. */
+    /* no shutdown on the client necessary here (it should have been triggered by shutting down the other side).
+     * just wait for the event to fire. */
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
@@ -1604,7 +1559,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
 
     struct tls_local_server_tester local_server_tester;
     ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, false, 1));
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
@@ -1749,7 +1704,7 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
 
     struct tls_local_server_tester local_server_tester;
     ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, false, 1));
 
     struct aws_channel_handler *outgoing_rw_handler =
         rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
@@ -1869,8 +1824,8 @@ static int s_tls_certificate_chain_test(struct aws_allocator *allocator, void *c
 
     printf("TESTING DEBUG TESTING starting s_tls_certificate_chain_local_server_tester_init \n");
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_tls_certificate_chain_local_server_tester_init(
-        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+    ASSERT_SUCCESS(
+        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, true, 1));
     printf("TESTING DEBUG TESTING post s_tls_certificate_chain_local_server_tester_init \n");
 
     struct tls_opt_tester client_tls_opt_tester;
