@@ -1,0 +1,865 @@
+openssl x509 -in server.crt -text -noout
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            dc:df:4f:6e:e2:3e:25:ee
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=US, ST=Washington, L=Seattle, O=Amazon, OU=SDKs, CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+        Validity
+            Not Before: Jan  7 00:11:51 2022 GMT
+            Not After : Apr 10 00:11:51 2024 GMT
+        Subject: C=US, ST=Washington, L=Seattle, O=Amazon, OU=SDKs, CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:d6:81:43:c2:fb:ee:c0:fc:1d:49:db:c7:5b:5b:
+                    5b:2c:2e:f5:50:d7:f7:4f:f7:94:ba:9b:a7:0d:fa:
+                    f6:33:9f:79:f3:b4:de:ee:ef:ce:69:66:33:9a:d3:
+                    88:ba:c7:c1:74:82:3d:5e:56:ea:d4:de:d2:3b:73:
+                    cd:3f:1f:48:17:91:f1:56:dd:2b:b7:e1:8c:e0:80:
+                    62:e4:6e:2b:7c:9b:7f:1c:34:24:20:f4:e6:d7:46:
+                    0d:ba:be:89:e2:b0:c4:ce:6c:03:5c:08:69:c7:0b:
+                    8c:24:24:d1:f7:29:1e:da:6d:5e:a2:e6:19:3f:0e:
+                    b1:2f:63:35:d3:62:12:65:54:5f:b8:9c:48:62:87:
+                    ad:f9:d1:26:f0:07:43:7d:85:1a:dd:41:b1:fe:4c:
+                    86:f1:95:a4:d0:53:3f:26:5f:20:c1:9c:66:84:fd:
+                    f1:8c:b1:0d:60:f6:e5:0a:e0:b4:49:83:2f:39:d0:
+                    11:e0:81:11:28:de:74:f1:24:22:2e:2f:86:6a:29:
+                    f0:33:11:e2:fe:1b:01:3d:8b:40:d2:b3:43:87:bb:
+                    ec:3a:49:8d:cb:d5:20:db:dc:08:26:9b:a2:56:0f:
+                    78:9b:f9:9a:83:fc:63:ed:ff:34:ca:ac:b1:00:07:
+                    11:89:81:b6:1c:5a:f7:f4:89:9e:60:a3:04:ba:f3:
+                    a4:ef
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication
+            X509v3 Subject Alternative Name: 
+                DNS:localhost, IP Address:127.0.0.1
+    Signature Algorithm: sha256WithRSAEncryption
+         2b:dc:56:e7:37:c7:6f:af:30:b5:b1:5d:28:4f:8e:3d:85:99:
+         e9:81:5f:12:c2:6d:b5:41:30:bb:fe:19:fe:0f:36:45:5a:fa:
+         c7:d5:1f:bd:85:05:a8:ad:b1:a9:a7:d7:44:ea:d6:8f:70:9c:
+         70:93:b4:0f:33:6a:18:6a:c4:c5:8c:3e:5c:60:23:a0:b5:e6:
+         54:f1:f5:f7:9e:fd:9f:52:6f:75:91:2c:27:63:7e:ff:3f:47:
+         e4:76:11:0b:f1:87:77:db:12:0a:30:09:07:3b:03:f3:57:77:
+         b8:41:55:9b:91:88:86:1f:d5:89:9f:7b:db:3a:14:27:9b:eb:
+         6f:74:2f:69:0e:12:f5:bb:7c:14:73:7a:83:7e:16:a0:fb:ef:
+         28:61:b2:a5:05:29:45:b4:f2:70:d3:50:80:e3:4f:c8:ba:96:
+         3e:31:a4:70:a5:1d:c4:6b:33:80:47:dd:1b:78:d2:bb:98:8c:
+         89:5c:28:64:45:7b:90:87:3a:44:34:62:e4:bd:e6:49:eb:12:
+         d7:b0:71:88:c0:4d:32:18:ef:12:e2:01:24:01:ec:cf:41:6d:
+         40:b8:b4:a3:76:bd:96:6d:19:a8:57:56:a6:3e:00:6b:cc:00:
+         f3:29:6f:8d:05:17:66:02:7f:d9:8b:fc:94:91:79:18:5a:82:
+         9e:c0:65:16
+
+
+
+
+         Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 4097 (0x1001)
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=US, ST=Washington, L=Seattle, O=Amazon, OU=SDKs, CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+        Validity
+            Not Before: Jan  7 01:10:44 2022 GMT
+            Not After : Apr 10 01:10:44 2024 GMT
+        Subject: C=US, ST=Washington, O=Amazon, CN=localhostserver
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:cb:ed:98:3a:b3:58:a7:b4:82:e6:36:8a:3d:36:
+                    57:17:36:08:6c:5d:47:46:f3:62:72:10:c1:e7:94:
+                    e3:27:3a:77:89:45:82:99:32:1a:d9:9d:01:bd:e1:
+                    5d:87:6d:de:ac:82:35:e6:d9:44:ab:19:42:bd:75:
+                    9d:8d:73:03:cd:24:f4:bf:ef:65:49:cd:94:fa:b2:
+                    bd:2c:09:9c:b0:87:d1:0f:7b:84:a8:bb:5b:5f:82:
+                    13:78:cb:40:b2:79:01:e1:8f:64:21:ec:c7:05:b5:
+                    01:9b:0c:7b:6d:69:32:2d:a8:7c:11:59:c4:01:14:
+                    09:9f:d1:1b:d8:0c:ec:21:98:3f:8a:c6:75:ca:67:
+                    28:00:8a:70:2f:8d:3a:fd:81:60:29:30:c0:c0:99:
+                    a7:82:f7:56:0d:27:2f:77:28:c1:a3:c2:c1:ba:40:
+                    df:1e:0c:3c:84:41:4d:9d:75:cc:0b:ef:e1:fe:2f:
+                    46:4b:d6:ca:86:b5:fe:3e:39:81:67:30:e3:0c:a1:
+                    c2:6d:e4:72:5e:a8:6e:a3:95:59:55:84:5e:fe:2e:
+                    eb:9a:97:da:a2:45:77:df:93:a3:64:94:7a:64:f2:
+                    b3:a6:30:87:e7:40:dc:f7:d2:7e:2e:cf:9a:03:8f:
+                    99:90:7e:c3:0c:bf:3b:95:62:fd:25:88:13:ec:1d:
+                    d1:1b
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            Netscape Cert Type: 
+                SSL Server
+            Netscape Comment: 
+                OpenSSL Generated Server Certificate
+            X509v3 Subject Key Identifier: 
+                8F:97:6F:B7:3B:AF:C6:22:1B:12:7B:B7:77:F7:9C:4F:2E:C2:56:95
+            X509v3 Authority Key Identifier: 
+                DirName:/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+                serial:DC:DF:4F:6E:E2:3E:25:EE
+
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication
+    Signature Algorithm: sha256WithRSAEncryption
+         c3:e8:48:4b:e0:48:50:7c:77:7d:ad:88:56:4f:43:e9:3d:90:
+         8d:31:29:09:33:21:86:e7:3b:d2:c7:45:ee:a5:db:d3:c4:4a:
+         77:5b:58:b4:e4:8a:96:c5:96:b2:b1:53:01:05:db:02:f3:18:
+         5e:8c:e7:9b:28:f0:8f:56:74:10:ce:2e:b8:85:06:7c:ae:6e:
+         1a:9a:1a:ea:18:37:8d:2f:58:a7:68:0b:f6:bc:2f:f1:c8:0a:
+         fd:e3:74:52:71:04:96:62:10:97:ef:c4:24:17:53:d2:a9:dd:
+         00:31:b5:a3:8e:fc:69:91:aa:7e:9e:e7:08:86:83:f5:ec:0c:
+         90:32:10:19:fe:46:e3:cf:ad:bb:63:00:a7:b0:e6:81:e7:8b:
+         c8:99:69:ea:e5:9e:dc:a9:77:6a:d7:cc:e6:4e:1f:0f:be:f7:
+         9d:2b:07:22:6d:87:3c:10:cb:ca:83:27:ec:39:87:b8:b6:d8:
+         11:bb:f3:bd:23:7f:7e:e4:86:a9:cf:37:23:54:0e:43:f6:6a:
+         40:a4:8d:23:20:f6:c3:8a:ca:75:3d:1d:4b:eb:77:8e:8d:e7:
+         2e:b9:07:25:0f:a6:2d:e7:99:49:bd:63:d7:35:92:6f:30:81:
+         f5:6e:cb:d4:03:b1:af:5c:bc:df:6e:3d:65:27:6a:31:2a:e9:
+         82:44:32:af
+
+
+88665a375d2b:Downloads sbstevek$ openssl x509 -in AmazonRootCA1.pem -text -noout
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            06:6c:9f:cf:99:bf:8c:0a:39:e2:f0:78:8a:43:e6:96:36:5b:ca
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C = US, O = Amazon, CN = Amazon Root CA 1
+        Validity
+            Not Before: May 26 00:00:00 2015 GMT
+            Not After : Jan 17 00:00:00 2038 GMT
+        Subject: C = US, O = Amazon, CN = Amazon Root CA 1
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                RSA Public-Key: (2048 bit)
+                Modulus:
+                    00:b2:78:80:71:ca:78:d5:e3:71:af:47:80:50:74:
+                    7d:6e:d8:d7:88:76:f4:99:68:f7:58:21:60:f9:74:
+                    84:01:2f:ac:02:2d:86:d3:a0:43:7a:4e:b2:a4:d0:
+                    36:ba:01:be:8d:db:48:c8:07:17:36:4c:f4:ee:88:
+                    23:c7:3e:eb:37:f5:b5:19:f8:49:68:b0:de:d7:b9:
+                    76:38:1d:61:9e:a4:fe:82:36:a5:e5:4a:56:e4:45:
+                    e1:f9:fd:b4:16:fa:74:da:9c:9b:35:39:2f:fa:b0:
+                    20:50:06:6c:7a:d0:80:b2:a6:f9:af:ec:47:19:8f:
+                    50:38:07:dc:a2:87:39:58:f8:ba:d5:a9:f9:48:67:
+                    30:96:ee:94:78:5e:6f:89:a3:51:c0:30:86:66:a1:
+                    45:66:ba:54:eb:a3:c3:91:f9:48:dc:ff:d1:e8:30:
+                    2d:7d:2d:74:70:35:d7:88:24:f7:9e:c4:59:6e:bb:
+                    73:87:17:f2:32:46:28:b8:43:fa:b7:1d:aa:ca:b4:
+                    f2:9f:24:0e:2d:4b:f7:71:5c:5e:69:ff:ea:95:02:
+                    cb:38:8a:ae:50:38:6f:db:fb:2d:62:1b:c5:c7:1e:
+                    54:e1:77:e0:67:c8:0f:9c:87:23:d6:3f:40:20:7f:
+                    20:80:c4:80:4c:3e:3b:24:26:8e:04:ae:6c:9a:c8:
+                    aa:0d
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Basic Constraints: critical
+                CA:TRUE
+            X509v3 Key Usage: critical
+                Digital Signature, Certificate Sign, CRL Sign
+            X509v3 Subject Key Identifier: 
+                84:18:CC:85:34:EC:BC:0C:94:94:2E:08:59:9C:C7:B2:10:4E:0A:08
+    Signature Algorithm: sha256WithRSAEncryption
+         98:f2:37:5a:41:90:a1:1a:c5:76:51:28:20:36:23:0e:ae:e6:
+         28:bb:aa:f8:94:ae:48:a4:30:7f:1b:fc:24:8d:4b:b4:c8:a1:
+         97:f6:b6:f1:7a:70:c8:53:93:cc:08:28:e3:98:25:cf:23:a4:
+         f9:de:21:d3:7c:85:09:ad:4e:9a:75:3a:c2:0b:6a:89:78:76:
+         44:47:18:65:6c:8d:41:8e:3b:7f:9a:cb:f4:b5:a7:50:d7:05:
+         2c:37:e8:03:4b:ad:e9:61:a0:02:6e:f5:f2:f0:c5:b2:ed:5b:
+         b7:dc:fa:94:5c:77:9e:13:a5:7f:52:ad:95:f2:f8:93:3b:de:
+         8b:5c:5b:ca:5a:52:5b:60:af:14:f7:4b:ef:a3:fb:9f:40:95:
+         6d:31:54:fc:42:d3:c7:46:1f:23:ad:d9:0f:48:70:9a:d9:75:
+         78:71:d1:72:43:34:75:6e:57:59:c2:02:5c:26:60:29:cf:23:
+         19:16:8e:88:43:a5:d4:e4:cb:08:fb:23:11:43:e8:43:29:72:
+         62:a1:a9:5d:5e:08:d4:90:ae:b8:d8:ce:14:c2:d0:55:f2:86:
+         f6:c4:93:43:77:66:61:c0:b9:e8:41:d7:97:78:60:03:6e:4a:
+         72:ae:a5:d1:7d:ba:10:9e:86:6c:1b:8a:b9:59:33:f8:eb:c4:
+         90:be:f1:b9
+
+
+
+         sbstevek$ openssl x509 -in certChainTestThing.cert.pem -text -noout
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            e4:2e:b9:6a:da:62:ea:6e:d9:71:6f:a8:0a:fa:b9:ec:87:4c:13:46
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: OU = Amazon Web Services O=Amazon.com Inc. L=Seattle ST=Washington C=US
+        Validity
+            Not Before: Jan 10 18:40:37 2022 GMT
+            Not After : Dec 31 23:59:59 2049 GMT
+        Subject: CN = AWS IoT Certificate
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                RSA Public-Key: (2048 bit)
+                Modulus:
+                    00:bf:f5:07:3c:01:32:0d:70:e9:7d:d7:a7:33:3c:
+                    83:66:37:ec:24:5f:f6:a2:25:3b:df:21:65:d5:89:
+                    88:a5:ae:38:f7:ad:f0:fe:82:c8:8c:53:53:df:88:
+                    75:73:ed:23:d4:37:c5:1f:c1:cb:09:09:fe:bf:eb:
+                    1e:9f:db:ba:69:23:40:d7:0c:eb:01:3d:39:55:a6:
+                    23:de:2f:ea:0b:a5:ed:bd:97:27:ab:23:68:a1:54:
+                    d3:0d:8d:0e:9d:d1:69:99:d4:b5:09:9f:3e:2b:2a:
+                    b6:69:be:ba:eb:a8:44:5d:07:f2:9b:ef:b7:2e:fd:
+                    fd:ac:78:92:79:2b:40:f2:14:66:a6:0a:34:a9:a8:
+                    6a:3d:36:ca:7c:9a:af:14:0b:33:e4:72:d5:dd:f6:
+                    a2:20:98:e2:2c:c5:b9:76:04:8a:8e:be:6e:aa:7b:
+                    78:82:62:79:97:01:25:0c:19:77:4c:05:3e:a4:e4:
+                    ff:99:28:b0:36:c1:33:60:92:c6:8f:ff:a1:42:5d:
+                    2a:d9:65:dd:20:83:3f:b8:52:47:a7:12:e3:d7:ac:
+                    95:7d:1a:80:80:36:ea:65:84:2b:6b:ef:04:8a:c7:
+                    3a:ff:e2:60:f7:6b:45:13:a3:0c:aa:1e:7e:6b:4a:
+                    fe:65:ef:d5:d7:0d:83:92:0b:7e:92:98:cb:88:8a:
+                    fd:99
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Authority Key Identifier: 
+                keyid:54:71:49:4B:6C:5E:D0:2B:6C:2D:0D:EB:66:0B:F5:B8:39:6F:1C:3A
+
+            X509v3 Subject Key Identifier: 
+                26:1D:A0:31:3F:CA:C1:2F:5D:D4:B6:EA:00:81:74:DF:F5:48:3A:99
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Key Usage: critical
+                Digital Signature
+    Signature Algorithm: sha256WithRSAEncryption
+         35:bc:3a:dc:69:16:21:cc:f6:e9:62:af:5f:a2:cc:4d:df:82:
+         13:da:cb:34:10:1f:9a:77:d7:44:94:be:9e:b1:fa:bc:26:75:
+         44:d6:11:fb:16:b5:00:52:80:47:66:d7:7f:0f:7b:c1:48:a1:
+         b2:1b:e5:87:b6:bf:b8:98:5a:2d:d7:88:e7:9b:01:4d:42:13:
+         f9:4e:1b:ad:b3:94:83:78:28:d4:7e:55:60:b0:d1:66:3b:7f:
+         06:8a:bc:99:30:5a:e6:02:9e:c8:4b:d8:a5:bc:03:ca:cb:8c:
+         ac:99:a5:77:e2:c8:49:30:ef:41:26:ee:c8:6d:81:8a:6b:97:
+         4b:2d:b3:11:b3:87:ca:12:05:7c:b6:cf:63:ab:27:9f:53:34:
+         01:3a:39:64:a0:b2:04:97:03:91:56:50:dc:34:d0:d5:e0:74:
+         5c:e5:c6:8f:cc:4d:b8:12:08:0a:dc:1a:09:83:73:01:53:6b:
+         12:eb:f0:53:96:9f:15:95:45:ac:91:27:c3:d3:f9:e7:8b:e5:
+         36:10:9a:98:29:2c:a8:1c:be:0e:e4:18:9d:17:b2:e2:61:5b:
+         28:ea:d3:41:eb:c1:c8:bb:c4:01:c6:0d:46:cf:bc:02:44:15:
+         78:99:0d:5c:d6:37:ba:b3:fc:24:a8:5e:97:73:54:97:24:46:
+         13:dd:a3:f2
+88665a375d2b:connect_device_package (4) sbstevek$ 
+
+
+
+
+FAILING USING NEW CERTS
+
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [aws-c-common] - static: libnuma.so failed to load
+[DEBUG] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [libcrypto_resolve] - searching process and loaded modules
+[DEBUG] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [libcrypto_resolve] - found static aws-lc HMAC symbols
+[DEBUG] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [libcrypto_resolve] - found static aws-lc libcrypto 1.1.1 EVP_MD symbols
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [tls-handler] - static: Initializing TLS using s2n.
+[DEBUG] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [tls-handler] - ctx: Based on OS, we detected the default PKI path as /etc/ssl/certs, and ca file as /etc/pki/tls/certs/ca-bundle.crt
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xaddf70: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xaddf70: Using eventfd for cross-thread notifications.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xaddf70: eventfd descriptor 5.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xaddf70: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0130: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0130: Using eventfd for cross-thread notifications.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0130: eventfd descriptor 7.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: subscribing to events on fd 5
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0130: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0cc0: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0cc0: Using eventfd for cross-thread notifications.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff5aab700] [event-loop] - id=0xae0130: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0cc0: eventfd descriptor 9.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff5aab700] [event-loop] - id=0xae0130: subscribing to events on fd 7
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0cc0: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff5aab700] [event-loop] - id=0xae0130: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff5aab700] [event-loop] - id=0xae0130: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0d30: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0d30: Using eventfd for cross-thread notifications.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0d30: eventfd descriptor 11.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: subscribing to events on fd 9
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae0d30: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1680: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: main loop started
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1680: Using eventfd for cross-thread notifications.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1680: eventfd descriptor 13.
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: subscribing to events on fd 11
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1680: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1f50: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007fffe75fe700] [event-loop] - id=0xae1680: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe75fe700] [event-loop] - id=0xae1680: subscribing to events on fd 13
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1f50: Using eventfd for cross-thread notifications.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1f50: eventfd descriptor 15.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe75fe700] [event-loop] - id=0xae1680: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe75fe700] [event-loop] - id=0xae1680: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae1f50: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae2820: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: subscribing to events on fd 15
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae2820: Using eventfd for cross-thread notifications.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae2820: eventfd descriptor 17.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae2820: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe61fc700] [event-loop] - id=0xae2820: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe61fc700] [event-loop] - id=0xae2820: subscribing to events on fd 17
+[INFO] [2022-01-10T19:21:46Z] [00007fffe61fc700] [event-loop] - id=0xae2820: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe61fc700] [event-loop] - id=0xae2820: waiting for a maximum of 100000 ms
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: Initializing edge-triggered epoll
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: Using eventfd for cross-thread notifications.
+[TRACE] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: eventfd descriptor 19.
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: Starting event-loop thread.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: main loop started
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: subscribing to events on fd 19
+[INFO] [2022-01-10T19:21:46Z] [00007ffff7fe6280] [dns] - id=0xae36e0: Initializing default host resolver with 1 max host entries.
+[INFO] [2022-01-10T19:21:46Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: default timeout 100000, and max events to process per tick 100
+[TRACE] [2022-01-10T19:21:46Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 100000 ms
+TESTING DEBUG TESTING secure_channel_tls_handler.c setting up 2nd
+TESTING DEBUG TESTING check aws_text_is_utf8 certificate
+TESTING DEBUG TESTING check aws_text_is_utf8 private_key
+TESTING DEBUG TESTING start s2n_config_add_cert_chain_and_key
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff5aab700] [event-loop] - id=0xae0130: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff5aab700] [event-loop] - id=0xae0130: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff5aab700] [event-loop] - id=0xae0130: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff5aab700] [event-loop] - id=0xae0130: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe75fe700] [event-loop] - id=0xae1680: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe75fe700] [event-loop] - id=0xae1680: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff50aa700] [event-loop] - id=0xae0cc0: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe61fc700] [event-loop] - id=0xae2820: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with -1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe75fe700] [event-loop] - id=0xae1680: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe7fff700] [event-loop] - id=0xae0d30: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe61fc700] [event-loop] - id=0xae2820: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe61fc700] [event-loop] - id=0xae2820: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe61fc700] [event-loop] - id=0xae2820: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe75fe700] [event-loop] - id=0xae1680: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 100000 ms
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [tls-handler] - ctx: Certificate and key have been set, setting them up now.
+TESTING DEBUG TESTING done s2n_config_add_cert_chain_and_key
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [tls-handler] - ctx: Setting ALPN list h2;http/1.1
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [channel-bootstrap] - id=0xae7b80: Initializing server bootstrap with event-loop group 0xadd2f0
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [channel-bootstrap] - id=(nil): attempting to initialize a new server socket listener for testsock1641842510115505135_1.sock:0
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [channel-bootstrap] - id=0x7fffffffd6a8: using tls on listener
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xae6528 fd=21: initializing with domain 2 and type 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xae6528 fd=21: setting socket options to: keep-alive 0, keep idle 0, keep-alive interval 0, keep-alive probe count 0.
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xae6528 fd=21: binding to testsock1641842510115505135_1.sock:0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xae6528 fd=21: successfully bound
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xae6528 fd=21: successfully listening
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [event-loop] - id=0xae1f50: subscribing to events on fd 21
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [channel-bootstrap] - id=0xae7f80: Initializing client bootstrap with event-loop group 0xadd2f0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [channel-bootstrap] - id=0xae7f80: attempting to initialize a new client channel to testsock1641842510115505135_1.sock:0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xaee360 fd=22: initializing with domain 2 and type 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xaee360 fd=22: setting socket options to: keep-alive 0, keep idle 0, keep-alive interval 0, keep-alive probe count 0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xaee360 fd=22: beginning connect.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xaee360 fd=22: connecting to endpoint testsock1641842510115505135_1.sock:0.
+[INFO] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [socket] - id=0xaee360 fd=22: connected immediately, not scheduling timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: Scheduling task 0xaeb1a0 cross-thread for timestamp 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff7fe6280] [event-loop] - id=0xae30f0: Waking up event-loop thread
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: activity on fd 21, invoking handler.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0xae6528 fd=21: listening event received
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0xae6528 fd=21: incoming connection
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 19, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: notified of cross-thread tasks to schedule
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: processing cross-thread tasks
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: task 0xaeb1a0 pulled to event-loop, scheduling now.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaeb1a0: Scheduling (null) task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0x7fffd8000e60 fd=23: setting socket options to: keep-alive 0, keep idle 0, keep-alive interval 0, keep-alive probe count 0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaeb1a0: Running (null) task with <Running> status
+[INFO] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0xae6528 fd=21: connected to testsock1641842510115505135_1.sock:0, incoming fd 23
+[INFO] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: connection success
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [channel-bootstrap] - id=0xae7b80: server connection on socket 0xae6528 completed with error 0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: assigning to event loop 0xae30f0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [channel-bootstrap] - id=0xae7b80: creating a new channel for incoming connection using socket 0xae6528.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: subscribing to events on fd 22
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0x7fffd8000e60 fd=23: assigning to event loop 0xaddf70
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: client connection on socket 0xaee360 completed with error 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: Successful connection, creating a new channel using socket 0xaee360.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xaddf70: subscribing to events on fd 23
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: Beginning creation and setup of new channel.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: activity on fd 23, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0001320 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001320: Scheduling on_channel_setup_complete task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [channel] - id=0x7fffd8001620: Beginning creation and setup of new channel.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001320: Running on_channel_setup_complete task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xaddf70: Scheduling task 0x7fffd8001a40 cross-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: setup complete, notifying caller.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xaddf70: Waking up event-loop thread
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 1 events to process.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: no message pool is currently stored in the event-loop local storage, adding 0x7fffd0001650 with max message size 4096, message count 4, with 4 small blocks of 128 bytes.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: activity on fd 5, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: notified of cross-thread tasks to schedule
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [socket] - id=0xae6528 fd=21: finished processing incoming connections, waiting on event-loop notification
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: processing cross-thread tasks
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: task 0x7fffd8001a40 pulled to event-loop, scheduling now.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: no more scheduled tasks using default timeout.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001a40: Scheduling on_channel_setup_complete task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe6bfd700] [event-loop] - id=0xae1f50: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001a40: Running on_channel_setup_complete task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: setup complete, notifying caller.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: no message pool is currently stored in the event-loop local storage, adding 0x7fffe8001800 with max message size 4096, message count 4, with 4 small blocks of 128 bytes.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: channel 0x7fffd0000fb0 setup succeeded: bootstrapping.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: creating new slot 0x7fffd0000da0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: Socket handler created with max_read_size of 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] -  id=0xaee360 fd=22: subscribing to readable events
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: Setting up socket handler on channel 0x7fffd0000fb0 with handler 0x7fffd00065b0 on slot 0x7fffd0000da0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0001238.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0001238 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Scheduling window update task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: creating new slot 0x7fffd00064c0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel-bootstrap] - id=0xae7b80: channel 0x7fffd8001620 setup succeeded: bootstrapping.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: creating new slot 0x7fffe8004bf0.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: Socket handler created with max_read_size of 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] -  id=0x7fffd8000e60 fd=23: subscribing to readable events
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel-bootstrap] - id=0xae7b80: Setting up socket handler on channel 0x7fffd8001620 with handler 0x7fffe8005df0 on slot 0x7fffe8004bf0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffd80018a8.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd80018a8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd80018a8: Scheduling window update task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: creating new slot 0x7fffe8005d00.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: Setting ALPN list h2;http/1.1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: Setting up client TLS on channel 0x7fffd0000fb0 with handler 0x7fffd0006960 on slot 0x7fffd00064c0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: Kicking off TLS negotiation.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0006990.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0006990 in-thread for timestamp 3637346708843683
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006990: Scheduling tls_timeout task for future execution at time 3637346708843683
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel-bootstrap] - id=0xae7b80: Setting up server TLS on channel 0x7fffd8001620 with handler 0x7fffe80063c0 on slot 0x7fffe8005d00
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: invoking read. Downstream window 0, max_to_read 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd80018a8: Running window update task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffe8005e28.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffe8005e28 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8005e28: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8005e28: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8004c40 of capacity 4096 from pool 0x7fffe8001800. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8004c10: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 299 from pool 0x7fffd0001650. Requested size was 299
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending write message of size 299, from slot 0x7fffd00064c0 to slot 0x7fffd0000da0 with handler 0x7fffd00065b0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: writing message of size 299
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: dequeued write request of size 299, remaining to write 299
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: send written size 299
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: activity on fd 23, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0xaee570 in-thread for timestamp 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: is readable
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaee570: Scheduling socket_written_task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8004c40 of capacity 4096 from pool 0x7fffe8001800. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: read of 299
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: read 299 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending read message of size 299, from slot 0x7fffe8004bf0 to slot 0x7fffe8005d00 with handler 0x7fffe80063c0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffe80063f0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffe80063f0 in-thread for timestamp 3637346709162618
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe80063f0: Scheduling tls_timeout task for future execution at time 3637346709162618
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Running window update task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd00065e8.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd00065e8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaee570: Running socket_written_task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - static: write of size 299, completed on channel 0x7fffd0000fb0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 9999625908, using timeout of 9999.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 9999 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8001210 of capacity 127 from pool 0x7fffe8001800. Requested size was 127
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 127, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 127
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 127, remaining to write 127
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size 127
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is readable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd8000c70 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8000c70: Scheduling socket_written_task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of 127
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: read 127 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending read message of size 127, from slot 0x7fffd0000da0 to slot 0x7fffd00064c0 with handler 0x7fffd0006960.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0001238.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0001238 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Scheduling window update task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 3969 from pool 0x7fffd0001650. Requested size was 3969
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 127
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Running window update task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd00065e8.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd00065e8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 9998750183, using timeout of 9998.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 9998 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe80010d0 of capacity 6 from pool 0x7fffe8001800. Requested size was 6
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 6, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 6
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 6, remaining to write 6
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size 6
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of 6
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: read 6 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending read message of size 6, from slot 0x7fffd0000da0 to slot 0x7fffd00064c0 with handler 0x7fffd0006960.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8001680 of capacity 37 from pool 0x7fffe8001800. Requested size was 37
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 37, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0001238.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 37
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0001238 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Scheduling window update task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4090 from pool 0x7fffd0001650. Requested size was 4090
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 37, remaining to write 37
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 6
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size 37
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Running window update task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd00065e8.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd00065e8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8001540 of capacity 71 from pool 0x7fffe8001800. Requested size was 71
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is readable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 71, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 71
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of 37
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: read 37 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending read message of size 37, from slot 0x7fffd0000da0 to slot 0x7fffd00064c0 with handler 0x7fffd0006960.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 71, remaining to write 71
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size 71
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0001238.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0001238 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Scheduling window update task task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4059 from pool 0x7fffd0001650. Requested size was 4059
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of 71
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: read 71 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending read message of size 71, from slot 0x7fffd0000da0 to slot 0x7fffd00064c0 with handler 0x7fffd0006960.
+[WARN] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: negotiation failed with error Bad message encountered (Error encountered in /home/sbstevek/certChain/s2n-tls/tls/s2n_handshake_io.c:1291)
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: tls negotiation result 1029 on channel 0x7fffd0000fb0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: channel shutdown task is scheduled
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd00011b0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd00011b0 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00011b0: Scheduling channel_shutdown task for immediate execution
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: Channel shutdown is already pending, not scheduling another.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 3988 from pool 0x7fffd0001650. Requested size was 3988
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 108
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8004c40 of capacity 1252 from pool 0x7fffe8001800. Requested size was 1252
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 1252, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 1252
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7060, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0005080 of capacity 4096 from pool 0x7fffd0001650. Requested size was 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read of -1
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: read would block
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 1252, remaining to write 1252
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0001238: Running window update task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size 1252
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd00065e8.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd00065e8 in-thread for timestamp 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: remaining write request to write 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: write request completed
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00011b0: Running channel_shutdown task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: beginning shutdown process
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: shutting down slot 0x7fffd0000da0 (the first one) in the read direction
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: shutting down slot 0x7fffd0000da0, with handler 0x7fffd00065b0 in read direction with error code 1029
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: shutting down read direction with error_code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: handler 0x7fffd00065b0 shutdown in read dir completed.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: Shutting down read direction with error code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: handler 0x7fffd0006960 shutdown in read dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0000fd8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000fd8: Scheduling (null) task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: activity on fd 22, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7097, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd00065e8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: invoking read. Downstream window 7097, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd0000dc0: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: out of data to read on socket. Waiting on event-loop notification.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000fd8: Running (null) task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: Scheduling delayed write direction shutdown
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0006b30.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0006b30 in-thread for timestamp 3637336710629854
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006b30: Scheduling s2n_delayed_shutdown task for future execution at time 3637336710629854
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006b30: Running s2n_delayed_shutdown task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [tls-handler] - id=0x7fffd0006960: Delayed shut down in write direction
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: acquired message 0x7fffd0006290 of capacity 24 from pool 0x7fffd0001650. Requested size was 24
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: sending write message of size 24, from slot 0x7fffd00064c0 to slot 0x7fffd0000da0 with handler 0x7fffd00065b0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: writing message of size 24
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: dequeued write request of size 24, remaining to write 24
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: send written size 24
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: remaining write request to write 0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: write request completed
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0xaee570 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaee570: Scheduling socket_written_task task for immediate execution
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: handler 0x7fffd0006960 shutdown in write dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - id=0x7fffd00065b0: shutting down write direction with error_code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket] - id=0xaee360 fd=22: closing
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: un-subscribing from events on fd 22
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0000c30 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000c30: Scheduling epoll_event_loop_unsubscribe_cleanup task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: cancelling task 0xaee570
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0xaee570: Running socket_written_task task with <Canceled> status
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [socket-handler] - static: write of size 24, completed on channel 0x7fffd0000fb0
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: scheduling task with wrapper task id 0x7fffd0006650.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0006650 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006650: Scheduling socket_handler_close task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000c30: Running epoll_event_loop_unsubscribe_cleanup task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006650: Running socket_handler_close task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: handler 0x7fffd00065b0 shutdown in write dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: scheduling task 0x7fffd0000fd8 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000fd8: Scheduling (null) task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0000fd8: Running (null) task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: during shutdown, canceling task 0x7fffd0006990
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: cancelling task 0x7fffd0006990
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [task-scheduler] - id=0x7fffd0006990: Running tls_timeout task with <Canceled> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: channel 0x7fffd0000fb0 shutdown with error 1029.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel] - id=0x7fffd0000fb0: destroying channel.
+[DEBUG] [2022-01-10T19:21:50Z] [00007fffe57fb700] [channel-bootstrap] - id=0xae7f80: releasing bootstrap reference
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: no more scheduled tasks using default timeout.
+[TRACE] [2022-01-10T19:21:50Z] [00007fffe57fb700] [event-loop] - id=0xae30f0: waiting for a maximum of 100000 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8003b00 of capacity 286 from pool 0x7fffe8001800. Requested size was 286
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending write message of size 286, from slot 0x7fffe8005d00 to slot 0x7fffe8004bf0 with handler 0x7fffe8005df0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: writing message of size 286
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, called from aws_socket_write
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: dequeued write request of size 286, remaining to write 286
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: send written size -1
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: already closed before write
+[WARN] [2022-01-10T19:21:50Z] [00007ffff64ac700] [tls-handler] - id=0x7fffe80063c0: negotiation failed with error underlying I/O operation failed, check system errno (Error encountered in /home/sbstevek/certChain/s2n-tls/tls/s2n_send.c:50)
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel-bootstrap] - id=0xae7b80: tls negotiation result 1029 on channel 0x7fffd8001620
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: channel shutdown task is scheduled
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffd8001820.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd8001820 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001820: Scheduling channel_shutdown task for immediate execution
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: Channel shutdown is already pending, not scheduling another.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: acquired message 0x7fffe8003b00 of capacity 3797 from pool 0x7fffe8001800. Requested size was 3797
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: read of 24
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: read 24 from socket
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: sending read message of size 24, from slot 0x7fffe8004bf0 to slot 0x7fffe8005d00 with handler 0x7fffe80063c0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8004c10: total read on this tick 323
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: Channel shutdown is already pending, not scheduling another.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: is writable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: processing write requests, invoked by the event-loop
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8000c70: Running socket_written_task task with <Running> status
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - static: write of size 127, completed on channel 0x7fffd8001620
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - static: write of size 6, completed on channel 0x7fffd8001620
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - static: write of size 37, completed on channel 0x7fffd8001620
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - static: write of size 71, completed on channel 0x7fffd8001620
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - static: write of size 1252, completed on channel 0x7fffd8001620
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001820: Running channel_shutdown task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: beginning shutdown process
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: shutting down slot 0x7fffe8004bf0 (the first one) in the read direction
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: shutting down slot 0x7fffe8004bf0, with handler 0x7fffe8005df0 in read direction with error code 1029
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: shutting down read direction with error_code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: handler 0x7fffe8005df0 shutdown in read dir completed.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [tls-handler] - id=0x7fffe80063c0: Shutting down read direction with error code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: handler 0x7fffe80063c0 shutdown in read dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd8001648 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001648: Scheduling (null) task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 1 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: activity on fd 23, invoking handler.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: closed remotely
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: socket is now readable
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: invoking read. Downstream window 6845, max_to_read 4096
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8004c10: total read on this tick 0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001648: Running (null) task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [tls-handler] - id=0x7fffe80063c0: Scheduling delayed write direction shutdown
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffe8006590.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffe8006590 in-thread for timestamp 3637336712024030
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8006590: Scheduling s2n_delayed_shutdown task for future execution at time 3637336712024030
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8006590: Running s2n_delayed_shutdown task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [tls-handler] - id=0x7fffe80063c0: Delayed shut down in write direction
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: handler 0x7fffe80063c0 shutdown in write dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket-handler] - id=0x7fffe8005df0: shutting down write direction with error_code 1029
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [socket] - id=0x7fffd8000e60 fd=23: closing
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: un-subscribing from events on fd 23
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd8001440 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001440: Scheduling epoll_event_loop_unsubscribe_cleanup task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: scheduling task with wrapper task id 0x7fffe8005e90.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffe8005e90 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8005e90: Scheduling socket_handler_close task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001440: Running epoll_event_loop_unsubscribe_cleanup task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe8005e90: Running socket_handler_close task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: handler 0x7fffe8005df0 shutdown in write dir completed.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: scheduling task 0x7fffd8001648 in-thread for timestamp 0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001648: Scheduling (null) task for immediate execution
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: detected more scheduled tasks with the next occurring at 0, using timeout of 0.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: waiting for a maximum of 0 ms
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: wake up with 0 events to process.
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: running scheduled tasks.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffd8001648: Running (null) task with <Running> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: during shutdown, canceling task 0x7fffe80063f0
+[TRACE] [2022-01-10T19:21:50Z] [00007ffff64ac700] [event-loop] - id=0xaddf70: cancelling task 0x7fffe80063f0
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [task-scheduler] - id=0x7fffe80063f0: Running tls_timeout task with <Canceled> status
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel-bootstrap] - id=0xae7b80: channel 0x7fffd8001620 shutdown with error 1029.
+[DEBUG] [2022-01-10T19:21:50Z] [00007ffff64ac700] [channel] - id=0x7fffd8001620: destroying channel.
+***FAILURE*** Expected condition to be false: incoming_args.error_invoked [s_tls_channel_echo_and_backpressure_test_fn():/home/sbstevek/certChain/aws-c-io/tests/tls_handler_test.c@#562]
+***FAILURE*** tls_channel_echo_and_backpressure_test [ FAILED ] [s_aws_run_test_case():/home/sbstevek/certChain/installs/include/aws/testing/aws_test_harness.h@#454]

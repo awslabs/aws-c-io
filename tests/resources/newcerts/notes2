@@ -1,0 +1,57 @@
+openssl x509 -in unittests.crt -text -noout
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            84:7d:2e:ed:4d:fc:26:87
+    Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=US, ST=Washington, L=Seattle, O=Amazon, OU=SDKs, CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+        Validity
+            Not Before: Jun 16 06:17:00 2021 GMT
+            Not After : Sep 18 06:17:00 2023 GMT
+        Subject: C=US, ST=Washington, L=Seattle, O=Amazon, OU=SDKs, CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:d7:6a:57:48:f8:0e:44:03:25:42:d6:11:6f:1b:
+                    b3:fc:e7:1a:a2:b6:a7:dc:2d:85:8f:28:e1:bb:4b:
+                    ee:71:21:19:4b:0c:43:26:9e:f9:4c:14:04:31:a7:
+                    d2:a5:21:0a:01:02:de:0e:de:f1:b8:34:43:62:7e:
+                    76:57:85:04:e9:c1:7e:c5:35:a1:b7:3b:1f:ee:68:
+                    4d:fe:51:da:0c:f7:2f:47:60:12:3c:01:24:ce:48:
+                    a5:f0:a0:8b:63:87:ba:b5:3c:52:c1:0f:7b:b2:99:
+                    4d:b8:46:74:f7:d1:e8:25:84:d3:2c:56:91:78:87:
+                    dd:d4:3d:f3:67:51:18:71:2c:3c:c3:e1:99:d9:2c:
+                    44:51:f6:14:48:bd:82:16:62:18:4a:44:23:9e:5b:
+                    09:08:8a:42:a0:68:03:88:10:0f:6c:85:09:3b:72:
+                    96:04:35:f4:26:01:83:6f:1d:d6:7f:78:d7:1b:f6:
+                    3a:4f:ad:cb:3e:c3:be:01:2d:b4:44:2b:dc:10:5d:
+                    05:fe:b9:43:20:dc:c8:e4:40:07:3b:54:ce:11:df:
+                    5f:28:eb:be:24:02:b4:e8:fc:35:9b:be:c1:80:ea:
+                    c4:ec:5b:6f:20:6e:e4:60:d5:6e:38:43:de:22:73:
+                    87:90:eb:aa:af:20:e2:b0:1d:4f:c2:2c:8f:34:86:
+                    ea:75
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Extended Key Usage: 
+                TLS Web Server Authentication
+            X509v3 Subject Alternative Name: 
+                DNS:localhost, IP Address:127.0.0.1
+    Signature Algorithm: sha256WithRSAEncryption
+         07:b4:9a:48:4e:6d:71:32:f4:35:89:f5:e1:e8:27:5e:e3:51:
+         0d:54:f2:de:1e:2f:9a:0d:dd:02:d4:ce:15:93:8b:e6:75:77:
+         c2:41:f6:bf:fc:ac:25:96:ea:80:38:68:e2:a5:72:9a:31:a2:
+         95:43:a9:90:39:64:e3:6c:29:37:0c:7a:b7:18:97:47:0e:16:
+         79:2f:9a:92:7b:51:ac:e4:4c:70:c2:e4:f3:7f:2b:63:53:2c:
+         3b:db:f1:ef:84:da:f3:71:6c:6e:b8:41:48:ae:b5:12:1b:20:
+         ec:df:ff:9f:2b:2d:66:52:0a:72:17:99:a5:4d:28:29:8a:9c:
+         c8:51:d0:e8:5c:42:66:3e:ef:06:da:72:ea:a8:5a:5a:02:0f:
+         a2:68:80:a9:9a:a4:30:8c:9e:69:75:a5:5c:34:8b:71:49:e5:
+         3a:1a:74:a9:51:86:ee:06:f9:54:37:0c:f6:17:8a:1e:c3:54:
+         6d:a9:52:4a:2f:f8:d0:e3:56:c2:61:14:fd:7c:77:2b:5b:8b:
+         93:2c:6e:76:46:a9:00:34:8d:55:42:6a:e2:6b:a3:d8:e6:5a:
+         5b:65:98:a8:b1:85:01:92:42:f4:d6:73:4d:c6:f6:f1:34:36:
+         16:44:c6:09:c7:94:46:1c:06:94:84:a9:4f:41:0b:46:a6:b4:
+         48:1a:14:45

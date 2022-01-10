@@ -1,38 +1,35 @@
-# OpenSSL root CA configuration file.
-# Copy to `/root/ca/openssl.cnf`.
-
 [ ca ]
 # `man ca`
 default_ca = CA_default
 
 [ CA_default ]
 # Directory and file locations.
-dir               = /home/sbstevek/certChain/aws-c-io/tests/resources/root/ca
-certs             = $dir/certs
-crl_dir           = $dir/crl
-new_certs_dir     = $dir/newcerts
-database          = $dir/index.txt
-serial            = $dir/serial
-RANDFILE          = $dir/private/.rand
+# dir               = /home/sbstevek/certChain/aws-c-io/tests/resources/root/ca
+# certs             = $dir/certs
+# crl_dir           = $dir/crl
+new_certs_dir       = ./
+database            = ./index.txt
+serial              = ./serial
+# RANDFILE          = $dir/private/.rand
 
 # The root key and root certificate.
-private_key       = $dir/private/ca.key.pem
-certificate       = $dir/certs/ca.cert.pem
+private_key       = ca_intermediate.key
+certificate       = ca_intermediate.crt
 
 # For certificate revocation lists.
-crlnumber         = $dir/crlnumber
-crl               = $dir/crl/ca.crl.pem
-crl_extensions    = crl_ext
-default_crl_days  = 30
+# crlnumber         = $dir/crlnumber
+# crl               = $dir/crl/ca.crl.pem
+# crl_extensions    = crl_ext
+# default_crl_days  = 30
 
 # SHA-1 is deprecated, so use SHA-2 instead.
 default_md        = sha256
 
 name_opt          = ca_default
 cert_opt          = ca_default
-default_days      = 375
+default_days      = 824
 preserve          = no
-policy            = policy_strict
+policy            = policy_loose
 
 [ policy_strict ]
 # The root CA should only sign intermediate certificates that match.
@@ -59,31 +56,31 @@ emailAddress            = optional
 # Options for the `req` tool (`man req`).
 default_bits        = 2048
 distinguished_name  = req_distinguished_name
-string_mask         = utf8only
+# string_mask         = utf8only
+prompt = no
 
 # SHA-1 is deprecated, so use SHA-2 instead.
 default_md          = sha256
 
 # Extension to add when the -x509 option is used.
-x509_extensions     = v3_ca
+x509_extensions     = v3_ext
 
 [ req_distinguished_name ]
-# See <https://en.wikipedia.org/wiki/Certificate_signing_request>.
-countryName                     = Country Name (2 letter code)
-stateOrProvinceName             = State or Province Name
-localityName                    = Locality Name
-0.organizationName              = Organization Name
-organizationalUnitName          = Organizational Unit Name
-commonName                      = Common Name
-emailAddress                    = Email Address
+countryName                     = US
+stateOrProvinceName             = Washington
+localityName                    = Seattle
+0.organizationName              = Amazon
+organizationalUnitName          = SDKs
+commonName                      = localhost
+emailAddress                    = aws-sdk-common-runtime@amazon.com
 
-# Optionally, specify some defaults.
-countryName_default             = US
-stateOrProvinceName_default     = Washington
-localityName_default            = Seattle
-0.organizationName_default      = Amazon
-organizationalUnitName_default  = SDKs
-emailAddress_default            = aws-sdk-common-runtime@amazon.com
+[ v3_ext ]
+# iOS 13+ and macOS 10.15+ require Subject Alternative Name and ExtendedKeyUsage with serverAuth
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[ alt_names ]
+DNS.1 = localhost
+IP.1 = 127.0.0.1
 
 [ v3_ca ]
 # Extensions for a typical CA (`man x509v3_config`).
@@ -95,7 +92,7 @@ keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 [ v3_intermediate_ca ]
 # Extensions for a typical intermediate CA (`man x509v3_config`).
 subjectKeyIdentifier = hash
-authorityKeyIdentifier = keyid:always,issuer
+authorityKeyIdentifier = keyid:always,issuer:always
 basicConstraints = critical, CA:true, pathlen:0
 keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 

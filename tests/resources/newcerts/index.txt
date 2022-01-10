@@ -1,0 +1,4 @@
+V	240410001550Z		1000	unknown	/C=US/ST=Washington/O=Amazon/OU=SDKs/CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com
+V	240410011044Z		1001	unknown	/C=US/ST=Washington/O=Amazon/CN=localhostserver
+V	240410011740Z		1002	unknown	/C=US/ST=Washington/O=Amazon/CN=localhostclient
+V	240410013329Z		1003	unknown	/C=US/ST=Washington/O=Amazon/CN=localhostcertchain

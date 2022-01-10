@@ -22,6 +22,7 @@ Once it expires unit tests will start failing and it will need to be updated lik
 $ openssl req -x509 -new -key unittests.key -config unittests.conf -out unittests.crt -days 824
 $ openssl pkcs8 -topk8 -out unittests.p8 -in unittests.key -nocrypt
 $ openssl pkcs12 -export -out unittests.p12 -inkey unittests.key -in unittests.crt -password pass:1234
+
 Add note about need to change hex checks in pki_utils_test.c
 
 Add notes about how to create cert chain CA and intermediate certificates
