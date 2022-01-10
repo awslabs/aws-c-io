@@ -526,7 +526,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     g_aws_channel_max_fragment_size = 4096;
 
     struct tls_opt_tester client_tls_opt_tester;
-    struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhostserver");
+    struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
     ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
@@ -1409,8 +1409,8 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
     ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
 
-    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
-        &client_tls_opt_tester.ctx_options, NULL, "unittests.crt"));
+    // ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
+    //    &client_tls_opt_tester.ctx_options, NULL, "unittests.crt"));
     aws_tls_connection_options_set_callbacks(
         &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
