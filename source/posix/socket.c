@@ -20,6 +20,7 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <net/if.h>
 #include <unistd.h>
 
 /*
@@ -1184,6 +1185,38 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             (void *)socket,
             socket->io_handle.data.fd,
             errno);
+    }
+
+    if (socket->options.interface != NULL && strlen(socket->options.interface) != 0) {
+        #ifdef __APPLE__
+        int idx = if_nametoindex(socket->options.interface);
+        if (idx == 0) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "interface %s was not found", socket->options.interface);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+        if (AWS_UNLIKELY(setsockopt(
+                socket->io_handle.data.fd, IPPROTO_IP, IP_BOUND_IF, &idx, sizeof(idx)))) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: setsockopt() for setting IPPROTO_IP failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                errno);
+        }
+        #else
+        if (AWS_UNLIKELY(setsockopt(
+                 socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE,
+                 socket->options.interface, strlen(socket->options.interface)))) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: setsockopt() for setting IPPROTO_IP failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                errno);
+        }
+        #endif
     }
 
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {

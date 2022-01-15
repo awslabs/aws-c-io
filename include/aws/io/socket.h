@@ -32,6 +32,10 @@ struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
     uint32_t connect_timeout_ms;
+    /*
+     * If set, socket will bind to this network interface.
+     * This should be a valid interface name such-as "eth0" or "en0". */
+    const char *interface;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
      * If interval or timeout are zero, then default values are used. */
