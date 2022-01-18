@@ -35,7 +35,7 @@ struct aws_socket_options {
     /*
      * If set, socket will bind to this network interface.
      * This should be a valid interface name such-as "eth0" or "en0". */
-    const char *interface;
+    struct aws_byte_cursor interface;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
      * If interval or timeout are zero, then default values are used. */

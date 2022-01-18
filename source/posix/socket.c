@@ -1186,14 +1186,15 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             socket->io_handle.data.fd,
             errno);
     }
+    if (aws_byte_cursor_is_valid(&socket->options.interface)) {
+        const char* interface = (const char *) socket->options.interface.ptr;
 
-    if (socket->options.interface != NULL && strlen(socket->options.interface) != 0) {
         #ifdef __APPLE__
-        int idx = if_nametoindex(socket->options.interface);
+        int idx = if_nametoindex(interface);
         if (idx == 0) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "interface %s was not found", socket->options.interface);
+                "interface %s was not found", interface);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
         if (AWS_UNLIKELY(setsockopt(
@@ -1208,10 +1209,10 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         #else
         if (AWS_UNLIKELY(setsockopt(
                  socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE,
-                 socket->options.interface, strlen(socket->options.interface)))) {
+                 interface, socket->options.interface.len))) {
             AWS_LOGF_WARN(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: setsockopt() for setting IPPROTO_IP failed with errno %d.",
+                "id=%p fd=%d: setsockopt() for setting SO_BINDTODEVICE failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 errno);
