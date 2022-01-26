@@ -72,7 +72,9 @@ static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct 
         aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
 #    else
     ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
+        &tester->ctx_options, allocator, "certChain.crt", "server.key"));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
 #    endif /* __APPLE__ */
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
@@ -91,7 +93,7 @@ static int s_tls_client_opt_tester_init(
 
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
     ASSERT_SUCCESS(
-        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt"));
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
 
     tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
