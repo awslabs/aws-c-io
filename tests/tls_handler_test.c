@@ -77,9 +77,10 @@ static int s_tls_server_opt_tester_init(
 #    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_default_server_from_path(&tester->ctx_options, allocator, cert_path, pkey_path));
-#    endif /* __APPLE__ */
     ASSERT_SUCCESS(
         aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
+#    endif /* __APPLE__ */
+
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
     ASSERT_NOT_NULL(tester->ctx);
@@ -99,7 +100,7 @@ static int s_tls_client_opt_tester_init(
 
 #    ifdef __APPLE__
     ASSERT_SUCCESS(
-        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "server.crt"));
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
 #    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
