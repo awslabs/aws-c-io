@@ -37,7 +37,7 @@ struct aws_input_stream_vtable {
      */
     int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
     int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
-    int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
+    int (*get_length)(const struct aws_input_stream *stream, int64_t *out_length);
     void (*destroy)(struct aws_input_stream *stream);
 };
 
@@ -70,7 +70,7 @@ AWS_IO_API int aws_input_stream_get_status(struct aws_input_stream *stream, stru
  * a valid stream may return an error instead when there is not a good answer (socket stream, for example).
  *
  */
-AWS_IO_API int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length);
+AWS_IO_API int aws_input_stream_get_length(const struct aws_input_stream *stream, int64_t *out_length);
 
 /*
  * Tears down the stream

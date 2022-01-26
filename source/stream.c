@@ -53,7 +53,7 @@ int aws_input_stream_get_status(struct aws_input_stream *stream, struct aws_stre
     return stream->vtable->get_status(stream, status);
 }
 
-int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_length) {
+int aws_input_stream_get_length(const struct aws_input_stream *stream, int64_t *out_length) {
     AWS_ASSERT(stream && stream->vtable && stream->vtable->get_length);
 
     return stream->vtable->get_length(stream, out_length);
@@ -172,7 +172,7 @@ static int s_aws_input_stream_byte_cursor_get_status(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *stream, int64_t *out_length) {
+static int s_aws_input_stream_byte_cursor_get_length(const struct aws_input_stream *stream, int64_t *out_length) {
     struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
 
 #if SIZE_MAX > INT64_MAX
@@ -277,7 +277,7 @@ static int s_aws_input_stream_file_get_status(struct aws_input_stream *stream, s
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_input_stream_file_get_length(struct aws_input_stream *stream, int64_t *length) {
+static int s_aws_input_stream_file_get_length(const struct aws_input_stream *stream, int64_t *length) {
     struct aws_input_stream_file_impl *impl = stream->impl;
 
     return aws_file_get_length(impl->file, length);
