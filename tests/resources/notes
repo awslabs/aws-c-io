@@ -1,3 +1,136 @@
+openssl x509 -text -noout -in unittests.crt
+
+Steps:
+--==CA_ROOT==--
+openssl genrsa -out ca_root.key 2048
+openssl req -config ca_root.cnf \
+            -key ca_root.key \
+            -new -x509 -days 824 -sha256 -extensions v3_ca \
+            -out ca_root.crt \
+            -set_serial 00 \
+            -subj '/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=localhostCA/emailAddress=aws-sdk-common-runtime@amazon.com'
+
+--==CA_INTERMEDIATE==--
+openssl genrsa -out ca_intermediate.key 2048
+openssl req -config ca_intermediate.cnf \
+            -new -sha256 \
+            -key ca_intermediate.key \
+            -out ca_intermediate.csr \
+            -set_serial 01 \
+            -subj '/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=intermediateCA/emailAddress=aws-sdk-common-runtime@amazon.com'
+openssl ca -config ca_root.cnf \
+           -extensions v3_intermediate_ca \
+           -days 824 -notext -md sha256 \
+           -in ca_intermediate.csr \
+           -out ca_intermediate.crt
+
+--==SERVER==--
+openssl genrsa -out server.key 2048
+openssl req -new -sha256 \
+            -key server.key \
+            -out server.csr \
+            -set_serial 02 \
+            -subj '/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com'
+openssl ca -config ca_root.cnf \
+            -extensions server_cert \
+            -days 824 -notext -md sha256 \
+            -in server.csr \
+            -out server.crt
+
+--==CLIENT==--
+openssl genrsa -out client.key 2048
+openssl req -new -sha256 \
+            -key client.key \
+            -out client.csr \
+            -set_serial 03 \
+            -subj '/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=client/emailAddress=aws-sdk-common-runtime@amazon.com'
+openssl ca -config ca_root.cnf \
+            -extensions usr_cert \
+            -days 824 -notext -md sha256 \
+            -in client.csr \
+            -out client.crt
+
+--==DEVICE==--
+openssl genrsa -out device.key 2048
+openssl req -new -sha256 \
+            -key device.key \
+            -out device.csr \
+            -set_serial 04 \
+            -subj '/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=device/emailAddress=aws-sdk-common-runtime@amazon.com'
+openssl ca -config ca_intermediate.cnf \
+            -extensions usr_cert \
+            -days 824 -notext -md sha256 \
+            -in device.csr \
+            -out device.crt
+
+
+cat device.crt ca_intermediate.crt > certchain.crt
+cat device.crt ca_intermediate.crt ca_root.crt > cachain.crt
+cat device.crt ca_intermediate.crt ca_root.crt > certchainfull.crt
+
+//TEST MTLS
+
+--==SERVER==--
+openssl s_server -accept 7569 \
+-CAfile ca_root.crt \
+-cert server.crt \
+-key server.key \
+-Verify 10 -tls1_2 -state -quiet
+
+--==SERVER WITH CHAIN==--
+openssl s_server -accept 7569 \
+-CAfile ca_root.crt \
+-cert certchain.crt \
+-key device.key \
+-Verify 10 -tls1_2 -state -quiet
+
+--==CLIENT==--
+openssl s_client -connect localhost:7569 \
+-CAfile ca_root.crt \
+-cert client.crt \
+-key client.key \
+-tls1_2 -state -quiet
+
+--==INTERMEDIATECA==--
+openssl s_client -connect localhost:7569 \
+-CAfile ca_root.crt \
+-cert ca_intermediate.crt \
+-key ca_intermediate.key \
+-tls1_2 -state -quiet
+
+-==DEVICE==--
+openssl s_client -connect localhost:7569 \
+-CAfile ca_root.crt \
+-cert device.crt \
+-key device.key \
+-tls1_2 -state -quiet
+
+-==DEVICE CERTCHAIN==--
+openssl s_client -connect localhost:7569 \
+-CAfile ca_root.crt \
+-cert certchain.crt \
+-key device.key \
+-tls1_2 -state -quiet
+
+-==DEVICE CACHAIN==-- connects
+openssl s_client -connect localhost:7569 \
+-CAfile cachain.crt \
+-cert device.crt \
+-key device.key \
+-tls1_2 -state -quiet
+
+-==DEVICE CERTCHAIN==--
+openssl s_client -connect localhost:7569 \
+-CAfile ca_root.crt \
+-cert certchainfull.crt \
+-key device.key \
+-tls1_2 -state -quiet
+
+
+openssl verify -verbose -CAfile ca_intermediate.crt device.crt
+openssl verify -CAfile ca_root.crt -untrusted ca_intermediate.crt device.crt
+
+
 
 #root-ca.crt <-- this thing can issue intermediates as well
 # server.crt <-- signed by root_ca.crt
