@@ -73,7 +73,7 @@ static int s_tls_server_opt_tester_init(
 #    ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
     ASSERT_SUCCESS(
-        aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "server.p12", &pwd_cur));
+        aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
 #    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_default_server_from_path(&tester->ctx_options, allocator, cert_path, pkey_path));
@@ -100,7 +100,7 @@ static int s_tls_client_opt_tester_init(
 
 #    ifdef __APPLE__
     ASSERT_SUCCESS(
-        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt"));
 #    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
