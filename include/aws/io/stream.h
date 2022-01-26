@@ -13,8 +13,8 @@ struct aws_byte_buf;
 
 /*
  * For seek calls, where in the stream to seek from.
- * CUR support can come later
- * Intentionally mirror libc constants
+ * CUR support can come later.
+ * Intentionally mirror libc constants.
  */
 enum aws_stream_seek_basis { AWS_SSB_BEGIN = 0, AWS_SSB_END = 2 };
 
