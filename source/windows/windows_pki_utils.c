@@ -603,7 +603,7 @@ int aws_import_key_pair_to_cert_context(
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 
-        if (i != cert_count - 1 || !add_result) {
+        if (i != 0 || !add_result) {
             CertFreeCertificateContext(cert_context);
         } else {
             *certs = cert_context;
