@@ -97,8 +97,13 @@ static int s_tls_client_opt_tester_init(
 
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
 
+#    ifdef __APPLE__
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "server.crt"));
+#    else
     ASSERT_SUCCESS(
         aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
+#    endif /* __APPLE__ */
 
     tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
@@ -865,7 +870,7 @@ static int s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_overr
     void *ctx) {
     (void)ctx;
 
-    return s_verify_negotiation_fails_with_ca_override(allocator, s_amazon_host_name, "unittests.crt");
+    return s_verify_negotiation_fails_with_ca_override(allocator, s_amazon_host_name, "ca_root.crt");
 }
 
 AWS_TEST_CASE(
