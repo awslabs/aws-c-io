@@ -40,7 +40,6 @@ These files are used in unit tests that create TLS connections between a
 localhost server and client. We use a root certificate authority to sign
 a certificate for the server to use that the client connects to.
 
-ca_root.key:    ca_root private key
 ca_root.crt:    ca_root CA
 server.key:     server private key
 server.crt:     server certificate
