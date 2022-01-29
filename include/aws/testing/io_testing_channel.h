@@ -429,16 +429,16 @@ static inline int testing_channel_init(
     return AWS_OP_SUCCESS;
 }
 
-static bool s_is_shutdown_complete(void *context) {
+static inline bool s_testing_channel_is_shutdown_complete(void *context) {
     struct testing_channel *testing = context;
     return testing->channel_shutdown_completed;
 }
 
-static int s_wait_on_shutdown_complete(struct testing_channel *testing) {
+static inline int s_testing_channel_wait_on_shutdown_complete(struct testing_channel *testing) {
     ASSERT_SUCCESS(aws_mutex_lock(&testing->lock));
 
-    int signal_error =
-        aws_condition_variable_wait_pred(&testing->signal, &testing->lock, s_is_shutdown_complete, testing);
+    int signal_error = aws_condition_variable_wait_pred(
+        &testing->signal, &testing->lock, s_testing_channel_is_shutdown_complete, testing);
 
     ASSERT_SUCCESS(aws_mutex_unlock(&testing->lock));
     return signal_error;
@@ -449,7 +449,7 @@ static inline int testing_channel_clean_up(struct testing_channel *testing) {
 
     /* Wait for channel to finish shutdown */
     testing_channel_drain_queued_tasks(testing);
-    s_wait_on_shutdown_complete(testing);
+    s_testing_channel_wait_on_shutdown_complete(testing);
 
     aws_channel_destroy(testing->channel);
 
