@@ -5,7 +5,10 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/clock.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
+
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
@@ -259,6 +262,9 @@ struct testing_channel {
     struct aws_channel_slot *left_handler_slot;
     struct aws_channel_slot *right_handler_slot;
 
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+
     void (*channel_shutdown)(int error_code, void *user_data);
     void *channel_shutdown_user_data;
 
@@ -278,12 +284,15 @@ static void s_testing_channel_on_shutdown_completed(struct aws_channel *channel,
     (void)channel;
     (void)error_code;
     struct testing_channel *testing = user_data;
+    aws_mutex_lock(&testing->lock);
     testing->channel_shutdown_completed = true;
     testing->channel_shutdown_error_code = error_code;
+    aws_mutex_unlock(&testing->lock);
 
     if (testing->channel_shutdown) {
         testing->channel_shutdown(error_code, testing->channel_shutdown_user_data);
     }
+    aws_condition_variable_notify_one(&testing->signal);
 }
 
 /** API for testing, use this for testing purely your channel handlers and nothing else. Because of that, the s_
@@ -414,8 +423,25 @@ static inline int testing_channel_init(
     struct aws_channel_handler *handler = s_new_testing_channel_handler(allocator, 16 * 1024);
     testing->left_handler_impl = handler->impl;
     ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->left_handler_slot, handler));
+    ASSERT_SUCCESS(aws_mutex_init(&testing->lock));
+    ASSERT_SUCCESS(aws_condition_variable_init(&testing->signal));
 
     return AWS_OP_SUCCESS;
+}
+
+static bool s_is_shutdown_complete(void *context) {
+    struct testing_channel *testing = context;
+    return testing->channel_shutdown_completed;
+}
+
+static int s_wait_on_shutdown_complete(struct testing_channel *testing) {
+    ASSERT_SUCCESS(aws_mutex_lock(&testing->lock));
+
+    int signal_error =
+        aws_condition_variable_wait_pred(&testing->signal, &testing->lock, s_is_shutdown_complete, testing);
+
+    ASSERT_SUCCESS(aws_mutex_unlock(&testing->lock));
+    return signal_error;
 }
 
 static inline int testing_channel_clean_up(struct testing_channel *testing) {
@@ -423,7 +449,7 @@ static inline int testing_channel_clean_up(struct testing_channel *testing) {
 
     /* Wait for channel to finish shutdown */
     testing_channel_drain_queued_tasks(testing);
-    ASSERT_TRUE(testing->channel_shutdown_completed);
+    s_wait_on_shutdown_complete(testing);
 
     aws_channel_destroy(testing->channel);
 
