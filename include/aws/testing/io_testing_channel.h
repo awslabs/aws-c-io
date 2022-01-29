@@ -450,7 +450,7 @@ static inline int testing_channel_clean_up(struct testing_channel *testing) {
     /* Wait for channel to finish shutdown */
     testing_channel_drain_queued_tasks(testing);
     s_testing_channel_wait_on_shutdown_complete(testing);
-
+    testing_channel_drain_queued_tasks(testing);
     aws_channel_destroy(testing->channel);
 
     /* event_loop can't be destroyed from its own thread */
