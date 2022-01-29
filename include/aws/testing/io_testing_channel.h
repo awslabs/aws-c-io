@@ -456,6 +456,8 @@ static inline int testing_channel_clean_up(struct testing_channel *testing) {
     /* event_loop can't be destroyed from its own thread */
     testing_channel_set_is_on_users_thread(testing, false);
     aws_event_loop_destroy(testing->loop);
+    aws_mutex_clean_up(&testing->lock);
+    aws_condition_variable_clean_up(&testing->signal);
 
     return AWS_OP_SUCCESS;
 }
