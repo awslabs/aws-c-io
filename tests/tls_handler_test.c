@@ -1829,7 +1829,7 @@ static int s_tls_certificate_chain_test(struct aws_allocator *allocator, void *c
 
     struct tls_local_server_tester local_server_tester;
     ASSERT_SUCCESS(s_tls_local_server_tester_init(
-        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "certChain.crt", "server.key"));
+        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "server_chain.crt", "server.key"));
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
