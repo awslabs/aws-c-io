@@ -468,6 +468,18 @@ struct aws_pkcs11_lib *aws_pkcs11_lib_new(
     struct aws_allocator *allocator,
     const struct aws_pkcs11_lib_options *options) {
 
+    /* Validate options */
+    switch (options->initialize_finalize_behavior) {
+        case AWS_PKCS11_LIB_DEFAULT_BEHAVIOR:
+        case AWS_PKCS11_LIB_OMIT_INITIALIZE:
+        case AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE:
+            break;
+        default:
+            AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Invalid PKCS#11 behavior arg: %d", options->initialize_finalize_behavior);
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            return NULL;
+    }
+
     /* Create the struct */
     struct aws_pkcs11_lib *pkcs11_lib = aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_lib));
     aws_ref_count_init(&pkcs11_lib->ref_count, pkcs11_lib, s_pkcs11_lib_destroy);
