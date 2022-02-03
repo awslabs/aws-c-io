@@ -1267,9 +1267,10 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     (void)allocator;
     (void)ctx;
 #    if _MSC_VER >= 1930 /* Windows 2022 or later drops TLS 1.0 */
-#        return AWS_OP_SUCCESS;
-#    endif
+    return AWS_OP_SUCCESS;
+#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
+#    endif
 }
 
 AWS_TEST_CASE(
@@ -1280,9 +1281,10 @@ static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struc
     (void)allocator;
     (void)ctx;
 #    if _MSC_VER >= 1930 /* Windows 2022 or later drops TLS 1.1 */
-#        return AWS_OP_SUCCESS;
-#    endif
+    return AWS_OP_SUCCESS;
+#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
+#    endif
 }
 
 AWS_TEST_CASE(
