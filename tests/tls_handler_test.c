@@ -23,6 +23,11 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
+
+#    ifdef _WIN32
+#    include <Windows.h>
+#    endif /* _WIN32 */
+
 #    if _MSC_VER
 #        pragma warning(disable : 4996) /* sprintf */
 #    endif
@@ -1266,7 +1271,14 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     void *ctx) {
     (void)allocator;
     (void)ctx;
-#    if _MSC_VER >= 1930 /* Windows 2022 or later drops TLS 1.0 */
+#    if _WIN32
+    OSVERSIONINFOEX info;
+    ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
+    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+
+    GetVersionEx(&info);
+
+    printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
     return AWS_OP_SUCCESS;
 #    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
@@ -1280,9 +1292,15 @@ AWS_TEST_CASE(
 static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
-#    if _MSC_VER >= 1930 /* Windows 2022 or later drops TLS 1.1 */
+#    if _WIN32
+    OSVERSIONINFOEX info;
+    ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
+    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+
+    GetVersionEx(&info);
+
+    printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
     return AWS_OP_SUCCESS;
-#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
 #    endif
 }

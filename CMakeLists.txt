@@ -2,8 +2,6 @@
 cmake_minimum_required(VERSION 3.1)
 project(aws-c-io C)
 
-message(FATAL_ERROR "System version is ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_VERSION}")
-
 if (POLICY CMP0069)
     cmake_policy(SET CMP0069 NEW) # Enable LTO/IPO if available in the compiler, see AwsCFlags
 endif()
