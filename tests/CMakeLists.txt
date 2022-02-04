@@ -167,10 +167,13 @@ if (NOT BYO_CRYPTO)
     # We skip the cbc and 3des checks, as a positive connection result there does not yet represent a security risk
     # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
-    add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-    add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
-    add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
-    add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+    if(NOT (WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
+        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
+        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
+        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+    endif()
 
     # Badssl - Secure uncommon suite
     # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based
