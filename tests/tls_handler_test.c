@@ -1275,9 +1275,18 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     ZeroMemory(&info, sizeof(OSVERSIONINFOA));
     info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 
-    GetVersionEx(&info);
+    if (GetVersionEx(&info)) {
 
-    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Windows version: %u.%u", info.dwMajorVersion, info.dwMinorVersion);
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Return true");
+    }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "Windows version: %u.%u, builder number: %u, platformID: %u",
+        info.dwMajorVersion,
+        info.dwMinorVersion,
+        info.dwBuildNumber,
+        info.dwPlatformId);
     printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
     return AWS_OP_ERR;
 #    else
@@ -1297,9 +1306,18 @@ static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struc
     ZeroMemory(&info, sizeof(OSVERSIONINFOA));
     info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 
-    GetVersionEx(&info);
+    if (GetVersionEx(&info)) {
 
-    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Windows version: %u.%u", info.dwMajorVersion, info.dwMinorVersion);
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Return true");
+    }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "Windows version: %u.%u, builder number: %u, platformID: %u",
+        info.dwMajorVersion,
+        info.dwMinorVersion,
+        info.dwBuildNumber,
+        info.dwPlatformId);
     printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
     return AWS_OP_ERR;
 #    else
