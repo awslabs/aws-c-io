@@ -23,10 +23,6 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
-#    ifdef _WIN32
-#        include <Windows.h>
-#    endif /* _WIN32 */
-
 #    if _MSC_VER
 #        pragma warning(disable : 4996) /* sprintf */
 #    endif
@@ -1270,28 +1266,7 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     void *ctx) {
     (void)allocator;
     (void)ctx;
-#    if _WIN32
-    OSVERSIONINFOA info;
-    ZeroMemory(&info, sizeof(OSVERSIONINFOA));
-    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
-
-    if (GetVersionEx(&info)) {
-
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Return true");
-    }
-
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_SOCKET,
-        "Windows version: %u.%u, builder number: %u, platformID: %u",
-        info.dwMajorVersion,
-        info.dwMinorVersion,
-        info.dwBuildNumber,
-        info.dwPlatformId);
-    printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
-    return AWS_OP_ERR;
-#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
-#    endif
 }
 
 AWS_TEST_CASE(
@@ -1301,28 +1276,7 @@ AWS_TEST_CASE(
 static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
-#    if _WIN32
-    OSVERSIONINFOA info;
-    ZeroMemory(&info, sizeof(OSVERSIONINFOA));
-    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
-
-    if (GetVersionEx(&info)) {
-
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Return true");
-    }
-
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_SOCKET,
-        "Windows version: %u.%u, builder number: %u, platformID: %u",
-        info.dwMajorVersion,
-        info.dwMinorVersion,
-        info.dwBuildNumber,
-        info.dwPlatformId);
-    printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
-    return AWS_OP_ERR;
-#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
-#    endif
 }
 
 AWS_TEST_CASE(
