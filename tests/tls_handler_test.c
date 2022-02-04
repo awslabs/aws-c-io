@@ -1279,7 +1279,7 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
 
     AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Windows version: %u.%u", info.dwMajorVersion, info.dwMinorVersion);
     printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
-    return AWS_OP_ERROR;
+    return AWS_OP_ERR;
 #    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
 #    endif
@@ -1301,7 +1301,7 @@ static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struc
 
     AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "Windows version: %u.%u", info.dwMajorVersion, info.dwMinorVersion);
     printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
-    return AWS_OP_ERROR;
+    return AWS_OP_ERR;
 #    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
 #    endif
