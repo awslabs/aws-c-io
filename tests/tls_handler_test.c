@@ -23,9 +23,8 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
-
 #    ifdef _WIN32
-#    include <Windows.h>
+#        include <Windows.h>
 #    endif /* _WIN32 */
 
 #    if _MSC_VER
@@ -1272,9 +1271,9 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     (void)allocator;
     (void)ctx;
 #    if _WIN32
-    OSVERSIONINFOEX info;
-    ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
-    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    OSVERSIONINFOA info;
+    ZeroMemory(&info, sizeof(OSVERSIONINFOA));
+    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 
     GetVersionEx(&info);
 
@@ -1293,14 +1292,15 @@ static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struc
     (void)allocator;
     (void)ctx;
 #    if _WIN32
-    OSVERSIONINFOEX info;
-    ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
-    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    OSVERSIONINFOA info;
+    ZeroMemory(&info, sizeof(OSVERSIONINFOA));
+    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOA);
 
     GetVersionEx(&info);
 
     printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
     return AWS_OP_SUCCESS;
+#    else
     return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
 #    endif
 }
