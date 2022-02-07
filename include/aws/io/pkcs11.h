@@ -16,7 +16,7 @@ struct aws_pkcs11_lib;
 /**
  * Controls how aws_pkcs11_lib calls C_Initialize() and C_Finalize() on the PKCS#11 library.
  */
-enum aws_pcks11_lib_behavior {
+enum aws_pkcs11_lib_behavior {
     /**
      * Default behavior that accommodates most use cases.
      * C_Initialize() is called on creation, and "already-initialized" errors are ignored.
@@ -40,6 +40,10 @@ enum aws_pcks11_lib_behavior {
     AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
 };
 
+/* The enum above was misspelled, and later got fixed (pcks11 -> pkcs11).
+ * This macro maintain backwards compatibility with the old spelling */
+#define aws_pcks11_lib_behavior aws_pkcs11_lib_behavior
+
 /**
  * Options for aws_pkcs11_lib_new()
  */
@@ -53,7 +57,7 @@ struct aws_pkcs11_lib_options {
     /**
      * Behavior for calling C_Initialize() and C_Finalize() on the PKCS#11 library.
      */
-    enum aws_pcks11_lib_behavior initialize_finalize_behavior;
+    enum aws_pkcs11_lib_behavior initialize_finalize_behavior;
 };
 
 AWS_EXTERN_C_BEGIN
