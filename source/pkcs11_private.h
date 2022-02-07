@@ -4,15 +4,6 @@
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
- *
- * pkcs11_private.h
- * This file declares symbols that are private to aws-c-io but need to be
- * accessed from multiple .c files.
- *
- * NOTE: Not putting this file under `include/private/...` like we usually
- * do with private headers because it breaks aws-crt-swift. Swift was trying
- * to compile each file under include/, but the official PKCS#11 header files
- * are too weird break it.
  */
 #include <aws/io/io.h>
 
@@ -24,6 +15,17 @@
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
 #include "pkcs11/v2.40/pkcs11.h"
+
+/**
+ * pkcs11_private.h
+ * This file declares symbols that are private to aws-c-io but need to be
+ * accessed from multiple .c files.
+ *
+ * NOTE: Not putting this file under `include/private/...` like we usually
+ * do with private headers because it breaks aws-crt-swift. Swift was trying
+ * to compile each file under include/, but the official PKCS#11 header files
+ * are too weird break it.
+ */
 
 struct aws_pkcs11_lib;
 struct aws_string;
