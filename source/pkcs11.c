@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/io/pkcs11.h>
-#include <aws/io/private/pkcs11_private.h>
+
+#include "pkcs11_private.h"
 
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
