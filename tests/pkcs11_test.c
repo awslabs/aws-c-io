@@ -8,7 +8,8 @@
  */
 
 #include <aws/io/pkcs11.h>
-#include <aws/io/private/pkcs11_private.h>
+
+#include "../source/pkcs11_private.h"
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>

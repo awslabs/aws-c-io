@@ -14,7 +14,18 @@
 #define CK_DECLARE_FUNCTION(returnType, name) returnType name
 #define CK_DECLARE_FUNCTION_POINTER(returnType, name) returnType(CK_PTR name)
 #define CK_CALLBACK_FUNCTION(returnType, name) returnType(CK_PTR name)
-#include <aws/io/private/pkcs11/v2.40/pkcs11.h>
+#include "pkcs11/v2.40/pkcs11.h"
+
+/**
+ * pkcs11_private.h
+ * This file declares symbols that are private to aws-c-io but need to be
+ * accessed from multiple .c files.
+ *
+ * NOTE: Not putting this file under `include/private/...` like we usually
+ * do with private headers because it breaks aws-crt-swift. Swift was trying
+ * to compile each file under include/, but the official PKCS#11 header files
+ * are too weird break it.
+ */
 
 struct aws_pkcs11_lib;
 struct aws_string;
@@ -33,12 +44,6 @@ enum aws_tls_signature_algorithm {
     AWS_TLS_SIGNATURE_RSA,
     /* TODO: add support for additional algorithms (ECDSA) */
 };
-
-/**
- * pkcs11_private.h
- * This file declares symbols that are private to aws-c-io but need to be
- * accessed from multiple .c files.
- */
 
 AWS_EXTERN_C_BEGIN
 
