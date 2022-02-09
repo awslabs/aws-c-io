@@ -44,7 +44,7 @@ struct aws_input_stream_vtable {
 
 struct aws_input_stream_options {
     struct aws_allocator *allocator;
-    struct aws_input_stream_vtable *vtable;
+    const struct aws_input_stream_vtable *vtable;
     void *impl;
 };
 

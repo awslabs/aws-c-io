@@ -13,7 +13,7 @@
 struct aws_input_stream {
     struct aws_allocator *allocator;
     void *impl;
-    struct aws_input_stream_vtable *vtable;
+    const struct aws_input_stream_vtable *vtable;
     struct aws_ref_count ref_count;
 };
 
@@ -74,25 +74,19 @@ void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
         aws_mem_release(stream->allocator, stream);
     }
 }
-static void s_input_stream_ref_count_init(struct aws_input_stream *input_stream) {
-    aws_ref_count_init(
-        &input_stream->ref_count, input_stream, (aws_simple_completion_callback *)s_aws_input_stream_destroy);
-}
 
 struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_options *options) {
     AWS_PRECONDITION(options);
     AWS_PRECONDITION(options->allocator);
 
     struct aws_input_stream *input_stream = aws_mem_calloc(options->allocator, 1, sizeof(struct aws_input_stream));
-    if (!input_stream) {
-        return NULL;
-    }
 
     input_stream->allocator = options->allocator;
     input_stream->vtable = options->vtable;
     input_stream->impl = options->impl;
 
-    s_input_stream_ref_count_init(input_stream);
+    aws_ref_count_init(
+        &input_stream->ref_count, input_stream, (aws_simple_completion_callback *)s_aws_input_stream_destroy);
 
     return input_stream;
 }
@@ -238,10 +232,6 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_input_stream_byte_cursor_impl *impl =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_byte_cursor_impl));
 
-    if (!impl) {
-        return NULL;
-    }
-
     impl->allocator = allocator;
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
@@ -329,10 +319,6 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
 
     struct aws_input_stream_file_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_file_impl));
 
-    if (!impl) {
-        return NULL;
-    }
-
     impl->file = aws_fopen(file_name, "r+b");
     if (impl->file == NULL) {
         aws_translate_and_raise_io_error(errno);
@@ -355,10 +341,6 @@ on_error:
 
 struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file) {
     struct aws_input_stream_file_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_file_impl));
-
-    if (!impl) {
-        return NULL;
-    }
 
     impl->file = file;
     impl->close_on_clean_up = false;
