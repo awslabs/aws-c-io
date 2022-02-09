@@ -511,6 +511,10 @@ void aws_tls_connection_options_init_from_ctx(
 int aws_tls_connection_options_copy(
     struct aws_tls_connection_options *to,
     const struct aws_tls_connection_options *from) {
+
+    /* clean up the options before copy. */ 
+    aws_tls_connection_options_clean_up(to);
+    
     /* copy everything copyable over, then override the rest with deep copies. */
     *to = *from;
 
