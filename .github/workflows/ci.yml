@@ -3,11 +3,11 @@ name: CI
 on:
   push:
     branches:
-      - '*'
-      - '!main'
+      - "*"
+      - "!main"
 
 env:
-  BUILDER_VERSION: v0.8.31
+  BUILDER_VERSION: v0.9.12
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
@@ -33,19 +33,19 @@ jobs:
           - rhel8-x64
           - al2-x64
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} downstream
+      - name: Build ${{ env.PACKAGE_NAME }}
+        run: |
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }} downstream
 
   linux-byo-crypto:
     runs-on: ubuntu-20.04 # latest
     steps:
-       # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-al2-x64 build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBYO_CRYPTO=ON
+      # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      - name: Build ${{ env.PACKAGE_NAME }} + consumers
+        run: |
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-al2-x64 build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBYO_CRYPTO=ON
 
   linux-compiler-compat:
     runs-on: ubuntu-20.04 # latest
@@ -64,11 +64,11 @@ jobs:
           - gcc-7
           - gcc-8
     steps:
-        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }}
+      # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      - name: Build ${{ env.PACKAGE_NAME }}
+        run: |
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }}
 
   clang-sanitizers:
     runs-on: ubuntu-20.04 # latest
@@ -85,19 +85,19 @@ jobs:
   linux-shared-libs:
     runs-on: ubuntu-20.04 # latest
     steps:
-        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+      # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+      - name: Build ${{ env.PACKAGE_NAME }}
+        run: |
+          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
   windows:
     runs-on: windows-2022 # latest
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --compiler msvc-16
+      - name: Build ${{ env.PACKAGE_NAME }} + consumers
+        run: |
+          python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
+          python builder.pyz build -p ${{ env.PACKAGE_NAME }} --compiler msvc-16
 
   windows-vc14:
     runs-on: windows-2019 # windows-2019 is last env with Visual Studio 2015 (v14.0)
@@ -105,24 +105,24 @@ jobs:
       matrix:
         arch: [x86, x64]
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --target windows-${{ matrix.arch }} --compiler msvc-14
+      - name: Build ${{ env.PACKAGE_NAME }} + consumers
+        run: |
+          python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
+          python builder.pyz build -p ${{ env.PACKAGE_NAME }} --target windows-${{ matrix.arch }} --compiler msvc-14
 
   windows-shared-libs:
     runs-on: windows-2022 # latest
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
-        python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
+      - name: Build ${{ env.PACKAGE_NAME }} + consumers
+        run: |
+          python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
+          python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
   osx:
     runs-on: macos-11 # latest
     steps:
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
-        chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} downstream
+      - name: Build ${{ env.PACKAGE_NAME }} + consumers
+        run: |
+          python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
+          chmod a+x builder
+          ./builder build -p ${{ env.PACKAGE_NAME }} downstream
