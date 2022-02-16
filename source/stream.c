@@ -66,7 +66,7 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
     return stream->vtable->get_length(stream, out_length);
 }
 
-void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
+static void s_aws_input_stream_destroy(struct aws_input_stream *stream) {
     if (stream != NULL) {
         AWS_ASSERT(stream->vtable && stream->vtable->impl_destroy);
 
