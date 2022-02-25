@@ -39,13 +39,16 @@ struct aws_input_stream_vtable {
     int (*read)(struct aws_input_stream *stream, struct aws_byte_buf *dest);
     int (*get_status)(struct aws_input_stream *stream, struct aws_stream_status *status);
     int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
-    void (*impl_destroy)(struct aws_input_stream *stream);
 };
 
-struct aws_input_stream_options {
-    struct aws_allocator *allocator;
+/**
+ * Base class for input streams.
+ * Note: when you implement one input stream, the ref_count needs to be initialized to clean up the resource when
+ * reaches to zero.
+ */
+struct aws_input_stream {
     const struct aws_input_stream_vtable *vtable;
-    void *impl;
+    struct aws_ref_count ref_count;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -110,17 +113,6 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_file(
  * Destruction does not close the file.
  */
 AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
-
-/*
- * Creates an input stream with your own implementation.
- * Caller has the default reference to the input stream.
- */
-AWS_IO_API struct aws_input_stream *aws_input_stream_new(const struct aws_input_stream_options *options);
-
-/*
- * Get impl from the input stream
- */
-AWS_IO_API void *aws_input_stream_get_impl(const struct aws_input_stream *input_stream);
 
 AWS_EXTERN_C_END
 
