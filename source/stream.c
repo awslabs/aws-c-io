@@ -64,8 +64,8 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
  */
 
 struct aws_input_stream_byte_cursor_impl {
-    struct aws_allocator *allocator;
     struct aws_input_stream base;
+    struct aws_allocator *allocator;
     struct aws_byte_cursor original_cursor;
     struct aws_byte_cursor current_cursor;
 };
@@ -324,10 +324,11 @@ struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *strea
     return stream;
 }
 
-void aws_input_stream_release(struct aws_input_stream *stream) {
+struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *stream) {
     if (stream != NULL) {
         aws_ref_count_release(&stream->ref_count);
     }
+    return NULL;
 }
 
 void aws_input_stream_destroy(struct aws_input_stream *stream) {

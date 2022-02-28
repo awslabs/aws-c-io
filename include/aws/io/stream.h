@@ -62,8 +62,10 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_acquire(struct aws_input_st
 
 /**
  * Decrements a input stream's ref count.  When the ref count drops to zero, the input stream will be destroyed.
+ *
+ * Returns NULL always.
  */
-AWS_IO_API void aws_input_stream_release(struct aws_input_stream *stream);
+AWS_IO_API struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *stream);
 
 /*
  * Seek to a position within a stream; analagous to fseek() and its relatives
