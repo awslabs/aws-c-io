@@ -217,8 +217,8 @@ struct aws_input_stream *aws_input_stream_new_from_cursor(
  * file-based input stream
  */
 struct aws_input_stream_file_impl {
-    struct aws_allocator *allocator;
     struct aws_input_stream base;
+    struct aws_allocator *allocator;
     FILE *file;
     bool close_on_clean_up;
 };
