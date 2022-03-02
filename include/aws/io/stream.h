@@ -47,6 +47,8 @@ struct aws_input_stream_vtable {
  * reaches to zero.
  */
 struct aws_input_stream {
+    /* point to the impl only set if needed. */
+    void *impl;
     const struct aws_input_stream_vtable *vtable;
     struct aws_ref_count ref_count;
 };
