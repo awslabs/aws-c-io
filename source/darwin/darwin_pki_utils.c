@@ -18,12 +18,6 @@ static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
 #if !defined(AWS_OS_IOS)
 
-#    pragma clang diagnostic push
-/* macOS 12.0 starting marking SecKeychainOpen() and SecKeychainUnlock() as deprecated
- * because "Custom keychain management is no longer supported".
- * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
-#    pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -55,6 +49,12 @@ int aws_import_public_and_private_keys_to_identity(
     SecKeychainRef import_keychain = NULL;
 
     if (keychain_path) {
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        /* Starting in macOS 12, SecKeychainOpen() and SecKeychainUnlock() are marked as deprecated
+         * because "Custom keychain management is no longer supported".
+         * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
+
         OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
@@ -73,6 +73,8 @@ int aws_import_public_and_private_keys_to_identity(
                 keychain_status);
             return AWS_OP_ERR;
         }
+#    pragma clang diagnostic pop
+
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {
@@ -178,7 +180,6 @@ done:
     return result;
 }
 
-#    pragma clang diagnostic pop
 #endif /* AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
