@@ -379,6 +379,8 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options);
 
 /**
+ * @Deprecated
+ *
  * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
  *
  * NOTE: This only works on MacOS.
