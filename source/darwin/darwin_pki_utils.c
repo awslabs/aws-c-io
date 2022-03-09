@@ -18,6 +18,12 @@ static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
 #if !defined(AWS_OS_IOS)
 
+#    pragma clang diagnostic push
+/* macOS 12.0 starting marking SecKeychainOpen() and SecKeychainUnlock() as deprecated
+ * because "Custom keychain management is no longer supported".
+ * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
+#    pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -172,6 +178,7 @@ done:
     return result;
 }
 
+#    pragma clang diagnostic pop
 #endif /* AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
