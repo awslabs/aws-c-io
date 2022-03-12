@@ -23,11 +23,11 @@
 
 int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
 
-    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path %s.", cert_path);
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path '%s'.", cert_path);
     char *location_of_next_segment = strchr(cert_path, '\\');
 
     if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Must use '\\' as separator.", cert_path);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -52,7 +52,13 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: certificate path %s does not contain a valid cert store identifier.", cert_path);
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path '%s'. System store location '%.*s' not recognized."
+            " Expected something like 'CurrentUser'.",
+            cert_path,
+            (int)store_name_len,
+            cert_path);
+
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -62,7 +68,8 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     location_of_next_segment = strchr(location_of_next_segment, '\\');
 
     if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Expected additional '\\' separator.", cert_path);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -70,14 +77,17 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
        at the docs, 128 bytes should be plenty to store that segment.
        https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations */
     char store_path[128] = {0};
-    AWS_FATAL_ASSERT(location_of_next_segment - store_path_start < sizeof(store_path));
+    if (location_of_next_segment - store_path_start >= sizeof(store_path)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Store name is too long.", cert_path);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
+    }
     memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
 
     location_of_next_segment += 1;
     if (strlen(location_of_next_segment) != CERT_HASH_STR_LEN) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been"
+            "static: invalid certificate path '%s'. '%s' should have been"
             " 40 bytes of hex encoded data",
             cert_path,
             location_of_next_segment);
@@ -90,7 +100,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*cert_store) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. Failed to load cert store with error code %d",
+            "static: invalid certificate path '%s'. Failed to load cert store with error code %d",
             cert_path,
             (int)GetLastError());
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
@@ -112,7 +122,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             NULL)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been a hex encoded string",
+            "static: invalid certificate path '%s'. '%s' should have been a hex encoded string",
             cert_path,
             location_of_next_segment);
         aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
@@ -125,7 +135,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*certs) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. "
+            "static: invalid certificate path '%s'. "
             "The referenced certificate was not found in the certificate store, error code %d",
             cert_path,
             (int)GetLastError());
