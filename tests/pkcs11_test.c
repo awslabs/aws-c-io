@@ -1332,10 +1332,9 @@ static int s_test_pkcs11_asn1_bigint(struct aws_allocator *allocator, void *ctx)
     uint8_t pos_int_5_out[3] = {0x02, 0x01, 0x00};
     ASSERT_SUCCESS(
         s_verify_bigint(allocator, pos_int_5_in, sizeof(pos_int_5_in), pos_int_5_out, sizeof(pos_int_5_out)));
-    uint8_t pos_int_6_in[0] = {};
+    uint8_t pos_int_6_in[1] = {0}; // actually we specify 0-length, but not all compilers support empty array
     uint8_t pos_int_6_out[3] = {0x02, 0x01, 0x00};
-    ASSERT_SUCCESS(
-        s_verify_bigint(allocator, pos_int_6_in, sizeof(pos_int_6_in), pos_int_6_out, sizeof(pos_int_6_out)));
+    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_6_in, 0, pos_int_6_out, sizeof(pos_int_6_out)));
     uint8_t pos_int_7_in[4] = {0x00, 0x84, 0x56, 0x78};
     uint8_t pos_int_7_out[6] = {0x02, 0x04, 0x00, 0x84, 0x56, 0x78};
     ASSERT_SUCCESS(
