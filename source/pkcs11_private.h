@@ -42,7 +42,7 @@ enum aws_tls_hash_algorithm {
 enum aws_tls_signature_algorithm {
     AWS_TLS_SIGNATURE_UNKNOWN = -1,
     AWS_TLS_SIGNATURE_RSA,
-    /* TODO: add support for additional algorithms (ECDSA) */
+    AWS_TLS_SIGNATURE_ECDSA,
 };
 
 AWS_EXTERN_C_BEGIN

@@ -23,6 +23,13 @@
 /*
  * DER encoded DigestInfo value to be prefixed to the hash, used for RSA signing
  * See https://tools.ietf.org/html/rfc3447#page-43
+ * (Notes to help understand what's going on here with DER encoding)
+ * 0x30 nn - Sequence of tags, nn bytes, including hash, nn = mm+jj+4 (PKCS11 DigestInfo)
+ *   0x30 mm - Subsequence of tags, mm bytes (ii+4) (PKCS11 
+ *     0x06 ii - OID encoding, ii bytes, see X.680 - this identifies the hash algorithm
+ *     0x05 00 - NULL
+ *   0x04 jj - OCTET, nn = mm + jj + 4
+ *   Digest (nn - mm - 4 bytes)
  */
 static const uint8_t SHA1_PREFIX_TO_RSA_SIG[] = { 0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14 };
 static const uint8_t SHA256_PREFIX_TO_RSA_SIG[] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
@@ -48,6 +55,7 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
     /* clang-format off */
     switch (signature) {
         case (AWS_TLS_SIGNATURE_RSA): return "RSA";
+        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA";
         default: return "<UNKNOWN SIGNATURE ALGORITHM>";
     }
     /* clang-format on */
@@ -945,6 +953,7 @@ int aws_pkcs11_lib_find_private_key(
 
     switch (key_type) {
         case CKK_RSA:
+        case CKK_EC:
             break;
         default:
             AWS_LOGF_ERROR(
@@ -998,6 +1007,7 @@ int aws_pkcs11_lib_decrypt(
     CK_MECHANISM mechanism;
     AWS_ZERO_STRUCT(mechanism);
 
+    /* Note, CKK_EC is not expected to enter into this code path */
     switch (key_type) {
         case CKK_RSA:
             mechanism.mechanism = CKM_RSA_PKCS;
@@ -1177,6 +1187,148 @@ clean_up:
     return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
 }
 
+/*
+ * Basic ANS1 (DER) encoding of header -- sufficient for ECDSA
+ */
+static int s_ans1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, size_t length) {
+    if (((identifier & 0x1f) == 0x1f) || (length > 0x7f)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "Unable to encode ANS1 header 0x%02x 0x%02x",
+            identifier,
+            length);
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+    }
+    uint8_t head[2];
+    head[0] = identifier;
+    head[1] = (uint8_t)length;
+    if (!aws_byte_buf_write(buffer, head, sizeof(head))) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "Insufficient buffer to encode ANS1 header 0x%02x 0x%02x",
+            identifier,
+            length);
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+    }
+    return AWS_OP_SUCCESS;
+}
+
+/*
+ * Basic ANS1 (DER) encoding of an unsigned big number -- sufficient for ECDSA
+ */
+int pkcs11_ans1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t * bigint, size_t length) {
+    size_t trim_len = length;
+
+    // trim out all leading zero's
+    while (trim_len > 0 && bigint[0] == 0) {
+        trim_len--;
+        bigint++;
+    }
+    // add leading zero to ensure number is not interpreted as signed
+    if (trim_len == 0 || (bigint[0] & 0x80) != 0) {
+        trim_len++;
+        bigint--;
+    }
+    // header - indicate integer
+    bool success = s_ans1_enc_prefix(buffer, 0x02, trim_len) == AWS_OP_SUCCESS;
+    if (trim_len > length) {
+        // add leading zero that was not in original buffer
+        trim_len--;
+        bigint++;
+        uint8_t zero = 0;
+        success = success && aws_byte_buf_write(buffer, &zero, 1);
+    }
+    // write rest of number
+    success = success && aws_byte_buf_write(buffer, bigint, trim_len);
+    if (success) {
+        return AWS_OP_SUCCESS;
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "Insufficient buffer to ANS1 encode big integer of length %u",
+            trim_len);
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+    }
+}
+
+static int s_pkcs11_sign_ecdsa(
+    struct aws_pkcs11_lib *pkcs11_lib,
+    CK_SESSION_HANDLE session_handle,
+    CK_OBJECT_HANDLE key_handle,
+    struct aws_byte_cursor digest_data,
+    struct aws_allocator *allocator,
+    enum aws_tls_signature_algorithm signature_alg,
+    struct aws_byte_buf *out_signature) {
+
+    struct aws_byte_buf part_signature;
+    struct aws_byte_buf r_part;
+    struct aws_byte_buf s_part;
+    AWS_ZERO_STRUCT(part_signature);
+    AWS_ZERO_STRUCT(r_part);
+    AWS_ZERO_STRUCT(s_part);
+
+    if (signature_alg != AWS_TLS_SIGNATURE_ECDSA) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "id=%p session=%lu: Signature algorithm '%s' is currently unsupported for PKCS#11 EC keys. "
+            "Supported algorithms are: ECDSA",
+            (void *)pkcs11_lib,
+            session_handle,
+            aws_tls_signature_algorithm_str(signature_alg));
+        return aws_raise_error(AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED);
+    }
+
+    bool success = false;
+
+    /* ECDSA signing consists of DER-encoding of "r" and "s" parameters. C_Sign returns the two
+     * integers as big numbers in big-endian format, so translation is required.
+     */
+    CK_MECHANISM mechanism = {.mechanism = CKM_ECDSA};
+
+    if (s_pkcs11_sign_helper(
+            pkcs11_lib,
+            session_handle,
+            key_handle,
+            mechanism,
+            digest_data,
+            allocator,
+            &part_signature) != AWS_OP_SUCCESS) {
+        goto error;
+    }
+
+    size_t num_bytes = part_signature.len /2;
+    aws_byte_buf_init(&r_part, allocator, num_bytes + 4);
+    aws_byte_buf_init(&s_part, allocator, num_bytes + 4);
+
+    if (pkcs11_ans1_enc_ubigint(&r_part, part_signature.buffer, num_bytes) != AWS_OP_SUCCESS) {
+        goto error;
+    }
+    if (pkcs11_ans1_enc_ubigint(&s_part, part_signature.buffer+num_bytes, num_bytes) != AWS_OP_SUCCESS) {
+        goto error;
+    }
+    size_t pair_len = r_part.len + s_part.len;
+    aws_byte_buf_init(out_signature, allocator, pair_len + 2); // inc header
+    if (s_ans1_enc_prefix(out_signature, 0x30, pair_len) != AWS_OP_SUCCESS) {
+        goto error;
+    }
+    if (!aws_byte_buf_write_from_whole_buffer(out_signature, r_part)) {
+        goto error;
+    }
+    if (!aws_byte_buf_write_from_whole_buffer(out_signature, s_part)) {
+        goto error;
+    }
+    success = true;
+    goto clean_up;
+
+error:
+    aws_byte_buf_clean_up(out_signature);
+clean_up:
+    aws_byte_buf_clean_up(&part_signature);
+    aws_byte_buf_clean_up(&r_part);
+    aws_byte_buf_clean_up(&s_part);
+    return success ? AWS_OP_SUCCESS : AWS_OP_ERR;
+}
+
 int aws_pkcs11_lib_sign(
     struct aws_pkcs11_lib *pkcs11_lib,
     CK_SESSION_HANDLE session_handle,
@@ -1200,6 +1352,16 @@ int aws_pkcs11_lib_sign(
                 digest_data,
                 allocator,
                 digest_alg,
+                signature_alg,
+                out_signature);
+        case CKK_ECDSA:
+            return s_pkcs11_sign_ecdsa(
+                pkcs11_lib,
+                session_handle,
+                key_handle,
+                digest_data,
+                allocator,
+                // not digest_alg -- need to check this
                 signature_alg,
                 out_signature);
         default:

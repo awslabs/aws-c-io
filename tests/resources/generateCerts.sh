@@ -14,11 +14,15 @@ set -e
 # unittests.crt:      self-signed certificate
 # unittests.p8:       private key, pkcs#8 syntax
 # unittests.p12:      pkcs#12 file bundling the certificate and private key. Password is "1234"
+# ec_unittests.crt:   elliptic curve self-signed certificate
+# ec_unittests.p8:    elliptic curve private key, pkcs#8 syntax
+# ec_unittests.p12:   elliptic curve pkcs#12 file bundling the certificate and private key. Password is "1234"
 
 # Create directory for use with certificate generation
-mkdir certGeneration
+mkdir -p certGeneration
 # Copy files needed to generate new certificates
 cp unittests.key certGeneration/unittests.key
+cp ec_unittests.key certGeneration/ec_unittests.key
 cp unittests.conf certGeneration/unittests.conf
 cp ca_root.cnf certGeneration/ca_root.cnf
 cd certGeneration
@@ -58,24 +62,27 @@ yes | openssl ca -config ca_root.cnf \
 # Generate a certificate chain containing the ca_root and server certificates
 cat server.crt ca_root.crt > server_chain.crt
 
-openssl req -x509 -new \
-            -key unittests.key \
+# Generate other unittest certificate variations
+for base in unittests ec_unittests; do
+  openssl req -x509 -new \
+            -key $base.key \
             -config unittests.conf \
-            -out unittests.crt \
+            -out $base.crt \
             -days 824
 
-openssl pkcs8 -topk8 \
-            -out unittests.p8 \
-            -in unittests.key \
+  openssl pkcs8 -topk8 \
+            -out $base.p8 \
+            -in $base.key \
             -nocrypt
 
-openssl pkcs12 -export \
-            -out unittests.p12 \
-            -inkey unittests.key \
-            -in unittests.crt \
+  openssl pkcs12 -export \
+            -out $base.p12 \
+            -inkey $base.key \
+            -in $base.crt \
             -password pass:1234
+done
 
-# Copy the generated certificates and keys to the resouces folder
+# Copy the generated certificates and keys to the resources folder
 cd ..
 cp certGeneration/ca_root.crt ./ca_root.crt
 cp certGeneration/server.crt ./server.crt
@@ -83,9 +90,11 @@ cp certGeneration/server.key ./server.key
 cp certGeneration/server_chain.crt ./server_chain.crt
 cp certGeneration/server.crt ./server.crt
 
-cp certGeneration/unittests.crt ./unittests.crt
-cp certGeneration/unittests.p8 ./unittests.p8
-cp certGeneration/unittests.p12 ./unittests.p12
+for base in unittests ec_unittests; do
+  cp certGeneration/$base.crt ./$base.crt
+  cp certGeneration/$base.p8 ./$base.p8
+  cp certGeneration/$base.p12 ./$base.p12
+done
 
 # Clean up the certGeneration folder
 rm -r certGeneration
