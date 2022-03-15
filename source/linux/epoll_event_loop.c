@@ -584,8 +584,6 @@ static void s_main_loop(void *args) {
      * process queued subscription cleanups.
      */
     while (epoll_loop->should_continue) {
-
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout);
         int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
         aws_event_loop_register_tick_start(event_loop);
 
@@ -648,8 +646,6 @@ static void s_main_loop(void *args) {
         }
 
         if (use_default_timeout) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", (void *)event_loop);
             timeout = DEFAULT_TIMEOUT;
         } else {
             /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
