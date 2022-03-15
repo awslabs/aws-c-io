@@ -1188,15 +1188,11 @@ clean_up:
 }
 
 /*
- * Basic ANS1 (DER) encoding of header -- sufficient for ECDSA
+ * Basic ASN.1 (DER) encoding of header -- sufficient for ECDSA
  */
-static int s_ans1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, size_t length) {
+static int s_asn1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, size_t length) {
     if (((identifier & 0x1f) == 0x1f) || (length > 0x7f)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11,
-            "Unable to encode ANS1 header 0x%02x 0x%02x",
-            identifier,
-            length);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Unable to encode ASN.1 (DER) header 0x%02x %lu", identifier, (long)length);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
     uint8_t head[2];
@@ -1204,19 +1200,18 @@ static int s_ans1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, si
     head[1] = (uint8_t)length;
     if (!aws_byte_buf_write(buffer, head, sizeof(head))) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11,
-            "Insufficient buffer to encode ANS1 header 0x%02x 0x%02x",
-            identifier,
-            length);
+            AWS_LS_IO_PKCS11, "Insufficient buffer to encode ASN.1 (DER) header 0x%02x %lu", identifier, (long)length);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
     return AWS_OP_SUCCESS;
 }
 
 /*
- * Basic ANS1 (DER) encoding of an unsigned big number -- sufficient for ECDSA
+ * Basic ASN.1 (DER) encoding of an unsigned big number -- sufficient for ECDSA. Note that this implementation
+ * may reduce the number of integer bytes down to 1 (removing leading zero bytes), or conversely increase by
+ * one extra byte to ensure the unsigned integer is unambiguously encoded.
  */
-int pkcs11_ans1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t * bigint, size_t length) {
+int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t *bigint, size_t length) {
     size_t trim_len = length;
 
     // trim out all leading zero's
@@ -1230,7 +1225,7 @@ int pkcs11_ans1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t * b
         bigint--;
     }
     // header - indicate integer
-    bool success = s_ans1_enc_prefix(buffer, 0x02, trim_len) == AWS_OP_SUCCESS;
+    bool success = s_asn1_enc_prefix(buffer, 0x02, trim_len) == AWS_OP_SUCCESS;
     if (trim_len > length) {
         // add leading zero that was not in original buffer
         trim_len--;
@@ -1244,9 +1239,7 @@ int pkcs11_ans1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t * b
         return AWS_OP_SUCCESS;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11,
-            "Insufficient buffer to ANS1 encode big integer of length %u",
-            trim_len);
+            AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode big integer of length %lu", (long)trim_len);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
 }
@@ -1286,29 +1279,24 @@ static int s_pkcs11_sign_ecdsa(
     CK_MECHANISM mechanism = {.mechanism = CKM_ECDSA};
 
     if (s_pkcs11_sign_helper(
-            pkcs11_lib,
-            session_handle,
-            key_handle,
-            mechanism,
-            digest_data,
-            allocator,
-            &part_signature) != AWS_OP_SUCCESS) {
+            pkcs11_lib, session_handle, key_handle, mechanism, digest_data, allocator, &part_signature) !=
+        AWS_OP_SUCCESS) {
         goto error;
     }
 
-    size_t num_bytes = part_signature.len /2;
+    size_t num_bytes = part_signature.len / 2;
     aws_byte_buf_init(&r_part, allocator, num_bytes + 4);
     aws_byte_buf_init(&s_part, allocator, num_bytes + 4);
 
-    if (pkcs11_ans1_enc_ubigint(&r_part, part_signature.buffer, num_bytes) != AWS_OP_SUCCESS) {
+    if (aws_pkcs11_asn1_enc_ubigint(&r_part, part_signature.buffer, num_bytes) != AWS_OP_SUCCESS) {
         goto error;
     }
-    if (pkcs11_ans1_enc_ubigint(&s_part, part_signature.buffer+num_bytes, num_bytes) != AWS_OP_SUCCESS) {
+    if (aws_pkcs11_asn1_enc_ubigint(&s_part, part_signature.buffer + num_bytes, num_bytes) != AWS_OP_SUCCESS) {
         goto error;
     }
     size_t pair_len = r_part.len + s_part.len;
     aws_byte_buf_init(out_signature, allocator, pair_len + 2); // inc header
-    if (s_ans1_enc_prefix(out_signature, 0x30, pair_len) != AWS_OP_SUCCESS) {
+    if (s_asn1_enc_prefix(out_signature, 0x30, pair_len) != AWS_OP_SUCCESS) {
         goto error;
     }
     if (!aws_byte_buf_write_from_whole_buffer(out_signature, r_part)) {

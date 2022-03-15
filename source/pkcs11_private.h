@@ -144,6 +144,14 @@ AWS_IO_API
 int aws_get_prefix_to_rsa_sig(enum aws_tls_hash_algorithm digest_alg, struct aws_byte_cursor *out_prefix);
 
 /**
+ * ASN.1 DER encode a big unsigned integer. Note that the source integer may be zero padded. It may also have
+ * most significant bit set. The encoded format is canonical and unambiguous - that is, most significant
+ * bit is never set.
+ */
+AWS_IO_API
+int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t *bigint, size_t length);
+
+/**
  * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
  */
 AWS_IO_API

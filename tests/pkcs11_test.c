@@ -220,7 +220,7 @@ static int s_pkcs11_create_ec_key(
     static CK_BBOOL truevalue = TRUE;
     static CK_BBOOL falsevalue = FALSE;
     /* DER encoded params for curve P-256 */
-    static CK_BYTE ec_params[] = { 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07 };
+    static CK_BYTE ec_params[] = {0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07};
 
     CK_ATTRIBUTE publickey_template[] = {
         {CKA_EC_PARAMS, ec_params, sizeof(ec_params)},
@@ -784,9 +784,9 @@ static int s_test_pkcs11_find_private_key_for_ec(struct aws_allocator *allocator
     CK_OBJECT_HANDLE created_key_ec_256 = CK_INVALID_HANDLE;
     char *key_label_ec_256 = "EC_256_Key";
     char *key_id_ec_256 = "EC_256_id";
-    struct pkcs11_key_creation_params params_ec_256 = {
-        .key_label = key_label_ec_256, .key_id = key_id_ec_256};
-    ASSERT_SUCCESS(s_pkcs11_create_ec_key(&params_ec_256, session_to_create_key, &created_key_ec_256, &created_pub_key));
+    struct pkcs11_key_creation_params params_ec_256 = {.key_label = key_label_ec_256, .key_id = key_id_ec_256};
+    ASSERT_SUCCESS(
+        s_pkcs11_create_ec_key(&params_ec_256, session_to_create_key, &created_key_ec_256, &created_pub_key));
 
     /* Find key */
     CK_OBJECT_HANDLE pkey_handle = CK_INVALID_HANDLE;
@@ -1107,17 +1107,19 @@ static int s_test_pkcs11_find_slot_many_tokens(struct aws_allocator *allocator, 
 }
 AWS_TEST_CASE(pkcs11_find_slot_many_tokens, s_test_pkcs11_find_slot_many_tokens)
 
-static int s_test_pkcs11_prepare_rsa_2048_sign(CK_SESSION_HANDLE session,
-                                          CK_OBJECT_HANDLE *pri_key,
-                                          CK_OBJECT_HANDLE *pub_key) {
+static int s_test_pkcs11_prepare_rsa_2048_sign(
+    CK_SESSION_HANDLE session,
+    CK_OBJECT_HANDLE *pri_key,
+    CK_OBJECT_HANDLE *pub_key) {
     struct pkcs11_key_creation_params params = {
         .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 2048};
     return s_pkcs11_create_rsa_key(&params, session, pri_key, pub_key);
 }
 
-static int s_test_pkcs11_prepare_ec_256_sign(CK_SESSION_HANDLE session,
-                                         CK_OBJECT_HANDLE *pri_key,
-                                         CK_OBJECT_HANDLE *pub_key) {
+static int s_test_pkcs11_prepare_ec_256_sign(
+    CK_SESSION_HANDLE session,
+    CK_OBJECT_HANDLE *pri_key,
+    CK_OBJECT_HANDLE *pub_key) {
     struct pkcs11_key_creation_params params = {
         .key_label = DEFAULT_KEY_LABEL, .key_id = DEFAULT_KEY_ID, .key_length = 256};
     return s_pkcs11_create_ec_key(&params, session, pri_key, pub_key);
@@ -1159,33 +1161,15 @@ static int s_test_pkcs11_rsa_decrypt(struct aws_allocator *allocator, void *ctx)
 
     /* Invalid session handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_decrypt(
-        s_pkcs11_tester.lib,
-        CK_INVALID_HANDLE,
-        created_key,
-        CKK_RSA,
-        cipher_text,
-        allocator,
-        &output_decrypted));
+        s_pkcs11_tester.lib, CK_INVALID_HANDLE, created_key, CKK_RSA, cipher_text, allocator, &output_decrypted));
 
     /* Invalid key handle should fail */
     ASSERT_FAILS(aws_pkcs11_lib_decrypt(
-        s_pkcs11_tester.lib,
-        session,
-        CK_INVALID_HANDLE,
-        CKK_RSA,
-        cipher_text,
-        allocator,
-        &output_decrypted));
+        s_pkcs11_tester.lib, session, CK_INVALID_HANDLE, CKK_RSA, cipher_text, allocator, &output_decrypted));
 
     struct aws_byte_cursor empty_message_to_decrypt = aws_byte_cursor_from_c_str("");
     ASSERT_FAILS(aws_pkcs11_lib_decrypt(
-        s_pkcs11_tester.lib,
-        session,
-        created_key,
-        CKK_RSA,
-        empty_message_to_decrypt,
-        allocator,
-        &output_decrypted));
+        s_pkcs11_tester.lib, session, created_key, CKK_RSA, empty_message_to_decrypt, allocator, &output_decrypted));
     /* Clean up */
     aws_byte_buf_clean_up(&output_buf);
     aws_byte_buf_clean_up(&output_decrypted);
@@ -1195,8 +1179,7 @@ static int s_test_pkcs11_rsa_decrypt(struct aws_allocator *allocator, void *ctx)
 
 AWS_TEST_CASE(pkcs11_rsa_decrypt, s_test_pkcs11_rsa_decrypt)
 
-static int s_test_pkcs11_sign_rsa(struct aws_allocator *allocator, void *ctx,
-                              enum aws_tls_hash_algorithm digest_alg) {
+static int s_test_pkcs11_sign_rsa(struct aws_allocator *allocator, void *ctx, enum aws_tls_hash_algorithm digest_alg) {
     (void)ctx;
     /* Reset PKCS#11 tokens, load library */
     CK_SLOT_ID created_slot = 0;
@@ -1234,8 +1217,8 @@ static int s_test_pkcs11_sign_rsa(struct aws_allocator *allocator, void *ctx,
     struct aws_byte_cursor input_message_to_verify = aws_byte_cursor_from_buf(&prefixed_input);
 
     /* Verify the signature */
-    ASSERT_SUCCESS(s_pkcs11_verify_signature(&input_message_to_verify, &signature, session, created_pub_key,
-                                             CKM_RSA_PKCS));
+    ASSERT_SUCCESS(
+        s_pkcs11_verify_signature(&input_message_to_verify, &signature, session, created_pub_key, CKM_RSA_PKCS));
 
     /* Assert that sign fails for invalid key type */
     CK_KEY_TYPE unsupported_key_type = CKK_GENERIC_SECRET;
@@ -1307,12 +1290,15 @@ static int s_test_pkcs11_sign_rsa_sha224(struct aws_allocator *allocator, void *
 }
 AWS_TEST_CASE(pkcs11_sign_rsa_sha224, s_test_pkcs11_sign_rsa_sha224)
 
-extern int pkcs11_ans1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t * bigint, size_t length);
-
-static int s_verify_bigint(struct aws_allocator *allocator, uint8_t * ptr, size_t len_in, uint8_t * ptr_out, size_t len_out) {
+static int s_verify_bigint(
+    struct aws_allocator *allocator,
+    uint8_t *ptr,
+    size_t len_in,
+    uint8_t *ptr_out,
+    size_t len_out) {
     struct aws_byte_buf buffer;
     aws_byte_buf_init(&buffer, allocator, len_in + 4);
-    ASSERT_SUCCESS(pkcs11_ans1_enc_ubigint(&buffer, ptr, len_in));
+    ASSERT_SUCCESS(aws_pkcs11_asn1_enc_ubigint(&buffer, ptr, len_in));
     ASSERT_INT_EQUALS(len_out, buffer.len);
     for (int i = 0; i < len_out; i++) {
         ASSERT_HEX_EQUALS(ptr_out[i], buffer.buffer[i], "Mismatch at position %u", i);
@@ -1321,61 +1307,69 @@ static int s_verify_bigint(struct aws_allocator *allocator, uint8_t * ptr, size_
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_pkcs11_ans1_bigint(struct aws_allocator *allocator, void *ctx) {
+static int s_test_pkcs11_asn1_bigint(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /*
      * ECDSA relies on this working correct, so test this first to avoid intermittent failures
      */
     uint8_t pos_int_1_in[4] = {0x12, 0x34, 0x56, 0x78};
     uint8_t pos_int_1_out[6] = {0x02, 0x04, 0x12, 0x34, 0x56, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_1_in, sizeof(pos_int_1_in), pos_int_1_out, sizeof(pos_int_1_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_1_in, sizeof(pos_int_1_in), pos_int_1_out, sizeof(pos_int_1_out)));
     uint8_t pos_int_2_in[4] = {0x00, 0x34, 0x56, 0x78};
     uint8_t pos_int_2_out[5] = {0x02, 0x03, 0x34, 0x56, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_2_in, sizeof(pos_int_2_in), pos_int_2_out, sizeof(pos_int_2_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_2_in, sizeof(pos_int_2_in), pos_int_2_out, sizeof(pos_int_2_out)));
     uint8_t pos_int_3_in[4] = {0x00, 0x00, 0x56, 0x78};
     uint8_t pos_int_3_out[4] = {0x02, 0x02, 0x56, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_3_in, sizeof(pos_int_3_in), pos_int_3_out, sizeof(pos_int_3_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_3_in, sizeof(pos_int_3_in), pos_int_3_out, sizeof(pos_int_3_out)));
     uint8_t pos_int_4_in[4] = {0x00, 0x00, 0x00, 0x78};
     uint8_t pos_int_4_out[3] = {0x02, 0x01, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_4_in, sizeof(pos_int_4_in), pos_int_4_out, sizeof(pos_int_4_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_4_in, sizeof(pos_int_4_in), pos_int_4_out, sizeof(pos_int_4_out)));
     uint8_t pos_int_5_in[4] = {0x00, 0x00, 0x00, 0x00};
     uint8_t pos_int_5_out[3] = {0x02, 0x01, 0x00};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_5_in, sizeof(pos_int_5_in), pos_int_5_out, sizeof(pos_int_5_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_5_in, sizeof(pos_int_5_in), pos_int_5_out, sizeof(pos_int_5_out)));
     uint8_t pos_int_6_in[0] = {};
     uint8_t pos_int_6_out[3] = {0x02, 0x01, 0x00};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_6_in, sizeof(pos_int_6_in), pos_int_6_out, sizeof(pos_int_6_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_6_in, sizeof(pos_int_6_in), pos_int_6_out, sizeof(pos_int_6_out)));
     uint8_t pos_int_7_in[4] = {0x00, 0x84, 0x56, 0x78};
     uint8_t pos_int_7_out[6] = {0x02, 0x04, 0x00, 0x84, 0x56, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_7_in, sizeof(pos_int_7_in), pos_int_7_out, sizeof(pos_int_7_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_7_in, sizeof(pos_int_7_in), pos_int_7_out, sizeof(pos_int_7_out)));
     uint8_t pos_int_8_in[4] = {0x82, 0x34, 0x56, 0x78};
     uint8_t pos_int_8_out[7] = {0x02, 0x05, 0x00, 0x82, 0x34, 0x56, 0x78};
-    ASSERT_SUCCESS(s_verify_bigint(allocator, pos_int_8_in, sizeof(pos_int_8_in), pos_int_8_out, sizeof(pos_int_8_out)));
+    ASSERT_SUCCESS(
+        s_verify_bigint(allocator, pos_int_8_in, sizeof(pos_int_8_in), pos_int_8_out, sizeof(pos_int_8_out)));
 
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(pkcs11_ans1_bigint, s_test_pkcs11_ans1_bigint)
+AWS_TEST_CASE(pkcs11_asn1_bigint, s_test_pkcs11_asn1_bigint)
 
-static int s_decode_ans1(struct aws_byte_cursor * src, uint8_t * identifier, struct aws_byte_cursor * split) {
-    ASSERT_TRUE(src->len >= 2, "ANS1 structure too small for header, length=%u", src->len);
+static int s_decode_asn1(struct aws_byte_cursor *src, uint8_t *identifier, struct aws_byte_cursor *split) {
+    ASSERT_TRUE(src->len >= 2, "ASN1 structure too small for header, length=%u", src->len);
     *identifier = src->ptr[0];
     uint8_t small_len = src->ptr[1];
     src->ptr += 2;
     src->len -= 2;
-    ASSERT_TRUE(small_len < 0x80, "ANS1 multi-byte length specified: %u", small_len);
-    ASSERT_TRUE(small_len <= src->len, "ANS1 length too big: %u > %u", small_len, src->len);
+    ASSERT_TRUE(small_len < 0x80, "ASN1 multi-byte length specified: %u", small_len);
+    ASSERT_TRUE(small_len <= src->len, "ASN1 length too big: %u > %u", small_len, src->len);
     *split = aws_byte_cursor_from_array(src->ptr, small_len);
     src->ptr += small_len;
     src->len -= small_len;
     return AWS_OP_SUCCESS;
 }
 
-static int s_write_bigint(struct aws_byte_buf * buf, struct aws_byte_cursor * num, size_t len) {
+static int s_write_bigint(struct aws_byte_buf *buf, struct aws_byte_cursor *num, size_t len) {
     if (num->len > len && num->len > 1 && num->ptr[0] == 0x00 && (num->ptr[1] & 0x80) != 0) {
         // only scenario we allow length to be bigger
         num->ptr++;
         num->len--;
     }
-    ASSERT_TRUE(num->len <= len, "ANS1 number is too big: %u > %u", num->len, len);
+    ASSERT_TRUE(num->len <= len, "ASN1 number is too big: %u > %u", num->len, len);
     if (num->len < len) {
         uint8_t fill = num->ptr[0] & 0x80 ? 0xff : 0x00;
         while (len > num->len) {
@@ -1387,11 +1381,11 @@ static int s_write_bigint(struct aws_byte_buf * buf, struct aws_byte_cursor * nu
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_pkcs11_sign_ec(struct aws_allocator *allocator, void *ctx,
-                              int sig_len,
-                              int (*prepare)(CK_SESSION_HANDLE session,
-                                             CK_OBJECT_HANDLE *pri_key,
-                                             CK_OBJECT_HANDLE *pub_key)) {
+static int s_test_pkcs11_sign_ec(
+    struct aws_allocator *allocator,
+    void *ctx,
+    int sig_len,
+    int (*prepare)(CK_SESSION_HANDLE session, CK_OBJECT_HANDLE *pri_key, CK_OBJECT_HANDLE *pub_key)) {
     (void)ctx;
     /* Reset PKCS#11 tokens, load library */
     CK_SLOT_ID created_slot = 0;
@@ -1403,7 +1397,7 @@ static int s_test_pkcs11_sign_ec(struct aws_allocator *allocator, void *ctx,
     ASSERT_SUCCESS(prepare(session, &created_key, &created_pub_key));
 
     struct aws_byte_cursor message_to_sign = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
-    struct aws_byte_buf signature; /* initialized later */
+    struct aws_byte_buf signature;  /* initialized later */
     struct aws_byte_buf sig_verify; /* initialized later */
     AWS_ZERO_STRUCT(signature);
     AWS_ZERO_STRUCT(sig_verify);
@@ -1426,14 +1420,14 @@ static int s_test_pkcs11_sign_ec(struct aws_allocator *allocator, void *ctx,
     uint8_t identifier;
     struct aws_byte_cursor sig_curs = aws_byte_cursor_from_buf(&signature);
     struct aws_byte_cursor struct_body;
-    ASSERT_SUCCESS(s_decode_ans1(&sig_curs, &identifier, &struct_body));
+    ASSERT_SUCCESS(s_decode_asn1(&sig_curs, &identifier, &struct_body));
     ASSERT_HEX_EQUALS(0x30, identifier); // compound structure
     ASSERT_INT_EQUALS(sig_curs.len, 0);
     struct aws_byte_cursor r;
     struct aws_byte_cursor s;
-    ASSERT_SUCCESS(s_decode_ans1(&struct_body, &identifier, &r));
+    ASSERT_SUCCESS(s_decode_asn1(&struct_body, &identifier, &r));
     ASSERT_HEX_EQUALS(0x02, identifier); // integer
-    ASSERT_SUCCESS(s_decode_ans1(&struct_body, &identifier, &s));
+    ASSERT_SUCCESS(s_decode_asn1(&struct_body, &identifier, &s));
     ASSERT_HEX_EQUALS(0x02, identifier); // integer
     ASSERT_INT_EQUALS(struct_body.len, 0);
     // rewrite signature in format PKCS11 expects
@@ -1443,8 +1437,7 @@ static int s_test_pkcs11_sign_ec(struct aws_allocator *allocator, void *ctx,
     struct aws_byte_cursor message_to_verify = aws_byte_cursor_from_c_str("ABCDEFGHIJKL");
 
     /* Verify the signature */
-    ASSERT_SUCCESS(s_pkcs11_verify_signature(&message_to_verify, &sig_verify, session, created_pub_key,
-                                             CKM_ECDSA));
+    ASSERT_SUCCESS(s_pkcs11_verify_signature(&message_to_verify, &sig_verify, session, created_pub_key, CKM_ECDSA));
 
     aws_byte_buf_clean_up(&signature);
     aws_byte_buf_clean_up(&sig_verify);
@@ -1631,12 +1624,12 @@ static void s_on_tls_server_channel_shutdown(
 }
 
 /* Connect a client client and server, where the client is using PKCS#11 for private key operations */
-static int s_test_pkcs11_tls_negotiation_succeeds_common(struct aws_allocator *allocator,
-                                                         const char *token_label,
-                                                         const char *p8key_path,
-                                                         const char *cert_path,
-                                                         const char *pkey_path
-                                                         ) {
+static int s_test_pkcs11_tls_negotiation_succeeds_common(
+    struct aws_allocator *allocator,
+    const char *token_label,
+    const char *p8key_path,
+    const char *cert_path,
+    const char *pkey_path) {
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
     /* Create token for provided key */
@@ -1695,12 +1688,12 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(struct aws_allocator *a
     /* Set up a server that does mutual TLS. The server will not use PKCS#11 */
 
     struct aws_tls_ctx_options server_tls_opts;
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
-        &server_tls_opts, allocator, cert_path, pkey_path));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_init_default_server_from_path(&server_tls_opts, allocator, cert_path, pkey_path));
 
     /* trust the client's self-signed certificate */
-    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
-        &server_tls_opts, NULL /*ca_path*/, cert_path));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&server_tls_opts, NULL /*ca_path*/, cert_path));
 
     aws_tls_ctx_options_set_verify_peer(&server_tls_opts, true);
 
@@ -1742,13 +1735,12 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(struct aws_allocator *a
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_with_pkcs11(&client_tls_opts, allocator, &client_pkcs11_tls_opts));
 #    else
-    ASSERT_SUCCESS(
-        aws_tls_ctx_options_init_client_mtls_from_path(&client_tls_opts, allocator, cert_path, pkey_path));
+    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls_from_path(&client_tls_opts, allocator, cert_path, pkey_path));
 #    endif
 
     /* trust the server's self-signed certificate */
-    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(
-        &client_tls_opts, NULL /*ca_path*/, cert_path));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&client_tls_opts, NULL /*ca_path*/, cert_path));
 
     struct aws_tls_ctx *client_tls_ctx = aws_tls_client_ctx_new(allocator, &client_tls_opts);
     ASSERT_NOT_NULL(client_tls_ctx);
@@ -1832,11 +1824,8 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(struct aws_allocator *a
 static int s_test_pkcs11_tls_rsa_negotiation_succeeds(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_test_pkcs11_tls_negotiation_succeeds_common(allocator,
-                                                         TOKEN_LABEL_RSA,
-                                                         "unittests.p8",
-                                                         "unittests.crt",
-                                                         "unittests.key");
+    return s_test_pkcs11_tls_negotiation_succeeds_common(
+        allocator, TOKEN_LABEL_RSA, "unittests.p8", "unittests.crt", "unittests.key");
 }
 AWS_TEST_CASE(pkcs11_tls_rsa_negotiation_succeeds, s_test_pkcs11_tls_rsa_negotiation_succeeds)
 
@@ -1844,11 +1833,8 @@ AWS_TEST_CASE(pkcs11_tls_rsa_negotiation_succeeds, s_test_pkcs11_tls_rsa_negotia
 static int s_test_pkcs11_tls_ec_negotiation_succeeds(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    return s_test_pkcs11_tls_negotiation_succeeds_common(allocator,
-                                                         TOKEN_LABEL_EC,
-                                                         "ec_unittests.p8",
-                                                         "ec_unittests.crt",
-                                                         "ec_unittests.key");
+    return s_test_pkcs11_tls_negotiation_succeeds_common(
+        allocator, TOKEN_LABEL_EC, "ec_unittests.p8", "ec_unittests.crt", "ec_unittests.key");
 }
 AWS_TEST_CASE(pkcs11_tls_ec_negotiation_succeeds, s_test_pkcs11_tls_ec_negotiation_succeeds)
 #endif /* !BYO_CRYPTO */
