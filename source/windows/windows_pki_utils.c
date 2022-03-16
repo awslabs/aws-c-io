@@ -21,66 +21,96 @@
 #define CERT_HASH_STR_LEN 40
 #define CERT_HASH_LEN 20
 
-int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
+/**
+ * Split system cert path into exactly three segments like:
+ * "CurrentUser\My\a11f8a9b5df5b98ba3508fbca575d09570e0d2c6"
+ *      -> ["CurrentUser", "My", "a11f8a9b5df5b98ba3508fbca575d09570e0d2c6"]
+ */
+static int s_split_system_cert_path(const char *cert_path, struct aws_byte_cursor out_splits[3]) {
 
-    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path %s.", cert_path);
-    char *location_of_next_segment = strchr(cert_path, '\\');
+    struct aws_byte_cursor cert_path_cursor = aws_byte_cursor_from_c_str(cert_path);
 
-    if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
+    struct aws_byte_cursor segment;
+    AWS_ZERO_STRUCT(segment);
+
+    for (size_t i = 0; i < 3; ++i) {
+        if (!aws_byte_cursor_next_split(&cert_path_cursor, '\\', &segment)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Expected additional '\\' separator.", cert_path);
+            return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
+        }
+
+        out_splits[i] = segment;
+    }
+
+    if (aws_byte_cursor_next_split(&cert_path_cursor, '\\', &segment)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Too many '\\' separators found.", cert_path);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
-    size_t store_name_len = location_of_next_segment - cert_path;
-    DWORD store_val = 0;
+    return AWS_OP_SUCCESS;
+}
 
-    if (!strncmp(cert_path, "CurrentUser", store_name_len)) {
+int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
+
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path '%s'.", cert_path);
+
+    struct aws_byte_cursor segments[3];
+    if (s_split_system_cert_path(cert_path, segments)) {
+        return AWS_OP_ERR;
+    }
+    const struct aws_byte_cursor store_location = segments[0];
+    const struct aws_byte_cursor store_path_cursor = segments[1];
+    const struct aws_byte_cursor cert_hash_cursor = segments[2];
+
+    DWORD store_val = 0;
+    if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentUser")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_USER;
-    } else if (!strncmp(cert_path, "LocalMachine", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachine")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE;
-    } else if (!strncmp(cert_path, "CurrentService", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentService")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_SERVICE;
-    } else if (!strncmp(cert_path, "Services", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "Services")) {
         store_val = CERT_SYSTEM_STORE_SERVICES;
-    } else if (!strncmp(cert_path, "Users", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "Users")) {
         store_val = CERT_SYSTEM_STORE_USERS;
-    } else if (!strncmp(cert_path, "CurrentUserGroupPolicy", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentUserGroupPolicy")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY;
-    } else if (!strncmp(cert_path, "LocalMachineGroupPolicy", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachineGroupPolicy")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY;
-    } else if (!strncmp(cert_path, "LocalMachineEnterprise", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachineEnterprise")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: certificate path %s does not contain a valid cert store identifier.", cert_path);
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path '%s'. System store location '" PRInSTR "' not recognized."
+            " Expected something like 'CurrentUser'.",
+            cert_path,
+            AWS_BYTE_CURSOR_PRI(store_location));
+
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: determined registry value for lookup as %d.", (int)store_val);
-    location_of_next_segment += 1;
-    char *store_path_start = location_of_next_segment;
-    location_of_next_segment = strchr(location_of_next_segment, '\\');
-
-    if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
-        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
-    }
 
     /* The store_val value has to be only the path segment related to the physical store. Looking
        at the docs, 128 bytes should be plenty to store that segment.
        https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations */
     char store_path[128] = {0};
-    AWS_FATAL_ASSERT(location_of_next_segment - store_path_start < sizeof(store_path));
-    memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
+    if (store_path_cursor.len >= sizeof(store_path)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Store name is too long.", cert_path);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
+    }
+    memcpy(store_path, store_path_cursor.ptr, store_path_cursor.len);
 
-    location_of_next_segment += 1;
-    if (strlen(location_of_next_segment) != CERT_HASH_STR_LEN) {
+    if (cert_hash_cursor.len != CERT_HASH_STR_LEN) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been"
+            "static: invalid certificate path '%s'. '" PRInSTR "' should have been"
             " 40 bytes of hex encoded data",
             cert_path,
-            location_of_next_segment);
+            AWS_BYTE_CURSOR_PRI(cert_hash_cursor));
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -90,7 +120,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*cert_store) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. Failed to load cert store with error code %d",
+            "static: invalid certificate path '%s'. Failed to load cert store with error code %d",
             cert_path,
             (int)GetLastError());
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
@@ -103,7 +133,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     };
 
     if (!CryptStringToBinaryA(
-            location_of_next_segment,
+            (LPCSTR)cert_hash_cursor.ptr, /* this is null-terminated, it's the last segment of c-str */
             CERT_HASH_STR_LEN,
             CRYPT_STRING_HEX,
             cert_hash.pbData,
@@ -112,9 +142,9 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             NULL)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been a hex encoded string",
+            "static: invalid certificate path '%s'. '" PRInSTR "' should have been a hex encoded string",
             cert_path,
-            location_of_next_segment);
+            AWS_BYTE_CURSOR_PRI(cert_hash_cursor));
         aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
         goto on_error;
     }
@@ -125,7 +155,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*certs) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. "
+            "static: invalid certificate path '%s'. "
             "The referenced certificate was not found in the certificate store, error code %d",
             cert_path,
             (int)GetLastError());
