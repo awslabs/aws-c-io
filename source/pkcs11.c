@@ -1192,7 +1192,7 @@ clean_up:
  */
 static int s_asn1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, size_t length) {
     if (((identifier & 0x1f) == 0x1f) || (length > 0x7f)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Unable to encode ASN.1 (DER) header 0x%02x %lu", identifier, (long)length);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Unable to encode ASN.1 (DER) header 0x%02x %zu", identifier, length);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
     uint8_t head[2];
@@ -1200,7 +1200,7 @@ static int s_asn1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, si
     head[1] = (uint8_t)length;
     if (!aws_byte_buf_write(buffer, head, sizeof(head))) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11, "Insufficient buffer to encode ASN.1 (DER) header 0x%02x %lu", identifier, (long)length);
+            AWS_LS_IO_PKCS11, "Insufficient buffer to encode ASN.1 (DER) header 0x%02x %zu", identifier, length);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
     return AWS_OP_SUCCESS;
@@ -1211,35 +1211,30 @@ static int s_asn1_enc_prefix(struct aws_byte_buf *buffer, uint8_t identifier, si
  * may reduce the number of integer bytes down to 1 (removing leading zero bytes), or conversely increase by
  * one extra byte to ensure the unsigned integer is unambiguously encoded.
  */
-int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t *bigint, size_t length) {
-    size_t trim_len = length;
+int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, struct aws_byte_cursor bigint) {
 
     // trim out all leading zero's
-    while (trim_len > 0 && bigint[0] == 0) {
-        trim_len--;
-        bigint++;
+    while (bigint.len > 0 && bigint.ptr[0] == 0) {
+        aws_byte_cursor_advance(&bigint, 1);
     }
-    // add leading zero to ensure number is not interpreted as signed
-    if (trim_len == 0 || (bigint[0] & 0x80) != 0) {
-        trim_len++;
-        bigint--;
-    }
-    // header - indicate integer
-    bool success = s_asn1_enc_prefix(buffer, 0x02, trim_len) == AWS_OP_SUCCESS;
-    if (trim_len > length) {
-        // add leading zero that was not in original buffer
-        trim_len--;
-        bigint++;
-        uint8_t zero = 0;
-        success = success && aws_byte_buf_write(buffer, &zero, 1);
+
+    // If the most significant bit is a '1', prefix with a zero-byte to prevent misinterpreting number as negative.
+    // If the big integer value was zero, length will be zero, replace with zero-byte using the same approach.
+    bool add_leading_zero = bigint.len == 0 || (bigint.ptr[0] & 0x80) != 0;
+    size_t actual_len = bigint.len + (add_leading_zero ? 1 : 0);
+
+    // header - indicate integer of given length (including any prefix zero)
+    bool success = s_asn1_enc_prefix(buffer, 0x02, actual_len) == AWS_OP_SUCCESS;
+    if (add_leading_zero) {
+        success = success && aws_byte_buf_write_u8(buffer, 0);
     }
     // write rest of number
-    success = success && aws_byte_buf_write(buffer, bigint, trim_len);
+    success = success && aws_byte_buf_write_from_whole_cursor(buffer, bigint);
     if (success) {
         return AWS_OP_SUCCESS;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode big integer of length %lu", (long)trim_len);
+            AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode big integer of length %zu", actual_len);
         return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
     }
 }
@@ -1288,10 +1283,12 @@ static int s_pkcs11_sign_ecdsa(
     aws_byte_buf_init(&r_part, allocator, num_bytes + 4);
     aws_byte_buf_init(&s_part, allocator, num_bytes + 4);
 
-    if (aws_pkcs11_asn1_enc_ubigint(&r_part, part_signature.buffer, num_bytes) != AWS_OP_SUCCESS) {
+    if (aws_pkcs11_asn1_enc_ubigint(&r_part, aws_byte_cursor_from_array(part_signature.buffer, num_bytes)) !=
+        AWS_OP_SUCCESS) {
         goto error;
     }
-    if (aws_pkcs11_asn1_enc_ubigint(&s_part, part_signature.buffer + num_bytes, num_bytes) != AWS_OP_SUCCESS) {
+    if (aws_pkcs11_asn1_enc_ubigint(
+            &s_part, aws_byte_cursor_from_array(part_signature.buffer + num_bytes, num_bytes)) != AWS_OP_SUCCESS) {
         goto error;
     }
     size_t pair_len = r_part.len + s_part.len;
@@ -1300,9 +1297,13 @@ static int s_pkcs11_sign_ecdsa(
         goto error;
     }
     if (!aws_byte_buf_write_from_whole_buffer(out_signature, r_part)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode ECDSA signature R-part.");
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
         goto error;
     }
     if (!aws_byte_buf_write_from_whole_buffer(out_signature, s_part)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode ECDSA signature S-part.");
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
         goto error;
     }
     success = true;

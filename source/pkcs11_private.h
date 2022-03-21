@@ -149,7 +149,7 @@ int aws_get_prefix_to_rsa_sig(enum aws_tls_hash_algorithm digest_alg, struct aws
  * bit is never set.
  */
 AWS_IO_API
-int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, const uint8_t *bigint, size_t length);
+int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, struct aws_byte_cursor bigint);
 
 /**
  * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
