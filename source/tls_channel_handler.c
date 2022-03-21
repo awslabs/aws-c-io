@@ -221,6 +221,8 @@ int aws_tls_ctx_options_set_keychain_path(
     struct aws_byte_cursor *keychain_path_cursor) {
 
 #if defined(__APPLE__) && !defined(AWS_OS_IOS)
+    AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: Keychain path is deprecated.");
+
     options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
     if (!options->keychain_path) {
         return AWS_OP_ERR;
