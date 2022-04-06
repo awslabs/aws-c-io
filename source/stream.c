@@ -320,9 +320,10 @@ struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocato
 struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
     if (stream != NULL) {
         if (stream->vtable->acquire) {
-            return stream->vtable->acquire(stream);
+            stream->vtable->acquire(stream);
+        } else {
+            aws_ref_count_acquire(&stream->ref_count);
         }
-        aws_ref_count_acquire(&stream->ref_count);
     }
     return stream;
 }
@@ -330,9 +331,10 @@ struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *strea
 struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *stream) {
     if (stream != NULL) {
         if (stream->vtable->release) {
-            return stream->vtable->release(stream);
+            stream->vtable->release(stream);
+        } else {
+            aws_ref_count_release(&stream->ref_count);
         }
-        aws_ref_count_release(&stream->ref_count);
     }
     return NULL;
 }

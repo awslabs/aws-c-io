@@ -41,15 +41,14 @@ struct aws_input_stream_vtable {
     int (*get_length)(struct aws_input_stream *stream, int64_t *out_length);
 
     /**
-     * Optional. If not set, the default aws_ref_count_acquire/release will be used.
+     * Optional.
+     * If not set, the default aws_ref_count_acquire/release will be used.
      * Set for high level language binding that has its own refcounting implementation and needs to be kept alive from
      * C.
-     * When the C level needs to keep the high level language binding alive, while binding as the user also holds the
-     * reference to the C object, it will result in a recursive reference.
-     * The function here is for C Object to use the high level refcount implementation directly.
+     * If set, ref_count member will not be used.
      */
-    struct aws_input_stream *(*acquire)(struct aws_input_stream *stream);
-    struct aws_input_stream *(*release)(struct aws_input_stream *stream);
+    void (*acquire)(struct aws_input_stream *stream);
+    void (*release)(struct aws_input_stream *stream);
 };
 
 /**
