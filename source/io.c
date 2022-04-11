@@ -278,6 +278,10 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_ERROR_IO_PINNED_EVENT_LOOP_MISMATCH,
         "A connection was requested on an event loop that is not associated with the client bootstrap's event loop group."),
+
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_ERROR_PKCS11_ENCODING_ERROR,
+       "A PKCS#11 (Cryptoki) library function was unable to ASN.1 (DER) encode a data structure. See log for more details."),
 };
 /* clang-format on */
 

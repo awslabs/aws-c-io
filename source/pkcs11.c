@@ -1279,6 +1279,18 @@ static int s_pkcs11_sign_ecdsa(
         goto error;
     }
 
+    /* PKCS11 library returns these parameters as two big unsigned integer numbers of exactly the same length. The
+     * numbers need to be ASN.1/DER encoded (variable length). In addition to the header, space is needed to allow for
+     * an occasional extra 0x00 prefix byte to ensure integer is encoded and interpreted as unsigned.
+     */
+    if (part_signature.len == 0 || (part_signature.len & 1) != 0) {
+        /* This should never happen, we would fail anyway, but making it explicit and fail early */
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKCS11,
+            "PKCS11 library returned an invalid length, unable to interpret ECDSA signature to encode correctly.");
+        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+        goto error;
+    }
     size_t num_bytes = part_signature.len / 2;
     aws_byte_buf_init(&r_part, allocator, num_bytes + 4);
     aws_byte_buf_init(&s_part, allocator, num_bytes + 4);
