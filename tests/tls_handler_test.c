@@ -1281,24 +1281,6 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_success_legacy_crypto_tls11,
     s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_sha384_host_name, "sha384.badssl.com");
-
-static int s_tls_client_channel_negotiation_success_sha384_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_good_host(allocator, s_uncommon_sha384_host_name, 443, NULL);
-}
-
-AWS_TEST_CASE(tls_client_channel_negotiation_success_sha384, s_tls_client_channel_negotiation_success_sha384_fn)
-
-AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_sha512_host_name, "sha512.badssl.com");
-
-static int s_tls_client_channel_negotiation_success_sha512_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_good_host(allocator, s_uncommon_sha512_host_name, 443, NULL);
-}
-
-AWS_TEST_CASE(tls_client_channel_negotiation_success_sha512, s_tls_client_channel_negotiation_success_sha512_fn)
-
 AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_rsa8192_host_name, "rsa8192.badssl.com");
 
 static int s_tls_client_channel_negotiation_success_rsa8192_fn(struct aws_allocator *allocator, void *ctx) {
