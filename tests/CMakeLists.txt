@@ -182,6 +182,8 @@ if (NOT BYO_CRYPTO)
     # internal hosting yet
     # We also defer the incomplete chain test for now until we can do some further study on how to get it to
     # properly fail on windows and osx.
+    # add_net_test_case(tls_client_channel_negotiation_success_sha384)
+    # add_net_test_case(tls_client_channel_negotiation_success_sha512)
     add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
     add_net_test_case(tls_client_channel_negotiation_error_no_subject)
     add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
