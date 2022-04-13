@@ -1301,8 +1301,8 @@ static int s_verify_bigint(
     aws_byte_buf_init(&buffer, allocator, len_in + 4);
     ASSERT_SUCCESS(aws_pkcs11_asn1_enc_ubigint(&buffer, src_array));
     ASSERT_INT_EQUALS(len_out, buffer.len);
-    for (int i = 0; i < len_out; i++) {
-        ASSERT_HEX_EQUALS(ptr_out[i], buffer.buffer[i], "Mismatch at position %u", i);
+    for (size_t i = 0; i < len_out; i++) {
+        ASSERT_HEX_EQUALS(ptr_out[i], buffer.buffer[i], "Mismatch at position %zu", i);
     }
     aws_byte_buf_clean_up(&buffer);
     return AWS_OP_SUCCESS;
