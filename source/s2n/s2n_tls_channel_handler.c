@@ -12,10 +12,11 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/pkcs11.h>
-#include <aws/io/private/pkcs11_private.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
+
+#include "../pkcs11_private.h"
 
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
@@ -614,6 +615,8 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
     switch (s2n_alg) {
         case S2N_TLS_SIGNATURE_RSA:
             return AWS_TLS_SIGNATURE_RSA;
+        case S2N_TLS_SIGNATURE_ECDSA:
+            return AWS_TLS_SIGNATURE_ECDSA;
         default:
             return AWS_TLS_SIGNATURE_UNKNOWN;
     }

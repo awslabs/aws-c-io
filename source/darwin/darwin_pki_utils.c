@@ -49,6 +49,12 @@ int aws_import_public_and_private_keys_to_identity(
     SecKeychainRef import_keychain = NULL;
 
     if (keychain_path) {
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        /* Starting in macOS 12, SecKeychainOpen() and SecKeychainUnlock() are marked as deprecated
+         * because "Custom keychain management is no longer supported".
+         * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
+
         OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
@@ -67,6 +73,8 @@ int aws_import_public_and_private_keys_to_identity(
                 keychain_status);
             return AWS_OP_ERR;
         }
+#    pragma clang diagnostic pop
+
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {

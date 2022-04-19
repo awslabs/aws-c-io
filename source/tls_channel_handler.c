@@ -221,6 +221,8 @@ int aws_tls_ctx_options_set_keychain_path(
     struct aws_byte_cursor *keychain_path_cursor) {
 
 #if defined(__APPLE__) && !defined(AWS_OS_IOS)
+    AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: Keychain path is deprecated.");
+
     options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
     if (!options->keychain_path) {
         return AWS_OP_ERR;
@@ -511,6 +513,10 @@ void aws_tls_connection_options_init_from_ctx(
 int aws_tls_connection_options_copy(
     struct aws_tls_connection_options *to,
     const struct aws_tls_connection_options *from) {
+
+    /* clean up the options before copy. */
+    aws_tls_connection_options_clean_up(to);
+
     /* copy everything copyable over, then override the rest with deep copies. */
     *to = *from;
 

@@ -168,19 +168,23 @@ if (NOT BYO_CRYPTO)
     # We skip the cbc and 3des checks, as a positive connection result there does not yet represent a security risk
     # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
-    add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-    add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
-    add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
-    add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+    if(NOT (WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
+        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
+        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
+        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+    endif()
 
     # Badssl - Secure uncommon suite
     # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based
     # TLS implementations
-    # We skip 1000san because the public badssl certificate is expired and we haven't migrated to internal hosting yet
+    # We skip 1000san, sha384 and sha512 because the public badssl certificate is expired and we haven't migrated to
+    # internal hosting yet
     # We also defer the incomplete chain test for now until we can do some further study on how to get it to
     # properly fail on windows and osx.
-    add_net_test_case(tls_client_channel_negotiation_success_sha384)
-    add_net_test_case(tls_client_channel_negotiation_success_sha512)
+    # add_net_test_case(tls_client_channel_negotiation_success_sha384)
+    # add_net_test_case(tls_client_channel_negotiation_success_sha512)
     add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
     add_net_test_case(tls_client_channel_negotiation_error_no_subject)
     add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
@@ -213,6 +217,7 @@ if (NOT BYO_CRYPTO)
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
     add_test_case(tls_channel_statistics_test)
+    add_test_case(tls_certificate_chain_test)
 else()
     add_test_case(byo_tls_handler_test)
 endif()
@@ -282,14 +287,17 @@ if (ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_lib_behavior_omit_initialize)
     add_test_case(pkcs11_lib_behavior_strict_initialize_finalize)
     add_test_case(pkcs11_find_private_key)
-    add_test_case(pkcs11_find_private_key_for_different_types)
+    add_test_case(pkcs11_find_private_key_for_different_rsa_types)
+    add_test_case(pkcs11_find_private_key_for_ec)
     add_test_case(pkcs11_find_multiple_private_key)
-    add_test_case(pkcs11_sign_sha1)
-    add_test_case(pkcs11_sign_sha224)
-    add_test_case(pkcs11_sign_sha256)
-    add_test_case(pkcs11_sign_sha384)
-    add_test_case(pkcs11_sign_sha512)
-    add_test_case(pkcs11_decrypt)
+    add_test_case(pkcs11_sign_rsa_sha1)
+    add_test_case(pkcs11_sign_rsa_sha224)
+    add_test_case(pkcs11_sign_rsa_sha256)
+    add_test_case(pkcs11_sign_rsa_sha384)
+    add_test_case(pkcs11_sign_rsa_sha512)
+    add_test_case(pkcs11_asn1_bigint)
+    add_test_case(pkcs11_sign_ec_256)
+    add_test_case(pkcs11_rsa_decrypt)
     add_test_case(pkcs11_find_slot)
     add_test_case(pkcs11_find_slot_many_tokens)
     add_test_case(pkcs11_session_tests)
@@ -297,7 +305,8 @@ if (ENABLE_PKCS11_TESTS)
 
     # TLS with PKCS#11 not currently supported on every platform
     if (USE_S2N)
-        add_test_case(pkcs11_tls_negotiation_succeeds)
+        add_test_case(pkcs11_tls_rsa_negotiation_succeeds)
+        add_test_case(pkcs11_tls_ec_negotiation_succeeds)
     endif()
 endif()
 
