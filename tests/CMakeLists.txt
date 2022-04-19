@@ -14,7 +14,8 @@ macro(add_pipe_test_case name)
     add_test_case("${name}_2loops")
 endmacro()
 
-add_test_case(io_load_error_strings_test)
+add_test_case(io_library_init)
+add_test_case(io_library_init_cleanup_init_cleanup)
 
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
