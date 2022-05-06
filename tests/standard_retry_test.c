@@ -45,7 +45,7 @@ static int s_fixture_setup(struct aws_allocator *allocator, void *ctx) {
     aws_io_library_init(allocator);
     struct exponential_backoff_test_data *test_data = ctx;
     struct aws_shutdown_callback_options shutdown_options = {
-        .shutdown_callback_fn = s_el_group_completion_callback,
+        .shutdown_completed_callback_fn = s_el_group_completion_callback,
         .shutdown_callback_user_data = ctx,
     };
 

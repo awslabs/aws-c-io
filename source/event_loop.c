@@ -22,7 +22,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 static void s_event_loop_group_thread_exit(void *user_data) {
     struct aws_event_loop_group *el_group = user_data;
 
-    aws_simple_completion_callback *completion_callback = el_group->shutdown_options.shutdown_callback_fn;
+    aws_simple_completion_callback *completion_callback = el_group->shutdown_options.shutdown_completed_callback_fn;
     void *completion_user_data = el_group->shutdown_options.shutdown_callback_user_data;
 
     aws_mem_release(el_group->allocator, el_group);
@@ -33,6 +33,11 @@ static void s_event_loop_group_thread_exit(void *user_data) {
 }
 
 static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
+    aws_simple_completion_callback *started_callback = el_group->shutdown_options.shutdown_started_callback_fn;
+    if (started_callback != NULL) {
+        started_callback(el_group->shutdown_options.shutdown_callback_user_data);
+    }
+
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 

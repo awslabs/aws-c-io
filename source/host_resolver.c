@@ -317,7 +317,7 @@ static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
 
     aws_mutex_clean_up(&default_host_resolver->resolver_lock);
 
-    aws_simple_completion_callback *shutdown_callback = resolver->shutdown_options.shutdown_callback_fn;
+    aws_simple_completion_callback *shutdown_callback = resolver->shutdown_options.shutdown_completed_callback_fn;
     void *shutdown_completion_user_data = resolver->shutdown_options.shutdown_callback_user_data;
 
     aws_mem_release(resolver->allocator, resolver);
