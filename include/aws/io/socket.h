@@ -177,9 +177,15 @@ AWS_IO_API int aws_socket_connect(
 AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 /**
+ * TCP/UDP only. Get bound port number.
+ */
+AWS_IO_API int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_endpoint *local_address);
+
+/**
  * TCP, LOCAL and VSOCK only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
  */
 AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
+
 
 /**
  * TCP, LOCAL and VSOCK only. The socket will begin accepting new connections. This is an asynchronous operation. New

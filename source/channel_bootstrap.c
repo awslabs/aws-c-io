@@ -1452,6 +1452,17 @@ cleanup_server_connection_args:
     return NULL;
 }
 
+int aws_server_bootstrap_get_bound_port_of_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: listener: %p:getting bound port", (void *)bootstrap, (void *)listener);
+
+    struct aws_socket_endpoint local_address;
+    int rc = aws_socket_get_bound_address(listener, &local_address);
+    if (rc == AWS_OP_SUCCESS) {
+        return local_address.port;
+    }
+    return -1;
+}
+
 void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
     struct server_connection_args *server_connection_args =
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);

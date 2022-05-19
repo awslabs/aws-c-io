@@ -449,6 +449,62 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     return socket_impl->vtable->bind(socket, local_endpoint);
 }
 
+int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_endpoint *local_address) {
+    if (socket->options.domain != AWS_SOCKET_IPV4 && socket->options.domain != AWS_SOCKET_IPV6) {
+        socket->state = ERRORED;
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
+    }
+
+    if (socket->state != BOUND && socket->state != LISTENING) {
+        socket->state = ERRORED;
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+
+    struct iocp_socket *socket_impl = socket->impl;
+    struct sockaddr_storage address;
+    AWS_ZERO_STRUCT(address);
+    socklen_t address_size = sizeof(address);
+    if (!getsockname((SOCKET)socket->io_handle.data.handle, (struct sockaddr *)&address, &address_size)) {
+        uint16_t port = 0;
+        struct sockaddr_in *s = (struct sockaddr_in *)&address;
+        port = ntohs(s->sin_port);
+        if (!InetNtopA(AF_INET, &s->sin_addr, local_address->address, sizeof(local_address->address))) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: determining local endpoint failed",
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
+            socket->state = ERRORED;
+            int error = s_determine_socket_error(WSAGetLastError());
+            aws_raise_error(error);
+            socket_impl->vtable->connection_error(socket, error);
+            return AWS_OP_ERR;
+        }
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: local endpoint %s:%d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            local_address->address,
+            (int)port);
+        local_address->port = port;
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: getsockname() failed with error %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            (int)WSAGetLastError());
+        socket->state = ERRORED;
+        int error = s_determine_socket_error(WSAGetLastError());
+        aws_raise_error(error);
+        socket_impl->vtable->connection_error(socket, error);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->vtable->listen(socket, backlog_size);

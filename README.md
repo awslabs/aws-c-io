@@ -734,6 +734,10 @@ modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()`
 
 TCP and LOCAL only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
 
+    int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_endpoint * local_address);
+
+TCP/UDP only. Can be called after `aws_socket_bind` or `aws_socket_listen`.
+
     int aws_socket_start_accept(struct aws_socket *socket);
 
 TCP and LOCAL only. The socket will begin accepting new connections. This is an asynchronous operation. New connections will

@@ -295,6 +295,14 @@ AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
     const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**
+ * Get local bound port for network sockets.
+ * @retval -1 on errors
+ */
+AWS_IO_API int aws_server_bootstrap_get_bound_port_of_socket_listener(
+    struct aws_server_bootstrap *bootstrap,
+    struct aws_socket *listener);
+
+/**
  * Shuts down 'listener' and cleans up any resources associated with it. Any incoming channels on `listener` will still
  * be active. `destroy_callback` will be invoked after the server socket listener is destroyed, and all associated
  * connections and channels have finished shutting down.

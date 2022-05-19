@@ -865,6 +865,47 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
 
 AWS_TEST_CASE(incoming_duplicate_tcp_bind_errors, s_test_incoming_duplicate_tcp_bind_errors)
 
+static int s_test_bind_on_zero_port_ipv4(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 1000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+
+    struct aws_socket_endpoint endpoint = {
+        .address = "127.0.0.1",
+        .port = 0,      /* important: must be 0 */
+    };
+
+    struct aws_socket incoming;
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+
+    struct aws_socket_endpoint local_address1;
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
+
+    ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
+
+    struct aws_socket_endpoint local_address2;
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address2));
+
+    ASSERT_INT_EQUALS(local_address1.port, local_address2.port);
+    ASSERT_TRUE(local_address1.port > 0);
+
+    aws_socket_close(&incoming);
+    aws_socket_clean_up(&incoming);
+    aws_event_loop_destroy(event_loop);
+    return 0;
+}
+
+AWS_TEST_CASE(bind_on_zero_port_ipv4, s_test_bind_on_zero_port_ipv4)
+
 static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     if (!s_test_running_as_root(allocator)) {

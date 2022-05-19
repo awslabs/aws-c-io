@@ -840,6 +840,101 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     return aws_raise_error(aws_error);
 }
 
+
+int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_endpoint *local_address) {
+    if (socket->options.domain != AWS_SOCKET_IPV4 && socket->options.domain != AWS_SOCKET_IPV6) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: invalid socket domain for getting bound address. Domain must be AWS_SOCKET_IPV4 or AWS_SOCKET_IPV6",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
+    }
+
+    if (socket->state != BOUND && socket->state != LISTENING) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: invalid state for getting bound address. You must call at least bind first.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+
+    struct sockaddr_storage address;
+    AWS_ZERO_STRUCT(address);
+    socklen_t address_size = sizeof(address);
+    if (!getsockname(socket->io_handle.data.fd, (struct sockaddr *)&address, &address_size)) {
+        uint16_t port = 0;
+
+        if (address.ss_family == AF_INET) {
+            struct sockaddr_in *s = (struct sockaddr_in *)&address;
+            port = ntohs(s->sin_port);
+            /* this comes straight from the kernal. a.) they won't fail. b.) even if they do, it's not fatal
+             * once we add logging, we can log this if it fails. */
+            if (inet_ntop(
+                    AF_INET, &s->sin_addr, local_address->address, sizeof(local_address->address))) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: local endpoint %s:%d",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    local_address->address,
+                    port);
+            } else {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: determining local endpoint failed",
+                    (void *)socket,
+                    socket->io_handle.data.fd);
+            }
+        } else if (address.ss_family == AF_INET6) {
+            struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
+            port = ntohs(s->sin6_port);
+            /* this comes straight from the kernal. a.) they won't fail. b.) even if they do, it's not fatal
+             * once we add logging, we can log this if it fails. */
+            if (inet_ntop(
+                    AF_INET6, &s->sin6_addr, local_address->address, sizeof(local_address->address))) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd %d: local endpoint %s:%d",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    local_address->address,
+                    port);
+            } else {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: determining local endpoint failed",
+                    (void *)socket,
+                    socket->io_handle.data.fd);
+            }
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: Unknown address family %d",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                (int)address.ss_family);
+            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+        }
+
+        local_address->port = port;
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: getsockname() failed with error %d",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            errno);
+        int aws_error = s_determine_socket_error(errno);
+        aws_raise_error(aws_error);
+        s_on_connection_error(socket, aws_error);
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
     if (socket->state != BOUND) {
         AWS_LOGF_ERROR(
