@@ -177,7 +177,7 @@ AWS_IO_API int aws_socket_connect(
 AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 /**
- * TCP/UDP only. Get bound port number.
+ * TCP/UDP only. Get a local address which the socket bound to.
  */
 AWS_IO_API int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_endpoint *local_address);
 
