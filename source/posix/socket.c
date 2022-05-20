@@ -881,11 +881,13 @@ int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_en
                     local_address->address,
                     port);
             } else {
-                AWS_LOGF_WARN(
+                AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: determining local endpoint failed",
                     (void *)socket,
                     socket->io_handle.data.fd);
+                    aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
+                    return AWS_OP_ERR;
             }
         } else if (address.ss_family == AF_INET6) {
             struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
@@ -902,11 +904,13 @@ int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_en
                     local_address->address,
                     port);
             } else {
-                AWS_LOGF_WARN(
+                AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: determining local endpoint failed",
                     (void *)socket,
                     socket->io_handle.data.fd);
+                    aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
+                    return AWS_OP_ERR;
             }
         } else {
             AWS_LOGF_ERROR(
@@ -928,7 +932,6 @@ int aws_socket_get_bound_address(struct aws_socket *socket, struct aws_socket_en
             errno);
         int aws_error = s_determine_socket_error(errno);
         aws_raise_error(aws_error);
-        s_on_connection_error(socket, aws_error);
         return AWS_OP_ERR;
     }
 
