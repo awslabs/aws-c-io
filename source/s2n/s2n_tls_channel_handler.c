@@ -168,12 +168,46 @@ static const char *s_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+static struct aws_allocator *s_library_allocator = NULL; 
+
+static int s_s2n_mem_init(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_cleanup(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_malloc(void **ptr, uint32_t requested, uint32_t *allocated) {
+    *ptr = aws_mem_acquire(s_library_allocator, requested);
+    *allocated = requested;
+
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_free(void *ptr, uint32_t size) {
+    (void)size;
+    aws_mem_release(s_library_allocator, ptr);
+    return S2N_SUCCESS;
+}
+
+static void s_override_s2n_mem_functions(struct aws_allocator *alloc) {
+    if (alloc) {
+        s_library_allocator = alloc;
+    } else {
+        s_library_allocator = aws_default_allocator();
+    }
+
+    s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free);
+}
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
-    setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
-    setenv("S2N_DONT_MLOCK", "1", 1);
+    //setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
+    //setenv("S2N_DONT_MLOCK", "1", 1);
+    s_override_s2n_mem_functions(alloc);
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
      *
