@@ -168,9 +168,10 @@ static const char *s_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+/*
 static struct aws_allocator *s_library_allocator = NULL; 
 
-/*
+
 static int s_s2n_mem_init(void) {
     return S2N_SUCCESS;
 }
