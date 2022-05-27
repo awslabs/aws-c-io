@@ -207,7 +207,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
     //setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     //setenv("S2N_DONT_MLOCK", "1", 1);
-    s_override_s2n_mem_functions(alloc);
+    //s_override_s2n_mem_functions(alloc);
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
      *
