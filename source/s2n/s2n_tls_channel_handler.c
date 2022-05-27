@@ -170,6 +170,7 @@ static const char *s_determine_default_pki_ca_file(void) {
 
 static struct aws_allocator *s_library_allocator = NULL; 
 
+/*
 static int s_s2n_mem_init(void) {
     return S2N_SUCCESS;
 }
@@ -200,6 +201,7 @@ static void s_override_s2n_mem_functions(struct aws_allocator *alloc) {
 
     s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free);
 }
+*/
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
