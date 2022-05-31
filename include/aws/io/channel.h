@@ -282,7 +282,7 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
  * If called from the channel's event loop, the task will get directly added to the run-now list.
  * If called from outside the channel's event loop, the task will go into a cross-thread task queue.
  *
- * If tasks must be serialized relative to some source synchronization, you may not want to use this thread
+ * If tasks must be serialized relative to some source synchronization, you may not want to use this API
  * because tasks submitted from the event loop thread can "jump ahead" of tasks submitted from external threads
  * due to this optimization.  If this is a problem, you can either refactor your submission logic or use
  * the aws_channel_schedule_task_now_serialized variant which does not perform this optimization.
