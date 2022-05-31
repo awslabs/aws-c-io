@@ -616,8 +616,7 @@ static void s_register_pending_task(
     } else {
         AWS_LOGF_TRACE(
             AWS_LS_IO_CHANNEL,
-            "id=%p: could not schedule immediate execution of task id %p."
-            "Could not start scheduling.",
+            "id=%p: could not schedule immediate execution of task id %p.",
             (void *)channel,
             (void *)&channel_task->wrapper_task);
     }
