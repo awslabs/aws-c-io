@@ -599,6 +599,13 @@ static void s_register_pending_task(
 
         if (list_was_empty) {
             aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
+        } else {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL,
+                "id=%p: could not schedule immediate execution of task id %p."
+                "Outside thread task list is not empty.",
+                (void *)channel,
+                (void *)&channel_task->wrapper_task);
         }
     }
     aws_mutex_unlock(&channel->cross_thread_tasks.lock);
@@ -606,6 +613,13 @@ static void s_register_pending_task(
 
     if (should_cancel_task) {
         channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
+    } else {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL,
+            "id=%p: could not schedule immediate execution of task id %p."
+            "Could not start scheduling.",
+            (void *)channel,
+            (void *)&channel_task->wrapper_task);
     }
 }
 
