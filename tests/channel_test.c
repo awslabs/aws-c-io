@@ -453,7 +453,7 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
 
 AWS_TEST_CASE(channel_tasks_run, s_test_channel_tasks_run);
 
-static void s_cross_thread_tasks_run_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_serialized_tasks_run_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
     struct aws_channel *channel = arg;
@@ -461,14 +461,14 @@ static void s_cross_thread_tasks_run_fn(struct aws_task *task, void *arg, enum a
     aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_ON_THREAD], 1);
 }
 
-static int s_channel_tasks_cross_thread_only_run(struct aws_allocator *allocator, void *ctx) {
+static int s_channel_tasks_serialized_run(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    ASSERT_SUCCESS(s_test_channel_tasks_run_aux(allocator, s_cross_thread_tasks_run_fn));
+    ASSERT_SUCCESS(s_test_channel_tasks_run_aux(allocator, s_serialized_tasks_run_fn));
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(channel_tasks_cross_thread_only_run, s_channel_tasks_cross_thread_only_run);
+AWS_TEST_CASE(channel_tasks_serialized_run, s_channel_tasks_serialized_run);
 
 static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
