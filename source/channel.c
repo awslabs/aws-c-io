@@ -595,8 +595,8 @@ static void s_register_pending_task_cross_thread(struct aws_channel *channel, st
         } else {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_CHANNEL,
-                "id=%p: could not schedule immediate execution of task id %p."
-                "Outside thread task list is not empty.",
+                "id=%p: EventLoop hsa a currently running scheduled task."
+                "Cross-Thread task with id %p added to scheduled task list.",
                 (void *)channel,
                 (void *)&channel_task->wrapper_task);
         }
@@ -606,10 +606,15 @@ static void s_register_pending_task_cross_thread(struct aws_channel *channel, st
 
     if (should_cancel_task) {
         channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL,
+            "id=%p: Cross-Thread task with id %p cancled.",
+            (void *)channel,
+            (void *)&channel_task->wrapper_task);
     } else {
         AWS_LOGF_TRACE(
             AWS_LS_IO_CHANNEL,
-            "id=%p: could not schedule immediate execution of task id %p.",
+            "id=%p: Cross-Thread task with id %p scheduled successfully.",
             (void *)channel,
             (void *)&channel_task->wrapper_task);
     }
