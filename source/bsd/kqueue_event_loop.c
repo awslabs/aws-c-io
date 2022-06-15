@@ -123,14 +123,15 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
-    .subscribe_to_io_events = s_subscribe_to_io_events,
+    .register_style.subscribe_to_io_events = s_subscribe_to_io_events,
+    .event_loop_style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
     .cancel_task = s_cancel_task,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_event_thread,
 };
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);

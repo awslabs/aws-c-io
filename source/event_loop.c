@@ -10,6 +10,55 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+static const struct aws_event_loop_configuration s_available_configurations[] = {
+#ifdef AWS_USE_IO_COMPLETION_PORTS
+    {
+        .name = "WinNT IO Completion Ports",
+        .event_loop_new_fn = aws_event_loop_new_iocp_with_options,
+        .is_default = true,
+        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+    },
+#endif
+#if AWS_USE_KQUEUE
+    {
+        .name = "BSD Edge-Triggered KQueue",
+        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+        .is_default = true,
+    },
+#endif
+#if TARGET_OS_MAC
+    /* use kqueue on OSX and dispatch_queues everywhere else */
+    {
+        .name = "Apple Dispatch Queue",
+        .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+#    if TARGET_OS_OSX
+        .is_default = false,
+#    else
+        .is_default = true,
+#    endif
+    },
+#endif
+#if AWS_USE_EPOLL
+    {
+        .name = "Linux Edge-Triggered Epoll",
+        .event_loop_new_fn = aws_event_loop_new_epoll_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+        .is_default = true,
+    },
+#endif
+};
+
+static struct aws_event_loop_configuration_group s_available_configuration_group = {
+    .configuration_count = AWS_ARRAY_SIZE(s_available_configurations),
+    .configurations = s_available_configurations,
+};
+
+const struct aws_event_loop_configuration_group *aws_event_loop_get_available_configurations(void) {
+    return &s_available_configuration_group;
+}
+
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
         .thread_options = NULL,
@@ -17,6 +66,22 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     };
 
     return aws_event_loop_new_default_with_options(alloc, &options);
+}
+
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+
+    const struct aws_event_loop_configuration_group *default_configs = aws_event_loop_get_available_configurations();
+
+    for (size_t i = 0; i < default_configs->configuration_count; ++i) {
+        if (default_configs[i].configurations->is_default) {
+            return default_configs[i].configurations->event_loop_new_fn(alloc, options);
+        }
+    }
+
+    AWS_FATAL_ASSERT(!"no available configurations found!");
+    return NULL;
 }
 
 static void s_event_loop_group_thread_exit(void *user_data) {
@@ -206,6 +271,37 @@ struct aws_event_loop_group *aws_event_loop_group_new_default(
         alloc, aws_high_res_clock_get_ticks, max_threads, s_default_new_event_loop, NULL, shutdown_options);
 }
 
+static struct aws_event_loop *s_default_new_config_based_event_loop(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_options *options,
+    void *user_data) {
+
+    const struct aws_event_loop_configuration *config = user_data;
+    return config->event_loop_new_fn(allocator, options);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_from_config(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_configuration *config,
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+    if (!max_threads) {
+        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
+        /* cut them in half to avoid using hyper threads for the IO work. */
+        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
+    }
+
+    return s_event_loop_group_new(
+        allocator,
+        aws_high_res_clock_get_ticks,
+        max_threads,
+        0,
+        false,
+        s_default_new_config_based_event_loop,
+        (void *)config,
+        shutdown_options);
+}
+
 struct aws_event_loop_group *aws_event_loop_group_new_pinned_to_cpu_group(
     struct aws_allocator *alloc,
     aws_io_clock_fn *clock,
@@ -249,6 +345,13 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
     if (el_group != NULL) {
         aws_ref_count_release(&el_group->ref_count);
     }
+}
+
+enum aws_event_loop_style aws_event_loop_group_get_style(struct aws_event_loop_group *el_group) {
+    AWS_PRECONDITION(aws_event_loop_group_get_loop_count(el_group) > 0);
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_loop_at(el_group, 0);
+    return event_loop->vtable->event_loop_style;
 }
 
 size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {
@@ -475,17 +578,13 @@ void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_ta
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
-#if AWS_USE_IO_COMPLETION_PORTS
+int aws_event_loop_connect_handle_to_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
 
-int aws_event_loop_connect_handle_to_io_completion_port(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
-    return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
+    AWS_ASSERT(
+        event_loop->vtable && event_loop->vtable->event_loop_style == AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED &&
+        event_loop->vtable->register_style.connect_to_completion_port);
+    return event_loop->vtable->register_style.connect_to_completion_port(event_loop, handle);
 }
-
-#else  /* !AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
@@ -494,10 +593,11 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
-    return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
+    AWS_ASSERT(
+        event_loop->vtable && event_loop->vtable->event_loop_style == AWS_EVENT_LOOP_STYLE_POLL_BASED &&
+        event_loop->vtable->register_style.subscribe_to_io_events);
+    return event_loop->vtable->register_style.subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
