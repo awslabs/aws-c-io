@@ -48,8 +48,8 @@ static bool s_task_ran_predicate(void *args) {
 static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop_options options =
-    {.clock = aws_high_res_clock_get_ticks,
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
     };
 
     const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
@@ -116,9 +116,9 @@ static bool s_test_cancel_thread_task_predicate(void *args) {
 static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop_options options =
-        {.clock = aws_high_res_clock_get_ticks,
-        };
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
+    };
 
     const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
@@ -991,9 +991,9 @@ AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_event_loop_options options =
-        {.clock = aws_high_res_clock_get_ticks,
-        };
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
+    };
 
     const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
@@ -1046,9 +1046,9 @@ AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop_options options =
-        {.clock = aws_high_res_clock_get_ticks,
-        };
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
+    };
 
     const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
@@ -1076,7 +1076,8 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
     for (size_t i = 0; i < group->configuration_count; ++i) {
-        struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_from_config(allocator, &group->configurations[i], 0, NULL);
+        struct aws_event_loop_group *event_loop_group =
+            aws_event_loop_group_new_from_config(allocator, &group->configurations[i], 0, NULL);
 
         size_t cpu_count = aws_system_info_processor_count();
         size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);

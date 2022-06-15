@@ -2,12 +2,11 @@ name: CI
 
 on:
   push:
-    branches:
-      - '*'
-      - '!main'
+    branches-ignore:
+      - 'main'
 
 env:
-  BUILDER_VERSION: v0.9.15
+  BUILDER_VERSION: v0.9.16
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
