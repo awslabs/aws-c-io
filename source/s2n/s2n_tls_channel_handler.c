@@ -196,7 +196,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
             s_default_ca_dir,
             s_default_ca_file);
     } else {
-        AWS_LOGF_WARNING(
+        AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
             "Default TLS trust store not found on this system."
             " TLS connections will fail unless trusted CA certificates are installed,"
