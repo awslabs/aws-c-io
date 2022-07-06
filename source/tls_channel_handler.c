@@ -203,8 +203,6 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
 
-#if !USE_S2N
-    (void)options;
 #if defined(_WIN32) || defined(__APPLE__)
     (void)allocator;
     (void)pkcs11_options;
@@ -823,6 +821,7 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
     /* clang-format off */
     switch (signature) {
         case (AWS_TLS_SIGNATURE_RSA): return "RSA";
+        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA"; // TODO - was in PKCS11 branch when merging... Remove this?
         default: return "<UNKNOWN SIGNATURE ALGORITHM>";
     }
     /* clang-format on */

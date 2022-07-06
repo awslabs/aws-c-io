@@ -38,28 +38,6 @@ static const uint8_t SHA512_PREFIX_TO_RSA_SIG[] = { 0x30, 0x51, 0x30, 0x0d, 0x06
 static const uint8_t SHA224_PREFIX_TO_RSA_SIG[] = { 0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c };
 /* clang-format on */
 
-const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash) {
-    /* clang-format off */
-    switch (hash) {
-        case (AWS_TLS_HASH_SHA1): return "SHA1";
-        case (AWS_TLS_HASH_SHA224): return "SHA224";
-        case (AWS_TLS_HASH_SHA256): return "SHA256";
-        case (AWS_TLS_HASH_SHA384): return "SHA384";
-        case (AWS_TLS_HASH_SHA512): return "SHA512";
-        default: return "<UNKNOWN HASH ALGORITHM>";
-    }
-    /* clang-format on */
-}
-
-const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature) {
-    /* clang-format off */
-    switch (signature) {
-        case (AWS_TLS_SIGNATURE_RSA): return "RSA";
-        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA";
-        default: return "<UNKNOWN SIGNATURE ALGORITHM>";
-    }
-    /* clang-format on */
-}
 
 /* Return c-string for PKCS#11 CKR_* contants. */
 const char *aws_pkcs11_ckr_str(CK_RV rv) {

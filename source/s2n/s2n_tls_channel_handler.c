@@ -11,7 +11,6 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
-#include <aws/io/private/pkcs11_private.h>
 #include <aws/io/pkcs11.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
