@@ -14,7 +14,8 @@ macro(add_pipe_test_case name)
     add_test_case("${name}_2loops")
 endmacro()
 
-add_test_case(io_load_error_strings_test)
+add_test_case(io_library_init)
+add_test_case(io_library_init_cleanup_init_cleanup)
 
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
@@ -65,6 +66,8 @@ add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
 add_test_case(incoming_tcp_sock_errors)
 add_test_case(incoming_duplicate_tcp_bind_errors)
+add_net_test_case(bind_on_zero_port_tcp_ipv4)
+add_net_test_case(bind_on_zero_port_udp_ipv4)
 add_test_case(incoming_udp_sock_errors)
 add_test_case(wrong_thread_read_write_fails)
 add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
@@ -81,6 +84,7 @@ add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
 add_test_case(channel_refcount_delays_clean_up)
 add_test_case(channel_tasks_run)
+add_test_case(channel_tasks_serialized_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
@@ -122,32 +126,89 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
+add_test_case(socket_pinned_event_loop)
 
 if (NOT BYO_CRYPTO)
-    add_net_test_case(test_concurrent_cert_import)
-    add_test_case(tls_channel_echo_and_backpressure_test)
+    # Badssl-based tests (https://badssl.com/dashboard/) - use remote endpoints for now, later transition to
+    # internal hosting using the bad ssl container/server setup and dns redirects per
+    # https://github.com/chromium/badssl.com
+    #
+    # We don't use the interception suite since that's a host configuration issue
+    # We also don't check the domain security policy suite:
+    #  1. s2n does not support revocation checks and we do not currently enable any revocation checks
+    #    in windows or osx, although we may add configurable support to those platforms(off-by-default) at a
+    #    later date
+    #  2. s2n does not support public key pinning and, given its deprecated and http-centric position, there are no
+    #    plans to add support nor investigate osx/windows support as well.
+
+    # Badssl - Certificate Validation endpoint suite
+    # For each failure case, we also include a positive test that verifies success when peer verification is disabled
     add_net_test_case(tls_client_channel_negotiation_error_expired)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
     add_net_test_case(tls_client_channel_negotiation_error_self_signed)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
-    #track these down in s2n and find out why that aren't failing.
-    #add_net_test_case(tls_client_channel_negotiation_error_revoked)
-    #add_net_test_case(tls_client_channel_negotiation_error_pinning)
-
-    # once done, add these tests as well
-    #add_net_test_case(tls_client_channel_negotiation_no_verify_revoked)
-    #add_net_test_case(tls_client_channel_negotiation_no_verify_pinning)
     add_net_test_case(tls_client_channel_negotiation_no_verify_expired)
     add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
     add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
     add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
 
-    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
-    add_net_test_case(tls_client_channel_negotiation_success)
+    # Badssl - Broken Crypto endpoint suite
+    # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
+    # to be a way to disable it
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4)
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4_md5)
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh480)
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh512)
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
+
+    # Badssl - Legacy crypto suite, includes both negative and positive tests, with override checks where appropriate
+    # Our current baseline/default is platform-specific, whereas badssl expects a baseline of 1.2
+    #   Linux - tls1.1
+    #   Windows - system default (1.0 is the only thing we could reasonable fixate to given win7 support)
+    #   Mac - system default
+    # We skip the cbc and 3des checks, as a positive connection result there does not yet represent a security risk
+    # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
+    # to be a way to disable it
+    if(NOT (WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
+        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
+        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
+        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+    endif()
+
+    # Badssl - Secure uncommon suite
+    # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based
+    # TLS implementations
+    # We skip 1000san, sha384 and sha512 because the public badssl certificate is expired and we haven't migrated to
+    # internal hosting yet
+    # We also defer the incomplete chain test for now until we can do some further study on how to get it to
+    # properly fail on windows and osx.
+    # add_net_test_case(tls_client_channel_negotiation_success_sha384)
+    # add_net_test_case(tls_client_channel_negotiation_success_sha512)
+    add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
+    add_net_test_case(tls_client_channel_negotiation_error_no_subject)
+    add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
+    add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
+    add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_common_name)
+    add_net_test_case(tls_client_channel_negotiation_success_no_verify_incomplete_chain)
+
+    # Badssl - Secure common suite, all of these should succeed
+    add_net_test_case(tls_client_channel_negotiation_success_tls12)
+    add_net_test_case(tls_client_channel_negotiation_success_sha256)
+    add_net_test_case(tls_client_channel_negotiation_success_rsa2048)
     add_net_test_case(tls_client_channel_negotiation_success_ecc256)
     add_net_test_case(tls_client_channel_negotiation_success_ecc384)
+    add_net_test_case(tls_client_channel_negotiation_success_extended_validation)
+    add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
+
+    # Misc non-badssl tls tests
+    add_net_test_case(test_concurrent_cert_import)
+    add_test_case(tls_channel_echo_and_backpressure_test)
+    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+    add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
     add_net_test_case(tls_server_hangup_during_negotiation)
     add_net_test_case(tls_client_channel_no_verify)
@@ -155,9 +216,11 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
     add_test_case(tls_channel_statistics_test)
+    add_test_case(tls_certificate_chain_test)
 else()
     add_test_case(byo_tls_handler_test)
 endif()
@@ -227,14 +290,17 @@ if (ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_lib_behavior_omit_initialize)
     add_test_case(pkcs11_lib_behavior_strict_initialize_finalize)
     add_test_case(pkcs11_find_private_key)
-    add_test_case(pkcs11_find_private_key_for_different_types)
+    add_test_case(pkcs11_find_private_key_for_different_rsa_types)
+    add_test_case(pkcs11_find_private_key_for_ec)
     add_test_case(pkcs11_find_multiple_private_key)
-    add_test_case(pkcs11_sign_sha1)
-    add_test_case(pkcs11_sign_sha224)
-    add_test_case(pkcs11_sign_sha256)
-    add_test_case(pkcs11_sign_sha384)
-    add_test_case(pkcs11_sign_sha512)
-    add_test_case(pkcs11_decrypt)
+    add_test_case(pkcs11_sign_rsa_sha1)
+    add_test_case(pkcs11_sign_rsa_sha224)
+    add_test_case(pkcs11_sign_rsa_sha256)
+    add_test_case(pkcs11_sign_rsa_sha384)
+    add_test_case(pkcs11_sign_rsa_sha512)
+    add_test_case(pkcs11_asn1_bigint)
+    add_test_case(pkcs11_sign_ec_256)
+    add_test_case(pkcs11_rsa_decrypt)
     add_test_case(pkcs11_find_slot)
     add_test_case(pkcs11_find_slot_many_tokens)
     add_test_case(pkcs11_session_tests)
@@ -242,7 +308,8 @@ if (ENABLE_PKCS11_TESTS)
 
     # TLS with PKCS#11 not currently supported on every platform
     if (USE_S2N)
-        add_test_case(pkcs11_tls_negotiation_succeeds)
+        add_test_case(pkcs11_tls_rsa_negotiation_succeeds)
+        add_test_case(pkcs11_tls_ec_negotiation_succeeds)
     endif()
 endif()
 

@@ -12,9 +12,12 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/pkcs11_private.h>
+#include <aws/io/pkcs11.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
+
+#include "../pkcs11_private.h"
 
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
@@ -169,15 +172,34 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
     setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
     setenv("S2N_DONT_MLOCK", "1", 1);
-    s2n_init();
+
+    /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
+     *
+     * By default, s2n uses an ataexit handler and doesn't fully clean up until the program exits.
+     * This can cause a crash if s2n is compiled into a shared library and
+     * that library is unloaded before the appexit handler runs. */
+    s2n_disable_atexit();
+
+    if (s2n_init() != S2N_SUCCESS) {
+        fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+        AWS_FATAL_ASSERT(0 && "s2n_init() failed");
+    }
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_TLS,
-        "ctx: Based on OS, we detected the default PKI path as %s, and ca file as %s",
-        s_default_ca_dir,
-        s_default_ca_file);
+    if (s_default_ca_dir || s_default_ca_file) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "ctx: Based on OS, we detected the default PKI path as %s, and ca file as %s",
+            s_default_ca_dir,
+            s_default_ca_file);
+    } else {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "Default TLS trust store not found on this system."
+            " TLS connections will fail unless trusted CA certificates are installed,"
+            " or \"override default trust store\" is used while creating the TLS context.");
+    }
 }
 
 void aws_tls_clean_up_static_state(void) {
@@ -311,8 +333,12 @@ static void s_s2n_handler_destroy(struct aws_channel_handler *handler) {
     if (handler) {
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
         aws_tls_channel_handler_shared_clean_up(&s2n_handler->shared_state);
-        s2n_connection_free(s2n_handler->connection);
-        aws_tls_ctx_release(&s2n_handler->s2n_ctx->ctx);
+        if (s2n_handler->connection) {
+            s2n_connection_free(s2n_handler->connection);
+        }
+        if (s2n_handler->s2n_ctx) {
+            aws_tls_ctx_release(&s2n_handler->s2n_ctx->ctx);
+        }
         aws_mem_release(handler->alloc, (void *)s2n_handler);
     }
 }
@@ -595,6 +621,8 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
     switch (s2n_alg) {
         case S2N_TLS_SIGNATURE_RSA:
             return AWS_TLS_SIGNATURE_RSA;
+        case S2N_TLS_SIGNATURE_ECDSA:
+            return AWS_TLS_SIGNATURE_ECDSA;
         default:
             return AWS_TLS_SIGNATURE_UNKNOWN;
     }
@@ -1115,9 +1143,10 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     AWS_ASSERT(options->ctx);
     struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
-    if (!s2n_handler) {
-        return NULL;
-    }
+    s2n_handler->handler.impl = s2n_handler;
+    s2n_handler->handler.alloc = allocator;
+    s2n_handler->handler.vtable = &s_handler_vtable;
+    s2n_handler->handler.slot = slot;
 
     aws_tls_ctx_acquire(options->ctx);
     s2n_handler->s2n_ctx = options->ctx->impl;
@@ -1130,10 +1159,6 @@ static struct aws_channel_handler *s_new_tls_handler(
 
     aws_tls_channel_handler_shared_init(&s2n_handler->shared_state, &s2n_handler->handler, options);
 
-    s2n_handler->handler.impl = s2n_handler;
-    s2n_handler->handler.alloc = allocator;
-    s2n_handler->handler.vtable = &s_handler_vtable;
-    s2n_handler->handler.slot = slot;
     s2n_handler->user_data = options->user_data;
     s2n_handler->on_data_read = options->on_data_read;
     s2n_handler->on_error = options->on_error;
@@ -1527,7 +1552,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     goto cleanup_s2n_config;
                 }
             }
-        } else {
+        } else if (s_default_ca_file || s_default_ca_dir) {
             /* User wants to use the system's default trust store.
              *
              * Note that s2n's trust store always starts with libcrypto's default locations.
@@ -1542,6 +1567,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 goto cleanup_s2n_config;
             }
+        } else {
+            /* Cannot find system's trust store */
+            aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS,
+                "Default TLS trust store not found on this system."
+                " Install CA certificates, or \"override default trust store\".");
+            goto cleanup_s2n_config;
         }
 
         if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
