@@ -346,19 +346,19 @@ struct aws_custom_key_op_handler {
     const struct aws_custom_key_op_handler_vtable *vtable;
     struct aws_ref_count ref_count;
 
-    // TODO - move to Java specific implementation
     /**
      * Certificate's file path on disk (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
      * Zero out if passing in certificate by some other means (such as file contents).
+     * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
     struct aws_byte_cursor cert_file_path;
 
-    // TODO - move to Java specific implementation
     /**
      * Certificate's file contents (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
      * Zero out if passing in certificate by some other means (such as file path).
+     * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
     struct aws_byte_cursor cert_file_contents;
 };
