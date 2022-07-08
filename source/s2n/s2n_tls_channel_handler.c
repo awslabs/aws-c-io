@@ -218,11 +218,6 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             return true;
             /* PQ Crypto no-ops on android for now */
 #ifndef ANDROID
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             return true;
 #endif
@@ -1376,21 +1371,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     switch (options->cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set */
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2019-06");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-SIKE-TEST-TLS-1-0-2019-11");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-02");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-SIKE-TEST-TLS-1-0-2020-02");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-07");
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-TLS-1-0-2021-05-26");
