@@ -137,7 +137,7 @@ error:
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_tls_ctx_custom_key_operation_options *custom) {
+    const struct aws_custom_key_op_handler *custom) {
 
 #    if !USE_S2N
     (void)options;
@@ -152,14 +152,23 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     /* on_key_operation is required */
-    if (custom->on_key_operation == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
+    if (custom) {
+        if (custom->vtable == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto error;
+        }
+        // TODO - get this check working!
+        // if (custom->vtable->on_key_operation == NULL) {
+        //     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
+        //     aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        //     goto error;
+        // }
     }
-    options->on_key_operation = custom->on_key_operation;
-    options->on_ctx_destroy = custom->on_ctx_destroy;
-    options->user_data = custom->user_data;
+    //options->on_key_operation = custom->vtable->on_key_operation;
+    //options->on_ctx_destroy = custom->vtable->on_ctx_destroy;
+    options->custom_key_op_handler = (struct aws_custom_key_op_handler *)custom;
+    options->user_data = (void *)custom;
 
     /* certificate required, but there are multiple ways to pass it in */
     if ((custom->cert_file_path.ptr != NULL) && (custom->cert_file_contents.ptr != NULL)) {

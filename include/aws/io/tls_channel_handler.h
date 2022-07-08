@@ -124,7 +124,7 @@ struct aws_tls_key_operation;
 /**
  * TODO: describe
  */
-typedef void(aws_tls_on_key_operation_fn)(struct aws_tls_key_operation *operation, void *user_data);
+//typedef void(aws_tls_on_key_operation_fn)(struct *aws_custom_key_op_handler, struct aws_tls_key_operation *operation, void *user_data);
 
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
@@ -228,8 +228,9 @@ struct aws_tls_ctx_options {
      * Set if using custom private key operations.
      * See aws_tls_on_key_operation_fn for more details
      */
-    aws_tls_on_key_operation_fn *on_key_operation;
-    aws_simple_completion_callback *on_ctx_destroy;
+    //aws_tls_on_key_operation_fn *on_key_operation;
+    //aws_simple_completion_callback *on_ctx_destroy;
+    struct aws_custom_key_op_handler *custom_key_op_handler;
     void *user_data;
 
     /**
@@ -338,27 +339,56 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 /**
  * TODO: describe
  */
-struct aws_tls_ctx_custom_key_operation_options {
+// struct aws_tls_ctx_custom_key_operation_options {
 
-    /**
-     * TODO: describe
-     * This field is required
-     */
-    aws_tls_on_key_operation_fn *on_key_operation;
+//     /**
+//      * TODO: describe
+//      * This field is required
+//      */
+//     aws_tls_on_key_operation_fn *on_key_operation;
 
-    /**
-     * TODO: the lifetime stuff here is a nightmare.
-     * in the binding we need to create a new thing per CTX
-     * but we're setting this in the OPTIONS, and in theory an OPTIONS could be
-     * used to make multiple CTX, oh and this is the OPTIONS for an OPTIONS so ughghhg
-     */
-    aws_simple_completion_callback *on_ctx_destroy;
+//     /**
+//      * TODO: the lifetime stuff here is a nightmare.
+//      * in the binding we need to create a new thing per CTX
+//      * but we're setting this in the OPTIONS, and in theory an OPTIONS could be
+//      * used to make multiple CTX, oh and this is the OPTIONS for an OPTIONS so ughghhg
+//      */
+//     aws_simple_completion_callback *on_ctx_destroy;
 
-    /**
-     * User data for callbacks.
-     */
-    void *user_data;
+//     /**
+//      * User data for callbacks.
+//      */
+//     void *user_data;
 
+//     /**
+//      * Certificate's file path on disk (UTF-8).
+//      * The certificate must be PEM formatted and UTF-8 encoded.
+//      * Zero out if passing in certificate by some other means (such as file contents).
+//      */
+//     struct aws_byte_cursor cert_file_path;
+
+//     /**
+//      * Certificate's file contents (UTF-8).
+//      * The certificate must be PEM formatted and UTF-8 encoded.
+//      * Zero out if passing in certificate by some other means (such as file path).
+//      */
+//     struct aws_byte_cursor cert_file_contents;
+// };
+
+struct aws_custom_key_op_handler_vtable {
+    void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
+    void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation, void *user_data);
+    void (*on_ctx_destroy)(struct aws_custom_key_op_handler *key_op_handler, void *ctx_data);
+};
+
+struct aws_custom_key_op_handler {
+    struct aws_allocator *allocator;
+    /* point to the impl only set if needed. */
+    void *impl;
+    const struct aws_custom_key_op_handler_vtable *vtable;
+    struct aws_ref_count ref_count;
+
+    // TODO - move to Java specific implementation
     /**
      * Certificate's file path on disk (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
@@ -366,6 +396,7 @@ struct aws_tls_ctx_custom_key_operation_options {
      */
     struct aws_byte_cursor cert_file_path;
 
+    // TODO - move to Java specific implementation
     /**
      * Certificate's file contents (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
@@ -385,7 +416,7 @@ struct aws_tls_ctx_custom_key_operation_options {
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_tls_ctx_custom_key_operation_options *custom);
+    const struct aws_custom_key_op_handler *custom);
 
 /**
  * This struct exists as a graceful way to pass many arguments when

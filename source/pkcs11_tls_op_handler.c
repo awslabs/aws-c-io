@@ -8,6 +8,7 @@
 
 #include <aws/common/mutex.h>
 
+
 struct aws_pkcs11_tls_op_handler {
     struct aws_allocator *alloc;
     struct aws_pkcs11_lib *lib;
@@ -28,67 +29,18 @@ struct aws_pkcs11_tls_op_handler {
     CK_SESSION_HANDLE session_handle;
     CK_OBJECT_HANDLE private_key_handle;
     CK_KEY_TYPE private_key_type;
+
+    // The custom key operation handler needed for the callbacks
+    struct aws_custom_key_op_handler *custom_key_handler;
 };
 
-struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_pkcs11_lib *pkcs11_lib,
-    const struct aws_string *user_pin,
-    const struct aws_string *match_token_label,
-    const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id) {
+// ============================================
 
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
+void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation, void *user_data) {
+    // Not needed...
+    (void)handler;
 
-    pkcs11_handler->alloc = allocator;
-    pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
-    aws_mutex_init(&pkcs11_handler->session_lock);
-
-    CK_SLOT_ID slot_id;
-    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, match_token_label, &slot_id /*out*/)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_open_session(pkcs11_handler->lib, slot_id, &pkcs11_handler->session_handle)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, user_pin)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_find_private_key(
-            pkcs11_handler->lib,
-            pkcs11_handler->session_handle,
-            match_private_key_label,
-            &pkcs11_handler->private_key_handle /*out*/,
-            &pkcs11_handler->private_key_type /*out*/)) {
-        goto error;
-    }
-
-    return pkcs11_handler;
-error:
-    aws_pkcs11_tls_op_handler_destroy(pkcs11_handler);
-    return NULL;
-}
-
-void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
-    if (pkcs11_handler == NULL) {
-        return;
-    }
-
-    if (pkcs11_handler->session_handle != 0) {
-        aws_pkcs11_lib_close_session(pkcs11_handler->lib, pkcs11_handler->session_handle);
-    }
-    aws_mutex_clean_up(&pkcs11_handler->session_lock);
-    aws_pkcs11_lib_release(pkcs11_handler->lib);
-
-    aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
-}
-
-void aws_pkcs11_tls_op_handler_do_operation(struct aws_tls_key_operation *operation, void *user_data) {
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler = user_data;
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler = (struct aws_pkcs11_tls_op_handler *)user_data;
     struct aws_byte_buf output_buf; /* initialized later */
     AWS_ZERO_STRUCT(output_buf);
 
@@ -144,4 +96,101 @@ unlock:
     }
 
     aws_byte_buf_clean_up(&output_buf);
+}
+
+static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *impl) {
+    aws_mem_release(impl->allocator, impl);
+}
+
+static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
+    .destroy = NULL,
+    .on_key_operation = aws_pkcs11_tls_op_handler_do_operation,
+    .on_ctx_destroy = NULL,
+};
+
+static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
+    struct aws_allocator *allocator) {
+
+    struct aws_custom_key_op_handler *impl =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
+
+    impl->allocator = allocator;
+    impl->vtable = &s_aws_custom_key_op_handler_vtable;
+    aws_ref_count_init(
+        &impl->ref_count, impl, (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
+
+    return impl;
+}
+
+// ============================================
+
+struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_lib *pkcs11_lib,
+    const struct aws_string *user_pin,
+    const struct aws_string *match_token_label,
+    const struct aws_string *match_private_key_label,
+    const uint64_t *match_slot_id) {
+
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
+
+    pkcs11_handler->custom_key_handler = s_aws_custom_key_op_handler_new(allocator);
+
+    pkcs11_handler->alloc = allocator;
+    pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
+    aws_mutex_init(&pkcs11_handler->session_lock);
+
+    CK_SLOT_ID slot_id;
+    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, match_token_label, &slot_id /*out*/)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_open_session(pkcs11_handler->lib, slot_id, &pkcs11_handler->session_handle)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, user_pin)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_find_private_key(
+            pkcs11_handler->lib,
+            pkcs11_handler->session_handle,
+            match_private_key_label,
+            &pkcs11_handler->private_key_handle /*out*/,
+            &pkcs11_handler->private_key_type /*out*/)) {
+        goto error;
+    }
+
+    return pkcs11_handler;
+error:
+    aws_pkcs11_tls_op_handler_destroy(pkcs11_handler);
+    return NULL;
+}
+
+void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
+    if (pkcs11_handler == NULL) {
+        return;
+    }
+
+    // Release the reference
+    if (pkcs11_handler->custom_key_handler != NULL) {
+        aws_ref_count_release(&pkcs11_handler->custom_key_handler->ref_count);
+    }
+
+    if (pkcs11_handler->session_handle != 0) {
+        aws_pkcs11_lib_close_session(pkcs11_handler->lib, pkcs11_handler->session_handle);
+    }
+    aws_mutex_clean_up(&pkcs11_handler->session_lock);
+    aws_pkcs11_lib_release(pkcs11_handler->lib);
+
+    aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
+}
+
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
+    if (pkcs11_handler == NULL) {
+        return NULL;
+    }
+    return pkcs11_handler->custom_key_handler;
 }

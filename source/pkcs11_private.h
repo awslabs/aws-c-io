@@ -155,7 +155,10 @@ AWS_IO_API
 void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_handler);
 
 AWS_IO_API
-void aws_pkcs11_tls_op_handler_do_operation(struct aws_tls_key_operation *operation, void *user_data);
+void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation, void *user_data);
+
+AWS_IO_API
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(struct aws_pkcs11_tls_op_handler *pkcs11_handler);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */
