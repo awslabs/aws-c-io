@@ -896,7 +896,6 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
         aws_tls_hash_algorithm_str(operation->digest_algorithm));
 
     // TODO - verify this is set and error if it is not!
-    //s2n_handler->s2n_ctx->on_key_operation(operation, s2n_handler->s2n_ctx->user_data);
     s2n_handler->s2n_ctx->custom_key_handler->vtable->on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation, s2n_handler->s2n_ctx->user_data);
 
     return S2N_SUCCESS;
@@ -1273,18 +1272,12 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
 
-        //aws_simple_completion_callback *on_ctx_destroy = s2n_ctx->on_ctx_destroy;
         void *user_data = s2n_ctx->user_data;
 
         if (s2n_ctx->custom_key_handler->vtable->on_ctx_destroy) {
             s2n_ctx->custom_key_handler->vtable->on_ctx_destroy(s2n_ctx->custom_key_handler, user_data);
         }
-
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
-
-        // if (on_ctx_destroy) {
-        //     on_ctx_destroy(user_data);
-        // }
     }
 }
 
@@ -1459,7 +1452,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
             goto cleanup_s2n_config;
         }
-    //} else if ((options->on_key_operation != NULL) || (options->pkcs11.lib != NULL)) {
     } else if ((options->custom_key_op_handler->vtable->on_key_operation != NULL) || (options->pkcs11.lib != NULL)) {
         if (options->pkcs11.lib) {
             /* we have built-in support for doing PKCS#11 key operations */
@@ -1476,13 +1468,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 goto cleanup_s2n_config;
             }
 
-            //s2n_ctx->on_key_operation = aws_pkcs11_tls_op_handler_do_operation;
-            //s2n_ctx->custom_key_handler = s2n_ctx->pkcs11_handler->custom_key_handler;
             s2n_ctx->custom_key_handler = aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler);
             s2n_ctx->user_data = s2n_ctx->pkcs11_handler;
         } else {
-            //s2n_ctx->on_key_operation = options->custom_key_op_handler->vtable->on_key_operation;
-            //s2n_ctx->on_ctx_destroy = options->custom_key_op_handler->vtable->on_ctx_destroy;
             s2n_ctx->custom_key_handler = options->custom_key_op_handler;
             s2n_ctx->user_data = options->user_data;
         }

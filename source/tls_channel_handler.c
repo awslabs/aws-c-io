@@ -154,19 +154,16 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     /* on_key_operation is required */
     if (custom) {
         if (custom->vtable == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must have a vtable.");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto error;
+        }
+        if (custom->vtable->on_key_operation == NULL) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             goto error;
         }
-        // TODO - get this check working!
-        // if (custom->vtable->on_key_operation == NULL) {
-        //     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
-        //     aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        //     goto error;
-        // }
     }
-    //options->on_key_operation = custom->vtable->on_key_operation;
-    //options->on_ctx_destroy = custom->vtable->on_ctx_destroy;
     options->custom_key_op_handler = (struct aws_custom_key_op_handler *)custom;
     options->user_data = (void *)custom;
 
