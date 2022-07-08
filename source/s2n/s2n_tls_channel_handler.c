@@ -77,10 +77,7 @@ struct s2n_ctx {
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
 
     /* TODO: document */
-    // aws_tls_on_key_operation_fn *on_key_operation;
-    // aws_simple_completion_callback *on_ctx_destroy;
     struct aws_custom_key_op_handler *custom_key_handler;
-    void *user_data;
     struct aws_pkcs11_tls_op_handler *pkcs11_handler;
 };
 
@@ -896,7 +893,7 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
         aws_tls_hash_algorithm_str(operation->digest_algorithm));
 
     // TODO - verify this is set and error if it is not!
-    s2n_handler->s2n_ctx->custom_key_handler->vtable->on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation, s2n_handler->s2n_ctx->user_data);
+    s2n_handler->s2n_ctx->custom_key_handler->vtable->on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
 
     return S2N_SUCCESS;
 }
@@ -1272,10 +1269,8 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
 
-        void *user_data = s2n_ctx->user_data;
-
         if (s2n_ctx->custom_key_handler->vtable->on_ctx_destroy) {
-            s2n_ctx->custom_key_handler->vtable->on_ctx_destroy(s2n_ctx->custom_key_handler, user_data);
+            s2n_ctx->custom_key_handler->vtable->on_ctx_destroy(s2n_ctx->custom_key_handler);
         }
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
@@ -1469,10 +1464,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             }
 
             s2n_ctx->custom_key_handler = aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler);
-            s2n_ctx->user_data = s2n_ctx->pkcs11_handler;
         } else {
             s2n_ctx->custom_key_handler = options->custom_key_op_handler;
-            s2n_ctx->user_data = options->user_data;
         }
 
         /* set callback so that we can do custom private key operations */

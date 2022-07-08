@@ -334,8 +334,8 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 // TODO: Describe
 struct aws_custom_key_op_handler_vtable {
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
-    void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation, void *user_data);
-    void (*on_ctx_destroy)(struct aws_custom_key_op_handler *key_op_handler, void *ctx_data);
+    void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+    void (*on_ctx_destroy)(struct aws_custom_key_op_handler *key_op_handler);
 };
 
 // TODO: Describe

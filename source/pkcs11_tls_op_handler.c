@@ -36,11 +36,9 @@ struct aws_pkcs11_tls_op_handler {
 
 // ============================================
 
-void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation, void *user_data) {
-    // Not needed...
-    (void)handler;
+void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation) {
 
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler = (struct aws_pkcs11_tls_op_handler *)user_data;
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler = (struct aws_pkcs11_tls_op_handler *)handler->impl;
     struct aws_byte_buf output_buf; /* initialized later */
     AWS_ZERO_STRUCT(output_buf);
 
@@ -109,11 +107,13 @@ static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtabl
 };
 
 static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
-    struct aws_allocator *allocator) {
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
 
     struct aws_custom_key_op_handler *impl =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
 
+    impl->impl = (void *)pkcs11_handler;
     impl->allocator = allocator;
     impl->vtable = &s_aws_custom_key_op_handler_vtable;
     aws_ref_count_init(
@@ -135,7 +135,7 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
 
-    pkcs11_handler->custom_key_handler = s_aws_custom_key_op_handler_new(allocator);
+    pkcs11_handler->custom_key_handler = s_aws_custom_key_op_handler_new(allocator, pkcs11_handler);
 
     pkcs11_handler->alloc = allocator;
     pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
