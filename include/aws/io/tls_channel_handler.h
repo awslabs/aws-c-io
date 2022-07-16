@@ -329,24 +329,85 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
 
-// TODO: Describe
+/**
+ * All of the functions that can be implemented/extended by a aws_custom_key_op_handler.
+ * If a function is null, then attempting to use one of the "aws_custom_key_op_handler_<func>"
+ * functions will just silently execute without doing anything.
+ */
 struct aws_custom_key_op_handler_vtable {
+    /**
+     * Called when the aws_custom_key_op_handler is no longer referenced in Java or C, so it can be
+     * destroyed. This is intended for any cleanup needed prior to final destruction.
+     */
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
+
+    /**
+     * Called when the a TLS handshake has an operation it needs the custom key operation handler to perform.
+     * NOTE: You must call aws_tls_key_operation_complete() or aws_tls_key_operation_complete_with_error()
+     * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
+     */
     void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+
+    /**
+     * Called when the TLS handhsake needs a certificate populated, which it expects to be passed into the passed-in
+     * aws_byte_buf. Should return true if the certificate is successfully populated and false when an error occurs
+     * of the certificate could not otherwise be populated.
+     */
     bool (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
 
-// TODO: Describe
+/**
+ * The custom key operation that can be used to perform a custom private key operation in the TLS handshake. This can
+ * be extended to provide custom private key operations, like PKCS11 or similar.
+ */
 struct aws_custom_key_op_handler {
+    /**
+     * A void* intended to be populated with a reference to whatever class is extending this class. For example,
+     * if you have extended aws_custom_key_op_handler with a custom struct, you would put a pointer to this struct
+     * to *impl so you can retrieve it back in the v-table functions.
+     */
     void *impl;
+
+    /**
+     * A vtable containing all of the functions the aws_custom_key_op_handler implements. Is intended to be extended.
+     * NOTE: Use "aws_custom_key_op_handler_<func>" to access vtable functions.
+     */
     const struct aws_custom_key_op_handler_vtable *vtable;
+
+    /**
+     * A reference count for handling memory usage.
+     * Use aws_custom_key_op_handler_aquire and aws_custom_key_op_handler_release to increase/decrease count.
+     * (TODO - need to implement this!) Will call the destroy function when the reference count is zero.
+     */
     struct aws_ref_count ref_count;
 };
 
+/**
+ * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
+ */
 AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(struct aws_custom_key_op_handler *key_op_handler);
+
+/**
+ * Decreases the reference count for the passed-in aws_custom_key_op_handler and returns NULL.
+ */
 AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_custom_key_op_handler *key_op_handler);
+
+/**
+ * Calls the on_key_operation vtable function. See aws_custom_key_op_handler_vtable for function details.
+ * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
+ */
 AWS_IO_API void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+
+/**
+ * Calls the destroy vtable function. See aws_custom_key_op_handler_vtable for function details.
+ * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
+ */
 AWS_IO_API void aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler);
+
+/**
+ * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.
+ * NOTE: If the vtable or vtable function is null, then it will return false.
+ */
 AWS_IO_API bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 
 /**

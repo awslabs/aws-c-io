@@ -76,8 +76,21 @@ struct s2n_ctx {
     /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
 
-    /* TODO: document */
+    /**
+     * Custom key operations to perform when a private key operation is required in the TLS handshake.
+     * Only will be used if non-NULL, otherwise this is ignored and the standard private key operations
+     * are performed instead.
+     * NOTE: If PKCS11 operations are also set, then that will be used over this.
+     *
+     * See aws_custom_key_op_handler in tls_channel_handler.h for more details.
+     */
     struct aws_custom_key_op_handler *custom_key_handler;
+
+    /**
+     * PKCS11 operations to perform when a private key operation is required in the TLS handshake.
+     * Only will be used if non-NULL, otherwise this is ignored and standard private key operations are
+     * performed instead.
+     */
     struct aws_pkcs11_tls_op_handler *pkcs11_handler;
 };
 
@@ -1447,8 +1460,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
             goto cleanup_s2n_config;
         }
-    // TODO - replace this with a better if check...
-    } else if ((options->custom_key_op_handler->vtable->on_key_operation != NULL) || (options->pkcs11.lib != NULL)) {
+    } else if ((options->custom_key_op_handler != NULL) || (options->pkcs11.lib != NULL)) {
         if (options->pkcs11.lib) {
             /* we have built-in support for doing PKCS#11 key operations */
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: PKCS#11 has been set, setting it up now.");

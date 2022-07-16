@@ -877,21 +877,26 @@ struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_c
 }
 
 void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation) {
-    // TODO - verify if the vtable and on_key_operation are set and error if not?
     if (key_op_handler != NULL) {
-        key_op_handler->vtable->on_key_operation(key_op_handler, operation);
+        if (key_op_handler->vtable != NULL && key_op_handler->vtable->on_key_operation != NULL) {
+            key_op_handler->vtable->on_key_operation(key_op_handler, operation);
+        }
     }
 }
 
 void aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
     if (key_op_handler != NULL) {
-        key_op_handler->vtable->destroy(key_op_handler);
+        if (key_op_handler->vtable != NULL && key_op_handler->vtable->destroy != NULL) {
+            key_op_handler->vtable->destroy(key_op_handler);
+        }
     }
 }
 
 bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output) {
     if (key_op_handler != NULL) {
-        return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);
+        if (key_op_handler->vtable != NULL && key_op_handler->vtable->get_certificate != NULL) {
+            return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);
+        }
     }
     return false;
 }

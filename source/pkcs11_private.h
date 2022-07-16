@@ -131,7 +131,6 @@ AWS_IO_API
 int aws_get_prefix_to_rsa_sig(enum aws_tls_hash_algorithm digest_alg, struct aws_byte_cursor *out_prefix);
 
 /**
- * TODO: describe
  * ASN.1 DER encode a big unsigned integer. Note that the source integer may be zero padded. It may also have
  * most significant bit set. The encoded format is canonical and unambiguous - that is, most significant
  * bit is never set.
@@ -140,7 +139,7 @@ AWS_IO_API
 int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, struct aws_byte_cursor bigint);
 
 /**
- * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
+ * Creates a new PKCS11 TLS operation handler.
  */
 AWS_IO_API
 struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
@@ -151,12 +150,23 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_string *match_private_key_label,
     const uint64_t *match_slot_id);
 
+/**
+ * Destroys the passed-in PKCS11 TLS operation handler.
+ */
 AWS_IO_API
 void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_handler);
 
+/**
+ * Performs the PKCS11 TLS private key operation. This is called automatically when performing a MQTT TLS handshake.
+ */
 AWS_IO_API
 void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation);
 
+/**
+ * Returns a aws_custom_key_op_handler created from the aws_pkcs11_tls_op_handler so it can be used to perform
+ * the PKCS11 private key operations.
+ * (TODO - need to see if this is still needed and/or if there is a way to work around this)
+ */
 AWS_IO_API
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(struct aws_pkcs11_tls_op_handler *pkcs11_handler);
 
