@@ -96,14 +96,11 @@ unlock:
     aws_byte_buf_clean_up(&output_buf);
 }
 
-static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *impl) {
-    aws_mem_release(impl->allocator, impl);
-}
+static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *impl) {}
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
     .destroy = NULL,
     .on_key_operation = aws_pkcs11_tls_op_handler_do_operation,
-    .on_ctx_destroy = NULL,
 };
 
 static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
@@ -114,7 +111,6 @@ static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
         aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
 
     impl->impl = (void *)pkcs11_handler;
-    impl->allocator = allocator;
     impl->vtable = &s_aws_custom_key_op_handler_vtable;
     aws_ref_count_init(
         &impl->ref_count, impl, (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);

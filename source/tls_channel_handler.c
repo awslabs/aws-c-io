@@ -167,24 +167,9 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     options->custom_key_op_handler = (struct aws_custom_key_op_handler *)custom;
     options->user_data = (void *)custom;
 
-    /* certificate required, but there are multiple ways to pass it in */
-    if ((custom->cert_file_path.ptr != NULL) && (custom->cert_file_contents.ptr != NULL)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "static: Both certificate filepath and contents are specified. Only one may be set.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    } else if (custom->cert_file_path.ptr != NULL) {
-        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &custom->cert_file_path);
-        int op = aws_byte_buf_init_from_file(&options->certificate, allocator, aws_string_c_str(tmp_string));
-        aws_string_destroy(tmp_string);
-        if (op != AWS_OP_SUCCESS) {
-            goto error;
-        }
-    } else if (custom->cert_file_contents.ptr != NULL) {
-        if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, custom->cert_file_contents)) {
-            goto error;
-        }
-    } else {
+    /* certificate required */
+    bool got_certificate = aws_custom_key_op_handler_get_certificate(options->custom_key_op_handler, &options->certificate);
+    if (got_certificate == false) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
@@ -876,3 +861,37 @@ enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const str
 }
 
 #endif
+
+struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(struct aws_custom_key_op_handler *key_op_handler) {
+    if (key_op_handler != NULL) {
+        aws_ref_count_acquire(&key_op_handler->ref_count);
+    }
+    return key_op_handler;
+}
+
+struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_custom_key_op_handler *key_op_handler) {
+    if (key_op_handler != NULL) {
+        aws_ref_count_release(&key_op_handler->ref_count);
+    }
+    return NULL;
+}
+
+void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation) {
+    // TODO - verify if the vtable and on_key_operation are set and error if not?
+    if (key_op_handler != NULL) {
+        key_op_handler->vtable->on_key_operation(key_op_handler, operation);
+    }
+}
+
+void aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
+    if (key_op_handler != NULL) {
+        key_op_handler->vtable->destroy(key_op_handler);
+    }
+}
+
+bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output) {
+    if (key_op_handler != NULL) {
+        return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);
+    }
+    return false;
+}

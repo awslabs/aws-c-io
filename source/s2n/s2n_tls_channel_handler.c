@@ -892,8 +892,7 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
         aws_tls_signature_algorithm_str(operation->signature_algorithm),
         aws_tls_hash_algorithm_str(operation->digest_algorithm));
 
-    // TODO - verify this is set and error if it is not!
-    s2n_handler->s2n_ctx->custom_key_handler->vtable->on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
+    aws_custom_key_op_handler_on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
 
     return S2N_SUCCESS;
 }
@@ -1269,9 +1268,10 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
 
-        if (s2n_ctx->custom_key_handler->vtable->on_ctx_destroy) {
-            s2n_ctx->custom_key_handler->vtable->on_ctx_destroy(s2n_ctx->custom_key_handler);
+        if (s2n_ctx->custom_key_handler) {
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
         }
+
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
 }
@@ -1447,6 +1447,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
             goto cleanup_s2n_config;
         }
+    // TODO - replace this with a better if check...
     } else if ((options->custom_key_op_handler->vtable->on_key_operation != NULL) || (options->pkcs11.lib != NULL)) {
         if (options->pkcs11.lib) {
             /* we have built-in support for doing PKCS#11 key operations */
@@ -1463,9 +1464,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 goto cleanup_s2n_config;
             }
 
-            s2n_ctx->custom_key_handler = aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler);
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler));
         } else {
-            s2n_ctx->custom_key_handler = options->custom_key_op_handler;
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(options->custom_key_op_handler);
         }
 
         /* set callback so that we can do custom private key operations */

@@ -221,10 +221,8 @@ struct aws_tls_ctx_options {
 
     /**
      * Set if using custom private key operations.
-     * See aws_tls_on_key_operation_fn for more details
+     * See aws_custom_key_op_handler for more details
      */
-    //aws_tls_on_key_operation_fn *on_key_operation;
-    //aws_simple_completion_callback *on_ctx_destroy;
     struct aws_custom_key_op_handler *custom_key_op_handler;
     void *user_data;
 
@@ -335,33 +333,21 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
 struct aws_custom_key_op_handler_vtable {
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
     void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
-    void (*on_ctx_destroy)(struct aws_custom_key_op_handler *key_op_handler);
+    bool (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
 
 // TODO: Describe
 struct aws_custom_key_op_handler {
-    struct aws_allocator *allocator;
-    /* point to the impl only set if needed. */
     void *impl;
     const struct aws_custom_key_op_handler_vtable *vtable;
     struct aws_ref_count ref_count;
-
-    /**
-     * Certificate's file path on disk (UTF-8).
-     * The certificate must be PEM formatted and UTF-8 encoded.
-     * Zero out if passing in certificate by some other means (such as file contents).
-     * (Can also be zero out if it is unused, like in PKCS11 implementation)
-     */
-    struct aws_byte_cursor cert_file_path;
-
-    /**
-     * Certificate's file contents (UTF-8).
-     * The certificate must be PEM formatted and UTF-8 encoded.
-     * Zero out if passing in certificate by some other means (such as file path).
-     * (Can also be zero out if it is unused, like in PKCS11 implementation)
-     */
-    struct aws_byte_cursor cert_file_contents;
 };
+
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(struct aws_custom_key_op_handler *key_op_handler);
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_custom_key_op_handler *key_op_handler);
+AWS_IO_API void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+AWS_IO_API void aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler);
+AWS_IO_API bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 
 /**
  * Initializes options for use with mutual TLS in client mode,
