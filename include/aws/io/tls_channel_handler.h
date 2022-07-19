@@ -338,6 +338,10 @@ struct aws_custom_key_op_handler_vtable {
     /**
      * Called when the aws_custom_key_op_handler is no longer referenced in Java or C, so it can be
      * destroyed. This is intended for any cleanup needed prior to final destruction.
+     * This will be called automatically when the last reference is freed if you create a
+     * aws_custom_key_op_handler using the aws_custom_key_op_handler_new function.
+     *
+     * NOTE: This function is REQUIRED
      */
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
 
@@ -345,6 +349,8 @@ struct aws_custom_key_op_handler_vtable {
      * Called when the a TLS handshake has an operation it needs the custom key operation handler to perform.
      * NOTE: You must call aws_tls_key_operation_complete() or aws_tls_key_operation_complete_with_error()
      * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
+     *
+     * NOTE: This function is REQUIRED
      */
     void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
 
@@ -352,6 +358,9 @@ struct aws_custom_key_op_handler_vtable {
      * Called when the TLS handhsake needs a certificate populated, which it expects to be passed into the passed-in
      * aws_byte_buf. Should return true if the certificate is successfully populated and false when an error occurs
      * of the certificate could not otherwise be populated.
+     *
+     * NOTE: This function is OPTIONAL
+     * (TODO - make this required? PKCS11 should support this too... Need to rewrite PKCS11 to use custom key operations...)
      */
     bool (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
@@ -377,10 +386,17 @@ struct aws_custom_key_op_handler {
     /**
      * A reference count for handling memory usage.
      * Use aws_custom_key_op_handler_aquire and aws_custom_key_op_handler_release to increase/decrease count.
-     * (TODO - need to implement this!) Will call the destroy function when the reference count is zero.
+     * Will call the destroy function when the reference count is zero if created via aws_custom_key_op_handler_new.
      */
     struct aws_ref_count ref_count;
 };
+
+/**
+ * Makes a new aws_custom_key_op_handler and initializes the reference count to 1. Also sets the reference counter
+ * destructor so that it will call the destroy function in the v-table for the aws_custom_key_op_handler.
+ * NOTE: In your destructor, you must call aws_mem_release to free the aws_custom_key_op_handler.
+ */
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struct aws_allocator *allocator);
 
 /**
  * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
@@ -397,12 +413,6 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(s
  * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
  */
 AWS_IO_API void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
-
-/**
- * Calls the destroy vtable function. See aws_custom_key_op_handler_vtable for function details.
- * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
- */
-AWS_IO_API void aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler);
 
 /**
  * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.

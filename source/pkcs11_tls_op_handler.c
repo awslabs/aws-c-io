@@ -34,28 +34,26 @@ struct aws_pkcs11_tls_op_handler {
     struct aws_custom_key_op_handler *custom_key_handler;
 };
 
-static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *impl) {
-    (void)impl;
+static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
+    struct aws_pkcs11_tls_op_handler *handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
+    aws_mem_release(handler->alloc, key_op_handler);
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
-    .destroy = NULL,
+    .destroy = s_aws_custom_key_op_handler_destroy,
     .on_key_operation = aws_pkcs11_tls_op_handler_do_operation,
+    .get_certificate = NULL,
 };
 
 static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
     struct aws_allocator *allocator,
     struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
 
-    struct aws_custom_key_op_handler *impl =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
+    struct aws_custom_key_op_handler *key_op_handler = aws_custom_key_op_handler_new(allocator);
+    key_op_handler->impl = (void *)pkcs11_handler;
+    key_op_handler->vtable = &s_aws_custom_key_op_handler_vtable;
 
-    impl->impl = (void *)pkcs11_handler;
-    impl->vtable = &s_aws_custom_key_op_handler_vtable;
-    aws_ref_count_init(
-        &impl->ref_count, impl, (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
-
-    return impl;
+    return key_op_handler;
 }
 
 struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
