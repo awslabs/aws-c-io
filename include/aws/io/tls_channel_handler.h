@@ -117,7 +117,9 @@ struct aws_tls_connection_options {
 };
 
 /**
- * TODO: describe
+ * A struct containing all of the data needed for a private key operation when
+ * making a MQTT connection using TLS. This struct contains the data that needs
+ * to be operated on, like performing a sign operation or a decrypt operation.
  */
 struct aws_tls_key_operation;
 

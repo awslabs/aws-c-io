@@ -812,7 +812,7 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
     /* clang-format off */
     switch (signature) {
         case (AWS_TLS_SIGNATURE_RSA): return "RSA";
-        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA"; // TODO - was in PKCS11 branch when merging... Remove this?
+        case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA";
         default: return "<UNKNOWN SIGNATURE ALGORITHM>";
     }
     /* clang-format on */
