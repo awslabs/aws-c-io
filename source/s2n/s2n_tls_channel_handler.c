@@ -104,6 +104,8 @@ struct aws_tls_key_operation {
     struct aws_byte_buf input_data;
     struct aws_channel_task completion_task;
     int completion_error_code;
+
+    struct aws_atomic_var complete_count;
 };
 
 AWS_STATIC_STRING_FROM_LITERAL(s_debian_path, "/etc/ssl/certs");
@@ -710,6 +712,22 @@ static void s_tls_key_operation_complete_common(
 
     AWS_ASSERT((error_code != 0) ^ (output != NULL)); /* error_code XOR output must be set */
 
+    if (operation == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation: Operation is null and therefore cannot be set to complete!");
+        return;
+    }
+
+    // Ensure this can only be called once and exactly once. If called again, log an error.
+    size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
+    if (complete_count != 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "Operation id=%p: Operation is already complete! Complete call count is %lu",
+            (void *)operation,
+            complete_count);
+        return;
+    }
+
     struct s2n_handler *s2n_handler = operation->s2n_handler;
     struct aws_channel_handler *handler = &s2n_handler->handler;
 
@@ -852,6 +870,9 @@ static struct aws_tls_key_operation *s_tls_key_operation_new(
     /* Keep channel alive until operation completes */
     operation->s2n_handler = s2n_handler;
     aws_channel_acquire_hold(s2n_handler->slot->channel);
+
+    // Set this to zero so we can track how many times complete has been called
+    aws_atomic_init_int(&operation->complete_count, 0);
 
     /* Set this last. We don't want to take ownership of s2n_op until we know setup was 100% successful */
     operation->s2n_op = s2n_op;
