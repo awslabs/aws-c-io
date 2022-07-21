@@ -840,19 +840,11 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_ha
 
 /**************************** TLS KEY OPERATION *******************************/
 
-/* TODO: s2n allows multiple cert/key pairs to be set but CRT assumes
-         the user knows which key is being used. Is this an issue? */
-
-/* TODO: have a way to indicate connection/thread/etc?
-         in case user wants to do some kind of pooling? */
-
-/* TODO: have a way to indicate creation/destruction of ctx/options/connection/etc
-         in case user wants to tear down some piece of their handler */
+/* Note: Currently this assumes the user knows what key is being used for key/cert pairs
+         but s2n supports multiple cert/key pairs. This functionality is not used in the
+         CRT currently, but in the future, we may need to implement this */
 
 /* TODO: rework get_input() API to avoid a copy? */
-
-/* TODO: document how this operation can be performed asynchronously,
-         and document the threading rules (op is thread safe, don't block, etc) */
 
 /**
  * Complete a successful TLS private key operation by providing its output.
