@@ -250,6 +250,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
 
     // Set the certificate
+    // (Seems this is where issues are currently - likely due to something going out of scope...)
     aws_pkcs11_tls_op_handler_set_certificate_data(
         pkcs11_handler, pkcs11_options->cert_file_path, pkcs11_options->cert_file_contents);
 
@@ -270,9 +271,12 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler)
-    );
+    // return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+    //     options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+
+    int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+        options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+    return result;
 
 error:
     aws_tls_ctx_options_clean_up(options);
