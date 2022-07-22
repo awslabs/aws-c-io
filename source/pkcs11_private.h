@@ -31,7 +31,6 @@ struct aws_pkcs11_lib;
 struct aws_pkcs11_tls_key_handler;
 struct aws_string;
 
-
 AWS_EXTERN_C_BEGIN
 
 /**

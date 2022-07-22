@@ -722,9 +722,8 @@ static void s_tls_key_operation_complete_common(
     if (complete_count != 0) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "Operation id=%p: Operation is already complete! Complete call count is %u",
-            (void *)operation,
-            complete_count);
+            "Operation id=%p: Operation is already complete!",
+            (void *)operation);
         return;
     }
 
