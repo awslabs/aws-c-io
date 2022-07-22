@@ -200,10 +200,10 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #else
 
-    struct aws_pkcs11_lib *pkcs_lib;
-    struct aws_string *pkcs_user_pin;
-    struct aws_string *pkcs_token_label;
-    struct aws_string *pkcs_private_key_object_label;
+    struct aws_pkcs11_lib *pkcs_lib = NULL;
+    struct aws_string *pkcs_user_pin = NULL;
+    struct aws_string *pkcs_token_label = NULL;
+    struct aws_string *pkcs_private_key_object_label = NULL;
     uint64_t pkcs_slot_id;
     bool pkcs_has_slot_id = false;
 
@@ -251,10 +251,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
     // Set the certificate
     aws_pkcs11_tls_op_handler_set_certificate_data(
-        pkcs11_handler,
-        pkcs11_options->cert_file_path,
-        pkcs11_options->cert_file_contents
-    );
+        pkcs11_handler, pkcs11_options->cert_file_path, pkcs11_options->cert_file_contents);
 
     // We need to use custom TLS options with PKCS11
     options->use_pkcs11_tls = true;
@@ -274,9 +271,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
 
     return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options,
-        allocator,
-        aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler)
+        options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler)
     );
 
 error:
