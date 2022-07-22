@@ -720,10 +720,7 @@ static void s_tls_key_operation_complete_common(
     // Ensure this can only be called once and exactly once. If called again, log an error.
     size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
     if (complete_count != 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS,
-            "Operation id=%p: Operation is already complete!",
-            (void *)operation);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation id=%p: Operation is already complete!", (void *)operation);
         return;
     }
 
