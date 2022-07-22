@@ -11,12 +11,9 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
-#include <aws/io/pkcs11.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
-
-#include "../pkcs11_private.h"
 
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
@@ -80,18 +77,11 @@ struct s2n_ctx {
      * Custom key operations to perform when a private key operation is required in the TLS handshake.
      * Only will be used if non-NULL, otherwise this is ignored and the standard private key operations
      * are performed instead.
-     * NOTE: If PKCS11 operations are also set, then that will be used over this.
+     * NOTE: PKCS11 also is done via this custom_key_handler.
      *
      * See aws_custom_key_op_handler in tls_channel_handler.h for more details.
      */
     struct aws_custom_key_op_handler *custom_key_handler;
-
-    /**
-     * PKCS11 operations to perform when a private key operation is required in the TLS handshake.
-     * Only will be used if non-NULL, otherwise this is ignored and standard private key operations are
-     * performed instead.
-     */
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler;
 };
 
 struct aws_tls_key_operation {
@@ -1286,7 +1276,6 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
-        aws_pkcs11_tls_op_handler_destroy(s2n_ctx->pkcs11_handler);
         s2n_config_free(s2n_ctx->s2n_config);
 
         if (s2n_ctx->custom_cert_chain_and_key) {
@@ -1365,7 +1354,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-    if (options->pkcs11.lib != NULL) {
+    if (options->use_pkcs11_tls == true) {
         /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
@@ -1457,27 +1446,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
             goto cleanup_s2n_config;
         }
-    } else if ((options->custom_key_op_handler != NULL) || (options->pkcs11.lib != NULL)) {
-        if (options->pkcs11.lib) {
-            /* we have built-in support for doing PKCS#11 key operations */
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: PKCS#11 has been set, setting it up now.");
-            s2n_ctx->pkcs11_handler = aws_pkcs11_tls_op_handler_new(
-                alloc,
-                options->pkcs11.lib,
-                options->pkcs11.user_pin,
-                options->pkcs11.token_label,
-                options->pkcs11.private_key_object_label,
-                options->pkcs11.has_slot_id ? &options->pkcs11.slot_id : NULL);
+    } else if (options->custom_key_op_handler != NULL) {
 
-            if (s2n_ctx->pkcs11_handler == NULL) {
-                goto cleanup_s2n_config;
-            }
-
-            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(
-                aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler));
-        } else {
-            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(options->custom_key_op_handler);
-        }
+        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(options->custom_key_op_handler);
 
         /* set callback so that we can do custom private key operations */
         if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_async_pkey_callback)) {

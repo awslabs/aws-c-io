@@ -13,6 +13,8 @@
 
 #define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
 
+#include "./pkcs11_private.h"
+
 #include <aws/common/string.h>
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
@@ -40,11 +42,6 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 #endif
 
     aws_string_destroy(options->alpn_list);
-
-    aws_pkcs11_lib_release(options->pkcs11.lib);
-    aws_string_destroy_secure(options->pkcs11.user_pin);
-    aws_string_destroy(options->pkcs11.token_label);
-    aws_string_destroy(options->pkcs11.private_key_object_label);
 
     AWS_ZERO_STRUCT(*options);
 }
@@ -203,7 +200,12 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #else
 
-    aws_tls_ctx_options_init_default_client(options, allocator);
+    struct aws_pkcs11_lib *pkcs_lib;
+    struct aws_string *pkcs_user_pin;
+    struct aws_string *pkcs_token_label;
+    struct aws_string *pkcs_private_key_object_label;
+    uint64_t pkcs_slot_id;
+    bool pkcs_has_slot_id = false;
 
     /* pkcs11_lib is required */
     if (pkcs11_options->pkcs11_lib == NULL) {
@@ -211,63 +213,89 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
-    options->pkcs11.lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib); /* cannot fail */
+    pkcs_lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib); /* cannot fail */
 
     /* user_pin is optional */
     if (pkcs11_options->user_pin.ptr != NULL) {
-        options->pkcs11.user_pin = aws_string_new_from_cursor(allocator, &pkcs11_options->user_pin);
+        pkcs_user_pin = aws_string_new_from_cursor(allocator, &pkcs11_options->user_pin);
     }
 
     /* slot_id is optional */
     if (pkcs11_options->slot_id != NULL) {
-        options->pkcs11.slot_id = *pkcs11_options->slot_id;
-        options->pkcs11.has_slot_id = true;
+        pkcs_slot_id = *pkcs11_options->slot_id;
+        pkcs_has_slot_id = true;
     }
 
     /* token_label is optional */
     if (pkcs11_options->token_label.ptr != NULL) {
-        options->pkcs11.token_label = aws_string_new_from_cursor(allocator, &pkcs11_options->token_label);
+        pkcs_token_label = aws_string_new_from_cursor(allocator, &pkcs11_options->token_label);
     }
 
     /* private_key_object_label is optional */
     if (pkcs11_options->private_key_object_label.ptr != NULL) {
-        options->pkcs11.private_key_object_label =
+        pkcs_private_key_object_label =
             aws_string_new_from_cursor(allocator, &pkcs11_options->private_key_object_label);
     }
 
-    /* certificate required, but there are multiple ways to pass it in */
-    if ((pkcs11_options->cert_file_path.ptr != NULL) && (pkcs11_options->cert_file_contents.ptr != NULL)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "static: Both certificate filepath and contents are specified. Only one may be set.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    } else if (pkcs11_options->cert_file_path.ptr != NULL) {
-        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
-        int op = aws_byte_buf_init_from_file(&options->certificate, allocator, aws_string_c_str(tmp_string));
-        aws_string_destroy(tmp_string);
-        if (op != AWS_OP_SUCCESS) {
-            goto error;
-        }
-    } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
-        if (aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, pkcs11_options->cert_file_contents)) {
-            goto error;
-        }
-    } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler = aws_pkcs11_tls_op_handler_new(
+        allocator,
+        pkcs_lib,
+        pkcs_user_pin,
+        pkcs_token_label,
+        pkcs_private_key_object_label,
+        pkcs_has_slot_id ? &pkcs_slot_id : NULL);
+
+    if (pkcs11_handler == NULL) {
         goto error;
     }
 
-    if (aws_sanitize_pem(&options->certificate, allocator)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
-        goto error;
+    // Set the certificate
+    aws_pkcs11_tls_op_handler_set_certificate_data(
+        pkcs11_handler,
+        pkcs11_options->cert_file_path,
+        pkcs11_options->cert_file_contents
+    );
+
+    // We need to use custom TLS options with PKCS11
+    options->use_pkcs11_tls = true;
+
+    // CLEANUP
+    if (pkcs_lib != NULL) {
+        aws_pkcs11_lib_release(pkcs_lib);
+    }
+    if (pkcs_user_pin != NULL) {
+        aws_string_destroy_secure(pkcs_user_pin);
+    }
+    if (pkcs_token_label != NULL) {
+        aws_string_destroy(pkcs_token_label);
+    }
+    if (pkcs_private_key_object_label != NULL) {
+        aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    /* Success! */
-    return AWS_OP_SUCCESS;
+    return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+        options,
+        allocator,
+        aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler)
+    );
 
 error:
     aws_tls_ctx_options_clean_up(options);
+
+    // CLEANUP
+    if (pkcs_lib != NULL) {
+        aws_pkcs11_lib_release(pkcs_lib);
+    }
+    if (pkcs_user_pin != NULL) {
+        aws_string_destroy_secure(pkcs_user_pin);
+    }
+    if (pkcs_token_label != NULL) {
+        aws_string_destroy(pkcs_token_label);
+    }
+    if (pkcs_private_key_object_label != NULL) {
+        aws_string_destroy(pkcs_private_key_object_label);
+    }
+
     return AWS_OP_ERR;
 #endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
 }

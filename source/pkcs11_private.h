@@ -151,6 +151,7 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
 
 /**
  * Destroys the passed-in PKCS11 TLS operation handler.
+ * (TODO - make this private?)
  */
 AWS_IO_API
 void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_handler);
@@ -171,6 +172,16 @@ void aws_pkcs11_tls_op_handler_do_operation(
 AWS_IO_API
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler);
+
+/**
+ * Sets the certificate filepath and contents to the passed-in data
+ * (TODO - find a way around this or just pass in constructor...)
+ */
+AWS_IO_API
+void aws_pkcs11_tls_op_handler_set_certificate_data(
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler,
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

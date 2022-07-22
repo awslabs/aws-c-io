@@ -237,17 +237,10 @@ struct aws_tls_ctx_options {
     void *user_data;
 
     /**
-     * Set if using PKCS#11 for private key operations.
-     * See aws_tls_ctx_pkcs11_options for more details.
+     * PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3
+     * by setting this to true.
      */
-    struct {
-        struct aws_pkcs11_lib *lib;                  /* required */
-        struct aws_string *user_pin;                 /* NULL if token uses "protected authentication path" */
-        struct aws_string *token_label;              /* optional */
-        struct aws_string *private_key_object_label; /* optional */
-        uint64_t slot_id;                            /* optional */
-        bool has_slot_id;
-    } pkcs11;
+    bool use_pkcs11_tls;
 };
 
 struct aws_tls_negotiated_protocol_message {
