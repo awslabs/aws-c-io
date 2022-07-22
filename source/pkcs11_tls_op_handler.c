@@ -37,6 +37,7 @@ struct aws_pkcs11_tls_op_handler {
 static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
     struct aws_pkcs11_tls_op_handler *handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
     aws_mem_release(handler->alloc, key_op_handler);
+    aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
@@ -117,7 +118,7 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_
     aws_mutex_clean_up(&pkcs11_handler->session_lock);
     aws_pkcs11_lib_release(pkcs11_handler->lib);
 
-    aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
+    //aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
 }
 
 void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation) {
