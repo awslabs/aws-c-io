@@ -160,7 +160,9 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_hand
  * Performs the PKCS11 TLS private key operation. This is called automatically when performing a MQTT TLS handshake.
  */
 AWS_IO_API
-void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation);
+void aws_pkcs11_tls_op_handler_do_operation(
+    struct aws_custom_key_op_handler *handler,
+    struct aws_tls_key_operation *operation);
 
 /**
  * Returns a aws_custom_key_op_handler created from the aws_pkcs11_tls_op_handler so it can be used to perform
@@ -168,7 +170,8 @@ void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *ha
  * (TODO - need to see if this is still needed and/or if there is a way to work around this)
  */
 AWS_IO_API
-struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(struct aws_pkcs11_tls_op_handler *pkcs11_handler);
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

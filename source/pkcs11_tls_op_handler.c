@@ -8,7 +8,6 @@
 
 #include <aws/common/mutex.h>
 
-
 struct aws_pkcs11_tls_op_handler {
     struct aws_allocator *alloc;
     struct aws_pkcs11_lib *lib;
@@ -117,11 +116,11 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_
     }
     aws_mutex_clean_up(&pkcs11_handler->session_lock);
     aws_pkcs11_lib_release(pkcs11_handler->lib);
-
-    //aws_mem_release(pkcs11_handler->alloc, pkcs11_handler);
 }
 
-void aws_pkcs11_tls_op_handler_do_operation(struct aws_custom_key_op_handler *handler, struct aws_tls_key_operation *operation) {
+void aws_pkcs11_tls_op_handler_do_operation(
+    struct aws_custom_key_op_handler *handler,
+    struct aws_tls_key_operation *operation) {
 
     struct aws_pkcs11_tls_op_handler *pkcs11_handler = (struct aws_pkcs11_tls_op_handler *)handler->impl;
     struct aws_byte_buf output_buf; /* initialized later */
@@ -181,8 +180,8 @@ unlock:
     aws_byte_buf_clean_up(&output_buf);
 }
 
-
-struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
     if (pkcs11_handler == NULL) {
         return NULL;
     }

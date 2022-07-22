@@ -25,7 +25,7 @@
  * See https://tools.ietf.org/html/rfc3447#page-43
  * (Notes to help understand what's going on here with DER encoding)
  * 0x30 nn - Sequence of tags, nn bytes, including hash, nn = mm+jj+4 (PKCS11 DigestInfo)
- *   0x30 mm - Subsequence of tags, mm bytes (ii+4) (PKCS11 
+ *   0x30 mm - Subsequence of tags, mm bytes (ii+4) (PKCS11
  *     0x06 ii - OID encoding, ii bytes, see X.680 - this identifies the hash algorithm
  *     0x05 00 - NULL
  *   0x04 jj - OCTET, nn = mm + jj + 4
@@ -37,7 +37,6 @@ static const uint8_t SHA384_PREFIX_TO_RSA_SIG[] = { 0x30, 0x41, 0x30, 0x0d, 0x06
 static const uint8_t SHA512_PREFIX_TO_RSA_SIG[] = { 0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40 };
 static const uint8_t SHA224_PREFIX_TO_RSA_SIG[] = { 0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c };
 /* clang-format on */
-
 
 /* Return c-string for PKCS#11 CKR_* contants. */
 const char *aws_pkcs11_ckr_str(CK_RV rv) {

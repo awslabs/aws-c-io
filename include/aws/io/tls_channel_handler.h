@@ -361,8 +361,7 @@ struct aws_custom_key_op_handler_vtable {
      * aws_byte_buf. Should return true if the certificate is successfully populated and false when an error occurs
      * of the certificate could not otherwise be populated.
      *
-     * NOTE: This function is OPTIONAL
-     * (TODO - make this required? PKCS11 should support this too... Need to rewrite PKCS11 to use custom key operations...)
+     * NOTE: This function is REQUIRED
      */
     bool (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
@@ -403,24 +402,30 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struc
 /**
  * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
  */
-AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(struct aws_custom_key_op_handler *key_op_handler);
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(
+    struct aws_custom_key_op_handler *key_op_handler);
 
 /**
  * Decreases the reference count for the passed-in aws_custom_key_op_handler and returns NULL.
  */
-AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_custom_key_op_handler *key_op_handler);
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
+    struct aws_custom_key_op_handler *key_op_handler);
 
 /**
  * Calls the on_key_operation vtable function. See aws_custom_key_op_handler_vtable for function details.
  * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
  */
-AWS_IO_API void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+AWS_IO_API void aws_custom_key_op_handler_on_key_operation(
+    struct aws_custom_key_op_handler *key_op_handler,
+    struct aws_tls_key_operation *operation);
 
 /**
  * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.
  * NOTE: If the vtable or vtable function is null, then it will return false.
  */
-AWS_IO_API bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
+AWS_IO_API bool aws_custom_key_op_handler_get_certificate(
+    struct aws_custom_key_op_handler *key_op_handler,
+    struct aws_byte_buf *certificate_output);
 
 /**
  * Initializes options for use with mutual TLS in client mode,

@@ -139,7 +139,7 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_allocator *allocator,
     const struct aws_custom_key_op_handler *custom) {
 
-#    if !USE_S2N
+#if !USE_S2N
     (void)options;
     (void)allocator;
     (void)custom;
@@ -147,7 +147,7 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     AWS_LOGF_ERROR(
         AWS_LS_IO_TLS, "static: This platform does not currently support TLS with custom private key operations.");
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-#    else
+#else
 
     aws_tls_ctx_options_init_default_client(options, allocator);
 
@@ -168,7 +168,8 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     options->user_data = (void *)custom;
 
     /* certificate required */
-    bool got_certificate = aws_custom_key_op_handler_get_certificate(options->custom_key_op_handler, &options->certificate);
+    bool got_certificate =
+        aws_custom_key_op_handler_get_certificate(options->custom_key_op_handler, &options->certificate);
     if (got_certificate == false) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -186,7 +187,7 @@ error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
 
-#    endif /* PLATFORM-SUPPORTS-CUSTOM-KEY-OPERATIONS */
+#endif /* PLATFORM-SUPPORTS-CUSTOM-KEY-OPERATIONS */
 }
 
 int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
@@ -870,9 +871,12 @@ static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler
 }
 
 struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struct aws_allocator *allocator) {
-    struct aws_custom_key_op_handler *key_op_handler = aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
+    struct aws_custom_key_op_handler *key_op_handler =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
     aws_ref_count_init(
-        &key_op_handler->ref_count, key_op_handler, (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
+        &key_op_handler->ref_count,
+        key_op_handler,
+        (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
     return key_op_handler;
 }
 
@@ -890,7 +894,9 @@ struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_c
     return NULL;
 }
 
-void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation) {
+void aws_custom_key_op_handler_on_key_operation(
+    struct aws_custom_key_op_handler *key_op_handler,
+    struct aws_tls_key_operation *operation) {
     if (key_op_handler != NULL) {
         if (key_op_handler->vtable != NULL && key_op_handler->vtable->on_key_operation != NULL) {
             key_op_handler->vtable->on_key_operation(key_op_handler, operation);
@@ -898,7 +904,9 @@ void aws_custom_key_op_handler_on_key_operation(struct aws_custom_key_op_handler
     }
 }
 
-bool aws_custom_key_op_handler_get_certificate(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output) {
+bool aws_custom_key_op_handler_get_certificate(
+    struct aws_custom_key_op_handler *key_op_handler,
+    struct aws_byte_buf *certificate_output) {
     if (key_op_handler != NULL) {
         if (key_op_handler->vtable != NULL && key_op_handler->vtable->get_certificate != NULL) {
             return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);

@@ -722,7 +722,7 @@ static void s_tls_key_operation_complete_common(
     if (complete_count != 0) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "Operation id=%p: Operation is already complete! Complete call count is %lu",
+            "Operation id=%p: Operation is already complete! Complete call count is %u",
             (void *)operation,
             complete_count);
         return;
@@ -1497,7 +1497,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 goto cleanup_s2n_config;
             }
 
-            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler));
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(
+                aws_pkcs11_tls_op_handler_get_custom_key_handler(s2n_ctx->pkcs11_handler));
         } else {
             s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(options->custom_key_op_handler);
         }
