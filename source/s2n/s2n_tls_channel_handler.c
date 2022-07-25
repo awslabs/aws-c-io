@@ -618,6 +618,9 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
     switch (s2n_alg) {
         case S2N_TLS_SIGNATURE_RSA:
             return AWS_TLS_SIGNATURE_RSA;
+        // TEST
+        case S2N_TLS_SIGNATURE_RSA_PSS_RSAE:
+            return AWS_TLS_SIGNATURE_RSA;
         case S2N_TLS_SIGNATURE_ECDSA:
             return AWS_TLS_SIGNATURE_ECDSA;
         default:

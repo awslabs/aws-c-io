@@ -54,7 +54,7 @@ enum aws_tls_hash_algorithm {
 enum aws_tls_signature_algorithm {
     AWS_TLS_SIGNATURE_UNKNOWN = -1,
     AWS_TLS_SIGNATURE_RSA,
-    AWS_TLS_SIGNATURE_ECDSA, // TODO - not yet implemented but in Parsec PR
+    AWS_TLS_SIGNATURE_ECDSA,
     /* TODO: add support for additional algorithms (ECDSA) */
 };
 
