@@ -36,7 +36,7 @@ struct aws_pkcs11_tls_op_handler {
      * Zero out if passing in certificate by some other means (such as file contents).
      * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
-    struct aws_byte_cursor *cert_file_path;
+    struct aws_byte_cursor cert_file_path;
 
     /**
      * Certificate's file contents (UTF-8).
@@ -44,7 +44,7 @@ struct aws_pkcs11_tls_op_handler {
      * Zero out if passing in certificate by some other means (such as file path).
      * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
-    struct aws_byte_cursor *cert_file_contents;
+    struct aws_byte_cursor cert_file_contents;
 
     // The custom key operation handler needed for the callbacks
     struct aws_custom_key_op_handler *custom_key_handler;
@@ -65,38 +65,8 @@ static bool s_aws_custom_key_op_handler_get_certificate(
 
     struct aws_allocator *allocator = op_handler->alloc;
 
-    if (op_handler->cert_file_path != NULL || op_handler->cert_file_contents != NULL) {
-        if (op_handler->cert_file_path != NULL && op_handler->cert_file_contents != NULL) {
-            if ((op_handler->cert_file_path->ptr != NULL) && (op_handler->cert_file_contents->ptr != NULL)) {
-                return false;
-            }
-        }
-        else if (op_handler->cert_file_path != NULL) {
-            if (op_handler->cert_file_path->ptr != NULL) {
-                struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, op_handler->cert_file_path);
-                int op = aws_byte_buf_init_from_file(certificate_output, allocator, aws_string_c_str(tmp_string));
-                aws_string_destroy(tmp_string);
-                if (op != AWS_OP_SUCCESS) {
-                    return false;
-                }
-            }
-        }
-        else if (op_handler->cert_file_contents != NULL) {
-            if (op_handler->cert_file_contents->ptr != NULL) {
-                if (aws_byte_buf_init_copy_from_cursor(certificate_output, allocator, *op_handler->cert_file_contents)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-    else {
-        return false;
-    }
-
     /* certificate needs to be set, but there are multiple ways to return it */
-    /*
-    if ((op_handler->cert_file_path->ptr != NULL) && (op_handler->cert_file_contents->ptr != NULL)) {
+    if ((op_handler->cert_file_path.ptr != NULL) && (op_handler->cert_file_contents.ptr != NULL)) {
         return false;
     } else if (op_handler->cert_file_path.ptr != NULL) {
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &op_handler->cert_file_path);
@@ -113,7 +83,6 @@ static bool s_aws_custom_key_op_handler_get_certificate(
         return false;
     }
     return true;
-    */
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
@@ -183,16 +152,16 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_
         return;
     }
 
-    // Release the reference
-    if (pkcs11_handler->custom_key_handler != NULL) {
-        aws_ref_count_release(&pkcs11_handler->custom_key_handler->ref_count);
-    }
-
     if (pkcs11_handler->session_handle != 0) {
         aws_pkcs11_lib_close_session(pkcs11_handler->lib, pkcs11_handler->session_handle);
     }
     aws_mutex_clean_up(&pkcs11_handler->session_lock);
     aws_pkcs11_lib_release(pkcs11_handler->lib);
+
+    // Release the reference
+    if (pkcs11_handler->custom_key_handler != NULL) {
+        aws_ref_count_release(&pkcs11_handler->custom_key_handler->ref_count);
+    }
 }
 
 void aws_pkcs11_tls_op_handler_do_operation(
@@ -267,13 +236,13 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handl
 
 void aws_pkcs11_tls_op_handler_set_certificate_data(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler,
-    const struct aws_byte_cursor *cert_file_path,
-    const struct aws_byte_cursor *cert_file_contents) {
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents) {
 
     if (pkcs11_handler == NULL) {
         return;
     }
     // Cast to avoid const code warning
-    pkcs11_handler->cert_file_path = (struct aws_byte_cursor *)cert_file_path;
-    pkcs11_handler->cert_file_contents = (struct aws_byte_cursor *)cert_file_contents;
+    pkcs11_handler->cert_file_path = cert_file_path;
+    pkcs11_handler->cert_file_contents = cert_file_contents;
 }

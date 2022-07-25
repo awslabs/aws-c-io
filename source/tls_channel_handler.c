@@ -250,13 +250,8 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
 
     // Set the certificate
-    /*
     aws_pkcs11_tls_op_handler_set_certificate_data(
         pkcs11_handler, pkcs11_options->cert_file_path, pkcs11_options->cert_file_contents);
-    */
-
-    aws_pkcs11_tls_op_handler_set_certificate_data(
-        pkcs11_handler, &pkcs11_options->cert_file_path, &pkcs11_options->cert_file_contents);
 
     // We need to use custom, PKCS11 specific TLS options
     options->use_pkcs11_tls = true;

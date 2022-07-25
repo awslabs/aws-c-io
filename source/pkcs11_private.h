@@ -180,8 +180,8 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handl
 AWS_IO_API
 void aws_pkcs11_tls_op_handler_set_certificate_data(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler,
-    const struct aws_byte_cursor *cert_file_path,
-    const struct aws_byte_cursor *cert_file_contents);
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */
