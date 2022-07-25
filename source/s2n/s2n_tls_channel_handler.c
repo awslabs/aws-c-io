@@ -618,9 +618,6 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
     switch (s2n_alg) {
         case S2N_TLS_SIGNATURE_RSA:
             return AWS_TLS_SIGNATURE_RSA;
-        // TEST
-        case S2N_TLS_SIGNATURE_RSA_PSS_RSAE:
-            return AWS_TLS_SIGNATURE_RSA;
         case S2N_TLS_SIGNATURE_ECDSA:
             return AWS_TLS_SIGNATURE_ECDSA;
         default:
@@ -1357,7 +1354,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-    if (options->use_pkcs11_tls == true) {
+    // if (options->use_pkcs11_tls == true) {
+    if (options->custom_key_op_handler != NULL) {
+        fprintf(stdout, "\n USING TLS VERSIONS UNDER 1.3 \n");
+
         /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
