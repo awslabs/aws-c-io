@@ -36,7 +36,7 @@ struct aws_pkcs11_tls_op_handler {
      * Zero out if passing in certificate by some other means (such as file contents).
      * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
-    struct aws_byte_cursor cert_file_path;
+    struct aws_byte_cursor *cert_file_path;
 
     /**
      * Certificate's file contents (UTF-8).
@@ -44,7 +44,7 @@ struct aws_pkcs11_tls_op_handler {
      * Zero out if passing in certificate by some other means (such as file path).
      * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
-    struct aws_byte_cursor cert_file_contents;
+    struct aws_byte_cursor *cert_file_contents;
 
     // The custom key operation handler needed for the callbacks
     struct aws_custom_key_op_handler *custom_key_handler;
@@ -60,39 +60,60 @@ static bool s_aws_custom_key_op_handler_get_certificate(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_byte_buf *certificate_output) {
 
-    fprintf(stdout, "\n ABOUT TO GET OP_HANDLER... \n");
-
     struct aws_pkcs11_tls_op_handler *op_handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
     AWS_FATAL_ASSERT(op_handler != NULL);
 
     struct aws_allocator *allocator = op_handler->alloc;
 
-    fprintf(stdout, "\n ABOUT TO CHECK FOR CERTIFICATE... \n");
+    if (op_handler->cert_file_path != NULL || op_handler->cert_file_contents != NULL) {
+        if (op_handler->cert_file_path != NULL && op_handler->cert_file_contents != NULL) {
+            if ((op_handler->cert_file_path->ptr != NULL) && (op_handler->cert_file_contents->ptr != NULL)) {
+                return false;
+            }
+        }
+        else if (op_handler->cert_file_path != NULL) {
+            if (op_handler->cert_file_path->ptr != NULL) {
+                struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, op_handler->cert_file_path);
+                int op = aws_byte_buf_init_from_file(certificate_output, allocator, aws_string_c_str(tmp_string));
+                aws_string_destroy(tmp_string);
+                if (op != AWS_OP_SUCCESS) {
+                    return false;
+                }
+            }
+        }
+        else if (op_handler->cert_file_contents != NULL) {
+            if (op_handler->cert_file_contents->ptr != NULL) {
+                if (aws_byte_buf_init_copy_from_cursor(certificate_output, allocator, *op_handler->cert_file_contents)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    else {
+        return false;
+    }
 
     /* certificate needs to be set, but there are multiple ways to return it */
-    if ((op_handler->cert_file_path.ptr != NULL) && (op_handler->cert_file_contents.ptr != NULL)) {
-        fprintf(stdout, "\n BOTH CERTIFICATE PATH AND CONTENTS ARE SET... \n");
+    /*
+    if ((op_handler->cert_file_path->ptr != NULL) && (op_handler->cert_file_contents->ptr != NULL)) {
         return false;
     } else if (op_handler->cert_file_path.ptr != NULL) {
-        fprintf(stdout, "\n CERTIFICATE PATH IS SET... \n");
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &op_handler->cert_file_path);
         int op = aws_byte_buf_init_from_file(certificate_output, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
         if (op != AWS_OP_SUCCESS) {
-            fprintf(stdout, "\n COULD NOT INIT BYTE BUFFER FROM FILE PATH... \n");
             return false;
         }
     } else if (op_handler->cert_file_contents.ptr != NULL) {
         if (aws_byte_buf_init_copy_from_cursor(certificate_output, allocator, op_handler->cert_file_contents)) {
-            fprintf(stdout, "\n COULD NOT COPY BYTE BUFFER FROM FILE CONTENTS... \n");
             return false;
         }
     } else {
-        fprintf(stdout, "\n FLIE PATH AND FILE CONTENTS ARE BOTH NULL... \n");
         return false;
     }
-    fprintf(stdout, "\n RETURNED TRUE \n");
     return true;
+    */
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
@@ -246,12 +267,13 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handl
 
 void aws_pkcs11_tls_op_handler_set_certificate_data(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents) {
+    const struct aws_byte_cursor *cert_file_path,
+    const struct aws_byte_cursor *cert_file_contents) {
 
     if (pkcs11_handler == NULL) {
         return;
     }
-    pkcs11_handler->cert_file_path = cert_file_path;
-    pkcs11_handler->cert_file_contents = cert_file_contents;
+    // Cast to avoid const code warning
+    pkcs11_handler->cert_file_path = (struct aws_byte_cursor *)cert_file_path;
+    pkcs11_handler->cert_file_contents = (struct aws_byte_cursor *)cert_file_contents;
 }
