@@ -52,8 +52,6 @@ struct aws_pkcs11_tls_op_handler {
 
 static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
 
-    fprintf(stdout, "\n CUSTON KEY OP DESTROYED CALLED! \n");
-
     struct aws_pkcs11_tls_op_handler *handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
 
     if (handler->session_handle != 0) {
@@ -162,11 +160,8 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_
         return;
     }
 
-    fprintf(stdout, "\n TLS OP HANDLER DESTROY CALLED! \n");
-
     // Release the reference
     if (pkcs11_handler->custom_key_handler != NULL) {
-        fprintf(stdout, "\n TLS OP HANDLER DESTROY - RELEASE CALLED! \n");
         pkcs11_handler->custom_key_handler = aws_custom_key_op_handler_release(pkcs11_handler->custom_key_handler);
     }
 }
