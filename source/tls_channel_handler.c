@@ -43,6 +43,11 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
     aws_string_destroy(options->alpn_list);
 
+    if (options->custom_key_op_handler != NULL) {
+        aws_custom_key_op_handler_release(options->custom_key_op_handler);
+        options->user_data = NULL;
+    }
+
     AWS_ZERO_STRUCT(*options);
 }
 
@@ -161,7 +166,10 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
             goto error;
         }
     }
-    options->custom_key_op_handler = (struct aws_custom_key_op_handler *)custom;
+
+    //options->custom_key_op_handler = (struct aws_custom_key_op_handler *)custom;
+    /* Hold a reference to the custom key operation handler so it cannot be destroyed */
+    options->custom_key_op_handler = aws_custom_key_op_handler_aquire((struct aws_custom_key_op_handler *)custom);
     options->user_data = (void *)custom;
 
     /* certificate required */
@@ -270,11 +278,24 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+    // return aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+    //     options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+
+    int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+         options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+
+    /**
+     * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
+     * hold a reference to the custom key operations, but creating the TLS operations handler using
+     * aws_pkcs11_tls_op_handler_set_certificate_data adds a reference too, so we need to release
+     * this reference so the only thing (currently) holding a reference is the TLS options itself and
+     * not this function.
+     */
+    aws_custom_key_op_handler_release(aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+
+    return result;
 
 error:
-    aws_tls_ctx_options_clean_up(options);
 
     // CLEANUP
     if (pkcs_lib != NULL) {
@@ -289,6 +310,8 @@ error:
     if (pkcs_private_key_object_label != NULL) {
         aws_string_destroy(pkcs_private_key_object_label);
     }
+
+    aws_tls_ctx_options_clean_up(options);
 
     return AWS_OP_ERR;
 #endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
