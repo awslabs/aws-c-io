@@ -253,5 +253,5 @@ void aws_pkcs11_tls_op_handler_set_certificate_data(
         return;
     }
     pkcs11_handler->cert_file_path = cert_file_path;
-    pkcs11_handler->cert_file_path = cert_file_contents;
+    pkcs11_handler->cert_file_contents = cert_file_contents;
 }
