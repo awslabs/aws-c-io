@@ -116,7 +116,9 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_string *user_pin,
     const struct aws_string *match_token_label,
     const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id) {
+    const uint64_t *match_slot_id,
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents) {
 
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
@@ -148,6 +150,9 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
             &pkcs11_handler->private_key_type /*out*/)) {
         goto error;
     }
+
+    pkcs11_handler->cert_file_path = cert_file_path;
+    pkcs11_handler->cert_file_contents = cert_file_contents;
 
     return pkcs11_handler;
 error:
@@ -234,17 +239,4 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handl
         return NULL;
     }
     return pkcs11_handler->custom_key_handler;
-}
-
-void aws_pkcs11_tls_op_handler_set_certificate_data(
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents) {
-
-    if (pkcs11_handler == NULL) {
-        return;
-    }
-    // Cast to avoid const code warning
-    pkcs11_handler->cert_file_path = cert_file_path;
-    pkcs11_handler->cert_file_contents = cert_file_contents;
 }

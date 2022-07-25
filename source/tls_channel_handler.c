@@ -250,15 +250,13 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         pkcs_user_pin,
         pkcs_token_label,
         pkcs_private_key_object_label,
-        pkcs_has_slot_id ? &pkcs_slot_id : NULL);
+        pkcs_has_slot_id ? &pkcs_slot_id : NULL,
+        pkcs11_options->cert_file_path,
+        pkcs11_options->cert_file_contents);
 
     if (pkcs11_handler == NULL) {
         goto error;
     }
-
-    // Set the certificate
-    aws_pkcs11_tls_op_handler_set_certificate_data(
-        pkcs11_handler, pkcs11_options->cert_file_path, pkcs11_options->cert_file_contents);
 
     // CLEANUP
     if (pkcs_lib != NULL) {

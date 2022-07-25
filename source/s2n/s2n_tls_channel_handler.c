@@ -1355,8 +1355,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->custom_key_op_handler != NULL) {
-        fprintf(stdout, "\n USING TLS VERSIONS UNDER 1.3 \n");
-
         /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:

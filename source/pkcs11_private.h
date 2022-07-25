@@ -138,7 +138,7 @@ AWS_IO_API
 int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, struct aws_byte_cursor bigint);
 
 /**
- * Creates a new PKCS11 TLS operation handler.
+ * Creates a new PKCS11 TLS operation handler with a reference count set to 1.
  */
 AWS_IO_API
 struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
@@ -147,11 +147,13 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_string *user_pin,
     const struct aws_string *match_token_label,
     const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id);
+    const uint64_t *match_slot_id,
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents);
 
 /**
- * Destroys the passed-in PKCS11 TLS operation handler.
- * (TODO - make this private?)
+ * Removes a reference from the passed-in PKCS11 TLS operation handler. When the reference count reaches
+ * zero, the PKCS11 TLS operation handler will be destroyed.
  */
 AWS_IO_API
 void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_handler);
@@ -165,23 +167,20 @@ void aws_pkcs11_tls_op_handler_do_operation(
     struct aws_tls_key_operation *operation);
 
 /**
- * Returns a aws_custom_key_op_handler created from the aws_pkcs11_tls_op_handler so it can be used to perform
+ * Returns the aws_custom_key_op_handler associated with the aws_pkcs11_tls_op_handler so it can be used to perform
  * the PKCS11 private key operations.
- * (TODO - need to see if this is still needed and/or if there is a way to work around this)
+ *
+ * It is also used to aquire and release references to the aws_pkcs11_tls_op_handler.
+ * Use "aws_custom_key_op_handler_aquire(aws_pkcs11_tls_op_handler_get_custom_key_handler())"
+ * if you need to increase the reference count (not needed if you just created it, it starts with a reference)
+ * and "aws_custom_key_op_handler_release(aws_pkcs11_tls_op_handler_get_custom_key_handler())"
+ * when you are finished to remove the reference.
+ *
+ * The PKCS11 TLS operation handler will automatically be destroyed when the reference count reaches zero.
  */
 AWS_IO_API
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler);
-
-/**
- * Sets the certificate filepath and contents to the passed-in data
- * (TODO - find a way around this or just pass in constructor...)
- */
-AWS_IO_API
-void aws_pkcs11_tls_op_handler_set_certificate_data(
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */
