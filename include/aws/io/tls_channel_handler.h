@@ -43,7 +43,7 @@ enum aws_tls_cipher_pref {
 };
 
 enum aws_tls_hash_algorithm {
-    AWS_TLS_HASH_UNKNOWN,
+    AWS_TLS_HASH_UNKNOWN = -1,
     AWS_TLS_HASH_SHA1,
     AWS_TLS_HASH_SHA224,
     AWS_TLS_HASH_SHA256,
@@ -52,14 +52,14 @@ enum aws_tls_hash_algorithm {
 };
 
 enum aws_tls_signature_algorithm {
-    AWS_TLS_SIGNATURE_UNKNOWN,
+    AWS_TLS_SIGNATURE_UNKNOWN = -1,
     AWS_TLS_SIGNATURE_RSA,
     AWS_TLS_SIGNATURE_ECDSA, // TODO - not yet implemented but in Parsec PR
     /* TODO: add support for additional algorithms (ECDSA) */
 };
 
 enum aws_tls_key_operation_type {
-    AWS_TLS_KEY_OPERATION_UNKNOWN,
+    AWS_TLS_KEY_OPERATION_UNKNOWN = -1,
     AWS_TLS_KEY_OPERATION_SIGN,
     AWS_TLS_KEY_OPERATION_DECRYPT,
 };
