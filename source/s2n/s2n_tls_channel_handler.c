@@ -1354,7 +1354,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-    // if (options->use_pkcs11_tls == true) {
     if (options->custom_key_op_handler != NULL) {
         fprintf(stdout, "\n USING TLS VERSIONS UNDER 1.3 \n");
 

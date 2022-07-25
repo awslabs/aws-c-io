@@ -232,15 +232,12 @@ struct aws_tls_ctx_options {
     /**
      * Set if using custom private key operations.
      * See aws_custom_key_op_handler for more details
+     *
+     * Note: Custom key operations (and PKCS#11 integration) hasn't been tested with TLS 1.3, so don't use
+     * cipher preferences that allow TLS 1.3. If this is set, we will always use non TLS 1.3 preferences.
      */
     struct aws_custom_key_op_handler *custom_key_op_handler;
     void *user_data;
-
-    /**
-     * PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3
-     * by setting this to true.
-     */
-    bool use_pkcs11_tls;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -850,8 +847,6 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_ha
          but s2n supports multiple cert/key pairs. This functionality is not used in the
          CRT currently, but in the future, we may need to implement this */
 
-/* TODO: rework get_input() API to avoid a copy? */
-
 /**
  * Complete a successful TLS private key operation by providing its output.
  * The output is copied into the TLS connection.
@@ -874,16 +869,34 @@ void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, str
 AWS_IO_API
 void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code);
 
+/**
+ * Returns the input data that needs to be operated on by the custom key operation.
+ */
 AWS_IO_API
 struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation);
 
+/**
+ * Returns the type of operation that needs to be performed by the custom key operation.
+ * If the implementation cannot perform the operation,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
 AWS_IO_API
 enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation);
 
+/**
+ * Returns the algorithm the operation is expected to be operated with.
+ * If the implementation does not support the signature algorithm,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
 AWS_IO_API
 enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
     const struct aws_tls_key_operation *operation);
 
+/**
+ * Returns the algorithm the operation digest is signed with.
+ * If the implementation does not support the digest algorithm,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
 AWS_IO_API
 enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation);
 
