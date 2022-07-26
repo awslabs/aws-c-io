@@ -347,7 +347,8 @@ struct aws_custom_key_op_handler_vtable {
      * Called when the aws_custom_key_op_handler is no longer referenced anymore, so it can be
      * destroyed. This is intended for any cleanup needed prior to final destruction.
      * This will be called automatically when the last reference is freed if you create a
-     * aws_custom_key_op_handler using the aws_custom_key_op_handler_new function.
+     * aws_custom_key_op_handler and point it's reference count to use the
+     * aws_custom_key_op_handler_perform_destroy function.
      */
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
 
@@ -388,17 +389,11 @@ struct aws_custom_key_op_handler {
     /**
      * A reference count for handling memory usage.
      * Use aws_custom_key_op_handler_acquire and aws_custom_key_op_handler_release to increase/decrease count.
-     * Will call the destroy function when the reference count is zero if created via aws_custom_key_op_handler_new.
+     * Will call the destroy function when the reference count is zero if pointed to the
+     * aws_custom_key_op_handler_perform_destroy function.
      */
     struct aws_ref_count ref_count;
 };
-
-/**
- * Makes a new aws_custom_key_op_handler and initializes the reference count to 1. Also sets the reference counter
- * destructor so that it will call the destroy function in the v-table for the aws_custom_key_op_handler.
- * NOTE: In your destructor, you must call aws_mem_release to free the aws_custom_key_op_handler.
- */
-AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struct aws_allocator *allocator);
 
 /**
  * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
@@ -419,6 +414,13 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
 AWS_IO_API void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_tls_key_operation *operation);
+
+/**
+ * Calls the destroy vtable function. See aws_custom_key_op_handler_vtable for function details.
+ * NOTE: You should not call this manually and instead have this called via aws_ref_count_init when
+ * the reference count reaches zero. The aws_custom_key_op_handler will be unusable after this call.
+ */
+AWS_IO_API void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler *key_op_handler);
 
 /**
  * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.

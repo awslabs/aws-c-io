@@ -243,7 +243,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
             aws_string_new_from_cursor(allocator, &pkcs11_options->private_key_object_label);
     }
 
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler = aws_pkcs11_tls_op_handler_new(
+    struct aws_custom_key_op_handler *pkcs11_handler = aws_pkcs11_tls_op_handler_new(
         allocator,
         pkcs_lib,
         pkcs_user_pin,
@@ -272,7 +272,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
 
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+        options, allocator, pkcs11_handler);
 
     /**
      * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
@@ -281,7 +281,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
      * this reference so the only thing (currently) holding a reference is the TLS options itself and
      * not this function.
      */
-    aws_custom_key_op_handler_release(aws_pkcs11_tls_op_handler_get_custom_key_handler(pkcs11_handler));
+    aws_custom_key_op_handler_release(pkcs11_handler);
 
     return result;
 
@@ -908,23 +908,6 @@ enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const str
 
 #endif
 
-static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
-    AWS_FATAL_ASSERT(key_op_handler != NULL);
-    AWS_FATAL_ASSERT(key_op_handler->vtable != NULL);
-    AWS_FATAL_ASSERT(key_op_handler->vtable->destroy != NULL);
-    key_op_handler->vtable->destroy(key_op_handler);
-}
-
-struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struct aws_allocator *allocator) {
-    struct aws_custom_key_op_handler *key_op_handler =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_custom_key_op_handler));
-    aws_ref_count_init(
-        &key_op_handler->ref_count,
-        key_op_handler,
-        (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
-    return key_op_handler;
-}
-
 struct aws_custom_key_op_handler *aws_custom_key_op_handler_acquire(struct aws_custom_key_op_handler *key_op_handler) {
     if (key_op_handler != NULL) {
         aws_ref_count_acquire(&key_op_handler->ref_count);
@@ -947,6 +930,13 @@ void aws_custom_key_op_handler_perform_operation(
             key_op_handler->vtable->on_key_operation(key_op_handler, operation);
         }
     }
+}
+
+void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler *key_op_handler) {
+    AWS_FATAL_ASSERT(key_op_handler != NULL);
+    AWS_FATAL_ASSERT(key_op_handler->vtable != NULL);
+    AWS_FATAL_ASSERT(key_op_handler->vtable->destroy != NULL);
+    key_op_handler->vtable->destroy(key_op_handler);
 }
 
 int aws_custom_key_op_handler_get_certificate(

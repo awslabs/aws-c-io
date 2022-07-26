@@ -11,6 +11,9 @@
 #include <aws/io/logging.h>
 
 struct aws_pkcs11_tls_op_handler {
+    /* The custom key operation handler needed for the callbacks */
+    struct aws_custom_key_op_handler base;
+
     struct aws_allocator *alloc;
     struct aws_pkcs11_lib *lib;
 
@@ -46,9 +49,6 @@ struct aws_pkcs11_tls_op_handler {
      * (Can also be zero out if it is unused, like in PKCS11 implementation)
      */
     struct aws_byte_cursor cert_file_contents;
-
-    /* The custom key operation handler needed for the callbacks */
-    struct aws_custom_key_op_handler *custom_key_handler;
 };
 
 static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
@@ -61,7 +61,6 @@ static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler
     aws_mutex_clean_up(&handler->session_lock);
     aws_pkcs11_lib_release(handler->lib);
 
-    aws_mem_release(handler->alloc, handler->custom_key_handler);
     aws_mem_release(handler->alloc, handler);
 }
 
@@ -93,21 +92,6 @@ static int s_aws_custom_key_op_handler_get_certificate(
     }
 
     return AWS_OP_SUCCESS;
-}
-
-/**
- * Removes a reference from the passed-in PKCS11 TLS operation handler. When the reference count reaches
- * zero, the PKCS11 TLS operation handler will be destroyed.
- */
-void s_aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
-    if (pkcs11_handler == NULL) {
-        return;
-    }
-
-    // Release the reference
-    if (pkcs11_handler->custom_key_handler != NULL) {
-        pkcs11_handler->custom_key_handler = aws_custom_key_op_handler_release(pkcs11_handler->custom_key_handler);
-    }
 }
 
 /**
@@ -180,21 +164,13 @@ unlock:
     aws_byte_buf_clean_up(&output_buf);
 }
 
-struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handler(
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
-    if (pkcs11_handler == NULL) {
-        return NULL;
-    }
-    return pkcs11_handler->custom_key_handler;
-}
-
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
     .destroy = s_aws_custom_key_op_handler_destroy,
     .on_key_operation = s_aws_pkcs11_tls_op_handler_do_operation,
     .get_certificate = s_aws_custom_key_op_handler_get_certificate,
 };
 
-struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_allocator *allocator,
     struct aws_pkcs11_lib *pkcs11_lib,
     const struct aws_string *user_pin,
@@ -207,9 +183,13 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
 
-    pkcs11_handler->custom_key_handler = aws_custom_key_op_handler_new(allocator);
-    pkcs11_handler->custom_key_handler->impl = (void *)pkcs11_handler;
-    pkcs11_handler->custom_key_handler->vtable = &s_aws_custom_key_op_handler_vtable;
+    aws_ref_count_init(
+        &pkcs11_handler->base.ref_count,
+        &pkcs11_handler->base,
+        (aws_simple_completion_callback *)aws_custom_key_op_handler_perform_destroy);
+
+    pkcs11_handler->base.impl = (void *)pkcs11_handler;
+    pkcs11_handler->base.vtable = &s_aws_custom_key_op_handler_vtable;
 
     pkcs11_handler->alloc = allocator;
     pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
@@ -240,8 +220,8 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     pkcs11_handler->cert_file_path = cert_file_path;
     pkcs11_handler->cert_file_contents = cert_file_contents;
 
-    return pkcs11_handler;
+    return &pkcs11_handler->base;
 error:
-    s_aws_pkcs11_tls_op_handler_destroy(pkcs11_handler);
+    aws_custom_key_op_handler_release(&pkcs11_handler->base);
     return NULL;
 }
