@@ -358,14 +358,6 @@ struct aws_custom_key_op_handler_vtable {
      * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
      */
     void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
-
-    /**
-     * Called when the TLS handshake needs a certificate populated, which it expects to be passed into the passed-in
-     * aws_byte_buf. Should return true if the certificate is successfully populated and false when an error occurs
-     * of the certificate could not otherwise be populated.
-     * TODO: Remove this function by refactoring it out of use (and just get the certificates when needed instead)
-     */
-    int (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
 
 /**
@@ -423,17 +415,6 @@ AWS_IO_API void aws_custom_key_op_handler_perform_operation(
 AWS_IO_API void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler *key_op_handler);
 
 /**
- * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.
- * The aws_byte_buf passed MUST be initialized with an allocator so it can be resized, otherwise this function
- * will not work! It is expected that an initialized aws_byte_buf is passed.
- *
- * NOTE: If the vtable or vtable function is null, then it will return false.
- */
-AWS_IO_API int aws_custom_key_op_handler_get_certificate(
-    struct aws_custom_key_op_handler *key_op_handler,
-    struct aws_byte_buf *certificate_output);
-
-/**
  * Initializes options for use with mutual TLS in client mode,
  * where private key operations are handled by custom code.
  *
@@ -444,7 +425,8 @@ AWS_IO_API int aws_custom_key_op_handler_get_certificate(
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    struct aws_custom_key_op_handler *custom);
+    struct aws_custom_key_op_handler *custom,
+    struct aws_byte_cursor *cert_file_contents);
 
 /**
  * This struct exists as a graceful way to pass many arguments when

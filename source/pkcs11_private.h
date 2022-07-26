@@ -151,9 +151,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_string *user_pin,
     const struct aws_string *match_token_label,
     const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents);
+    const uint64_t *match_slot_id);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

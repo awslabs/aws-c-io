@@ -138,7 +138,8 @@ error:
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    struct aws_custom_key_op_handler *custom) {
+    struct aws_custom_key_op_handler *custom,
+    struct aws_byte_cursor *cert_file_contents) {
 
 #if !USE_S2N
     (void)options;
@@ -169,22 +170,15 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     /* Hold a reference to the custom key operation handler so it cannot be destroyed */
     options->custom_key_op_handler = aws_custom_key_op_handler_acquire((struct aws_custom_key_op_handler *)custom);
 
-    // Initialize the certificate byte buffer
-    if (aws_byte_buf_init(&options->certificate, allocator, 0) != AWS_OP_SUCCESS) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Could not allocate byte buffer for custom key operation certificate");
+    /* Copy the certificate data from the cursor */
+    if (cert_file_contents == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Certificate file contents must be specified");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
+    aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert_file_contents);
 
-    /* certificate required */
-    int got_certificate =
-        aws_custom_key_op_handler_get_certificate(options->custom_key_op_handler, &options->certificate);
-    if (got_certificate != AWS_OP_SUCCESS) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    }
-
+    /* Make sure the certificate is set and valid */
     if (aws_sanitize_pem(&options->certificate, allocator)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
         goto error;
@@ -249,15 +243,13 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         pkcs_user_pin,
         pkcs_token_label,
         pkcs_private_key_object_label,
-        pkcs_has_slot_id ? &pkcs_slot_id : NULL,
-        pkcs11_options->cert_file_path,
-        pkcs11_options->cert_file_contents);
+        pkcs_has_slot_id ? &pkcs_slot_id : NULL);
 
     if (pkcs11_handler == NULL) {
         goto error;
     }
 
-    // CLEANUP
+    /* CLEANUP */
     if (pkcs_lib != NULL) {
         aws_pkcs11_lib_release(pkcs_lib);
     }
@@ -271,8 +263,38 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
+    struct aws_byte_buf *tmp_cert_buf = NULL;
+    if (aws_byte_buf_init(tmp_cert_buf, allocator, 0) != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Could not allocate byte buffer for custom key operation certificate");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
+
+    /* TODO - refactor this whole thing - very messy currently and has (likely) more copies than needed */
+    /* TODO - refactor this so we do not have to check the file path AND the file contents */
+    if ((pkcs11_options->cert_file_path.ptr != NULL) && (pkcs11_options->cert_file_contents.ptr != NULL)) {
+        return AWS_OP_ERR;
+    } else if (pkcs11_options->cert_file_path.ptr != NULL) {
+        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
+        int op = aws_byte_buf_init_from_file(tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
+        aws_string_destroy(tmp_string);
+        if (op != AWS_OP_SUCCESS) {
+            return AWS_OP_ERR;
+        }
+    } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
+        if (aws_byte_buf_init_copy_from_cursor(tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
+            return AWS_OP_ERR;
+        }
+    } else {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(tmp_cert_buf);
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, pkcs11_handler);
+        options, allocator, pkcs11_handler, &tmp_cert_cursor);
+
+    // Clean up the temporary buffer
+    aws_byte_buf_clean_up(tmp_cert_buf);
 
     /**
      * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
@@ -287,7 +309,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
 error:
 
-    // CLEANUP
+    /* CLEANUP */
     if (pkcs_lib != NULL) {
         aws_pkcs11_lib_release(pkcs_lib);
     }
@@ -937,23 +959,4 @@ void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler 
     AWS_FATAL_ASSERT(key_op_handler->vtable != NULL);
     AWS_FATAL_ASSERT(key_op_handler->vtable->destroy != NULL);
     key_op_handler->vtable->destroy(key_op_handler);
-}
-
-int aws_custom_key_op_handler_get_certificate(
-    struct aws_custom_key_op_handler *key_op_handler,
-    struct aws_byte_buf *certificate_output) {
-
-    if (certificate_output == NULL) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-    if (certificate_output->allocator == NULL) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-
-    if (key_op_handler != NULL) {
-        if (key_op_handler->vtable != NULL && key_op_handler->vtable->get_certificate != NULL) {
-            return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);
-        }
-    }
-    return AWS_OP_ERR;
 }

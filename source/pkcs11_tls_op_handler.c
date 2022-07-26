@@ -33,22 +33,6 @@ struct aws_pkcs11_tls_op_handler {
     CK_SESSION_HANDLE session_handle;
     CK_OBJECT_HANDLE private_key_handle;
     CK_KEY_TYPE private_key_type;
-
-    /**
-     * Certificate's file path on disk (UTF-8).
-     * The certificate must be PEM formatted and UTF-8 encoded.
-     * Zero out if passing in certificate by some other means (such as file contents).
-     * (Can also be zero out if it is unused, like in PKCS11 implementation)
-     */
-    struct aws_byte_cursor cert_file_path;
-
-    /**
-     * Certificate's file contents (UTF-8).
-     * The certificate must be PEM formatted and UTF-8 encoded.
-     * Zero out if passing in certificate by some other means (such as file path).
-     * (Can also be zero out if it is unused, like in PKCS11 implementation)
-     */
-    struct aws_byte_cursor cert_file_contents;
 };
 
 static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
@@ -62,36 +46,6 @@ static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler
     aws_pkcs11_lib_release(handler->lib);
 
     aws_mem_release(handler->alloc, handler);
-}
-
-static int s_aws_custom_key_op_handler_get_certificate(
-    struct aws_custom_key_op_handler *key_op_handler,
-    struct aws_byte_buf *certificate_output) {
-
-    struct aws_pkcs11_tls_op_handler *op_handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
-    AWS_FATAL_ASSERT(op_handler != NULL);
-
-    struct aws_allocator *allocator = op_handler->alloc;
-
-    /* certificate needs to be set, but there are multiple ways to return it */
-    if ((op_handler->cert_file_path.ptr != NULL) && (op_handler->cert_file_contents.ptr != NULL)) {
-        return AWS_OP_ERR;
-    } else if (op_handler->cert_file_path.ptr != NULL) {
-        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &op_handler->cert_file_path);
-        int op = aws_byte_buf_init_from_file(certificate_output, allocator, aws_string_c_str(tmp_string));
-        aws_string_destroy(tmp_string);
-        if (op != AWS_OP_SUCCESS) {
-            return AWS_OP_ERR;
-        }
-    } else if (op_handler->cert_file_contents.ptr != NULL) {
-        if (aws_byte_buf_init_copy_from_cursor(certificate_output, allocator, op_handler->cert_file_contents)) {
-            return AWS_OP_ERR;
-        }
-    } else {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 /**
@@ -167,7 +121,6 @@ unlock:
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
     .destroy = s_aws_custom_key_op_handler_destroy,
     .on_key_operation = s_aws_pkcs11_tls_op_handler_do_operation,
-    .get_certificate = s_aws_custom_key_op_handler_get_certificate,
 };
 
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
@@ -176,9 +129,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_string *user_pin,
     const struct aws_string *match_token_label,
     const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents) {
+    const uint64_t *match_slot_id) {
 
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
@@ -216,9 +167,6 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
             &pkcs11_handler->private_key_type /*out*/)) {
         goto error;
     }
-
-    pkcs11_handler->cert_file_path = cert_file_path;
-    pkcs11_handler->cert_file_contents = cert_file_contents;
 
     return &pkcs11_handler->base;
 error:
