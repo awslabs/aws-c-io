@@ -152,26 +152,11 @@ struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_byte_cursor cert_file_contents);
 
 /**
- * Removes a reference from the passed-in PKCS11 TLS operation handler. When the reference count reaches
- * zero, the PKCS11 TLS operation handler will be destroyed.
- */
-AWS_IO_API
-void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *op_handler);
-
-/**
- * Performs the PKCS11 TLS private key operation. This is called automatically when performing a MQTT TLS handshake.
- */
-AWS_IO_API
-void aws_pkcs11_tls_op_handler_do_operation(
-    struct aws_custom_key_op_handler *handler,
-    struct aws_tls_key_operation *operation);
-
-/**
  * Returns the aws_custom_key_op_handler associated with the aws_pkcs11_tls_op_handler so it can be used to perform
  * the PKCS11 private key operations.
  *
  * It is also used to aquire and release references to the aws_pkcs11_tls_op_handler.
- * Use "aws_custom_key_op_handler_aquire(aws_pkcs11_tls_op_handler_get_custom_key_handler())"
+ * Use "aws_custom_key_op_handler_acquire(aws_pkcs11_tls_op_handler_get_custom_key_handler())"
  * if you need to increase the reference count (not needed if you just created it, it starts with a reference)
  * and "aws_custom_key_op_handler_release(aws_pkcs11_tls_op_handler_get_custom_key_handler())"
  * when you are finished to remove the reference.

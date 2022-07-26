@@ -42,6 +42,10 @@ enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
+/**
+ * The hash algorithm of a TLS private key operation. Any custom private key operation handlers are expected to perform
+ * operations on the input TLS data using the correct hash algorithm or fail the operation.
+ */
 enum aws_tls_hash_algorithm {
     AWS_TLS_HASH_UNKNOWN = -1,
     AWS_TLS_HASH_SHA1,
@@ -51,13 +55,20 @@ enum aws_tls_hash_algorithm {
     AWS_TLS_HASH_SHA512,
 };
 
+/**
+ * The signature of a TLS private key operation. Any custom private key operation handlers are expected to perform
+ * operations on the input TLS data using the correct signature algorithm or fail the operation.
+ */
 enum aws_tls_signature_algorithm {
     AWS_TLS_SIGNATURE_UNKNOWN = -1,
     AWS_TLS_SIGNATURE_RSA,
     AWS_TLS_SIGNATURE_ECDSA,
-    /* TODO: add support for additional algorithms (ECDSA) */
 };
 
+/**
+ * The TLS private key operation that needs to be performed by a custom private key operation handler when making
+ * a connection using mutual TLS.
+ */
 enum aws_tls_key_operation_type {
     AWS_TLS_KEY_OPERATION_UNKNOWN = -1,
     AWS_TLS_KEY_OPERATION_SIGN,
@@ -126,7 +137,7 @@ struct aws_tls_connection_options {
 
 /**
  * A struct containing all of the data needed for a private key operation when
- * making a MQTT connection using TLS. This struct contains the data that needs
+ * making a mutual TLS connection. This struct contains the data that needs
  * to be operated on, like performing a sign operation or a decrypt operation.
  */
 struct aws_tls_key_operation;
@@ -237,7 +248,6 @@ struct aws_tls_ctx_options {
      * cipher preferences that allow TLS 1.3. If this is set, we will always use non TLS 1.3 preferences.
      */
     struct aws_custom_key_op_handler *custom_key_op_handler;
-    void *user_data;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -330,18 +340,14 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *pkey);
 
 /**
- * All of the functions that can be implemented/extended by a aws_custom_key_op_handler.
- * If a function is null, then attempting to use one of the "aws_custom_key_op_handler_<func>"
- * functions will just silently execute without doing anything.
+ * vtable for aws_custom_key_op_handler.
  */
 struct aws_custom_key_op_handler_vtable {
     /**
-     * Called when the aws_custom_key_op_handler is no longer referenced in Java or C, so it can be
+     * Called when the aws_custom_key_op_handler is no longer referenced anymore, so it can be
      * destroyed. This is intended for any cleanup needed prior to final destruction.
      * This will be called automatically when the last reference is freed if you create a
      * aws_custom_key_op_handler using the aws_custom_key_op_handler_new function.
-     *
-     * NOTE: This function is REQUIRED
      */
     void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
 
@@ -349,23 +355,20 @@ struct aws_custom_key_op_handler_vtable {
      * Called when the a TLS handshake has an operation it needs the custom key operation handler to perform.
      * NOTE: You must call aws_tls_key_operation_complete() or aws_tls_key_operation_complete_with_error()
      * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
-     *
-     * NOTE: This function is REQUIRED
      */
     void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
 
     /**
-     * Called when the TLS handhsake needs a certificate populated, which it expects to be passed into the passed-in
+     * Called when the TLS handshake needs a certificate populated, which it expects to be passed into the passed-in
      * aws_byte_buf. Should return true if the certificate is successfully populated and false when an error occurs
      * of the certificate could not otherwise be populated.
-     *
-     * NOTE: This function is REQUIRED
+     * TODO: Remove this function by refactoring it out of use (and just get the certificates when needed instead)
      */
-    bool (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
+    int (*get_certificate)(struct aws_custom_key_op_handler *key_op_handler, struct aws_byte_buf *certificate_output);
 };
 
 /**
- * The custom key operation that can be used to perform a custom private key operation in the TLS handshake. This can
+ * The custom key operation that is used when performing a mutual TLS handshake. This can
  * be extended to provide custom private key operations, like PKCS11 or similar.
  */
 struct aws_custom_key_op_handler {
@@ -384,7 +387,7 @@ struct aws_custom_key_op_handler {
 
     /**
      * A reference count for handling memory usage.
-     * Use aws_custom_key_op_handler_aquire and aws_custom_key_op_handler_release to increase/decrease count.
+     * Use aws_custom_key_op_handler_acquire and aws_custom_key_op_handler_release to increase/decrease count.
      * Will call the destroy function when the reference count is zero if created via aws_custom_key_op_handler_new.
      */
     struct aws_ref_count ref_count;
@@ -400,7 +403,7 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struc
 /**
  * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
  */
-AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_acquire(
     struct aws_custom_key_op_handler *key_op_handler);
 
 /**
@@ -413,15 +416,18 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
  * Calls the on_key_operation vtable function. See aws_custom_key_op_handler_vtable for function details.
  * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
  */
-AWS_IO_API void aws_custom_key_op_handler_on_key_operation(
+AWS_IO_API void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_tls_key_operation *operation);
 
 /**
  * Calls the get_certificate vtable function. See aws_custom_key_op_handler_vtable for function details.
+ * The aws_byte_buf passed MUST be initialized with an allocator so it can be resized, otherwise this function
+ * will not work! It is expected that an initialized aws_byte_buf is passed.
+ *
  * NOTE: If the vtable or vtable function is null, then it will return false.
  */
-AWS_IO_API bool aws_custom_key_op_handler_get_certificate(
+AWS_IO_API int aws_custom_key_op_handler_get_certificate(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_byte_buf *certificate_output);
 
@@ -436,7 +442,7 @@ AWS_IO_API bool aws_custom_key_op_handler_get_certificate(
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_custom_key_op_handler *custom);
+    struct aws_custom_key_op_handler *custom);
 
 /**
  * This struct exists as a graceful way to pass many arguments when

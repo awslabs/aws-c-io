@@ -8,6 +8,7 @@
 
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
+#include <aws/io/logging.h>
 
 struct aws_pkcs11_tls_op_handler {
     struct aws_allocator *alloc;
@@ -46,7 +47,7 @@ struct aws_pkcs11_tls_op_handler {
      */
     struct aws_byte_cursor cert_file_contents;
 
-    // The custom key operation handler needed for the callbacks
+    /* The custom key operation handler needed for the callbacks */
     struct aws_custom_key_op_handler *custom_key_handler;
 };
 
@@ -64,7 +65,7 @@ static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler
     aws_mem_release(handler->alloc, handler);
 }
 
-static bool s_aws_custom_key_op_handler_get_certificate(
+static int s_aws_custom_key_op_handler_get_certificate(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_byte_buf *certificate_output) {
 
@@ -75,92 +76,30 @@ static bool s_aws_custom_key_op_handler_get_certificate(
 
     /* certificate needs to be set, but there are multiple ways to return it */
     if ((op_handler->cert_file_path.ptr != NULL) && (op_handler->cert_file_contents.ptr != NULL)) {
-        return false;
+        return AWS_OP_ERR;
     } else if (op_handler->cert_file_path.ptr != NULL) {
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &op_handler->cert_file_path);
         int op = aws_byte_buf_init_from_file(certificate_output, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
         if (op != AWS_OP_SUCCESS) {
-            return false;
+            return AWS_OP_ERR;
         }
     } else if (op_handler->cert_file_contents.ptr != NULL) {
         if (aws_byte_buf_init_copy_from_cursor(certificate_output, allocator, op_handler->cert_file_contents)) {
-            return false;
+            return AWS_OP_ERR;
         }
     } else {
-        return false;
+        return AWS_OP_ERR;
     }
-    return true;
+
+    return AWS_OP_SUCCESS;
 }
 
-static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
-    .destroy = s_aws_custom_key_op_handler_destroy,
-    .on_key_operation = aws_pkcs11_tls_op_handler_do_operation,
-    .get_certificate = s_aws_custom_key_op_handler_get_certificate,
-};
-
-static struct aws_custom_key_op_handler *s_aws_custom_key_op_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
-
-    struct aws_custom_key_op_handler *key_op_handler = aws_custom_key_op_handler_new(allocator);
-    key_op_handler->impl = (void *)pkcs11_handler;
-    key_op_handler->vtable = &s_aws_custom_key_op_handler_vtable;
-
-    return key_op_handler;
-}
-
-struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_pkcs11_lib *pkcs11_lib,
-    const struct aws_string *user_pin,
-    const struct aws_string *match_token_label,
-    const struct aws_string *match_private_key_label,
-    const uint64_t *match_slot_id,
-    struct aws_byte_cursor cert_file_path,
-    struct aws_byte_cursor cert_file_contents) {
-
-    struct aws_pkcs11_tls_op_handler *pkcs11_handler =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
-
-    pkcs11_handler->custom_key_handler = s_aws_custom_key_op_handler_new(allocator, pkcs11_handler);
-
-    pkcs11_handler->alloc = allocator;
-    pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
-    aws_mutex_init(&pkcs11_handler->session_lock);
-
-    CK_SLOT_ID slot_id;
-    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, match_token_label, &slot_id /*out*/)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_open_session(pkcs11_handler->lib, slot_id, &pkcs11_handler->session_handle)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, user_pin)) {
-        goto error;
-    }
-
-    if (aws_pkcs11_lib_find_private_key(
-            pkcs11_handler->lib,
-            pkcs11_handler->session_handle,
-            match_private_key_label,
-            &pkcs11_handler->private_key_handle /*out*/,
-            &pkcs11_handler->private_key_type /*out*/)) {
-        goto error;
-    }
-
-    pkcs11_handler->cert_file_path = cert_file_path;
-    pkcs11_handler->cert_file_contents = cert_file_contents;
-
-    return pkcs11_handler;
-error:
-    aws_pkcs11_tls_op_handler_destroy(pkcs11_handler);
-    return NULL;
-}
-
-void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
+/**
+ * Removes a reference from the passed-in PKCS11 TLS operation handler. When the reference count reaches
+ * zero, the PKCS11 TLS operation handler will be destroyed.
+ */
+void s_aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_handler) {
     if (pkcs11_handler == NULL) {
         return;
     }
@@ -171,7 +110,10 @@ void aws_pkcs11_tls_op_handler_destroy(struct aws_pkcs11_tls_op_handler *pkcs11_
     }
 }
 
-void aws_pkcs11_tls_op_handler_do_operation(
+/**
+ * Performs the PKCS11 TLS private key operation. This is called automatically when performing a MQTT TLS handshake.
+ */
+void s_aws_pkcs11_tls_op_handler_do_operation(
     struct aws_custom_key_op_handler *handler,
     struct aws_tls_key_operation *operation) {
 
@@ -215,6 +157,11 @@ void aws_pkcs11_tls_op_handler_do_operation(
             break;
 
         default:
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKCS11,
+                "PKCS11 Handler %p: Unknown TLS key operation with value of %u",
+                (void *)handler,
+                aws_tls_key_operation_get_type(operation));
             aws_raise_error(AWS_ERROR_INVALID_STATE);
             goto unlock;
     }
@@ -239,4 +186,62 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_get_custom_key_handl
         return NULL;
     }
     return pkcs11_handler->custom_key_handler;
+}
+
+static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
+    .destroy = s_aws_custom_key_op_handler_destroy,
+    .on_key_operation = s_aws_pkcs11_tls_op_handler_do_operation,
+    .get_certificate = s_aws_custom_key_op_handler_get_certificate,
+};
+
+struct aws_pkcs11_tls_op_handler *aws_pkcs11_tls_op_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_lib *pkcs11_lib,
+    const struct aws_string *user_pin,
+    const struct aws_string *match_token_label,
+    const struct aws_string *match_private_key_label,
+    const uint64_t *match_slot_id,
+    struct aws_byte_cursor cert_file_path,
+    struct aws_byte_cursor cert_file_contents) {
+
+    struct aws_pkcs11_tls_op_handler *pkcs11_handler =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
+
+    pkcs11_handler->custom_key_handler = aws_custom_key_op_handler_new(allocator);
+    pkcs11_handler->custom_key_handler->impl = (void *)pkcs11_handler;
+    pkcs11_handler->custom_key_handler->vtable = &s_aws_custom_key_op_handler_vtable;
+
+    pkcs11_handler->alloc = allocator;
+    pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
+    aws_mutex_init(&pkcs11_handler->session_lock);
+
+    CK_SLOT_ID slot_id;
+    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, match_token_label, &slot_id /*out*/)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_open_session(pkcs11_handler->lib, slot_id, &pkcs11_handler->session_handle)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, user_pin)) {
+        goto error;
+    }
+
+    if (aws_pkcs11_lib_find_private_key(
+            pkcs11_handler->lib,
+            pkcs11_handler->session_handle,
+            match_private_key_label,
+            &pkcs11_handler->private_key_handle /*out*/,
+            &pkcs11_handler->private_key_type /*out*/)) {
+        goto error;
+    }
+
+    pkcs11_handler->cert_file_path = cert_file_path;
+    pkcs11_handler->cert_file_contents = cert_file_contents;
+
+    return pkcs11_handler;
+error:
+    s_aws_pkcs11_tls_op_handler_destroy(pkcs11_handler);
+    return NULL;
 }

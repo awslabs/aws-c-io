@@ -45,7 +45,6 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
     if (options->custom_key_op_handler != NULL) {
         aws_custom_key_op_handler_release(options->custom_key_op_handler);
-        options->user_data = NULL;
     }
 
     AWS_ZERO_STRUCT(*options);
@@ -139,7 +138,7 @@ error:
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
-    const struct aws_custom_key_op_handler *custom) {
+    struct aws_custom_key_op_handler *custom) {
 
 #if !USE_S2N
     (void)options;
@@ -168,13 +167,19 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     }
 
     /* Hold a reference to the custom key operation handler so it cannot be destroyed */
-    options->custom_key_op_handler = aws_custom_key_op_handler_aquire((struct aws_custom_key_op_handler *)custom);
-    options->user_data = (void *)custom;
+    options->custom_key_op_handler = aws_custom_key_op_handler_acquire((struct aws_custom_key_op_handler *)custom);
+
+    // Initialize the certificate byte buffer
+    if (aws_byte_buf_init(&options->certificate, allocator, 0) != AWS_OP_SUCCESS) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Could not allocate byte buffer for custom key operation certificate");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto error;
+    }
 
     /* certificate required */
-    bool got_certificate =
+    int got_certificate =
         aws_custom_key_op_handler_get_certificate(options->custom_key_op_handler, &options->certificate);
-    if (got_certificate == false) {
+    if (got_certificate != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A certificate must be specified.");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
@@ -199,13 +204,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     struct aws_allocator *allocator,
     const struct aws_tls_ctx_pkcs11_options *pkcs11_options) {
 
-#if defined(_WIN32) || defined(__APPLE__)
-    (void)allocator;
-    (void)pkcs11_options;
-    AWS_ZERO_STRUCT(*options);
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#else
+#if defined(USE_S2N)
 
     struct aws_pkcs11_lib *pkcs_lib = NULL;
     struct aws_string *pkcs_user_pin = NULL;
@@ -305,7 +304,17 @@ error:
     aws_tls_ctx_options_clean_up(options);
 
     return AWS_OP_ERR;
+
+#else /* Platform does not support S2N */
+
+    (void)allocator;
+    (void)pkcs11_options;
+    AWS_ZERO_STRUCT(*options);
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not currently support TLS with PKCS#11.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+
 #endif /* PLATFORM-SUPPORTS-PKCS11-TLS */
+
 }
 
 int aws_tls_ctx_options_set_keychain_path(
@@ -916,7 +925,7 @@ struct aws_custom_key_op_handler *aws_custom_key_op_handler_new(struct aws_alloc
     return key_op_handler;
 }
 
-struct aws_custom_key_op_handler *aws_custom_key_op_handler_aquire(struct aws_custom_key_op_handler *key_op_handler) {
+struct aws_custom_key_op_handler *aws_custom_key_op_handler_acquire(struct aws_custom_key_op_handler *key_op_handler) {
     if (key_op_handler != NULL) {
         aws_ref_count_acquire(&key_op_handler->ref_count);
     }
@@ -930,7 +939,7 @@ struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_c
     return NULL;
 }
 
-void aws_custom_key_op_handler_on_key_operation(
+void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_tls_key_operation *operation) {
     if (key_op_handler != NULL) {
@@ -940,13 +949,21 @@ void aws_custom_key_op_handler_on_key_operation(
     }
 }
 
-bool aws_custom_key_op_handler_get_certificate(
+int aws_custom_key_op_handler_get_certificate(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_byte_buf *certificate_output) {
+
+    if (certificate_output == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+    if (certificate_output->allocator == NULL) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
     if (key_op_handler != NULL) {
         if (key_op_handler->vtable != NULL && key_op_handler->vtable->get_certificate != NULL) {
             return key_op_handler->vtable->get_certificate(key_op_handler, certificate_output);
         }
     }
-    return false;
+    return AWS_OP_ERR;
 }

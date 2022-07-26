@@ -697,17 +697,9 @@ static void s_tls_key_operation_complete_common(
 
     AWS_ASSERT((error_code != 0) ^ (output != NULL)); /* error_code XOR output must be set */
 
-    if (operation == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation: Operation is null and therefore cannot be set to complete!");
-        return;
-    }
-
     // Ensure this can only be called once and exactly once. If called again, log an error.
     size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
-    if (complete_count != 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation id=%p: Operation is already complete!", (void *)operation);
-        return;
-    }
+    AWS_FATAL_ASSERT(complete_count == 0);
 
     struct s2n_handler *s2n_handler = operation->s2n_handler;
     struct aws_channel_handler *handler = &s2n_handler->handler;
@@ -739,6 +731,11 @@ done:
 }
 
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
+    if (operation == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation complete: operation is null and therefore cannot be set to complete!");
+        return;
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_TLS,
         "id=%p: TLS key operation complete with %zu bytes of output data",
@@ -748,6 +745,11 @@ void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, str
 }
 
 void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
+    if (operation == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation complete with error: operation is null and therefore cannot be set to complete!");
+        return;
+    }
+
     if (error_code == 0) {
         error_code = AWS_ERROR_UNKNOWN;
         AWS_LOGF_ERROR(
@@ -897,7 +899,6 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
         return S2N_FAILURE;
     }
 
-    /* TODO: logging pass */
     AWS_LOGF_DEBUG(
         AWS_LS_IO_TLS,
         "id=%p: Begin TLS key operation. type=%s input_data.len=%zu signature=%s digest=%s",
@@ -907,7 +908,7 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
         aws_tls_signature_algorithm_str(operation->signature_algorithm),
         aws_tls_hash_algorithm_str(operation->digest_algorithm));
 
-    aws_custom_key_op_handler_on_key_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
+    aws_custom_key_op_handler_perform_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
 
     return S2N_SUCCESS;
 }
@@ -1448,7 +1449,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         }
     } else if (options->custom_key_op_handler != NULL) {
 
-        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_aquire(options->custom_key_op_handler);
+        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_acquire(options->custom_key_op_handler);
 
         /* set callback so that we can do custom private key operations */
         if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_async_pkey_callback)) {
