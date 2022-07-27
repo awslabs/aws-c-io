@@ -746,7 +746,8 @@ void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, str
 
 void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
     if (operation == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation complete with error: operation is null and therefore cannot be set to complete!");
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "Operation complete with error: operation is null and therefore cannot be set to complete!");
         return;
     }
 
