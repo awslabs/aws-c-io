@@ -145,6 +145,7 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     (void)options;
     (void)allocator;
     (void)custom;
+    (void)cert_file_contents;
     AWS_ZERO_STRUCT(*options);
     AWS_LOGF_ERROR(
         AWS_LS_IO_TLS, "static: This platform does not currently support TLS with custom private key operations.");
@@ -176,7 +177,9 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
+    fprintf(stdout, "\n ABOUT TO COPY CERTIFICATE \n");
     aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert_file_contents);
+    fprintf(stdout, "\n CERTIFICATE COPIED \n");
 
     /* Make sure the certificate is set and valid */
     if (aws_sanitize_pem(&options->certificate, allocator)) {
@@ -272,26 +275,33 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
     /* TODO - refactor this whole thing - very messy currently and has (likely) more copies than needed */
     /* TODO - refactor this so we do not have to check the file path AND the file contents */
+    fprintf(stdout, "\n ABOUT TO PROCESS CERTIFICATE IN PKCS11 \n");
     if ((pkcs11_options->cert_file_path.ptr != NULL) && (pkcs11_options->cert_file_contents.ptr != NULL)) {
         return AWS_OP_ERR;
     } else if (pkcs11_options->cert_file_path.ptr != NULL) {
+        fprintf(stdout, "\n ABOUT TO GET CERTIFICATE FROM FILE PATH \n");
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
         int op = aws_byte_buf_init_from_file(tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
         if (op != AWS_OP_SUCCESS) {
             return AWS_OP_ERR;
         }
+        fprintf(stdout, "\n FINISHED GETTING CERTIFICATE FROM FILE PATH \n");
     } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
+        fprintf(stdout, "\n ABOUT TO GET CERTIFICATE FROM FILE CONTENTS \n");
         if (aws_byte_buf_init_copy_from_cursor(tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
             return AWS_OP_ERR;
         }
+        fprintf(stdout, "\n FINISHED GETTING CERTIFICATE FROM FILE CONTENTS \n");
     } else {
         return AWS_OP_ERR;
     }
 
+    fprintf(stdout, "\n ABOUT TO SET CUSTOM KEY OPERATION \n");
     struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(tmp_cert_buf);
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
         options, allocator, pkcs11_handler, &tmp_cert_cursor);
+    fprintf(stdout, "\n FINISHED SETTING CUSTOM KEY OPERATION \n");
 
     // Clean up the temporary buffer
     aws_byte_buf_clean_up(tmp_cert_buf);
