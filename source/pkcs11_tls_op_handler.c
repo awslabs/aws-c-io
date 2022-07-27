@@ -119,7 +119,6 @@ unlock:
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
-    //.destroy = s_aws_custom_key_op_handler_destroy,
     .on_key_operation = s_aws_pkcs11_tls_op_handler_do_operation,
 };
 
