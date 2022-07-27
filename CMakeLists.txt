@@ -159,6 +159,8 @@ if (USE_S2N)
     file(GLOB AWS_IO_TLS_SRC
             "source/s2n/*.c"
             )
+    set(CMAKE_C_FLAGS
+            "${CMAKE_C_FLAGS} —-exclude-libs libcrypto.a")
     aws_use_package(s2n)
 endif()
 
