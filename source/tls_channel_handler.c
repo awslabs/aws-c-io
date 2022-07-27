@@ -264,7 +264,6 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    /* TODO - refactor this section - it (likely) has more copies than needed */
     struct aws_byte_buf tmp_cert_buf;
     if (aws_byte_buf_init(&tmp_cert_buf, allocator, 0) != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
@@ -942,11 +941,4 @@ void aws_custom_key_op_handler_perform_operation(
             key_op_handler->vtable->on_key_operation(key_op_handler, operation);
         }
     }
-}
-
-void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler *key_op_handler) {
-    AWS_FATAL_ASSERT(key_op_handler != NULL);
-    AWS_FATAL_ASSERT(key_op_handler->vtable != NULL);
-    AWS_FATAL_ASSERT(key_op_handler->vtable->destroy != NULL);
-    key_op_handler->vtable->destroy(key_op_handler);
 }

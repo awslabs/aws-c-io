@@ -344,15 +344,6 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
  */
 struct aws_custom_key_op_handler_vtable {
     /**
-     * Called when the aws_custom_key_op_handler is no longer referenced anymore, so it can be
-     * destroyed. This is intended for any cleanup needed prior to final destruction.
-     * This will be called automatically when the last reference is freed if you create a
-     * aws_custom_key_op_handler and point it's reference count to use the
-     * aws_custom_key_op_handler_perform_destroy function.
-     */
-    void (*destroy)(struct aws_custom_key_op_handler *key_op_handler);
-
-    /**
      * Called when the a TLS handshake has an operation it needs the custom key operation handler to perform.
      * NOTE: You must call aws_tls_key_operation_complete() or aws_tls_key_operation_complete_with_error()
      * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
@@ -368,7 +359,7 @@ struct aws_custom_key_op_handler {
     /**
      * A void* intended to be populated with a reference to whatever class is extending this class. For example,
      * if you have extended aws_custom_key_op_handler with a custom struct, you would put a pointer to this struct
-     * to *impl so you can retrieve it back in the v-table functions.
+     * to *impl so you can retrieve it back in the vtable functions.
      */
     void *impl;
 
@@ -381,8 +372,6 @@ struct aws_custom_key_op_handler {
     /**
      * A reference count for handling memory usage.
      * Use aws_custom_key_op_handler_acquire and aws_custom_key_op_handler_release to increase/decrease count.
-     * Will call the destroy function when the reference count is zero if pointed to the
-     * aws_custom_key_op_handler_perform_destroy function.
      */
     struct aws_ref_count ref_count;
 };
@@ -406,13 +395,6 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
 AWS_IO_API void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_tls_key_operation *operation);
-
-/**
- * Calls the destroy vtable function. See aws_custom_key_op_handler_vtable for function details.
- * NOTE: You should not call this manually and instead have this called via aws_ref_count_init when
- * the reference count reaches zero. The aws_custom_key_op_handler will be unusable after this call.
- */
-AWS_IO_API void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_op_handler *key_op_handler);
 
 /**
  * Initializes options for use with mutual TLS in client mode,

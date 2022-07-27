@@ -119,7 +119,7 @@ unlock:
 }
 
 static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtable = {
-    .destroy = s_aws_custom_key_op_handler_destroy,
+    //.destroy = s_aws_custom_key_op_handler_destroy,
     .on_key_operation = s_aws_pkcs11_tls_op_handler_do_operation,
 };
 
@@ -137,7 +137,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     aws_ref_count_init(
         &pkcs11_handler->base.ref_count,
         &pkcs11_handler->base,
-        (aws_simple_completion_callback *)aws_custom_key_op_handler_perform_destroy);
+        (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
 
     pkcs11_handler->base.impl = (void *)pkcs11_handler;
     pkcs11_handler->base.vtable = &s_aws_custom_key_op_handler_vtable;
