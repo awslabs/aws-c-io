@@ -418,9 +418,14 @@ AWS_IO_API void aws_custom_key_op_handler_perform_destroy(struct aws_custom_key_
  * Initializes options for use with mutual TLS in client mode,
  * where private key operations are handled by custom code.
  *
- * @param options           aws_tls_ctx_options to be initialized.
- * @param allocator         Allocator to use.
- * @param custom            Options for custom key operations.
+ * Note: cert_file_contents will be copied into a new buffer after this
+ * function is called, so you do not need to keep that data alive
+ * after calling this function.
+ *
+ * @param options               aws_tls_ctx_options to be initialized.
+ * @param allocator             Allocator to use.
+ * @param custom                Options for custom key operations.
+ * @param cert_file_contents    The contents of a certificate file.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
