@@ -1724,13 +1724,16 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
 
     struct aws_tls_ctx_options client_tls_opts;
 
+    struct aws_byte_buf cert_file_contents;
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_file_contents, allocator, aws_string_c_str(cert_path)));
+
 #    if 1 /* Toggle this to run without actually using PKCS#11. Useful for debugging this test. */
     struct aws_tls_ctx_pkcs11_options client_pkcs11_tls_opts = {
         .pkcs11_lib = s_pkcs11_tester.lib,
         .token_label = aws_byte_cursor_from_c_str(token_label),
         .user_pin = aws_byte_cursor_from_c_str(USER_PIN),
         .private_key_object_label = aws_byte_cursor_from_c_str(DEFAULT_KEY_LABEL),
-        .cert_file_path = aws_byte_cursor_from_c_str(cert_path),
+        .cert_file_contents = aws_byte_cursor_from_buf(cert_file_contents),
     };
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_with_pkcs11(&client_tls_opts, allocator, &client_pkcs11_tls_opts));
@@ -1802,6 +1805,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
     aws_tls_ctx_release(client_tls_ctx);
     aws_client_bootstrap_release(client_bootstrap);
     aws_tls_connection_options_clean_up(&client_tls_connection_opts);
+    aws_byte_buf_clean_up(&cert_file_contents);
 
     aws_server_bootstrap_destroy_socket_listener(server_bootstrap, server_listener_sock);
     aws_tls_connection_options_clean_up(&server_tls_connection_opts);
