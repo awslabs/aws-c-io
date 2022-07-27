@@ -274,8 +274,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     if (pkcs11_options->cert_file_contents.ptr == NULL) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Certificate file contents are empty");
         return AWS_OP_ERR;
-    }
-    else {
+    } else {
         if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
             return AWS_OP_ERR;
