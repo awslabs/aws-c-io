@@ -697,7 +697,7 @@ static void s_tls_key_operation_complete_common(
 
     AWS_ASSERT((error_code != 0) ^ (output != NULL)); /* error_code XOR output must be set */
 
-    // Ensure this can only be called once and exactly once. If called again, log an error.
+    // Ensure this can only be called once and exactly once.
     size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
     AWS_FATAL_ASSERT(complete_count == 0);
 
