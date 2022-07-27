@@ -266,8 +266,8 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    struct aws_byte_buf *tmp_cert_buf = NULL;
-    if (aws_byte_buf_init(tmp_cert_buf, allocator, 0) != AWS_OP_SUCCESS) {
+    struct aws_byte_buf tmp_cert_buf;
+    if (aws_byte_buf_init(&tmp_cert_buf, allocator, 0) != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Could not allocate byte buffer for custom key operation certificate");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
@@ -281,7 +281,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     } else if (pkcs11_options->cert_file_path.ptr != NULL) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n ABOUT TO GET CERTIFICATE FROM FILE PATH \n");
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
-        int op = aws_byte_buf_init_from_file(tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
+        int op = aws_byte_buf_init_from_file(&tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
         if (op != AWS_OP_SUCCESS) {
             return AWS_OP_ERR;
@@ -289,7 +289,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n FINISHED GETTING CERTIFICATE FROM FILE PATH \n");
     } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n ABOUT TO GET CERTIFICATE FROM FILE CONTENTS \n");
-        if (aws_byte_buf_init_copy_from_cursor(tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
+        if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
             return AWS_OP_ERR;
         }
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n FINISHED GETTING CERTIFICATE FROM FILE CONTENTS \n");
@@ -298,13 +298,13 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
 
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n ABOUT TO SET CUSTOM KEY OPERATION \n");
-    struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(tmp_cert_buf);
+    struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
         options, allocator, pkcs11_handler, &tmp_cert_cursor);
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "\n FINISHED SETTING CUSTOM KEY OPERATION \n");
 
     // Clean up the temporary buffer
-    aws_byte_buf_clean_up(tmp_cert_buf);
+    aws_byte_buf_clean_up(&tmp_cert_buf);
 
     /**
      * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
