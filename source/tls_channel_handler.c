@@ -273,8 +273,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     }
     if (pkcs11_options->cert_file_contents.ptr != NULL) {
         return AWS_OP_ERR;
-    }
-    else {
+    } else {
         if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
             return AWS_OP_ERR;
         }
