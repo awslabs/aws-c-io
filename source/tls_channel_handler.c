@@ -201,8 +201,6 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
 #if defined(USE_S2N)
 
-    struct aws_byte_buf tmp_cert_buf;
-
     struct aws_custom_key_op_handler *pkcs11_handler = aws_pkcs11_tls_op_handler_new(
         allocator,
         pkcs11_options->pkcs11_lib,
@@ -214,24 +212,29 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     if (pkcs11_handler == NULL) {
         goto error;
     }
+    int custom_key_result;
 
-    // TODO - refactor this so it only applies for if we need to read from a file
-    // if (pkcs11_options->cert_file_contents.ptr == NULL) {
-    //     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Certificate file contents are empty");
-    //     goto error;
-    // } else {
-    //     if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
-    //         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
-    //         goto error;
-    //     }
-    // }
-    // struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
+    if ((pkcs11_options->cert_file_contents.ptr != NULL) && (pkcs11_options->cert_file_path.ptr != NULL)) {
+        goto error;
+    } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
+        custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+            options, allocator, pkcs11_handler, &pkcs11_options->cert_file_contents);
+    } else {
+        struct aws_byte_buf tmp_cert_buf;
+        struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
+        int op = aws_byte_buf_init_from_file(&tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
+        aws_string_destroy(tmp_string);
 
-    int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, pkcs11_handler, &pkcs11_options->cert_file_contents);
+        if (op != AWS_OP_SUCCESS) {
+            aws_byte_buf_clean_up(&tmp_cert_buf);
+            goto error;
+        }
 
-    /* Clean up the temporary buffer */
-    aws_byte_buf_clean_up(&tmp_cert_buf);
+        struct aws_byte_cursor tmp_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
+        custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+            options, allocator, pkcs11_handler, &tmp_cursor);
+        aws_byte_buf_clean_up(&tmp_cert_buf);
+    }
 
     /**
      * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
@@ -242,14 +245,13 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
      */
     aws_custom_key_op_handler_release(pkcs11_handler);
 
-    return result;
+    return custom_key_result;
 
 error:
 
     if (pkcs11_handler != NULL) {
         aws_custom_key_op_handler_release(pkcs11_handler);
     }
-    aws_byte_buf_clean_up(&tmp_cert_buf);
     aws_tls_ctx_options_clean_up(options);
 
     return AWS_OP_ERR;

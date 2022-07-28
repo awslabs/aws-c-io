@@ -1724,16 +1724,13 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
 
     struct aws_tls_ctx_options client_tls_opts;
 
-    struct aws_byte_buf cert_file_contents;
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_file_contents, allocator, cert_path));
-
 #    if 1 /* Toggle this to run without actually using PKCS#11. Useful for debugging this test. */
     struct aws_tls_ctx_pkcs11_options client_pkcs11_tls_opts = {
         .pkcs11_lib = s_pkcs11_tester.lib,
         .token_label = aws_byte_cursor_from_c_str(token_label),
         .user_pin = aws_byte_cursor_from_c_str(USER_PIN),
         .private_key_object_label = aws_byte_cursor_from_c_str(DEFAULT_KEY_LABEL),
-        .cert_file_contents = aws_byte_cursor_from_buf(&cert_file_contents),
+        .cert_file_path = aws_byte_cursor_from_c_str(cert_path),
     };
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_client_mtls_with_pkcs11(&client_tls_opts, allocator, &client_pkcs11_tls_opts));

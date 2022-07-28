@@ -469,8 +469,16 @@ struct aws_tls_ctx_pkcs11_options {
     struct aws_byte_cursor private_key_object_label;
 
     /**
+     * Certificate's file path on disk (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file contents).
+     */
+    struct aws_byte_cursor cert_file_path;
+
+    /**
      * Certificate's file contents (UTF-8).
      * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file path).
      */
     struct aws_byte_cursor cert_file_contents;
 };
