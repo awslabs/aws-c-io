@@ -283,7 +283,7 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
         options, allocator, pkcs11_handler, &tmp_cert_cursor);
 
-    // Clean up the temporary buffer
+    /* Clean up the temporary buffer */
     aws_byte_buf_clean_up(&tmp_cert_buf);
 
     /**

@@ -697,7 +697,7 @@ static void s_tls_key_operation_complete_common(
 
     AWS_ASSERT((error_code != 0) ^ (output != NULL)); /* error_code XOR output must be set */
 
-    // Ensure this can only be called once and exactly once.
+    /* Ensure this can only be called once and exactly once. */
     size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
     AWS_FATAL_ASSERT(complete_count == 0);
 
@@ -855,7 +855,7 @@ static struct aws_tls_key_operation *s_tls_key_operation_new(
     operation->s2n_handler = s2n_handler;
     aws_channel_acquire_hold(s2n_handler->slot->channel);
 
-    // Set this to zero so we can track how many times complete has been called
+    /* Set this to zero so we can track how many times complete has been called */
     aws_atomic_init_int(&operation->complete_count, 0);
 
     /* Set this last. We don't want to take ownership of s2n_op until we know setup was 100% successful */
