@@ -1802,7 +1802,6 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
     aws_tls_ctx_release(client_tls_ctx);
     aws_client_bootstrap_release(client_bootstrap);
     aws_tls_connection_options_clean_up(&client_tls_connection_opts);
-    aws_byte_buf_clean_up(&cert_file_contents);
 
     aws_server_bootstrap_destroy_socket_listener(server_bootstrap, server_listener_sock);
     aws_tls_connection_options_clean_up(&server_tls_connection_opts);

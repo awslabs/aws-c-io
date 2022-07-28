@@ -167,8 +167,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
 
     /* private_key_object_label is optional */
     if (match_private_key_label->ptr != NULL) {
-        pkcs_private_key_object_label =
-            aws_string_new_from_cursor(allocator, match_private_key_label);
+        pkcs_private_key_object_label = aws_string_new_from_cursor(allocator, match_private_key_label);
     }
 
     CK_SLOT_ID slot_id;
