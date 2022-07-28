@@ -699,7 +699,7 @@ static void s_tls_key_operation_complete_common(
 
     /* Ensure this can only be called once and exactly once. */
     size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
-    AWS_FATAL_ASSERT(complete_count == 0);
+    AWS_FATAL_ASSERT(complete_count == 0 && "TLS key operation marked complete multiple times");
 
     struct s2n_handler *s2n_handler = operation->s2n_handler;
     struct aws_channel_handler *handler = &s2n_handler->handler;

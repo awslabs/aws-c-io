@@ -148,9 +148,9 @@ AWS_IO_API
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_allocator *allocator,
     struct aws_pkcs11_lib *pkcs11_lib,
-    const struct aws_string *user_pin,
-    const struct aws_string *match_token_label,
-    const struct aws_string *match_private_key_label,
+    const struct aws_byte_cursor *user_pin,
+    const struct aws_byte_cursor *match_token_label,
+    const struct aws_byte_cursor *match_private_key_label,
     const uint64_t *match_slot_id);
 
 AWS_EXTERN_C_END

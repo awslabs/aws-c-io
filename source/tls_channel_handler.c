@@ -139,7 +139,7 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     struct aws_custom_key_op_handler *custom,
-    struct aws_byte_cursor *cert_file_contents) {
+    const struct aws_byte_cursor *cert_file_contents) {
 
 #if !USE_S2N
     (void)options;
@@ -201,87 +201,34 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
 #if defined(USE_S2N)
 
-    struct aws_pkcs11_lib *pkcs_lib = NULL;
-    struct aws_string *pkcs_user_pin = NULL;
-    struct aws_string *pkcs_token_label = NULL;
-    struct aws_string *pkcs_private_key_object_label = NULL;
-    uint64_t pkcs_slot_id;
-    bool pkcs_has_slot_id = false;
-
-    /* pkcs11_lib is required */
-    if (pkcs11_options->pkcs11_lib == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A PKCS#11 library must be specified.");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    }
-    pkcs_lib = aws_pkcs11_lib_acquire(pkcs11_options->pkcs11_lib); /* cannot fail */
-
-    /* user_pin is optional */
-    if (pkcs11_options->user_pin.ptr != NULL) {
-        pkcs_user_pin = aws_string_new_from_cursor(allocator, &pkcs11_options->user_pin);
-    }
-
-    /* slot_id is optional */
-    if (pkcs11_options->slot_id != NULL) {
-        pkcs_slot_id = *pkcs11_options->slot_id;
-        pkcs_has_slot_id = true;
-    }
-
-    /* token_label is optional */
-    if (pkcs11_options->token_label.ptr != NULL) {
-        pkcs_token_label = aws_string_new_from_cursor(allocator, &pkcs11_options->token_label);
-    }
-
-    /* private_key_object_label is optional */
-    if (pkcs11_options->private_key_object_label.ptr != NULL) {
-        pkcs_private_key_object_label =
-            aws_string_new_from_cursor(allocator, &pkcs11_options->private_key_object_label);
-    }
+    struct aws_byte_buf tmp_cert_buf;
 
     struct aws_custom_key_op_handler *pkcs11_handler = aws_pkcs11_tls_op_handler_new(
         allocator,
-        pkcs_lib,
-        pkcs_user_pin,
-        pkcs_token_label,
-        pkcs_private_key_object_label,
-        pkcs_has_slot_id ? &pkcs_slot_id : NULL);
+        pkcs11_options->pkcs11_lib,
+        &pkcs11_options->user_pin,
+        &pkcs11_options->token_label,
+        &pkcs11_options->private_key_object_label,
+        pkcs11_options->slot_id);
 
     if (pkcs11_handler == NULL) {
         goto error;
     }
 
-    /* CLEANUP */
-    if (pkcs_lib != NULL) {
-        aws_pkcs11_lib_release(pkcs_lib);
-    }
-    if (pkcs_user_pin != NULL) {
-        aws_string_destroy_secure(pkcs_user_pin);
-    }
-    if (pkcs_token_label != NULL) {
-        aws_string_destroy(pkcs_token_label);
-    }
-    if (pkcs_private_key_object_label != NULL) {
-        aws_string_destroy(pkcs_private_key_object_label);
-    }
+    // TODO - refactor this so it only applies for if we need to read from a file
+    // if (pkcs11_options->cert_file_contents.ptr == NULL) {
+    //     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Certificate file contents are empty");
+    //     goto error;
+    // } else {
+    //     if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
+    //         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
+    //         goto error;
+    //     }
+    // }
+    // struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
 
-    struct aws_byte_buf tmp_cert_buf;
-    if (aws_byte_buf_init(&tmp_cert_buf, allocator, 0) != AWS_OP_SUCCESS) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    }
-    if (pkcs11_options->cert_file_contents.ptr == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Certificate file contents are empty");
-        return AWS_OP_ERR;
-    } else {
-        if (aws_byte_buf_init_copy_from_cursor(&tmp_cert_buf, allocator, pkcs11_options->cert_file_contents)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Could not allocate byte buffer for custom key operation certificate");
-            return AWS_OP_ERR;
-        }
-    }
-    struct aws_byte_cursor tmp_cert_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
     int result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
-        options, allocator, pkcs11_handler, &tmp_cert_cursor);
+        options, allocator, pkcs11_handler, &pkcs11_options->cert_file_contents);
 
     /* Clean up the temporary buffer */
     aws_byte_buf_clean_up(&tmp_cert_buf);
@@ -299,20 +246,10 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
 error:
 
-    /* CLEANUP */
-    if (pkcs_lib != NULL) {
-        aws_pkcs11_lib_release(pkcs_lib);
+    if (pkcs11_handler != NULL) {
+        aws_custom_key_op_handler_release(pkcs11_handler);
     }
-    if (pkcs_user_pin != NULL) {
-        aws_string_destroy_secure(pkcs_user_pin);
-    }
-    if (pkcs_token_label != NULL) {
-        aws_string_destroy(pkcs_token_label);
-    }
-    if (pkcs_private_key_object_label != NULL) {
-        aws_string_destroy(pkcs_private_key_object_label);
-    }
-
+    aws_byte_buf_clean_up(&tmp_cert_buf);
     aws_tls_ctx_options_clean_up(options);
 
     return AWS_OP_ERR;

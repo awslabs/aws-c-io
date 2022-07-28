@@ -413,7 +413,7 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     struct aws_custom_key_op_handler *custom,
-    struct aws_byte_cursor *cert_file_contents);
+    const struct aws_byte_cursor *cert_file_contents);
 
 /**
  * This struct exists as a graceful way to pass many arguments when

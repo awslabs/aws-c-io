@@ -125,13 +125,18 @@ static struct aws_custom_key_op_handler_vtable s_aws_custom_key_op_handler_vtabl
 struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     struct aws_allocator *allocator,
     struct aws_pkcs11_lib *pkcs11_lib,
-    const struct aws_string *user_pin,
-    const struct aws_string *match_token_label,
-    const struct aws_string *match_private_key_label,
+    const struct aws_byte_cursor *user_pin,
+    const struct aws_byte_cursor *match_token_label,
+    const struct aws_byte_cursor *match_private_key_label,
     const uint64_t *match_slot_id) {
 
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
+
+    // Optional data
+    struct aws_string *pkcs_user_pin = NULL;
+    struct aws_string *pkcs_token_label = NULL;
+    struct aws_string *pkcs_private_key_object_label = NULL;
 
     aws_ref_count_init(
         &pkcs11_handler->base.ref_count,
@@ -142,11 +147,32 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     pkcs11_handler->base.vtable = &s_aws_custom_key_op_handler_vtable;
 
     pkcs11_handler->alloc = allocator;
+
+    /* pkcs11_lib is required */
+    if (pkcs11_lib == NULL) {
+        goto error;
+    }
     pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
     aws_mutex_init(&pkcs11_handler->session_lock);
 
+    /* user_pin is optional */
+    if (user_pin->ptr != NULL) {
+        pkcs_user_pin = aws_string_new_from_cursor(allocator, user_pin);
+    }
+
+    /* token_label is optional */
+    if (match_token_label->ptr != NULL) {
+        pkcs_token_label = aws_string_new_from_cursor(allocator, match_token_label);
+    }
+
+    /* private_key_object_label is optional */
+    if (match_private_key_label->ptr != NULL) {
+        pkcs_private_key_object_label =
+            aws_string_new_from_cursor(allocator, match_private_key_label);
+    }
+
     CK_SLOT_ID slot_id;
-    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, match_token_label, &slot_id /*out*/)) {
+    if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, pkcs_token_label, &slot_id /*out*/)) {
         goto error;
     }
 
@@ -154,21 +180,46 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
         goto error;
     }
 
-    if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, user_pin)) {
-        goto error;
+    if (pkcs_user_pin != NULL) {
+        if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, pkcs_user_pin)) {
+            goto error;
+        }
     }
 
     if (aws_pkcs11_lib_find_private_key(
             pkcs11_handler->lib,
             pkcs11_handler->session_handle,
-            match_private_key_label,
+            pkcs_private_key_object_label,
             &pkcs11_handler->private_key_handle /*out*/,
             &pkcs11_handler->private_key_type /*out*/)) {
         goto error;
     }
 
+    /* CLEANUP */
+    if (pkcs_user_pin != NULL) {
+        aws_string_destroy_secure(pkcs_user_pin);
+    }
+    if (pkcs_token_label != NULL) {
+        aws_string_destroy(pkcs_token_label);
+    }
+    if (pkcs_private_key_object_label != NULL) {
+        aws_string_destroy(pkcs_private_key_object_label);
+    }
+
     return &pkcs11_handler->base;
 error:
+
+    /* CLEANUP */
+    if (pkcs_user_pin != NULL) {
+        aws_string_destroy_secure(pkcs_user_pin);
+    }
+    if (pkcs_token_label != NULL) {
+        aws_string_destroy(pkcs_token_label);
+    }
+    if (pkcs_private_key_object_label != NULL) {
+        aws_string_destroy(pkcs_private_key_object_label);
+    }
+
     aws_custom_key_op_handler_release(&pkcs11_handler->base);
     return NULL;
 }
