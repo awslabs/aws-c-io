@@ -153,10 +153,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     /* pkcs11_lib is required */
     if (pkcs11_lib == NULL) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKCS11,
-            "PKCS11 Handler %p new: PKCS11 library is null",
-            (void *)pkcs11_handler);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "PKCS11 Handler %p new: PKCS11 library is null", (void *)pkcs11_handler);
         goto done;
     }
     pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
