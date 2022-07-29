@@ -166,7 +166,6 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     /* Make sure the certificate is set and valid */
     if (aws_sanitize_pem(&options->certificate, allocator)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
 
@@ -196,37 +195,35 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 
     struct aws_byte_buf tmp_cert_buf;
     AWS_ZERO_STRUCT(tmp_cert_buf);
-    bool success = true;
+    bool success = false;
     int custom_key_result = AWS_OP_ERR;
 
     if (pkcs11_handler == NULL) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        success = false;
         goto finish;
     }
 
     if ((pkcs11_options->cert_file_contents.ptr != NULL) && (pkcs11_options->cert_file_path.ptr != NULL)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot use certificate AND certificate file path, only one can be set");
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        success = false;
         goto finish;
     } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
         custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
             options, allocator, pkcs11_handler, &pkcs11_options->cert_file_contents);
+        success = true;
     } else {
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
         int op = aws_byte_buf_init_from_file(&tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
 
         if (op != AWS_OP_SUCCESS) {
-            aws_raise_error(AWS_ERROR_INVALID_STATE);
-            success = false;
             goto finish;
         }
 
         struct aws_byte_cursor tmp_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
         custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
             options, allocator, pkcs11_handler, &tmp_cursor);
+        success = true;
     }
 
 finish:
