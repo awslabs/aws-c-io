@@ -717,11 +717,10 @@ done:
     operation->completion_error_code = error_code;
 
     /* Schedule a task to finish the operation.
-     * We schedule a task for 2 reasons:
-     * 1) The user might have completed the operation asynchronously, but we
-     *    need to be on the event-loop thread to resume TLS negotiation.
-     * 2) The user might have completed the operation synchronously, but it's illegal
-     *    to call s2n_async_pkey_op_apply() synchronously from the initial callback. */
+     * We schedule a task because the user might
+     * have completed the operation asynchronously,
+     * but we need to be on the event-loop thread to
+     * resume TLS negotiation. */
     aws_channel_task_init(
         &operation->completion_task,
         s_tls_key_operation_completion_task,
@@ -1283,10 +1282,7 @@ static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
         if (s2n_ctx->custom_cert_chain_and_key) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
-
-        if (s2n_ctx->custom_key_handler) {
-            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
-        }
+        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
 
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }

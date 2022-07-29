@@ -130,6 +130,8 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     const struct aws_byte_cursor *match_private_key_label,
     const uint64_t *match_slot_id) {
 
+    bool success = true;
+
     struct aws_pkcs11_tls_op_handler *pkcs11_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_pkcs11_tls_op_handler));
 
@@ -150,7 +152,9 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
 
     /* pkcs11_lib is required */
     if (pkcs11_lib == NULL) {
-        goto error;
+        success = false;
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto done;
     }
     pkcs11_handler->lib = aws_pkcs11_lib_acquire(pkcs11_lib); /* cannot fail */
     aws_mutex_init(&pkcs11_handler->session_lock);
@@ -172,16 +176,22 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
 
     CK_SLOT_ID slot_id;
     if (aws_pkcs11_lib_find_slot_with_token(pkcs11_handler->lib, match_slot_id, pkcs_token_label, &slot_id /*out*/)) {
-        goto error;
+        success = false;
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
     }
 
     if (aws_pkcs11_lib_open_session(pkcs11_handler->lib, slot_id, &pkcs11_handler->session_handle)) {
-        goto error;
+        success = false;
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
     }
 
     if (pkcs_user_pin != NULL) {
         if (aws_pkcs11_lib_login_user(pkcs11_handler->lib, pkcs11_handler->session_handle, pkcs_user_pin)) {
-            goto error;
+            success = false;
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            goto done;
         }
     }
 
@@ -191,8 +201,12 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
             pkcs_private_key_object_label,
             &pkcs11_handler->private_key_handle /*out*/,
             &pkcs11_handler->private_key_type /*out*/)) {
-        goto error;
+        success = false;
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto done;
     }
+
+done:
 
     /* CLEANUP */
     if (pkcs_user_pin != NULL) {
@@ -205,20 +219,10 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
         aws_string_destroy(pkcs_private_key_object_label);
     }
 
-    return &pkcs11_handler->base;
-error:
-
-    /* CLEANUP */
-    if (pkcs_user_pin != NULL) {
-        aws_string_destroy_secure(pkcs_user_pin);
+    if (success) {
+        return &pkcs11_handler->base;
+    } else {
+        aws_custom_key_op_handler_release(&pkcs11_handler->base);
+        return NULL;
     }
-    if (pkcs_token_label != NULL) {
-        aws_string_destroy(pkcs_token_label);
-    }
-    if (pkcs_private_key_object_label != NULL) {
-        aws_string_destroy(pkcs_private_key_object_label);
-    }
-
-    aws_custom_key_op_handler_release(&pkcs11_handler->base);
-    return NULL;
 }

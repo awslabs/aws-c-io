@@ -42,10 +42,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 #endif
 
     aws_string_destroy(options->alpn_list);
-
-    if (options->custom_key_op_handler != NULL) {
-        aws_custom_key_op_handler_release(options->custom_key_op_handler);
-    }
+    aws_custom_key_op_handler_release(options->custom_key_op_handler);
 
     AWS_ZERO_STRUCT(*options);
 }
@@ -155,33 +152,21 @@ int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     /* on_key_operation is required */
-    if (custom) {
-        if (custom->vtable == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must have a vtable.");
-            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            goto error;
-        }
-        if (custom->vtable->on_key_operation == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: A custom callback must be specified.");
-            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            goto error;
-        }
-    }
+    AWS_ASSERT(custom != NULL);
+    AWS_ASSERT(custom->vtable != NULL);
+    AWS_ASSERT(custom->vtable->on_key_operation != NULL);
 
     /* Hold a reference to the custom key operation handler so it cannot be destroyed */
     options->custom_key_op_handler = aws_custom_key_op_handler_acquire((struct aws_custom_key_op_handler *)custom);
 
     /* Copy the certificate data from the cursor */
-    if (cert_file_contents == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Certificate file contents must be specified");
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto error;
-    }
+    AWS_ASSERT(cert_file_contents != NULL);
     aws_byte_buf_init_copy_from_cursor(&options->certificate, allocator, *cert_file_contents);
 
     /* Make sure the certificate is set and valid */
     if (aws_sanitize_pem(&options->certificate, allocator)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid certificate. File must contain PEM encoded data");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
 
@@ -209,52 +194,63 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
         &pkcs11_options->private_key_object_label,
         pkcs11_options->slot_id);
 
+    struct aws_byte_buf tmp_cert_buf;
+    AWS_ZERO_STRUCT(tmp_cert_buf);
+    bool success = true;
+    int custom_key_result = AWS_OP_ERR;
+
     if (pkcs11_handler == NULL) {
-        goto error;
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        success = false;
+        goto finish;
     }
-    int custom_key_result;
 
     if ((pkcs11_options->cert_file_contents.ptr != NULL) && (pkcs11_options->cert_file_path.ptr != NULL)) {
-        goto error;
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cannot use certificate AND certificate file path, only one can be set");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        success = false;
+        goto finish;
     } else if (pkcs11_options->cert_file_contents.ptr != NULL) {
         custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
             options, allocator, pkcs11_handler, &pkcs11_options->cert_file_contents);
     } else {
-        struct aws_byte_buf tmp_cert_buf;
         struct aws_string *tmp_string = aws_string_new_from_cursor(allocator, &pkcs11_options->cert_file_path);
         int op = aws_byte_buf_init_from_file(&tmp_cert_buf, allocator, aws_string_c_str(tmp_string));
         aws_string_destroy(tmp_string);
 
         if (op != AWS_OP_SUCCESS) {
-            aws_byte_buf_clean_up(&tmp_cert_buf);
-            goto error;
+            aws_raise_error(AWS_ERROR_INVALID_STATE);
+            success = false;
+            goto finish;
         }
 
         struct aws_byte_cursor tmp_cursor = aws_byte_cursor_from_buf(&tmp_cert_buf);
         custom_key_result = aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
             options, allocator, pkcs11_handler, &tmp_cursor);
-        aws_byte_buf_clean_up(&tmp_cert_buf);
     }
 
-    /**
-     * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
-     * hold a reference to the custom key operations, but creating the TLS operations handler using
-     * aws_pkcs11_tls_op_handler_set_certificate_data adds a reference too, so we need to release
-     * this reference so the only thing (currently) holding a reference is the TLS options itself and
-     * not this function.
-     */
-    aws_custom_key_op_handler_release(pkcs11_handler);
-
-    return custom_key_result;
-
-error:
+finish:
 
     if (pkcs11_handler != NULL) {
+        /**
+        * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
+        * hold a reference to the custom key operations, but creating the TLS operations handler using
+        * aws_pkcs11_tls_op_handler_set_certificate_data adds a reference too, so we need to release
+        * this reference so the only thing (currently) holding a reference is the TLS options itself and
+        * not this function.
+        */
         aws_custom_key_op_handler_release(pkcs11_handler);
     }
-    aws_tls_ctx_options_clean_up(options);
+    if (success == false) {
+        aws_tls_ctx_options_clean_up(options);
+    }
+    aws_byte_buf_clean_up(&tmp_cert_buf);
 
-    return AWS_OP_ERR;
+    if (success) {
+        return custom_key_result;
+    } else {
+        return AWS_OP_ERR;
+    }
 
 #else /* Platform does not support S2N */
 
@@ -875,9 +871,5 @@ struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(struct aws_c
 void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,
     struct aws_tls_key_operation *operation) {
-    if (key_op_handler != NULL) {
-        if (key_op_handler->vtable != NULL && key_op_handler->vtable->on_key_operation != NULL) {
-            key_op_handler->vtable->on_key_operation(key_op_handler, operation);
-        }
-    }
+    key_op_handler->vtable->on_key_operation(key_op_handler, operation);
 }
