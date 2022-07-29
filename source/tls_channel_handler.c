@@ -233,12 +233,12 @@ finish:
 
     if (pkcs11_handler != NULL) {
         /**
-        * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
-        * hold a reference to the custom key operations, but creating the TLS operations handler using
-        * aws_pkcs11_tls_op_handler_set_certificate_data adds a reference too, so we need to release
-        * this reference so the only thing (currently) holding a reference is the TLS options itself and
-        * not this function.
-        */
+         * Calling aws_tls_ctx_options_init_client_mtls_with_custom_key_operations will have this options
+         * hold a reference to the custom key operations, but creating the TLS operations handler using
+         * aws_pkcs11_tls_op_handler_set_certificate_data adds a reference too, so we need to release
+         * this reference so the only thing (currently) holding a reference is the TLS options itself and
+         * not this function.
+         */
         aws_custom_key_op_handler_release(pkcs11_handler);
     }
     if (success == false) {
