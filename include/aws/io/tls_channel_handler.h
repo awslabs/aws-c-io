@@ -390,7 +390,6 @@ AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
 
 /**
  * Calls the on_key_operation vtable function. See aws_custom_key_op_handler_vtable for function details.
- * NOTE: If the vtable or vtable function is null, then it will not do anything but will not crash.
  */
 AWS_IO_API void aws_custom_key_op_handler_perform_operation(
     struct aws_custom_key_op_handler *key_op_handler,

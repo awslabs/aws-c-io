@@ -49,7 +49,7 @@ static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler
 }
 
 /**
- * Performs the PKCS11 TLS private key operation. This is called automatically when performing a MQTT TLS handshake.
+ * Performs the PKCS11 TLS private key operation. This is called automatically when performing a mutual TLS handshake.
  */
 void s_aws_pkcs11_tls_op_handler_do_operation(
     struct aws_custom_key_op_handler *handler,
