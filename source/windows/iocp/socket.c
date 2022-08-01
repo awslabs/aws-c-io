@@ -27,6 +27,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/io/pipe.h>
 
 #include <aws/io/io.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -1216,8 +1217,9 @@ static int s_local_connect(
         return AWS_OP_SUCCESS;
     }
 
+    int win_error = ERROR_SUCCESS;
 error:
-    int win_error = GetLastError(); /* logging may reset error, so cache it */
+    win_error = GetLastError(); /* logging may reset error, so cache it */
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
