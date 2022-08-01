@@ -190,6 +190,10 @@ if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
 
+if (USE_S2N)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "-DUSE_S2N")
+endif()
+
 if (BUILD_RELOCATABLE_BINARIES)
     target_compile_definitions(${PROJECT_NAME} PRIVATE "-DCOMPAT_MODE")
 endif()
