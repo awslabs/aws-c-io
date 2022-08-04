@@ -1217,9 +1217,8 @@ static int s_local_connect(
         return AWS_OP_SUCCESS;
     }
 
-    int win_error = ERROR_SUCCESS;
-error:
-    win_error = GetLastError(); /* logging may reset error, so cache it */
+error:;
+    int win_error = GetLastError(); /* logging may reset error, so cache it */
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
