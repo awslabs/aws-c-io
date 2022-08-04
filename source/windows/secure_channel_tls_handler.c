@@ -136,8 +136,8 @@ bool aws_tls_is_alpn_available(void) {
     VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMINOR, VER_GREATER_EQUAL);
 
     AWS_ZERO_STRUCT(os_version);
-    os_version.dwMajorVersion = HIBYTE(_WIN32_WINNT_WIN8);
-    os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
+    os_version.dwMajorVersion = HIBYTE(_WIN32_WINNT_WINBLUE);
+    os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WINBLUE);
     os_version.wServicePackMajor = 0;
     os_version.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
 
