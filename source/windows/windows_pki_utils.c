@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 
 #include <aws/common/uuid.h>
 
@@ -21,66 +21,96 @@
 #define CERT_HASH_STR_LEN 40
 #define CERT_HASH_LEN 20
 
-int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
+/**
+ * Split system cert path into exactly three segments like:
+ * "CurrentUser\My\a11f8a9b5df5b98ba3508fbca575d09570e0d2c6"
+ *      -> ["CurrentUser", "My", "a11f8a9b5df5b98ba3508fbca575d09570e0d2c6"]
+ */
+static int s_split_system_cert_path(const char *cert_path, struct aws_byte_cursor out_splits[3]) {
 
-    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path %s.", cert_path);
-    char *location_of_next_segment = strchr(cert_path, '\\');
+    struct aws_byte_cursor cert_path_cursor = aws_byte_cursor_from_c_str(cert_path);
 
-    if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
+    struct aws_byte_cursor segment;
+    AWS_ZERO_STRUCT(segment);
+
+    for (size_t i = 0; i < 3; ++i) {
+        if (!aws_byte_cursor_next_split(&cert_path_cursor, '\\', &segment)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Expected additional '\\' separator.", cert_path);
+            return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
+        }
+
+        out_splits[i] = segment;
+    }
+
+    if (aws_byte_cursor_next_split(&cert_path_cursor, '\\', &segment)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Too many '\\' separators found.", cert_path);
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
-    size_t store_name_len = location_of_next_segment - cert_path;
-    DWORD store_val = 0;
+    return AWS_OP_SUCCESS;
+}
 
-    if (!strncmp(cert_path, "CurrentUser", store_name_len)) {
+int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert_store, PCCERT_CONTEXT *certs) {
+
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading certificate at windows cert manager path '%s'.", cert_path);
+
+    struct aws_byte_cursor segments[3];
+    if (s_split_system_cert_path(cert_path, segments)) {
+        return AWS_OP_ERR;
+    }
+    const struct aws_byte_cursor store_location = segments[0];
+    const struct aws_byte_cursor store_path_cursor = segments[1];
+    const struct aws_byte_cursor cert_hash_cursor = segments[2];
+
+    DWORD store_val = 0;
+    if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentUser")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_USER;
-    } else if (!strncmp(cert_path, "LocalMachine", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachine")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE;
-    } else if (!strncmp(cert_path, "CurrentService", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentService")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_SERVICE;
-    } else if (!strncmp(cert_path, "Services", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "Services")) {
         store_val = CERT_SYSTEM_STORE_SERVICES;
-    } else if (!strncmp(cert_path, "Users", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "Users")) {
         store_val = CERT_SYSTEM_STORE_USERS;
-    } else if (!strncmp(cert_path, "CurrentUserGroupPolicy", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "CurrentUserGroupPolicy")) {
         store_val = CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY;
-    } else if (!strncmp(cert_path, "LocalMachineGroupPolicy", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachineGroupPolicy")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY;
-    } else if (!strncmp(cert_path, "LocalMachineEnterprise", store_name_len)) {
+    } else if (aws_byte_cursor_eq_c_str_ignore_case(&store_location, "LocalMachineEnterprise")) {
         store_val = CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "static: certificate path %s does not contain a valid cert store identifier.", cert_path);
+            AWS_LS_IO_PKI,
+            "static: invalid certificate path '%s'. System store location '" PRInSTR "' not recognized."
+            " Expected something like 'CurrentUser'.",
+            cert_path,
+            AWS_BYTE_CURSOR_PRI(store_location));
+
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
     AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: determined registry value for lookup as %d.", (int)store_val);
-    location_of_next_segment += 1;
-    char *store_path_start = location_of_next_segment;
-    location_of_next_segment = strchr(location_of_next_segment, '\\');
-
-    if (!location_of_next_segment) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path %s.", cert_path);
-        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
-    }
 
     /* The store_val value has to be only the path segment related to the physical store. Looking
        at the docs, 128 bytes should be plenty to store that segment.
        https://docs.microsoft.com/en-us/windows/desktop/SecCrypto/system-store-locations */
     char store_path[128] = {0};
-    AWS_FATAL_ASSERT(location_of_next_segment - store_path_start < sizeof(store_path));
-    memcpy(store_path, store_path_start, location_of_next_segment - store_path_start);
+    if (store_path_cursor.len >= sizeof(store_path)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: invalid certificate path '%s'. Store name is too long.", cert_path);
+        return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
+    }
+    memcpy(store_path, store_path_cursor.ptr, store_path_cursor.len);
 
-    location_of_next_segment += 1;
-    if (strlen(location_of_next_segment) != CERT_HASH_STR_LEN) {
+    if (cert_hash_cursor.len != CERT_HASH_STR_LEN) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been"
+            "static: invalid certificate path '%s'. '" PRInSTR "' should have been"
             " 40 bytes of hex encoded data",
             cert_path,
-            location_of_next_segment);
+            AWS_BYTE_CURSOR_PRI(cert_hash_cursor));
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
     }
 
@@ -90,7 +120,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*cert_store) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. Failed to load cert store with error code %d",
+            "static: invalid certificate path '%s'. Failed to load cert store with error code %d",
             cert_path,
             (int)GetLastError());
         return aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
@@ -103,7 +133,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     };
 
     if (!CryptStringToBinaryA(
-            location_of_next_segment,
+            (LPCSTR)cert_hash_cursor.ptr, /* this is null-terminated, it's the last segment of c-str */
             CERT_HASH_STR_LEN,
             CRYPT_STRING_HEX,
             cert_hash.pbData,
@@ -112,9 +142,9 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
             NULL)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. %s should have been a hex encoded string",
+            "static: invalid certificate path '%s'. '" PRInSTR "' should have been a hex encoded string",
             cert_path,
-            location_of_next_segment);
+            AWS_BYTE_CURSOR_PRI(cert_hash_cursor));
         aws_raise_error(AWS_ERROR_FILE_INVALID_PATH);
         goto on_error;
     }
@@ -125,7 +155,7 @@ int aws_load_cert_from_system_cert_store(const char *cert_path, HCERTSTORE *cert
     if (!*certs) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: invalid certificate path %s. "
+            "static: invalid certificate path '%s'. "
             "The referenced certificate was not found in the certificate store, error code %d",
             cert_path,
             (int)GetLastError());
@@ -162,6 +192,11 @@ int aws_import_trusted_certificates(
     }
 
     size_t cert_count = aws_array_list_length(&certificates);
+    if (cert_count == 0) {
+        aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: no certificates found, error %s", aws_error_name(aws_last_error()));
+        goto clean_up;
+    }
 
     HCERTSTORE tmp_cert_store =
         CertOpenStore(CERT_STORE_PROV_MEMORY, 0, (ULONG_PTR)NULL, CERT_STORE_CREATE_NEW_FLAG, NULL);
@@ -227,8 +262,8 @@ clean_up:
     aws_array_list_clean_up(&certificates);
 
     if (result == AWS_OP_ERR && *cert_store) {
-        *cert_store = NULL;
         aws_close_cert_store(*cert_store);
+        *cert_store = NULL;
     }
 
     return result;
@@ -239,59 +274,81 @@ void aws_close_cert_store(HCERTSTORE cert_store) {
 }
 
 static int s_cert_context_import_rsa_private_key(
-    PCCERT_CONTEXT *certs,
-    BYTE *key,
+    PCCERT_CONTEXT certs,
+    const BYTE *key,
     DWORD decoded_len,
-    char uuid_str[AWS_UUID_STR_LEN]) {
+    bool is_client_mode,
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN],
+    HCRYPTPROV *out_crypto_provider,
+    HCRYPTKEY *out_private_key_handle) {
 
-    int result = AWS_OP_ERR;
+    /* out-params will adopt these resources if the function is successful.
+     * if function fails these resources will be cleaned up before returning */
     HCRYPTPROV crypto_prov = 0;
     HCRYPTKEY h_key = 0;
 
-    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
-    size_t converted_chars = 0;
-    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
-    (void)converted_chars;
+    if (is_client_mode) {
+        /* use CRYPT_VERIFYCONTEXT so that keys are ephemeral (not stored to disk, registry, etc) */
+        if (!CryptAcquireContextW(&crypto_prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new rsa crypto context for key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
 
-    if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new rsa crypto context for key %s with errno %d",
-            uuid_str,
-            (int)GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
+        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *)crypto_prov)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new certificate context for rsa key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+    } else {
+        if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+
+        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+
+        CRYPT_KEY_PROV_INFO key_prov_info;
+        AWS_ZERO_STRUCT(key_prov_info);
+        key_prov_info.pwszContainerName = uuid_wstr;
+        key_prov_info.dwProvType = PROV_RSA_FULL;
+        key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
+
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error creating a new certificate context for key with errno %d",
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
     }
 
-    if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to import rsa key %s into crypto provider, error code %d",
-            uuid_str,
-            GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
+    *out_crypto_provider = crypto_prov;
+    *out_private_key_handle = h_key;
+    return AWS_OP_SUCCESS;
 
-    CRYPT_KEY_PROV_INFO key_prov_info;
-    AWS_ZERO_STRUCT(key_prov_info);
-    key_prov_info.pwszContainerName = uuid_wstr;
-    key_prov_info.dwProvType = PROV_RSA_FULL;
-    key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
-
-    if (!CertSetCertificateContextProperty(*certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: error creating a new certificate context for key %s with errno %d",
-            uuid_str,
-            (int)GetLastError());
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    result = AWS_OP_SUCCESS;
-
-done:
+on_error:
 
     if (h_key != 0) {
         CryptDestroyKey(h_key);
@@ -301,7 +358,7 @@ done:
         CryptReleaseContext(crypto_prov, 0);
     }
 
-    return result;
+    return AWS_OP_ERR;
 }
 
 #define ECC_256_MAGIC_NUMBER 0x20
@@ -326,21 +383,20 @@ enum aws_ecc_public_key_compression_type {
     AWS_EPKCT_UNCOMPRESSED = 0x04,
 };
 
+/* TODO ALSO NEEDS TO BE EPHEMERAL */
 static int s_cert_context_import_ecc_private_key(
-    PCCERT_CONTEXT *certs,
+    PCCERT_CONTEXT cert_context,
     struct aws_allocator *allocator,
-    BYTE *key,
+    const BYTE *key,
     DWORD decoded_len,
-    char uuid_str[AWS_UUID_STR_LEN]) {
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN]) {
 
     (void)decoded_len;
 
-    AWS_FATAL_ASSERT(certs != NULL);
-    const CERT_CONTEXT *cert_context = *certs;
     AWS_FATAL_ASSERT(cert_context != NULL);
 
-    HCRYPTPROV crypto_prov = 0;
-    HCRYPTKEY h_key = 0;
+    NCRYPT_PROV_HANDLE crypto_prov = 0;
+    NCRYPT_KEY_HANDLE h_key = 0;
     BCRYPT_ECCKEY_BLOB *key_blob = NULL;
     int result = AWS_OP_ERR;
     SECURITY_STATUS status;
@@ -424,12 +480,7 @@ static int s_cert_context_import_ecc_private_key(
         goto done;
     }
 
-    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
-    size_t converted_chars = 0;
-    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
-    (void)converted_chars;
-
-    NCryptBuffer ncBuf = {sizeof(uuid_wstr), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
+    NCryptBuffer ncBuf = {AWS_UUID_STR_LEN * sizeof(wchar_t), NCRYPTBUFFER_PKCS_KEY_NAME, uuid_wstr};
     NCryptBufferDesc ncBufDesc;
     ncBufDesc.ulVersion = 0;
     ncBufDesc.cBuffers = 1;
@@ -448,8 +499,7 @@ static int s_cert_context_import_ecc_private_key(
     if (status != ERROR_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI,
-            "static: failed to import ecc key %s with status %d, last error %d",
-            uuid_str,
+            "static: failed to import ecc key with status %d, last error %d",
             status,
             (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -460,10 +510,7 @@ static int s_cert_context_import_ecc_private_key(
 
     if (!CertSetCertificateContextProperty(cert_context, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI,
-            "static: failed to set cert context key provider, key %s, with last error %d",
-            uuid_str,
-            (int)GetLastError());
+            AWS_LS_IO_PKI, "static: failed to set cert context key provider, with last error %d", (int)GetLastError());
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -499,8 +546,11 @@ int aws_import_key_pair_to_cert_context(
     struct aws_allocator *alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
+    bool is_client_mode,
     HCERTSTORE *store,
-    PCCERT_CONTEXT *certs) {
+    PCCERT_CONTEXT *certs,
+    HCRYPTPROV *crypto_provider,
+    HCRYPTKEY *private_key_handle) {
 
     struct aws_array_list certificates, private_keys;
     AWS_ZERO_STRUCT(certificates);
@@ -508,8 +558,10 @@ int aws_import_key_pair_to_cert_context(
 
     *certs = NULL;
     *store = NULL;
+    *crypto_provider = 0;
+    *private_key_handle = 0;
+
     int result = AWS_OP_ERR;
-    CERT_CONTEXT *cert_context = NULL;
     BYTE *key = NULL;
 
     if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -555,6 +607,7 @@ int aws_import_key_pair_to_cert_context(
         cert_blob.cbData = (DWORD)byte_buf_ptr->len;
 
         DWORD content_type = 0;
+        PCERT_CONTEXT cert_context = NULL;
         BOOL query_res = CryptQueryObject(
             CERT_QUERY_OBJECT_BLOB,
             &cert_blob,
@@ -580,7 +633,7 @@ int aws_import_key_pair_to_cert_context(
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 
-        if (i != cert_count - 1 || !add_result) {
+        if (i != 0 || !add_result) {
             CertFreeCertificateContext(cert_context);
         } else {
             *certs = cert_context;
@@ -589,6 +642,12 @@ int aws_import_key_pair_to_cert_context(
         if (!add_result) {
             goto clean_up;
         }
+    }
+
+    if (*certs == NULL) {
+        aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: no certificates found, error %s", aws_error_name(aws_last_error()));
+        goto clean_up;
     }
 
     struct aws_byte_buf *private_key_ptr = NULL;
@@ -628,6 +687,13 @@ int aws_import_key_pair_to_cert_context(
         }
     }
 
+    if (cert_type == AWS_CT_X509_UNKNOWN) {
+        aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "static: no acceptable private key found, error %s", aws_error_name(aws_last_error()));
+        goto clean_up;
+    }
+
     struct aws_uuid uuid;
     if (aws_uuid_init(&uuid)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to create a uuid.");
@@ -639,14 +705,20 @@ int aws_import_key_pair_to_cert_context(
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
 
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN] = {0};
+    size_t converted_chars = 0;
+    mbstowcs_s(&converted_chars, uuid_wstr, AWS_UUID_STR_LEN, uuid_str, sizeof(uuid_str));
+    (void)converted_chars;
+
     switch (cert_type) {
         case AWS_CT_X509_RSA:
-            result = s_cert_context_import_rsa_private_key(certs, key, decoded_len, uuid_str);
+            result = s_cert_context_import_rsa_private_key(
+                *certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
             break;
 
 #ifndef AWS_SUPPORT_WIN7
         case AWS_CT_X509_ECC:
-            result = s_cert_context_import_ecc_private_key(certs, alloc, key, decoded_len, uuid_str);
+            result = s_cert_context_import_ecc_private_key(*certs, alloc, key, decoded_len, uuid_wstr);
             break;
 #endif /* AWS_SUPPORT_WIN7 */
 
@@ -673,6 +745,16 @@ clean_up:
         if (*certs) {
             CertFreeCertificateContext(*certs);
             *certs = NULL;
+        }
+
+        if (*crypto_provider != 0) {
+            CryptReleaseContext(*crypto_provider, 0);
+            *crypto_provider = 0;
+        }
+
+        if (*private_key_handle != 0) {
+            CryptDestroyKey(*private_key_handle);
+            *private_key_handle = 0;
         }
     }
 

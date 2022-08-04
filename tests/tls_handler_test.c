@@ -64,16 +64,23 @@ struct tls_opt_tester {
     struct aws_tls_connection_options opt;
 };
 
-static int s_tls_server_opt_tester_init(struct aws_allocator *allocator, struct tls_opt_tester *tester) {
+static int s_tls_server_opt_tester_init(
+    struct aws_allocator *allocator,
+    struct tls_opt_tester *tester,
+    const char *cert_path,
+    const char *pkey_path) {
 
 #    ifdef __APPLE__
     struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
     ASSERT_SUCCESS(
         aws_tls_ctx_options_init_server_pkcs12_from_path(&tester->ctx_options, allocator, "unittests.p12", &pwd_cur));
 #    else
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_default_server_from_path(
-        &tester->ctx_options, allocator, "unittests.crt", "unittests.key"));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_init_default_server_from_path(&tester->ctx_options, allocator, cert_path, pkey_path));
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
 #    endif /* __APPLE__ */
+
     aws_tls_ctx_options_set_alpn_list(&tester->ctx_options, "h2;http/1.1");
     tester->ctx = aws_tls_server_ctx_new(allocator, &tester->ctx_options);
     ASSERT_NOT_NULL(tester->ctx);
@@ -90,7 +97,14 @@ static int s_tls_client_opt_tester_init(
     aws_io_library_init(allocator);
 
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt");
+
+#    ifdef __APPLE__
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "unittests.crt"));
+#    else
+    ASSERT_SUCCESS(
+        aws_tls_ctx_options_override_default_trust_store_from_path(&tester->ctx_options, NULL, "ca_root.crt"));
+#    endif /* __APPLE__ */
 
     tester->ctx = aws_tls_client_ctx_new(allocator, &tester->ctx_options);
     aws_tls_connection_options_init_from_ctx(&tester->opt, tester->ctx);
@@ -376,9 +390,11 @@ static int s_tls_local_server_tester_init(
     struct tls_test_args *args,
     struct tls_common_tester *tls_c_tester,
     bool enable_back_pressure,
-    int server_index) {
+    int server_index,
+    const char *cert_path,
+    const char *pkey_path) {
     AWS_ZERO_STRUCT(*tester);
-    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester));
+    ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester, cert_path, pkey_path));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
@@ -474,137 +490,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
-enum tls_proxy_test_state { TPTS_NONE, TPTS_CONNECTING, TPTS_CONNECTED };
-
-struct tls_proxy_test_context {
-    struct aws_mutex *lock;
-    struct aws_condition_variable *signal;
-    struct aws_byte_buf from_client_data;
-    struct aws_byte_buf to_client_data;
-    struct tls_test_args *c2p_server_test_args;
-    struct aws_channel *c2p_server_channel;
-    struct aws_channel *p2e_client_channel;
-    struct aws_channel_handler *c2p_server_rw_handler;
-    struct aws_channel_handler *proxy_server_rw_handler;
-    struct aws_channel_task c2p_relay_to_client_task;
-    struct aws_channel_task pe2_relay_to_endpoint_task;
-    enum tls_proxy_test_state state;
-    bool relay_to_client_scheduled;
-    bool relay_to_endpoint_scheduled;
-    bool endpoint_shutdown_finished;
-    struct aws_socket_channel_bootstrap_options *to_endpoint_bootstrap_options;
-};
-
-static int s_tls_proxy_rw_args_init(
-    struct tls_proxy_test_context *proxy_context,
-    struct aws_allocator *allocator,
-    struct tls_common_tester *tls_c_tester) {
-    AWS_ZERO_STRUCT(*proxy_context);
-
-    proxy_context->state = TPTS_NONE;
-    proxy_context->lock = &tls_c_tester->mutex;
-    proxy_context->signal = &tls_c_tester->condition_variable;
-
-    ASSERT_SUCCESS(aws_byte_buf_init(&proxy_context->from_client_data, allocator, 256));
-    ASSERT_SUCCESS(aws_byte_buf_init(&proxy_context->to_client_data, allocator, 256));
-
-    return AWS_OP_SUCCESS;
-}
-
-static void s_tls_proxy_rw_args_clean_up(struct tls_proxy_test_context *args) {
-
-    aws_byte_buf_clean_up(&args->from_client_data);
-    aws_byte_buf_clean_up(&args->to_client_data);
-}
-
-static bool s_tls_proxy_channel_shutdown_predicate(void *user_data) {
-    struct tls_proxy_test_context *proxy_context = (struct tls_proxy_test_context *)user_data;
-
-    return proxy_context->endpoint_shutdown_finished;
-}
-
-static struct aws_byte_buf s_client_to_proxy_server_handle_read(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data) {
-
-    (void)handler;
-    (void)slot;
-
-    struct tls_proxy_test_context *proxy_context = (struct tls_proxy_test_context *)user_data;
-    aws_mutex_lock(proxy_context->lock);
-
-    struct aws_byte_cursor data_cursor = aws_byte_cursor_from_buf(data_read);
-    aws_byte_buf_append_dynamic(&proxy_context->from_client_data, &data_cursor);
-
-    if (proxy_context->state == TPTS_NONE) {
-        /* initiate the connection to the endpoint */
-        proxy_context->c2p_server_channel = proxy_context->c2p_server_test_args->channel;
-        AWS_FATAL_ASSERT(proxy_context->c2p_server_channel != NULL);
-        proxy_context->state = TPTS_CONNECTING;
-        aws_client_bootstrap_new_socket_channel(proxy_context->to_endpoint_bootstrap_options);
-    } else if (proxy_context->state == TPTS_CONNECTED && !proxy_context->endpoint_shutdown_finished) {
-        /* schedule a task to send data to the endpoint */
-        if (!proxy_context->relay_to_endpoint_scheduled) {
-            proxy_context->relay_to_endpoint_scheduled = true;
-            aws_channel_schedule_task_now(
-                proxy_context->p2e_client_channel, &proxy_context->pe2_relay_to_endpoint_task);
-        }
-    }
-
-    aws_mutex_unlock(proxy_context->lock);
-
-    struct aws_byte_buf empty_buf;
-    AWS_ZERO_STRUCT(empty_buf);
-
-    return empty_buf;
-}
-
-static struct aws_byte_buf s_proxy_to_endpoint_client_handle_read(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data) {
-
-    (void)handler;
-    (void)slot;
-
-    struct tls_proxy_test_context *proxy_context = (struct tls_proxy_test_context *)user_data;
-    aws_mutex_lock(proxy_context->lock);
-
-    struct aws_byte_cursor data_cursor = aws_byte_cursor_from_buf(data_read);
-    aws_byte_buf_append_dynamic(&proxy_context->to_client_data, &data_cursor);
-
-    /* schedule a task to send the data to the client */
-    if (!proxy_context->relay_to_client_scheduled) {
-        proxy_context->relay_to_client_scheduled = true;
-        aws_channel_schedule_task_now(proxy_context->c2p_server_channel, &proxy_context->c2p_relay_to_client_task);
-    }
-
-    aws_mutex_unlock(proxy_context->lock);
-
-    struct aws_byte_buf empty_buf;
-    AWS_ZERO_STRUCT(empty_buf);
-
-    return empty_buf;
-}
-
-static struct aws_byte_buf s_proxy_tls_test_handle_write(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *data_read,
-    void *user_data) {
-
-    (void)handler;
-    (void)slot;
-    (void)data_read;
-    (void)user_data;
-
-    /*do nothing*/
-    return (struct aws_byte_buf){0};
-}
-
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
@@ -635,7 +520,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
 
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, true, 1));
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(
+        allocator, &local_server_tester, &incoming_args, &c_tester, true, 1, "server.crt", "server.key"));
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
         allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len / 2, &outgoing_rw_args);
@@ -795,6 +681,7 @@ struct default_host_callback_data {
 static int s_verify_negotiation_fails_helper(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
+    uint16_t port,
     struct aws_tls_ctx_options *client_ctx_options) {
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, client_ctx_options);
 
@@ -838,7 +725,7 @@ static int s_verify_negotiation_fails_helper(
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
     channel_options.host_name = aws_string_c_str(host_name);
-    channel_options.port = 443;
+    channel_options.port = port;
     channel_options.socket_options = &options;
     channel_options.tls_options = &tls_client_conn_options;
     channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
@@ -874,7 +761,11 @@ static int s_verify_negotiation_fails_helper(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_negotiation_fails(struct aws_allocator *allocator, const struct aws_string *host_name) {
+static int s_verify_negotiation_fails(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    uint16_t port,
+    void (*context_options_override_fn)(struct aws_tls_ctx_options *)) {
 
     aws_io_library_init(allocator);
 
@@ -883,7 +774,11 @@ static int s_verify_negotiation_fails(struct aws_allocator *allocator, const str
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
 
-    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
+    if (context_options_override_fn) {
+        (*context_options_override_fn)(&client_ctx_options);
+    }
+
+    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, port, &client_ctx_options));
 
     aws_tls_ctx_options_clean_up(&client_ctx_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
@@ -902,36 +797,33 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path);
 
-    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, &client_ctx_options));
+    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path));
 
-    aws_tls_ctx_options_clean_up(&client_ctx_options);
+    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, 443, &client_ctx_options));
+
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+    aws_tls_ctx_options_clean_up(&client_ctx_options);
 
     return AWS_OP_SUCCESS;
 }
 
+AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired.badssl.com");
+
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, s_expired_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_expired, s_tls_client_channel_negotiation_error_expired_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_wrong_host_name, "wrong.host.badssl.com");
+
 static int s_tls_client_channel_negotiation_error_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, s_wrong_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_wrong_host, s_tls_client_channel_negotiation_error_wrong_host_fn)
@@ -941,66 +833,179 @@ static int s_tls_client_channel_negotiation_error_wrong_host_with_ca_override_fn
     void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails_with_ca_override(allocator, host_name, "DigiCertGlobalRootCA.crt.pem");
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails_with_ca_override(allocator, s_wrong_host_name, "DigiCertGlobalRootCA.crt.pem");
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_error_wrong_host_with_ca_override,
     s_tls_client_channel_negotiation_error_wrong_host_with_ca_override_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_self_signed_host_name, "self-signed.badssl.com");
+
 static int s_tls_client_channel_negotiation_error_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, s_self_signed_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_self_signed, s_tls_client_channel_negotiation_error_self_signed_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_untrusted_root_host_name, "untrusted-root.badssl.com");
+
 static int s_tls_client_channel_negotiation_error_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, s_untrusted_root_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_error_untrusted_root,
-    s_tls_client_channel_negotiation_error_untrusted_root_fn)
+    s_tls_client_channel_negotiation_error_untrusted_root_fn);
 
-static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
+AWS_STATIC_STRING_FROM_LITERAL(s_amazon_host_name, "www.amazon.com");
+
+/* negotiation should fail. www.amazon.com is obviously trusted by the default trust store,
+ * but we've overridden the default trust store */
+static int s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
 
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails_with_ca_override(allocator, s_amazon_host_name, "ca_root.crt");
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override,
+    s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn)
 
-static int s_tls_client_channel_negotiation_error_pinning_fn(struct aws_allocator *allocator, void *ctx) {
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_host_name, "rc4.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_rc4_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_negotiation_fails(allocator, host_name);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_rc4_host_name, 443, NULL);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_error_pinning, s_tls_client_channel_negotiation_error_pinning_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_rc4,
+    s_tls_client_channel_negotiation_error_broken_crypto_rc4_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_md5_host_name, "rc4-md5.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_rc4_md5_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_rc4_md5_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_rc4_md5,
+    s_tls_client_channel_negotiation_error_broken_crypto_rc4_md5_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh480_host_name, "dh480.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_dh480_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_dh480_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_dh480,
+    s_tls_client_channel_negotiation_error_broken_crypto_dh480_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh512_host_name, "dh512.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_dh512_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_dh512_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_dh512,
+    s_tls_client_channel_negotiation_error_broken_crypto_dh512_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh1024_host_name, "dh1024.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_dh1024_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_dh1024_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_dh1024,
+    s_tls_client_channel_negotiation_error_broken_crypto_dh1024_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_null_host_name, "null.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_broken_crypto_null_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_broken_crypto_null_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_broken_crypto_null,
+    s_tls_client_channel_negotiation_error_broken_crypto_null_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls10_host_name, "tls-v1-0.badssl.com");
+
+static void s_raise_tls_version_to_11(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
+}
+
+static int s_tls_client_channel_negotiation_error_legacy_crypto_tls10_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_raise_tls_version_to_11);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_legacy_crypto_tls10,
+    s_tls_client_channel_negotiation_error_legacy_crypto_tls10_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls11_host_name, "tls-v1-1.badssl.com");
+
+static void s_raise_tls_version_to_12(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
+}
+
+static int s_tls_client_channel_negotiation_error_override_legacy_crypto_tls11_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_legacy_crypto_tls11_host_name, 1011, &s_raise_tls_version_to_12);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_override_legacy_crypto_tls11,
+    s_tls_client_channel_negotiation_error_override_legacy_crypto_tls11_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_dh2048_host_name, "dh2048.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_legacy_crypto_dh2048_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_legacy_crypto_dh2048_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_legacy_crypto_dh2048,
+    s_tls_client_channel_negotiation_error_legacy_crypto_dh2048_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_subject_host_name, "no-subject.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_no_subject_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_uncommon_no_subject_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_error_no_subject, s_tls_client_channel_negotiation_error_no_subject_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_common_name_host_name, "no-common-name.badssl.com");
+
+static int s_tls_client_channel_negotiation_error_no_common_name_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_uncommon_no_common_name_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_no_common_name,
+    s_tls_client_channel_negotiation_error_no_common_name_fn)
 
 /* Test that, if the channel shuts down unexpectedly during tls negotiation, that the user code is still notified.
  * We make this happen by connecting to port 80 on s3 or amazon.com and attempting TLS,
@@ -1071,7 +1076,12 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_socket_closed,
     s_tls_client_channel_negotiation_error_socket_closed_fn);
 
-static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_string *host_name, bool verify) {
+static int s_verify_good_host(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    uint16_t port,
+    void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
+
     aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
@@ -1089,9 +1099,14 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     };
 
     struct aws_tls_ctx_options client_ctx_options;
+    AWS_ZERO_STRUCT(client_ctx_options);
+    aws_tls_ctx_options_set_verify_peer(&client_ctx_options, true);
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "http/1.1");
-    aws_tls_ctx_options_set_verify_peer(&client_ctx_options, verify);
+
+    if (override_tls_options_fn) {
+        (*override_tls_options_fn)(&client_ctx_options);
+    }
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
 
@@ -1120,7 +1135,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     AWS_ZERO_STRUCT(channel_options);
     channel_options.bootstrap = client_bootstrap;
     channel_options.host_name = aws_string_c_str(host_name);
-    channel_options.port = 443;
+    channel_options.port = port;
     channel_options.socket_options = &options;
     channel_options.tls_options = &tls_client_conn_options;
     channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
@@ -1142,7 +1157,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("http/1.1");
     /* check ALPN and SNI was properly negotiated */
 
-    if (aws_tls_is_alpn_available() && verify) {
+    if (aws_tls_is_alpn_available() && client_ctx_options.verify_peer) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
             expected_protocol.len,
@@ -1151,7 +1166,7 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
     }
 
     ASSERT_BIN_ARRAYS_EQUALS(
-        aws_string_bytes(host_name), host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
+        host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
@@ -1170,49 +1185,39 @@ static int s_verify_good_host(struct aws_allocator *allocator, const struct aws_
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "www.amazon.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, true);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_amazon_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success, s_tls_client_channel_negotiation_success_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_badssl_ecc256_host_name, "ecc256.badssl.com");
+
 static int s_tls_client_channel_negotiation_success_ecc256_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ecc256.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, true);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_badssl_ecc256_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc256, s_tls_client_channel_negotiation_success_ecc256_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_badssl_ecc384_host_name, "ecc384.badssl.com");
+
 static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ecc384.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, true);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
+
+static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_verify_peer(options, false);
+}
+
 /* prove that connections complete even when verify_peer is false */
 static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    struct aws_string *host_name = aws_string_new_from_c_str(allocator, "s3.amazonaws.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy(host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s3_host_name, 443, &s_disable_verify_peer);
 }
 AWS_TEST_CASE(tls_client_channel_no_verify, s_tls_client_channel_no_verify_fn)
 
@@ -1220,24 +1225,14 @@ AWS_TEST_CASE(tls_client_channel_no_verify, s_tls_client_channel_no_verify_fn)
 
 static int s_tls_client_channel_negotiation_no_verify_expired_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "expired.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_expired_host_name, 443, &s_disable_verify_peer);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_expired, s_tls_client_channel_negotiation_no_verify_expired_fn)
 
 static int s_tls_client_channel_negotiation_no_verify_wrong_host_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "wrong.host.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_wrong_host_name, 443, &s_disable_verify_peer);
 }
 
 AWS_TEST_CASE(
@@ -1246,12 +1241,7 @@ AWS_TEST_CASE(
 
 static int s_tls_client_channel_negotiation_no_verify_self_signed_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "self-signed.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_self_signed_host_name, 443, &s_disable_verify_peer);
 }
 
 AWS_TEST_CASE(
@@ -1260,41 +1250,147 @@ AWS_TEST_CASE(
 
 static int s_tls_client_channel_negotiation_no_verify_untrusted_root_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "untrusted-root.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_untrusted_root_host_name, 443, &s_disable_verify_peer);
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_no_verify_untrusted_root,
     s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
 
-static int s_tls_client_channel_negotiation_no_verify_revoked_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "revoked.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+static void s_lower_tls_version(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_revoked, s_tls_client_channel_negotiation_no_verify_revoked_fn)
-
-static int s_tls_client_channel_negotiation_no_verify_pinning_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
-
-    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "pinning-test.badssl.com");
-    ASSERT_NOT_NULL(host_name);
-    int err_code = s_verify_good_host(allocator, host_name, false);
-    aws_string_destroy((void *)host_name);
-    return err_code;
+    return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_no_verify_pinning, s_tls_client_channel_negotiation_no_verify_pinning_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_override_legacy_crypto_tls10,
+    s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn)
+
+static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_legacy_crypto_tls11,
+    s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_sha384_host_name, "sha384.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_sha384_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_sha384_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_sha384, s_tls_client_channel_negotiation_success_sha384_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_sha512_host_name, "sha512.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_sha512_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_sha512_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_sha512, s_tls_client_channel_negotiation_success_sha512_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_rsa8192_host_name, "rsa8192.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_rsa8192_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_rsa8192_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_rsa8192, s_tls_client_channel_negotiation_success_rsa8192_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_incomplete_chain_host_name, "incomplete-chain.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_no_verify_incomplete_chain_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_incomplete_chain_host_name, 443, s_disable_verify_peer);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_no_verify_incomplete_chain,
+    s_tls_client_channel_negotiation_success_no_verify_incomplete_chain_fn)
+
+static int s_tls_client_channel_negotiation_success_no_verify_no_subject_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_no_subject_host_name, 443, s_disable_verify_peer);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_no_verify_no_subject,
+    s_tls_client_channel_negotiation_success_no_verify_no_subject_fn)
+
+static int s_tls_client_channel_negotiation_success_no_verify_no_common_name_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_uncommon_no_common_name_host_name, 443, s_disable_verify_peer);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_no_verify_no_common_name,
+    s_tls_client_channel_negotiation_success_no_verify_no_common_name_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_common_tls12_host_name, "tls-v1-2.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_tls12_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_common_tls12_host_name, 1012, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_tls12, s_tls_client_channel_negotiation_success_tls12_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_common_sha256_host_name, "sha256.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_sha256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_common_sha256_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_sha256, s_tls_client_channel_negotiation_success_sha256_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_common_rsa2048_host_name, "rsa2048.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_rsa2048_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_common_rsa2048_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_success_rsa2048, s_tls_client_channel_negotiation_success_rsa2048_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_common_extended_validation_host_name, "extended-validation.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_extended_validation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_common_extended_validation_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_extended_validation,
+    s_tls_client_channel_negotiation_success_extended_validation_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_common_mozilla_modern_host_name, "mozilla-modern.badssl.com");
+
+static int s_tls_client_channel_negotiation_success_mozilla_modern_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_common_mozilla_modern_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mozilla_modern,
+    s_tls_client_channel_negotiation_success_mozilla_modern_fn)
 
 static void s_reset_arg_state(struct tls_test_args *setup_test_args) {
     setup_test_args->tls_levels_negotiated = 0;
@@ -1317,8 +1413,8 @@ static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator,
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
 
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(
+        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "server.crt", "server.key"));
 
     struct tls_opt_tester client_tls_opt_tester;
     struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
@@ -1466,8 +1562,8 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
 
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(
+        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "server.crt", "server.key"));
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
@@ -1611,8 +1707,8 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
 
     struct tls_local_server_tester local_server_tester;
-    ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &local_server_tester, &incoming_args, &c_tester, false, 1));
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(
+        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "server.crt", "server.key"));
 
     struct aws_channel_handler *outgoing_rw_handler =
         rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
@@ -1717,6 +1813,87 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
 }
 
 AWS_TEST_CASE(tls_channel_statistics_test, s_tls_channel_statistics_test)
+
+static int s_tls_certificate_chain_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
+
+    struct tls_test_args outgoing_args;
+    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &outgoing_args, false, &c_tester));
+
+    struct tls_test_args incoming_args;
+    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &incoming_args, true, &c_tester));
+
+    struct tls_local_server_tester local_server_tester;
+    ASSERT_SUCCESS(s_tls_local_server_tester_init(
+        allocator, &local_server_tester, &incoming_args, &c_tester, false, 1, "server_chain.crt", "server.key"));
+
+    struct tls_opt_tester client_tls_opt_tester;
+    struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
+    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
+    aws_tls_connection_options_set_callbacks(
+        &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = local_server_tester.endpoint.address;
+    channel_options.port = 0;
+    channel_options.socket_options = &local_server_tester.socket_options;
+    channel_options.tls_options = &client_tls_opt_tester.opt;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    /* connect! */
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
+    /* wait for both ends to setup */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_FALSE(incoming_args.error_invoked);
+
+    /* shut down */
+    aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &incoming_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    /* no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
+     * wait for the event to fire. */
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    /* clean up */
+    aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &incoming_args));
+    aws_mutex_unlock(&c_tester.mutex);
+
+    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&local_server_tester));
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_certificate_chain_test, s_tls_certificate_chain_test)
 
 ///////////////////////////////////////////////////////////////
 
@@ -2007,405 +2184,6 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
-
-static void s_proxy_to_endpoint_client_setup_callback(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
-
-    (void)bootstrap;
-
-    struct tls_proxy_test_context *proxy_context = user_data;
-    aws_mutex_lock(proxy_context->lock);
-
-    AWS_FATAL_ASSERT(error_code == AWS_ERROR_SUCCESS);
-
-    proxy_context->p2e_client_channel = channel;
-    proxy_context->state = TPTS_CONNECTED;
-
-    proxy_context->proxy_server_rw_handler = rw_handler_new(
-        bootstrap->allocator,
-        s_proxy_to_endpoint_client_handle_read,
-        s_proxy_tls_test_handle_write,
-        true,
-        10000,
-        proxy_context);
-
-    struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
-    aws_channel_slot_insert_end(channel, rw_slot);
-    aws_channel_slot_set_handler(rw_slot, proxy_context->proxy_server_rw_handler);
-
-    if (!proxy_context->relay_to_endpoint_scheduled) {
-        proxy_context->relay_to_endpoint_scheduled = true;
-        aws_channel_schedule_task_now(proxy_context->p2e_client_channel, &proxy_context->pe2_relay_to_endpoint_task);
-    }
-
-    aws_mutex_unlock(proxy_context->lock);
-    aws_condition_variable_notify_one(proxy_context->signal);
-}
-
-static void s_proxy_to_endpoint_client_shutdown_callback(
-    struct aws_client_bootstrap *bootstrap,
-    int error_code,
-    struct aws_channel *channel,
-    void *user_data) {
-
-    (void)bootstrap;
-    (void)error_code;
-    (void)channel;
-
-    struct tls_proxy_test_context *proxy_content = user_data;
-
-    aws_mutex_lock(proxy_content->lock);
-    proxy_content->endpoint_shutdown_finished = true;
-    aws_mutex_unlock(proxy_content->lock);
-    aws_condition_variable_notify_one(proxy_content->signal);
-}
-
-static void s_c2p_relay_to_client(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
-    (void)channel_task;
-
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        return;
-    }
-
-    struct aws_io_message *message = NULL;
-    struct aws_channel_slot *slot = NULL;
-    struct tls_proxy_test_context *proxy_context = arg;
-
-    aws_mutex_lock(proxy_context->lock);
-
-    size_t amount_to_send = proxy_context->to_client_data.len;
-    if (amount_to_send > 0) {
-        message = aws_channel_acquire_message_from_pool(
-            proxy_context->c2p_server_channel, AWS_IO_MESSAGE_APPLICATION_DATA, amount_to_send);
-        AWS_FATAL_ASSERT(message);
-
-        AWS_FATAL_ASSERT(
-            aws_byte_buf_write(&message->message_data, proxy_context->to_client_data.buffer, amount_to_send));
-
-        proxy_context->to_client_data.len = 0;
-
-        /* send to tls handler */
-        slot = aws_channel_get_first_slot(proxy_context->c2p_server_channel)->adj_right->adj_right;
-    }
-
-    proxy_context->relay_to_client_scheduled = false;
-    aws_mutex_unlock(proxy_context->lock);
-
-    if (message != NULL && slot != NULL) {
-        AWS_FATAL_ASSERT(AWS_ERROR_SUCCESS == aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE));
-    }
-}
-
-static void s_p2e_relay_to_endpoint(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
-    (void)channel_task;
-
-    if (status != AWS_TASK_STATUS_RUN_READY) {
-        return;
-    }
-
-    struct aws_io_message *message = NULL;
-    struct aws_channel_slot *slot = NULL;
-    struct tls_proxy_test_context *proxy_context = arg;
-
-    aws_mutex_lock(proxy_context->lock);
-
-    size_t amount_to_send = proxy_context->from_client_data.len;
-    if (amount_to_send > 0) {
-        message = aws_channel_acquire_message_from_pool(
-            proxy_context->p2e_client_channel, AWS_IO_MESSAGE_APPLICATION_DATA, amount_to_send);
-        AWS_FATAL_ASSERT(message);
-
-        AWS_FATAL_ASSERT(
-            aws_byte_buf_write(&message->message_data, proxy_context->from_client_data.buffer, amount_to_send));
-
-        proxy_context->from_client_data.len = 0;
-
-        /* socket slot */
-        slot = aws_channel_get_first_slot(proxy_context->p2e_client_channel)->adj_right;
-    }
-
-    proxy_context->relay_to_endpoint_scheduled = false;
-    aws_mutex_unlock(proxy_context->lock);
-
-    if (message != NULL && slot != NULL) {
-        aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE);
-    }
-}
-
-/*
- * A variant of the basic tls test, but this time using nested tls handlers on the client.
- *
- * We use two servers, each configured with tls.  The proxy server, on handshake success, then makes a plaintext
- * (non-tls) socket connection to the endpoint server and adds a pass-through handler for data coming to and from.  In
- * this way, the client, with its nested tls handlers, will then drive tls negotiation with the endpoint server
- * directly, making for a simple proxy simulation.
- *
- * Visually:
- *
- * Client <--------------> proxy server <----------------> endpoint server
- *
- * The channel setup is a bit complex:
- *
- * c2p = client-to-proxy-server
- * p2e = proxy-server-to-endpoint-server
- *
- * (1) c2p client channel:   socket <---> client tls #1 <---> client tls #2 <---> test rw handler
- * (2) c2p server channel:   socket <---> server tls <---> to endpoint relay handler
- * (3) p2e client channel:   socket <---> to client relay handler
- * (4) p2e server channel:   socket <---> server tls <---> test rw handler
- *
- * Where the (read) relay handlers in (2) and (3) blindly forward data between one another.
- */
-static int s_tls_double_channel_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    aws_io_library_init(allocator);
-    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
-
-    struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot.");
-    struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("I'm a big teapot");
-
-    uint8_t incoming_received_message[128] = {0};
-    uint8_t outgoing_received_message[128] = {0};
-
-    struct tls_test_rw_args client_channel_context;
-    ASSERT_SUCCESS(s_tls_rw_args_init(
-        &client_channel_context,
-        &c_tester,
-        aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
-
-    struct tls_proxy_test_context proxy_channel_context;
-    ASSERT_SUCCESS(s_tls_proxy_rw_args_init(&proxy_channel_context, allocator, &c_tester));
-
-    /* We use channel tasks to relay data across the c2p/p2e channel divide */
-    aws_channel_task_init(
-        &proxy_channel_context.c2p_relay_to_client_task,
-        s_c2p_relay_to_client,
-        &proxy_channel_context,
-        "c2p_relay_to_client");
-    aws_channel_task_init(
-        &proxy_channel_context.pe2_relay_to_endpoint_task,
-        s_p2e_relay_to_endpoint,
-        &proxy_channel_context,
-        "p2e_relay_to_endpoint");
-
-    struct tls_test_rw_args endpoint_channel_context;
-    ASSERT_SUCCESS(s_tls_rw_args_init(
-        &endpoint_channel_context,
-        &c_tester,
-        aws_byte_buf_from_empty_array(incoming_received_message, sizeof(incoming_received_message))));
-
-    struct tls_test_args client_test_state;
-    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &client_test_state, false, &c_tester));
-    client_test_state.desired_tls_levels = 2;
-
-    /*
-     * Configure the proxy server
-     */
-    struct tls_test_args proxy_server_test_state;
-    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &proxy_server_test_state, true, &c_tester));
-    proxy_server_test_state.desired_tls_levels = 1;
-
-    struct tls_local_server_tester proxy_server_tester;
-    ASSERT_SUCCESS(
-        s_tls_local_server_tester_init(allocator, &proxy_server_tester, &proxy_server_test_state, &c_tester, false, 1));
-
-    /*
-     * Configure the endpoint server
-     */
-    struct tls_test_args endpoint_server_test_state;
-    ASSERT_SUCCESS(s_tls_test_arg_init(allocator, &endpoint_server_test_state, true, &c_tester));
-    endpoint_server_test_state.desired_tls_levels = 1;
-
-    struct tls_local_server_tester endpoint_server_tester;
-    ASSERT_SUCCESS(s_tls_local_server_tester_init(
-        allocator, &endpoint_server_tester, &endpoint_server_test_state, &c_tester, false, 2));
-
-    /* handler setup  */
-    struct aws_channel_handler *client_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &client_channel_context);
-    ASSERT_NOT_NULL(client_rw_handler);
-    client_test_state.rw_handler = client_rw_handler;
-
-    struct aws_channel_handler *c2p_server_rw_handler = rw_handler_new(
-        allocator, s_client_to_proxy_server_handle_read, s_tls_test_handle_write, true, 10000, &proxy_channel_context);
-    ASSERT_NOT_NULL(c2p_server_rw_handler);
-    proxy_server_test_state.rw_handler = c2p_server_rw_handler;
-
-    struct aws_channel_handler *endpoint_server_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &endpoint_channel_context);
-    ASSERT_NOT_NULL(endpoint_server_rw_handler);
-    endpoint_server_test_state.rw_handler = endpoint_server_rw_handler;
-
-    struct tls_opt_tester client_tls_opt_tester;
-    struct aws_byte_cursor server_name = aws_byte_cursor_from_c_str("localhost");
-    ASSERT_SUCCESS(s_tls_client_opt_tester_init(allocator, &client_tls_opt_tester, server_name));
-    aws_tls_connection_options_set_callbacks(
-        &client_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, &client_test_state);
-
-    client_test_state.tls_options = &client_tls_opt_tester.opt;
-    proxy_server_test_state.tls_options = &client_tls_opt_tester.opt;
-    endpoint_server_test_state.tls_options = &client_tls_opt_tester.opt;
-
-    struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = c_tester.el_group,
-        .host_resolver = c_tester.resolver,
-    };
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
-
-    struct aws_socket_channel_bootstrap_options client_to_proxy_channel_options;
-    AWS_ZERO_STRUCT(client_to_proxy_channel_options);
-    client_to_proxy_channel_options.bootstrap = client_bootstrap;
-    client_to_proxy_channel_options.host_name = proxy_server_tester.endpoint.address;
-    client_to_proxy_channel_options.port = 0;
-    client_to_proxy_channel_options.socket_options = &proxy_server_tester.socket_options;
-    client_to_proxy_channel_options.tls_options = &client_tls_opt_tester.opt;
-    client_to_proxy_channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
-    client_to_proxy_channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
-    client_to_proxy_channel_options.user_data = &client_test_state;
-
-    struct aws_socket_channel_bootstrap_options proxy_to_endpoint_channel_options;
-    AWS_ZERO_STRUCT(proxy_to_endpoint_channel_options);
-    proxy_to_endpoint_channel_options.bootstrap = client_bootstrap;
-    proxy_to_endpoint_channel_options.host_name = endpoint_server_tester.endpoint.address;
-    proxy_to_endpoint_channel_options.port = 0;
-    proxy_to_endpoint_channel_options.socket_options = &endpoint_server_tester.socket_options;
-    proxy_to_endpoint_channel_options.tls_options = NULL;
-    proxy_to_endpoint_channel_options.setup_callback = s_proxy_to_endpoint_client_setup_callback;
-    proxy_to_endpoint_channel_options.shutdown_callback = s_proxy_to_endpoint_client_shutdown_callback;
-    proxy_to_endpoint_channel_options.user_data = &proxy_channel_context;
-
-    proxy_channel_context.to_endpoint_bootstrap_options = &proxy_to_endpoint_channel_options;
-    proxy_channel_context.c2p_server_test_args = &proxy_server_test_state;
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 1* starting initial connection");
-
-    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_to_proxy_channel_options));
-
-    /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &endpoint_server_test_state));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 2* initial channel setup ");
-
-    ASSERT_FALSE(endpoint_server_test_state.error_invoked);
-
-/* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#    ifndef __APPLE__
-    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
-
-    /* check ALPN and SNI was properly negotiated */
-    if (aws_tls_is_alpn_available()) {
-        ASSERT_BIN_ARRAYS_EQUALS(
-            expected_protocol.buffer,
-            expected_protocol.len,
-            endpoint_server_test_state.negotiated_protocol.buffer,
-            endpoint_server_test_state.negotiated_protocol.len);
-    }
-#    endif
-
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &client_test_state));
-    ASSERT_INT_EQUALS(2, client_test_state.tls_levels_negotiated);
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-    ASSERT_FALSE(client_test_state.error_invoked);
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 3* Full circuit negotiated ");
-
-/* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#    ifndef __MACH__
-    if (aws_tls_is_alpn_available()) {
-        ASSERT_BIN_ARRAYS_EQUALS(
-            expected_protocol.buffer,
-            expected_protocol.len,
-            client_test_state.negotiated_protocol.buffer,
-            client_test_state.negotiated_protocol.len);
-    }
-#    endif
-
-    ASSERT_FALSE(client_test_state.error_invoked);
-
-    /* Do the IO operations */
-    rw_handler_write(client_test_state.rw_handler, client_test_state.rw_slot, &write_tag);
-    rw_handler_write(endpoint_server_test_state.rw_handler, endpoint_server_test_state.rw_slot, &read_tag);
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &endpoint_channel_context));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &client_channel_context));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 4* App data received ");
-
-    ASSERT_INT_EQUALS(1, client_channel_context.read_invocations);
-    ASSERT_INT_EQUALS(1, endpoint_channel_context.read_invocations);
-
-    aws_channel_shutdown(endpoint_server_test_state.channel, AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &endpoint_server_test_state));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    /*
-     * It turns out we only need to explicitly shut down the proxy-to-endpoint server channel since that will break
-     * the tls circuit all the way to client, which in turn causes both client channels to go away which in turn
-     * casues the client-to-proxy server channel to go away.
-     */
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &proxy_server_test_state));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 5* Server channel shutdowns complete ");
-
-    /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
-     * wait for the event to fire. */
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_proxy_channel_shutdown_predicate, &proxy_channel_context));
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &client_test_state));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 6* Client channel shutdowns complete ");
-
-    aws_server_bootstrap_destroy_socket_listener(
-        endpoint_server_tester.server_bootstrap, endpoint_server_tester.listener);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &endpoint_server_test_state));
-
-    aws_server_bootstrap_destroy_socket_listener(proxy_server_tester.server_bootstrap, proxy_server_tester.listener);
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_listener_destroy_predicate, &proxy_server_test_state));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 7* Server listener shutdowns complete ");
-
-    aws_mutex_unlock(&c_tester.mutex);
-
-    s_tls_proxy_rw_args_clean_up(&proxy_channel_context);
-
-    /* clean up */
-    ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&client_tls_opt_tester));
-    aws_client_bootstrap_release(client_bootstrap);
-    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&endpoint_server_tester));
-    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&proxy_server_tester));
-    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "*TEST 8* All thread shutdowns complete ");
-
-    aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(tls_double_channel, s_tls_double_channel_fn)
 
 static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

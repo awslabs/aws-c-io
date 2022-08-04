@@ -10,6 +10,7 @@
 
 struct aws_channel_slot;
 struct aws_channel_handler;
+struct aws_pkcs11_session;
 struct aws_string;
 
 enum aws_tls_versions {
@@ -23,13 +24,55 @@ enum aws_tls_versions {
 
 enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT = 0,
-    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06 = 1,
-    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11 = 2,
-    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02 = 3,
-    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02 = 4,
-    AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07 = 5,
+
+    /* Deprecated */ AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06 = 1,
+    /* Deprecated */ AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11 = 2,
+    /* Deprecated */ AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02 = 3,
+    /* Deprecated */ AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02 = 4,
+    /* Deprecated */ AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07 = 5,
+
+    /*
+     * This TLS cipher preference list contains post-quantum key exchange algorithms that have been submitted to NIST
+     * for potential future standardization. Support for this preference list, or PQ algorithms present in it, may be
+     * removed at any time in the future. PQ algorithms in this preference list will be used in hybrid mode, and always
+     * combined with a classical ECDHE key exchange.
+     */
+    AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05 = 6,
 
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
+};
+
+/**
+ * The hash algorithm of a TLS private key operation. Any custom private key operation handlers are expected to perform
+ * operations on the input TLS data using the correct hash algorithm or fail the operation.
+ */
+enum aws_tls_hash_algorithm {
+    AWS_TLS_HASH_UNKNOWN,
+    AWS_TLS_HASH_SHA1,
+    AWS_TLS_HASH_SHA224,
+    AWS_TLS_HASH_SHA256,
+    AWS_TLS_HASH_SHA384,
+    AWS_TLS_HASH_SHA512,
+};
+
+/**
+ * The signature of a TLS private key operation. Any custom private key operation handlers are expected to perform
+ * operations on the input TLS data using the correct signature algorithm or fail the operation.
+ */
+enum aws_tls_signature_algorithm {
+    AWS_TLS_SIGNATURE_UNKNOWN,
+    AWS_TLS_SIGNATURE_RSA,
+    AWS_TLS_SIGNATURE_ECDSA,
+};
+
+/**
+ * The TLS private key operation that needs to be performed by a custom private key operation handler when making
+ * a connection using mutual TLS.
+ */
+enum aws_tls_key_operation_type {
+    AWS_TLS_KEY_OPERATION_UNKNOWN,
+    AWS_TLS_KEY_OPERATION_SIGN,
+    AWS_TLS_KEY_OPERATION_DECRYPT,
 };
 
 struct aws_tls_ctx {
@@ -91,6 +134,13 @@ struct aws_tls_connection_options {
     bool advertise_alpn_message;
     uint32_t timeout_ms;
 };
+
+/**
+ * A struct containing all of the data needed for a private key operation when
+ * making a mutual TLS connection. This struct contains the data that needs
+ * to be operated on, like performing a sign operation or a decrypt operation.
+ */
+struct aws_tls_key_operation;
 
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
@@ -189,6 +239,15 @@ struct aws_tls_ctx_options {
      * implementation.
      */
     void *ctx_options_extension;
+
+    /**
+     * Set if using custom private key operations.
+     * See aws_custom_key_op_handler for more details
+     *
+     * Note: Custom key operations (and PKCS#11 integration) hasn't been tested with TLS 1.3, so don't use
+     * cipher preferences that allow TLS 1.3. If this is set, we will always use non TLS 1.3 preferences.
+     */
+    struct aws_custom_key_op_handler *custom_key_op_handler;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -253,13 +312,13 @@ AWS_IO_API void aws_tls_ctx_options_init_default_client(
  */
 AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options);
 
-#if !defined(AWS_OS_IOS)
-
 /**
  * Initializes options for use with mutual tls in client mode.
  * cert_path and pkey_path are paths to files on disk. cert_path
  * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
  * from disk and stored in buffers internally.
+ *
+ * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_tls_ctx_options *options,
@@ -271,6 +330,8 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
  * Initializes options for use with mutual tls in client mode.
  * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
  * armored.
+ *
+ * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
@@ -278,14 +339,174 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey);
 
-#    ifdef __APPLE__
 /**
+ * vtable for aws_custom_key_op_handler.
+ */
+struct aws_custom_key_op_handler_vtable {
+    /**
+     * Called when the a TLS handshake has an operation it needs the custom key operation handler to perform.
+     * NOTE: You must call aws_tls_key_operation_complete() or aws_tls_key_operation_complete_with_error()
+     * otherwise the TLS handshake will stall the TLS connection indefinitely and leak memory.
+     */
+    void (*on_key_operation)(struct aws_custom_key_op_handler *key_op_handler, struct aws_tls_key_operation *operation);
+};
+
+/**
+ * The custom key operation that is used when performing a mutual TLS handshake. This can
+ * be extended to provide custom private key operations, like PKCS11 or similar.
+ */
+struct aws_custom_key_op_handler {
+    /**
+     * A void* intended to be populated with a reference to whatever class is extending this class. For example,
+     * if you have extended aws_custom_key_op_handler with a custom struct, you would put a pointer to this struct
+     * to *impl so you can retrieve it back in the vtable functions.
+     */
+    void *impl;
+
+    /**
+     * A vtable containing all of the functions the aws_custom_key_op_handler implements. Is intended to be extended.
+     * NOTE: Use "aws_custom_key_op_handler_<func>" to access vtable functions.
+     */
+    const struct aws_custom_key_op_handler_vtable *vtable;
+
+    /**
+     * A reference count for handling memory usage.
+     * Use aws_custom_key_op_handler_acquire and aws_custom_key_op_handler_release to increase/decrease count.
+     */
+    struct aws_ref_count ref_count;
+};
+
+/**
+ * Increases the reference count for the passed-in aws_custom_key_op_handler and returns it.
+ */
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_acquire(
+    struct aws_custom_key_op_handler *key_op_handler);
+
+/**
+ * Decreases the reference count for the passed-in aws_custom_key_op_handler and returns NULL.
+ */
+AWS_IO_API struct aws_custom_key_op_handler *aws_custom_key_op_handler_release(
+    struct aws_custom_key_op_handler *key_op_handler);
+
+/**
+ * Calls the on_key_operation vtable function. See aws_custom_key_op_handler_vtable for function details.
+ */
+AWS_IO_API void aws_custom_key_op_handler_perform_operation(
+    struct aws_custom_key_op_handler *key_op_handler,
+    struct aws_tls_key_operation *operation);
+
+/**
+ * Initializes options for use with mutual TLS in client mode,
+ * where private key operations are handled by custom code.
+ *
+ * Note: cert_file_contents will be copied into a new buffer after this
+ * function is called, so you do not need to keep that data alive
+ * after calling this function.
+ *
+ * @param options               aws_tls_ctx_options to be initialized.
+ * @param allocator             Allocator to use.
+ * @param custom                Options for custom key operations.
+ * @param cert_file_contents    The contents of a certificate file.
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    struct aws_custom_key_op_handler *custom,
+    const struct aws_byte_cursor *cert_file_contents);
+
+/**
+ * This struct exists as a graceful way to pass many arguments when
+ * calling init-with-pkcs11 functions on aws_tls_ctx_options (this also makes
+ * it easy to introduce optional arguments in the future).
+ * Instances of this struct should only exist briefly on the stack.
+ *
+ * Instructions for binding this to high-level languages:
+ * - Python: The members of this struct should be the keyword args to the init-with-pkcs11 functions.
+ * - JavaScript: This should be an options map passed to init-with-pkcs11 functions.
+ * - Java: This should be an options class passed to init-with-pkcs11 functions.
+ * - C++: Same as Java
+ *
+ * Notes on integer types:
+ * PKCS#11 uses `unsigned long` for IDs, handles, etc but we expose them as `uint64_t` in public APIs.
+ * We do this because sizeof(long) is inconsistent across platform/arch/language
+ * (ex: always 64bit in Java, always 32bit in C on Windows, matches CPU in C on Linux and Apple).
+ * By using uint64_t in our public API, we can keep the careful bounds-checking all in one
+ * place, instead of expecting each high-level language binding to get it just right.
+ */
+struct aws_tls_ctx_pkcs11_options {
+    /**
+     * The PKCS#11 library to use.
+     * This field is required.
+     */
+    struct aws_pkcs11_lib *pkcs11_lib;
+
+    /**
+     * User PIN, for logging into the PKCS#11 token (UTF-8).
+     * Zero out to log into a token with a "protected authentication path".
+     */
+    struct aws_byte_cursor user_pin;
+
+    /**
+     * ID of slot containing PKCS#11 token.
+     * If set to NULL, the token will be chosen based on other criteria
+     * (such as token label).
+     */
+    const uint64_t *slot_id;
+
+    /**
+     * Label of PKCS#11 token to use.
+     * If zeroed out, the token will be chosen based on other criteria
+     * (such as slot ID).
+     */
+    struct aws_byte_cursor token_label;
+
+    /**
+     * Label of private key object on PKCS#11 token (UTF-8).
+     * If zeroed out, the private key will be chosen based on other criteria
+     * (such as being the only available private key on the token).
+     */
+    struct aws_byte_cursor private_key_object_label;
+
+    /**
+     * Certificate's file path on disk (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file contents).
+     */
+    struct aws_byte_cursor cert_file_path;
+
+    /**
+     * Certificate's file contents (UTF-8).
+     * The certificate must be PEM formatted and UTF-8 encoded.
+     * Zero out if passing in certificate by some other means (such as file path).
+     */
+    struct aws_byte_cursor cert_file_contents;
+};
+
+/**
+ * Initializes options for use with mutual TLS in client mode,
+ * where a PKCS#11 library provides access to the private key.
+ *
+ * NOTE: This only works on Unix devices.
+ *
+ * @param options           aws_tls_ctx_options to be initialized.
+ * @param allocator         Allocator to use.
+ * @param pkcs11_options    Options for using PKCS#11 (contents are copied)
+ */
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
+    struct aws_tls_ctx_options *options,
+    struct aws_allocator *allocator,
+    const struct aws_tls_ctx_pkcs11_options *pkcs11_options);
+
+/**
+ * @Deprecated
+ *
  * Sets a custom keychain path for storing the cert and pkey with mutual tls in client mode.
+ *
+ * NOTE: This only works on MacOS.
  */
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor);
-#    endif
 
 /**
  * Initializes options for use with in server mode.
@@ -310,37 +531,38 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey);
 
-#endif /* AWS_OS_IOS */
-
-#ifdef _WIN32
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * windows. cert_reg_path is the path to a system
+ * Initializes options for use with mutual tls in client mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
-AWS_IO_API void aws_tls_ctx_options_init_client_mtls_from_system_path(
+AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_reg_path);
 
 /**
- * Initializes options for use with server mode. This function is only available on
- * windows. cert_reg_path is the path to a system
+ * Initializes options for use with server mode.
+ * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
  * CurrentUser\\MY\\<thumprint>
+ *
+ * NOTE: This only works on Windows.
  */
-AWS_IO_API void aws_tls_ctx_options_init_default_server_from_system_path(
+AWS_IO_API int aws_tls_ctx_options_init_default_server_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *cert_reg_path);
-#endif /* _WIN32 */
 
-#ifdef __APPLE__
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -349,9 +571,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use with mutual tls in client mode. This function is only available on
- * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use with mutual tls in client mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_tls_ctx_options *options,
@@ -360,9 +584,11 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12(
     struct aws_byte_cursor *pkcs_pwd);
 
 /**
- * Initializes options for use in server mode. This function is only available on
- * apple machines. pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
+ * Initializes options for use in server mode.
+ * pkcs12_path is a path to a file on disk containing a pkcs#12 file. The file is loaded
  * into an internal buffer. pkcs_pwd is the corresponding password for the pkcs#12 file; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
@@ -371,16 +597,17 @@ AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12_from_path(
     struct aws_byte_cursor *pkcs_password);
 
 /**
- * Initializes options for use in server mode. This function is only available on
- * apple machines. pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
+ * Initializes options for use in server mode.
+ * pkcs12 is a buffer containing a pkcs#12 certificate and private key; it is copied.
  * pkcs_pwd is the corresponding password for the pkcs#12 buffer; it is copied.
+ *
+ * NOTE: This only works on Apple devices.
  */
 AWS_IO_API int aws_tls_ctx_options_init_server_pkcs12(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     struct aws_byte_cursor *pkcs12,
     struct aws_byte_cursor *pkcs_password);
-#endif /* __APPLE__ */
 
 /**
  * Sets alpn list in the form <protocol1;protocol2;...>. A maximum of 4 protocols are supported.
@@ -590,6 +817,65 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handl
  */
 AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler);
 
+/**************************** TLS KEY OPERATION *******************************/
+
+/* Note: Currently this assumes the user knows what key is being used for key/cert pairs
+         but s2n supports multiple cert/key pairs. This functionality is not used in the
+         CRT currently, but in the future, we may need to implement this */
+
+/**
+ * Complete a successful TLS private key operation by providing its output.
+ * The output is copied into the TLS connection.
+ * The operation is freed by this call.
+ *
+ * You MUST call this or aws_tls_key_operation_complete_with_error().
+ * Failure to do so will stall the TLS connection indefinitely and leak memory.
+ */
+AWS_IO_API
+void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output);
+
+/**
+ * Complete an failed TLS private key operation.
+ * The TLS connection will fail.
+ * The operation is freed by this call.
+ *
+ * You MUST call this or aws_tls_key_operation_complete().
+ * Failure to do so will stall the TLS connection indefinitely and leak memory.
+ */
+AWS_IO_API
+void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code);
+
+/**
+ * Returns the input data that needs to be operated on by the custom key operation.
+ */
+AWS_IO_API
+struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation);
+
+/**
+ * Returns the type of operation that needs to be performed by the custom key operation.
+ * If the implementation cannot perform the operation,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
+AWS_IO_API
+enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation);
+
+/**
+ * Returns the algorithm the operation is expected to be operated with.
+ * If the implementation does not support the signature algorithm,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
+AWS_IO_API
+enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
+    const struct aws_tls_key_operation *operation);
+
+/**
+ * Returns the algorithm the operation digest is signed with.
+ * If the implementation does not support the digest algorithm,
+ * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ */
+AWS_IO_API
+enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation);
+
 /********************************* Misc TLS related *********************************/
 
 /*
@@ -601,6 +887,24 @@ AWS_IO_API struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_ha
 AWS_IO_API int aws_channel_setup_client_tls(
     struct aws_channel_slot *right_of_slot,
     struct aws_tls_connection_options *tls_options);
+
+/**
+ * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
+ */
+AWS_IO_API
+const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash);
+
+/**
+ * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ */
+AWS_IO_API
+const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature);
+
+/**
+ * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ */
+AWS_IO_API
+const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 AWS_EXTERN_C_END
 

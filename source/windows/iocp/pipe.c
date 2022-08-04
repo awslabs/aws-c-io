@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include <Windows.h>
+
 enum read_end_state {
     /* Pipe is open. */
     READ_END_STATE_OPEN,
@@ -443,7 +445,7 @@ static void s_read_end_request_async_monitoring(struct aws_pipe_read_end *read_e
         &fake_buffer,
         0,    /*nNumberOfBytesToRead*/
         NULL, /*lpNumberOfBytesRead: NULL for an overlapped operation*/
-        &read_impl->async_monitoring->op.overlapped.overlapped);
+        aws_overlapped_to_windows_overlapped(&read_impl->async_monitoring->op.overlapped));
 
     if (success || (GetLastError() == ERROR_IO_PENDING)) {
         /* Success launching zero-byte-read, aka async monitoring operation */
@@ -750,11 +752,11 @@ int aws_pipe_write(
     aws_overlapped_init(&write->overlapped, s_write_end_on_write_completion, write_end);
 
     bool write_success = WriteFile(
-        write_impl->handle.data.handle, /*hFile*/
-        src_buffer.ptr,                 /*lpBuffer*/
-        num_bytes_to_write,             /*nNumberOfBytesToWrite*/
-        NULL,                           /*lpNumberOfBytesWritten*/
-        &write->overlapped.overlapped); /*lpOverlapped*/
+        write_impl->handle.data.handle,                            /*hFile*/
+        src_buffer.ptr,                                            /*lpBuffer*/
+        num_bytes_to_write,                                        /*nNumberOfBytesToWrite*/
+        NULL,                                                      /*lpNumberOfBytesWritten*/
+        aws_overlapped_to_windows_overlapped(&write->overlapped)); /*lpOverlapped*/
 
     /* Overlapped WriteFile() calls may succeed immediately, or they may queue the work. In either of these cases, IOCP
      * on the event-loop will alert us when the operation completes and we'll invoke user callbacks then. */

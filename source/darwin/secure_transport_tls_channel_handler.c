@@ -6,7 +6,7 @@
 
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
-#include <aws/io/pki_utils.h>
+#include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
@@ -392,9 +392,9 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
         s_invoke_negotiation_callback(handler, AWS_ERROR_SUCCESS);
 
+    } else if (status == errSSLPeerAuthCompleted) {
         /* this branch gets hit only when verification is disabled,
          * or a custom CA bundle is being used. */
-    } else if (status == errSSLPeerAuthCompleted) {
 
         if (secure_transport_handler->verify_peer) {
             if (!secure_transport_handler->ca_certs) {
@@ -443,11 +443,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 return AWS_OP_ERR;
             }
 
-            status = SecTrustSetAnchorCertificatesOnly(trust, false);
+            /* Use ONLY the custom CA bundle (ignoring system anchors) */
+            status = SecTrustSetAnchorCertificatesOnly(trust, true);
             if (status != errSecSuccess) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
-                    "id=%p: Failed to enable system anchors with OSStatus %d\n",
+                    "id=%p: Failed to ignore system anchors with OSStatus %d\n",
                     (void *)handler,
                     (int)status);
                 CFRelease(trust);
@@ -1015,7 +1016,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         secure_transport_ctx,
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
-    if (options->certificate.len && options->private_key.len) {
+    if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 #if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
@@ -1045,7 +1046,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
             goto cleanup_wrapped_allocator;
         }
 #endif
-    } else if (options->pkcs12.len) {
+    } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
@@ -1061,7 +1062,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         }
     }
 
-    if (options->ca_file.len) {
+    if (aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
 
         struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);
@@ -1093,30 +1094,6 @@ struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const st
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options);
-}
-
-void aws_tls_ctx_destroy(struct aws_tls_ctx *ctx) {
-
-    if (ctx == NULL) {
-        return;
-    }
-
-    struct secure_transport_ctx *secure_transport_ctx = ctx->impl;
-
-    if (secure_transport_ctx->certs) {
-        aws_release_identity(secure_transport_ctx->certs);
-    }
-
-    if (secure_transport_ctx->ca_cert) {
-        aws_release_certificates(secure_transport_ctx->ca_cert);
-    }
-
-    if (secure_transport_ctx->alpn_list) {
-        aws_string_destroy(secure_transport_ctx->alpn_list);
-    }
-
-    CFRelease(secure_transport_ctx->wrapped_allocator);
-    aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
 }
 
 #pragma clang diagnostic pop
