@@ -135,6 +135,15 @@ bool aws_tls_is_alpn_available(void) {
     VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMAJOR, VER_GREATER_EQUAL);
     VER_SET_CONDITION(condition_mask, VER_SERVICEPACKMINOR, VER_GREATER_EQUAL);
 
+    /**
+     * ALPN support appeared in Win 8.1 not Win 8.  Unfortunately, VerifyVersionInfo only verifies up to Win 8.0.
+     *
+     * See
+     * https://social.msdn.microsoft.com/Forums/windowsdesktop/en-US/298a1817-0af5-4efc-9663-db9a841a233b/verifyversioninfo-and-windows-10?forum=windowssdk
+     *
+     * In particular, changing this to _WIN32_WINNT_WINBLUE or even the Win 10 value will always fail on a Windows 10
+     * machine, leading to ALPN not being used which is far worse than it being considered usable on a Win 8.0 host.
+     */
     AWS_ZERO_STRUCT(os_version);
     os_version.dwMajorVersion = HIBYTE(_WIN32_WINNT_WIN8);
     os_version.dwMinorVersion = LOBYTE(_WIN32_WINNT_WIN8);
