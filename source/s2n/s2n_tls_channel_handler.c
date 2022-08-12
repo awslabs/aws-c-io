@@ -169,7 +169,7 @@ static const char *s_determine_default_pki_ca_file(void) {
 }
 
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
-static bool s_s2n_initialized_externally;
+static bool s_s2n_initialized_externally = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
@@ -181,6 +181,8 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
      * This can cause a crash if s2n is compiled into a shared library and
      * that library is unloaded before the appexit handler runs. */
     if (s2n_disable_atexit() != S2N_SUCCESS) {
+        /* If this call fails, then s2n is already initialized
+         * https://github.com/aws/s2n-tls/blob/2ad65c11a96368591fe809cd27fd1e390b2c8ce3/api/s2n.h#L211-L212 */
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: s2n is already initialized");
         s_s2n_initialized_externally = true;
     }
