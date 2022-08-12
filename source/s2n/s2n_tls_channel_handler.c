@@ -181,8 +181,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
      * This can cause a crash if s2n is compiled into a shared library and
      * that library is unloaded before the appexit handler runs. */
     if (s2n_disable_atexit() != S2N_SUCCESS) {
-
-        /* If this failed, then s2n is already initialized */
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: s2n is already initialized");
         s_s2n_initialized_externally = true;
     }
 

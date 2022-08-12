@@ -316,12 +316,12 @@ if (ENABLE_PKCS11_TESTS)
     endif()
 endif()
 
-if (USE_S2N)
-    aws_use_package(s2n)
-endif()
-
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
+
+if (USE_S2N)
+    target_link_libraries(${TEST_BINARY_NAME} PRIVATE AWS::s2n)
+endif()
 
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
