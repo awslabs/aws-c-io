@@ -44,6 +44,7 @@ static int s_test_io_library_init_after_s2n_init(struct aws_allocator *allocator
     (void)allocator;
     (void)ctx;
 
+    setenv("S2N_DONT_MLOCK", "1", 1);
     if (s2n_init() != S2N_SUCCESS) {
         fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
         ASSERT_TRUE(0 && "s2n_init() failed");
