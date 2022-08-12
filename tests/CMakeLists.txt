@@ -16,9 +16,6 @@ endmacro()
 
 add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
-if (USE_S2N)
-    add_test_case(io_library_init_after_s2n_init)
-endif()
 
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
@@ -318,11 +315,6 @@ endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
-
-if (USE_S2N)
-    target_compile_definitions(${TEST_BINARY_NAME} PRIVATE "-DUSE_S2N")
-    target_link_libraries(${TEST_BINARY_NAME} PRIVATE AWS::s2n)
-endif()
 
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
