@@ -48,7 +48,6 @@ static int s_test_io_library_init_after_s2n_init(struct aws_allocator *allocator
         fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
         ASSERT_TRUE(0 && "s2n_init() failed");
     }
-    ASSERT_TRUE(s2n_init() == S2N_SUCCESS);
 
     aws_io_library_init(allocator);
     aws_io_library_clean_up();
