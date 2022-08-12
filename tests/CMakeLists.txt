@@ -16,7 +16,9 @@ endmacro()
 
 add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
-add_test_case(io_library_init_after_s2n_init)
+if (USE_S2N)
+    add_test_case(io_library_init_after_s2n_init)
+endif()
 
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
@@ -312,6 +314,10 @@ if (ENABLE_PKCS11_TESTS)
         add_test_case(pkcs11_tls_rsa_negotiation_succeeds)
         add_test_case(pkcs11_tls_ec_negotiation_succeeds)
     endif()
+endif()
+
+if (USE_S2N)
+    aws_use_package(s2n)
 endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)

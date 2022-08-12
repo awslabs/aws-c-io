@@ -181,15 +181,12 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
      * This can cause a crash if s2n is compiled into a shared library and
      * that library is unloaded before the appexit handler runs. */
     if (s2n_disable_atexit() != S2N_SUCCESS) {
-        if (s2n_errno == S2N_ERR_INITIALIZED) {
-            s_s2n_initialized_externally = true;
-        } else {
-            fprintf(stderr, "s2n_disable_atexit() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
-            AWS_FATAL_ASSERT(0 && "s2n_disable_atexit() failed");
-        }
+
+        /* If this failed, then s2n is already initialized */
+        s_s2n_initialized_externally = true;
     }
 
-    if (!s2n_initialized_externally) {
+    if (!s_s2n_initialized_externally) {
         setenv("S2N_DONT_MLOCK", "1", 1);
 
         if (s2n_init() != S2N_SUCCESS) {
@@ -217,7 +214,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {
     /* only clean up s2n if we were the ones that initialized it */
-    if (!s2n_initialized_externally) {
+    if (!s_s2n_initialized_externally) {
         s2n_cleanup();
     }
 }

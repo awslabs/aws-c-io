@@ -44,8 +44,10 @@ static int s_test_io_library_init_after_s2n_init(struct aws_allocator *allocator
     (void)ctx;
 
     ASSERT_TRUE(s2n_init() == S2N_SUCCESS);
+
     aws_io_library_init(allocator);
     aws_io_library_clean_up();
+
     ASSERT_TRUE(s2n_cleanup() == S2N_SUCCESS);
 
     return AWS_OP_SUCCESS;
