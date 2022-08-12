@@ -16,6 +16,7 @@ endmacro()
 
 add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
+add_test_case(io_library_init_after_s2n_init)
 
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)

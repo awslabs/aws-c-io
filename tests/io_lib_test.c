@@ -7,6 +7,8 @@
 
 #include <aws/io/io.h>
 
+#include <s2n.h>
+
 /* Initialize this library and its dependencies.
  * This will fail if:
  * - the error info list is out of sync with the error enums.
@@ -35,3 +37,17 @@ static int s_test_io_library_init_cleanup_init_cleanup(struct aws_allocator *all
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(io_library_init_cleanup_init_cleanup, s_test_io_library_init_cleanup_init_cleanup)
+
+/* Ensure that it's OK if s2n was already initialized before aws_io_library_init() is called */
+static int s_test_io_library_init_after_s2n_init(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    ASSERT_TRUE(s2n_init() == S2N_SUCCESS);
+    aws_io_library_init(allocator);
+    aws_io_library_clean_up();
+    ASSERT_TRUE(s2n_cleanup() == S2N_SUCCESS);
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(io_library_init_after_s2n_init, s_test_io_library_init_after_s2n_init)

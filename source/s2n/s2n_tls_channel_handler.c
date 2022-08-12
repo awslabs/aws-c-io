@@ -168,23 +168,34 @@ static const char *s_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+/* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
+static bool s_s2n_initialized_externally;
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
-
-    setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
-    setenv("S2N_DONT_MLOCK", "1", 1);
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
      *
      * By default, s2n uses an ataexit handler and doesn't fully clean up until the program exits.
      * This can cause a crash if s2n is compiled into a shared library and
      * that library is unloaded before the appexit handler runs. */
-    s2n_disable_atexit();
+    if (s2n_disable_atexit() != S2N_SUCCESS) {
+        if (s2n_errno == S2N_ERR_INITIALIZED) {
+            s_s2n_initialized_externally = true;
+        } else {
+            fprintf(stderr, "s2n_disable_atexit() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+            AWS_FATAL_ASSERT(0 && "s2n_disable_atexit() failed");
+        }
+    }
 
-    if (s2n_init() != S2N_SUCCESS) {
-        fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
-        AWS_FATAL_ASSERT(0 && "s2n_init() failed");
+    if (!s2n_initialized_externally) {
+        setenv("S2N_DONT_MLOCK", "1", 1);
+
+        if (s2n_init() != S2N_SUCCESS) {
+            fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+            AWS_FATAL_ASSERT(0 && "s2n_init() failed");
+        }
     }
 
     s_default_ca_dir = s_determine_default_pki_dir();
@@ -205,7 +216,10 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 }
 
 void aws_tls_clean_up_static_state(void) {
-    s2n_cleanup();
+    /* only clean up s2n if we were the ones that initialized it */
+    if (!s2n_initialized_externally) {
+        s2n_cleanup();
+    }
 }
 
 bool aws_tls_is_alpn_available(void) {
