@@ -320,6 +320,7 @@ set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
 if (USE_S2N)
+    target_compile_definitions(${TEST_BINARY_NAME} PRIVATE "-DUSE_S2N")
     target_link_libraries(${TEST_BINARY_NAME} PRIVATE AWS::s2n)
 endif()
 
