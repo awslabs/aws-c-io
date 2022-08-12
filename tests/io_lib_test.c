@@ -37,13 +37,17 @@ static int s_test_io_library_init_cleanup_init_cleanup(struct aws_allocator *all
 AWS_TEST_CASE(io_library_init_cleanup_init_cleanup, s_test_io_library_init_cleanup_init_cleanup)
 
 #if USE_S2N
-#include <s2n.h>
+#    include <s2n.h>
 
 /* Ensure that it's OK if s2n was already initialized before aws_io_library_init() is called */
 static int s_test_io_library_init_after_s2n_init(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
 
+    if (s2n_init() != S2N_SUCCESS) {
+        fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+        ASSERT_TRUE(0 && "s2n_init() failed");
+    }
     ASSERT_TRUE(s2n_init() == S2N_SUCCESS);
 
     aws_io_library_init(allocator);
