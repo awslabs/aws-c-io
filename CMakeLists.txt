@@ -159,7 +159,7 @@ if (USE_S2N)
     file(GLOB AWS_IO_TLS_SRC
             "source/s2n/*.c"
             )
-    aws_use_package_private(s2n)
+    aws_use_package(s2n)
 endif()
 
 file(GLOB IO_HEADERS
@@ -209,7 +209,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 aws_use_package(aws-c-common)
 aws_use_package(aws-c-cal)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${DEP_AWS_LIBS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${DEP_AWS_LIBS_PRIVATE})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
