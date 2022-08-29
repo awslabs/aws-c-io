@@ -1842,7 +1842,7 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     }
 
     if (secure_channel_ctx->pcerts) {
-        /** 
+        /**
          * Only free the private certificates if the private key is NOT
          * from the certificate context because freeing the private key
          * using CryptDestroyKey frees the certificate context and then
