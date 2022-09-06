@@ -54,7 +54,7 @@ static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
     aws_thread_current_at_exit(s_event_loop_group_thread_exit, el_group);
 }
 
-static int s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
+static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
 
     /* It's possible that the last refcount was released on an event-loop thread,
      * so we would deadlock if we waited here for all the event-loop threads to shut down.
@@ -63,20 +63,14 @@ static int s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el
     struct aws_thread cleanup_thread;
     AWS_ZERO_STRUCT(cleanup_thread);
 
-    if (aws_thread_init(&cleanup_thread, el_group->allocator)) {
-        return AWS_OP_ERR;
-    }
+    aws_thread_init(&cleanup_thread, el_group->allocator);
 
     struct aws_thread_options thread_options;
     AWS_ZERO_STRUCT(thread_options);
     thread_options.cpu_id = -1;
     thread_options.join_strategy = AWS_TJS_MANAGED;
 
-    if (aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options)) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
+    aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
 }
 
 static struct aws_event_loop_group *s_event_loop_group_new(
