@@ -117,7 +117,7 @@ jobs:
         python -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder.pyz')"
         python builder.pyz build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
-windows-app-verifier:
+  windows-app-verifier:
     runs-on: windows-2022 # latest
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
@@ -127,6 +127,7 @@ windows-app-verifier:
     - name: Run and check AppVerifier
       run: |
         echo "Starting to run AppVerifier on all tests found by CTest"
+        ls
         python ..\aws-c-common\scripts\appverifier_ctest.py --build_directory .\aws-io-common\build\aws-io-common
 
   osx:
