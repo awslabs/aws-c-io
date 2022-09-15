@@ -128,6 +128,8 @@ jobs:
       run: |
         echo "Starting to run AppVerifier on all tests found by CTest"
         ls
+        cd
+        ls
         python ..\aws-c-common\scripts\appverifier_ctest.py --build_directory .\aws-io-common\build\aws-io-common
 
   osx:
