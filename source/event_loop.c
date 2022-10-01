@@ -65,9 +65,7 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
 
     aws_thread_init(&cleanup_thread, el_group->allocator);
 
-    struct aws_thread_options thread_options;
-    AWS_ZERO_STRUCT(thread_options);
-    thread_options.cpu_id = -1;
+    struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
 
     aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
@@ -131,8 +129,8 @@ static struct aws_event_loop_group *s_event_loop_group_new(
                 thread_options.cpu_id = usable_cpus[i].cpu_id;
             }
 
-            char thread_name[16] = {0};
-            snprintf(thread_name, sizeof(thread_name), "aws-io %d/%d", (int)i + 1, (int)el_count);
+            char thread_name[32] = {0};
+            snprintf(thread_name, sizeof(thread_name), "aws-io %d/%d", i + 1, el_count);
             thread_options.name = aws_byte_cursor_from_c_str(thread_name);
 
             struct aws_event_loop *loop = new_loop_fn(alloc, &options, new_loop_user_data);
