@@ -1359,6 +1359,7 @@ static inline int create_and_init_host_entry(
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
+    thread_options.name = aws_byte_cursor_from_c_str("aws-dns");
 
     aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
