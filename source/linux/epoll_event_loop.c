@@ -60,7 +60,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static void s_free_io_event_resources(void *user_data);
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
-static void s_main_loop(void *args);
+static void aws_event_loop_thread(void *args);
 
 static struct aws_event_loop_vtable s_vtable = {
     .destroy = s_destroy,
@@ -272,7 +272,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     epoll_loop->should_continue = true;
     aws_thread_increment_unjoined_count();
-    if (aws_thread_launch(&epoll_loop->thread_created_on, &s_main_loop, event_loop, &epoll_loop->thread_options)) {
+    if (aws_thread_launch(&epoll_loop->thread_created_on, &aws_event_loop_thread, event_loop, &epoll_loop->thread_options)) {
         aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
