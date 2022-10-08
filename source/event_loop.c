@@ -129,8 +129,12 @@ static struct aws_event_loop_group *s_event_loop_group_new(
                 thread_options.cpu_id = usable_cpus[i].cpu_id;
             }
 
+            /* Thread name should be <= 15 characters */
             char thread_name[32] = {0};
-            snprintf(thread_name, sizeof(thread_name), "aws-io %d/%d", i + 1, el_count);
+            int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop %d", i + 1);
+            if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_LEN) {
+                snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
+            }
             thread_options.name = aws_byte_cursor_from_c_str(thread_name);
 
             struct aws_event_loop *loop = new_loop_fn(alloc, &options, new_loop_user_data);

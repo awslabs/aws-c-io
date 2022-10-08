@@ -547,7 +547,20 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     }
 }
 
-static void s_main_loop(void *args) {
+/**
+ * This just calls epoll_wait()
+ *
+ * We broke this out into its own function so that the stacktrace clearly shows
+ * what this thread is doing. We've had a lot of cases where users think this
+ * thread is deadlocked because it's stuck here. We want it to be clear
+ * that it's doing nothing on purpose. It's waiting for events to happen...
+ */
+AWS_NO_INLINE
+static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event events[MAX_EVENTS], int timeout) {
+    return epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
+}
+
+static void aws_event_loop_thread(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
@@ -555,7 +568,7 @@ static void s_main_loop(void *args) {
     /* set thread id to the thread of the event loop */
     aws_atomic_store_ptr(&epoll_loop->running_thread_id, &epoll_loop->thread_created_on.thread_id);
 
-    int err = s_subscribe_to_io_events(
+    int err = aws_event_loop_listen_for_io_events(
         event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_tasks_to_schedule, NULL);
     if (err) {
         return;
@@ -586,7 +599,7 @@ static void s_main_loop(void *args) {
     while (epoll_loop->should_continue) {
 
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout);
-        int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
+        int event_count = aws_event_loop_wait_for_io_events(epoll_loop->epoll_fd, events, timeout);
         aws_event_loop_register_tick_start(event_loop);
 
         AWS_LOGF_TRACE(
