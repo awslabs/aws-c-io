@@ -694,7 +694,6 @@ static void aws_event_loop_thread(void *user_data) {
         bool has_completion_entries = aws_event_loop_listen_for_io_events(
             impl->iocp_handle,               /* Completion port */
             completion_packets,              /* Out: completion port entries */
-            MAX_COMPLETION_PACKETS_PER_LOOP, /* max number of entries to remove */
             &num_entries,                    /* Out: number of entries removed */
             timeout_ms);                     /* Timeout in ms. If timeout reached then FALSE is returned. */
 
