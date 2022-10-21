@@ -1553,7 +1553,7 @@ static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
 
 struct aws_host_resolver *aws_host_resolver_new_default(
     struct aws_allocator *allocator,
-    struct aws_host_resolver_default_options *options) {
+    const struct aws_host_resolver_default_options *options) {
     AWS_FATAL_ASSERT(options != NULL);
 
     /* NOTE: we don't use el_group yet, but we will in the future. Also, we
