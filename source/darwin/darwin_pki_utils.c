@@ -126,12 +126,13 @@ int aws_import_public_and_private_keys_to_identity(
             key_status =
                 SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
 
+            /* Clean up key buffer */
+            aws_byte_buf_clean_up(&der_buffer);
             CFRelease(key_data);
-    
+
             if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
                 AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
                 result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-                aws_byte_buf_clean_up(&der_buffer);
                 goto done;
             }
         } else {
