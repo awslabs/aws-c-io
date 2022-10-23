@@ -49,6 +49,16 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_buffer_list(
     const char *filename,
     struct aws_array_list *cert_chain_or_key);
 
+/**
+ * Decodes a PEM file to DER format and adds the results to 'der_buffer' if successful.
+ * Otherwise, 'der_buffer' will be empty. This code is slow, and it allocates, so please try
+ * not to call this in the middle of something that needs to be fast or resource sensitive.
+ */
+int aws_decode_pem_to_der_buf(
+    struct aws_allocator *alloc,
+    const struct aws_byte_cursor *pem_cursor,
+    struct aws_byte_buf *der_buffer);
+
 #ifdef AWS_OS_APPLE
 #    if !defined(AWS_OS_IOS)
 /**

@@ -105,9 +105,40 @@ int aws_import_public_and_private_keys_to_identity(
     }
 
     if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
-        result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-        goto done;
+        if (key_status == errSecUnknownFormat) { // If the format is unknow, try ecc
+            AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
+            struct aws_byte_buf der_buffer;
+            AWS_ZERO_STRUCT(der_buffer);
+
+            /* Decode PEM format file to DER format */
+            if(aws_decode_pem_to_der_buf(alloc, private_key, &der_buffer) == AWS_OP_ERR)
+            {
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
+                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                goto done;
+            }
+            AWS_ASSERT(der_buffer);
+
+            key_data = CFDataCreate(cf_alloc, der_buffer.buffer, der_buffer.len);
+
+            format = kSecFormatOpenSSL;
+            item_type = kSecItemTypePrivateKey;
+            key_status =
+                SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+
+            CFRelease(key_data);
+    
+            if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
+                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                aws_byte_buf_clean_up(&der_buffer);
+                goto done;
+            }
+        } else {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
+            result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto done;
+        }
     }
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
@@ -180,7 +211,7 @@ done:
     return result;
 }
 
-#endif /* AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
