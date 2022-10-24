@@ -143,7 +143,7 @@ int aws_import_public_and_private_keys_to_identity(
     }
 
     if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
         result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         goto done;
     }
