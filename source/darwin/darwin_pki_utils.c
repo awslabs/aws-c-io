@@ -104,7 +104,11 @@ int aws_import_public_and_private_keys_to_identity(
         goto done;
     }
 
-    if (key_status == errSecUnknownFormat) { // If the format is unknown, try ecc
+    /*
+     * If the key format is unknown, we tried to decode the key into DER format import it.
+     * The PEM file might contians multiple key sections, we will only add the first succeed key into the keychain.
+     */
+    if (key_status == errSecUnknownFormat) {
         AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
         struct aws_array_list decoded_key_buffer_list;
         AWS_ZERO_ARRAY(&decoded_key_buffer_list);
@@ -124,19 +128,36 @@ int aws_import_public_and_private_keys_to_identity(
         }
         AWS_ASSERT(decoded_key_buffer_list);
 
-        struct aws_byte_buf *decoded_key_buffer = NULL;
-        /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
-        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, 0);
-        AWS_ASSERT(decoded_key_buffer);
-        key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
-        format = kSecFormatOpenSSL;
-        item_type = kSecItemTypePrivateKey;
-        key_status =
-            SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+        // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
+        // succed key.
+        for (int index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
+            struct aws_byte_buf *decoded_key_buffer = NULL;
+            /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
+            aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, index);
+            AWS_ASSERT(decoded_key_buffer);
+            key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
+            if (!key_data) {
+                aws_byte_buf_clean_up_secure(decoded_key_buffer);
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
+                result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+                continue;
+            }
 
-        /* Clean up key buffer */
-        aws_byte_buf_clean_up_secure(decoded_key_buffer);
-        CFRelease(key_data);
+            /* Import ECC key data into keychain. */
+            format = kSecFormatOpenSSL;
+            item_type = kSecItemTypePrivateKey;
+            key_status = SecItemImport(
+                key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+
+            /* Clean up key buffer */
+            aws_byte_buf_clean_up_secure(decoded_key_buffer);
+            CFRelease(key_data);
+
+            // As long as we found an imported tßhe key, ignore the rest of keys
+            if (key_status == errSecSuccess || key_status == errSecDuplicateItem) {
+                break;
+            }
+        }
         // Zero out the array list and release it
         aws_cert_chain_clean_up(&decoded_key_buffer_list);
         aws_array_list_clean_up(&decoded_key_buffer_list);
