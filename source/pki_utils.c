@@ -227,7 +227,6 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     return AWS_OP_SUCCESS;
 }
 
-
 int aws_decode_pem_to_der_buf(
     struct aws_allocator *alloc,
     const struct aws_byte_cursor *pem_cursor,
@@ -270,17 +269,14 @@ int aws_decode_pem_to_der_buf(
 
         struct aws_byte_cursor decoded_cursor = aws_byte_cursor_from_buf(&decoded_buffer);
 
-        if(der_buf->len == 0)
-        {
+        if (der_buf->len == 0) {
             if(aws_byte_buf_init_copy(der_buf, alloc, &decoded_buffer) == AWS_OP_ERR)
             {
                 aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
                 aws_byte_buf_clean_up(&decoded_buffer);
                 goto cleanup_output_due_to_error;
             }
-        }
-        else if(aws_byte_buf_append_dynamic_secure(der_buf, &decoded_cursor) == AWS_OP_ERR)
-        {
+        } else if (aws_byte_buf_append_dynamic_secure(der_buf, &decoded_cursor) == AWS_OP_ERR) {
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             aws_byte_buf_clean_up(&decoded_buffer);
             goto cleanup_output_due_to_error;

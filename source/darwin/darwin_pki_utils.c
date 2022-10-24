@@ -111,8 +111,7 @@ int aws_import_public_and_private_keys_to_identity(
             AWS_ZERO_STRUCT(der_buffer);
 
             /* Decode PEM format file to DER format */
-            if(aws_decode_pem_to_der_buf(alloc, private_key, &der_buffer) == AWS_OP_ERR)
-            {
+            if (aws_decode_pem_to_der_buf(alloc, private_key, &der_buffer) == AWS_OP_ERR) {
                 AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
                 result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
                 goto done;
@@ -123,8 +122,8 @@ int aws_import_public_and_private_keys_to_identity(
 
             format = kSecFormatOpenSSL;
             item_type = kSecItemTypePrivateKey;
-            key_status =
-                SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+            key_status = SecItemImport(
+                key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
 
             /* Clean up key buffer */
             aws_byte_buf_clean_up(&der_buffer);
