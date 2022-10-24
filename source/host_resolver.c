@@ -1474,7 +1474,6 @@ static int default_resolve_host(
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
             res(resolver, host_name, aws_last_error(), NULL, user_data);
-            result = AWS_OP_ERR;
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
