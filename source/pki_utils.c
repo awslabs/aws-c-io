@@ -270,8 +270,7 @@ int aws_decode_pem_to_der_buf(
         struct aws_byte_cursor decoded_cursor = aws_byte_cursor_from_buf(&decoded_buffer);
 
         if (der_buf->len == 0) {
-            if(aws_byte_buf_init_copy(der_buf, alloc, &decoded_buffer) == AWS_OP_ERR)
-            {
+            if (aws_byte_buf_init_copy(der_buf, alloc, &decoded_buffer) == AWS_OP_ERR) {
                 aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
                 aws_byte_buf_clean_up(&decoded_buffer);
                 goto cleanup_output_due_to_error;
@@ -285,7 +284,6 @@ int aws_decode_pem_to_der_buf(
     }
 
     err_code = AWS_OP_SUCCESS;
-
 
 cleanup_base64_buffer_list:
     aws_cert_chain_clean_up(&base_64_buffer_list);
