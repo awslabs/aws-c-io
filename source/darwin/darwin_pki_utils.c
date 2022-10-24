@@ -107,6 +107,7 @@ int aws_import_public_and_private_keys_to_identity(
     if (key_status == errSecUnknownFormat) { // If the format is unknown, try ecc
         AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
         struct aws_array_list decoded_key_buffer_list;
+        AWS_ZERO_ARRAY(&decoded_key_buffer_list);
 
         /* Init empty array list */
         if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
@@ -115,7 +116,8 @@ int aws_import_public_and_private_keys_to_identity(
         }
 
         /* Decode PEM format file to DER format */
-        if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list) == AWS_OP_ERR) {
+        if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list)) {
+            aws_array_list_clean_up(&decoded_key_buffer_list);
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
             result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto done;
@@ -127,16 +129,14 @@ int aws_import_public_and_private_keys_to_identity(
         aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, 0);
         AWS_ASSERT(decoded_key_buffer);
         key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
-
         format = kSecFormatOpenSSL;
         item_type = kSecItemTypePrivateKey;
         key_status =
             SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
 
         /* Clean up key buffer */
-        aws_byte_buf_clean_up_secure(&decoded_key_buffer);
+        aws_byte_buf_clean_up_secure(decoded_key_buffer);
         CFRelease(key_data);
-
         // Zero out the array list and release it
         aws_cert_chain_clean_up(&decoded_key_buffer_list);
         aws_array_list_clean_up(&decoded_key_buffer_list);
