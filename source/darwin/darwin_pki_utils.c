@@ -104,42 +104,48 @@ int aws_import_public_and_private_keys_to_identity(
         goto done;
     }
 
-    if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
-        if (key_status == errSecUnknownFormat) { // If the format is unknow, try ecc
-            AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
-            struct aws_byte_buf der_buffer;
-            AWS_ZERO_STRUCT(der_buffer);
+    if (key_status == errSecUnknownFormat) { // If the format is unknown, try ecc
+        AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
+        struct aws_array_list decoded_key_buffer_list;
 
-            /* Decode PEM format file to DER format */
-            if(aws_decode_pem_to_der_buf(alloc, private_key, &der_buffer) == AWS_OP_ERR)
-            {
-                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
-                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-                goto done;
-            }
-            AWS_ASSERT(der_buffer);
+        /* Init empty array list */
+        if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
+            result = AWS_OP_ERR;
+            goto done;
+        }
 
-            key_data = CFDataCreate(cf_alloc, der_buffer.buffer, der_buffer.len);
-
-            format = kSecFormatOpenSSL;
-            item_type = kSecItemTypePrivateKey;
-            key_status =
-                SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
-
-            /* Clean up key buffer */
-            aws_byte_buf_clean_up(&der_buffer);
-            CFRelease(key_data);
-
-            if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
-                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
-                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-                goto done;
-            }
-        } else {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
+        /* Decode PEM format file to DER format */
+        if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list) == AWS_OP_ERR) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
             result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto done;
         }
+        AWS_ASSERT(decoded_key_buffer_list);
+
+        struct aws_byte_buf *decoded_key_buffer = NULL;
+        /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
+        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, 0);
+        AWS_ASSERT(decoded_key_buffer);
+        key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
+
+        format = kSecFormatOpenSSL;
+        item_type = kSecItemTypePrivateKey;
+        key_status =
+            SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+
+        /* Clean up key buffer */
+        aws_byte_buf_clean_up_secure(&decoded_key_buffer);
+        CFRelease(key_data);
+
+        // Zero out the array list and release it
+        aws_cert_chain_clean_up(&decoded_key_buffer_list);
+        aws_array_list_clean_up(&decoded_key_buffer_list);
+    }
+
+    if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
+        result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
     }
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */
