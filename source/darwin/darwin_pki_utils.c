@@ -108,6 +108,7 @@ int aws_import_public_and_private_keys_to_identity(
         AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
         struct aws_array_list decoded_key_buffer_list;
 
+<<<<<<< HEAD
         /* Init empty array list */
         if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
             result = AWS_OP_ERR;
@@ -117,6 +118,34 @@ int aws_import_public_and_private_keys_to_identity(
         /* Decode PEM format file to DER format */
         if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list) == AWS_OP_ERR) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
+=======
+            /* Decode PEM format file to DER format */
+            if (aws_decode_pem_to_der_buf(alloc, private_key, &der_buffer) == AWS_OP_ERR) {
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
+                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                goto done;
+            }
+            AWS_ASSERT(der_buffer);
+
+            key_data = CFDataCreate(cf_alloc, der_buffer.buffer, der_buffer.len);
+
+            format = kSecFormatOpenSSL;
+            item_type = kSecItemTypePrivateKey;
+            key_status = SecItemImport(
+                key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
+
+            /* Clean up key buffer */
+            aws_byte_buf_clean_up(&der_buffer);
+            CFRelease(key_data);
+
+            if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC key with OSStatus %d", (int)key_status);
+                result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                goto done;
+            }
+        } else {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
+>>>>>>> fb7676dc1ba5b9f99339a04e96458375243711d7
             result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto done;
         }
