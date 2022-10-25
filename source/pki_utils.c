@@ -154,9 +154,6 @@ int aws_decode_pem_to_buffer_list(
         goto cleanup_base64_buffer_list;
     }
 
-    struct aws_byte_buf decoded_buffer;
-    aws_byte_buf_init(&decoded_buffer, alloc, 1);
-
     for (size_t i = 0; i < aws_array_list_length(&base_64_buffer_list); ++i) {
         size_t decoded_len = 0;
         struct aws_byte_buf *byte_buf_ptr = NULL;
@@ -168,23 +165,27 @@ int aws_decode_pem_to_buffer_list(
             goto cleanup_all;
         }
 
-        aws_byte_buf_reset(&decoded_buffer, true);
-        aws_byte_buf_reserve(&decoded_buffer, decoded_len);
+        struct aws_byte_buf decoded_buffer;
+        if (aws_byte_buf_init(&decoded_buffer, alloc, decoded_len)) {
+            goto cleanup_all;
+        }
 
         if (aws_base64_decode(&byte_cur, &decoded_buffer)) {
+            aws_byte_buf_clean_up_secure(&decoded_buffer);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto cleanup_all;
         }
 
         if (aws_array_list_push_back(cert_chain_or_key, &decoded_buffer)) {
+            aws_byte_buf_clean_up_secure(&decoded_buffer);
             goto cleanup_all;
         }
+        aws_byte_buf_clean_up_secure(&decoded_buffer);
     }
 
     err_code = AWS_OP_SUCCESS;
 
 cleanup_all:
-    aws_byte_buf_clean_up_secure(&decoded_buffer);
     if (err_code != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Invalid PEM buffer.");
         aws_cert_chain_clean_up(cert_chain_or_key);
