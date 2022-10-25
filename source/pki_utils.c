@@ -171,8 +171,8 @@ int aws_decode_pem_to_buffer_list(
         }
 
         if (aws_base64_decode(&byte_cur, &decoded_buffer)) {
-            aws_byte_buf_clean_up_secure(&decoded_buffer);
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            aws_byte_buf_clean_up_secure(&decoded_buffer);
             goto cleanup_all;
         }
 
@@ -180,7 +180,6 @@ int aws_decode_pem_to_buffer_list(
             aws_byte_buf_clean_up_secure(&decoded_buffer);
             goto cleanup_all;
         }
-        aws_byte_buf_clean_up_secure(&decoded_buffer);
     }
 
     err_code = AWS_OP_SUCCESS;
