@@ -111,10 +111,9 @@ int aws_import_public_and_private_keys_to_identity(
     if (key_status == errSecUnknownFormat) {
         AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
         struct aws_array_list decoded_key_buffer_list;
-        AWS_ZERO_ARRAY(&decoded_key_buffer_list);
 
-        /* Init empty array list */
-        if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 2, sizeof(struct aws_byte_buf))) {
+        /* Init empty array list, ideally, the PEM should only has one key included. */
+        if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 1, sizeof(struct aws_byte_buf))) {
             result = AWS_OP_ERR;
             goto done;
         }
@@ -130,7 +129,7 @@ int aws_import_public_and_private_keys_to_identity(
 
         // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
         // succed key.
-        for (int index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
+        for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
             struct aws_byte_buf *decoded_key_buffer = NULL;
             /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
             aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, index);
