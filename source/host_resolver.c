@@ -24,14 +24,14 @@ int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_a
     to->address = aws_string_new_from_string(to->allocator, from->address);
 
     if (!to->address) {
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
     }
 
     to->host = aws_string_new_from_string(to->allocator, from->host);
 
     if (!to->host) {
         aws_string_destroy((void *)to->address);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
     }
 
     to->record_type = from->record_type;
@@ -1368,7 +1368,7 @@ setup_host_entry_error:
     if (thread_init) {
         aws_thread_clean_up(&new_host_entry->resolver_thread);
     }
-    // If we registered a callback, clear it so that we don't trigger callback as well as return an error.
+    // If we registered a callback, clear it. So that we don’t trigger callback and return an error.
     if (!aws_linked_list_empty(&new_host_entry->pending_resolution_callbacks)) {
         aws_linked_list_remove(&pending_callback->node);
     }
@@ -1475,7 +1475,7 @@ static int default_resolve_host(
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
-            return AWS_OP_ERR;
+            res(resolver, host_name, aws_last_error(), NULL, user_data);
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
