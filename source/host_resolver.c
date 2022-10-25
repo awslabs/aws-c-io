@@ -1475,6 +1475,8 @@ static int default_resolve_host(
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
+            /* aws_last_error will be set by aws_host_address_copy or aws_array_list_push_back if something goes wrong.
+             */
             res(resolver, host_name, aws_last_error(), NULL, user_data);
         }
 
