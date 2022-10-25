@@ -1368,7 +1368,7 @@ setup_host_entry_error:
     if (thread_init) {
         aws_thread_clean_up(&new_host_entry->resolver_thread);
     }
-    // If we had already registered a callback, clear it so that we don't trigger callback as well as return an error.
+    // If we registered a callback, clear it so that we don't trigger callback as well as return an error.
     if (!aws_linked_list_empty(&new_host_entry->pending_resolution_callbacks)) {
         aws_linked_list_remove(&pending_callback->node);
     }
@@ -1475,7 +1475,7 @@ static int default_resolve_host(
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
-            res(resolver, host_name, aws_last_error(), NULL, user_data);
+            return AWS_OP_ERR;
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
