@@ -1346,10 +1346,7 @@ static inline int create_and_init_host_entry(
     new_host_entry->resolution_config = *config;
     aws_condition_variable_init(&new_host_entry->entry_signal);
 
-    if (aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator)) {
-        goto setup_host_entry_error;
-    }
-
+    aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator);
     thread_init = true;
     struct default_host_resolver *default_host_resolver = resolver->impl;
     if (AWS_UNLIKELY(
@@ -1359,8 +1356,9 @@ static inline int create_and_init_host_entry(
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
-
-    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
+    if (aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options)) {
+        goto setup_host_entry_error;
+    }
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
     return AWS_OP_SUCCESS;
@@ -1369,6 +1367,10 @@ setup_host_entry_error:
 
     if (thread_init) {
         aws_thread_clean_up(&new_host_entry->resolver_thread);
+    }
+    // If we had already registered a callback, clear it so that we don't trigger callback as well as return an error.
+    if (!aws_linked_list_empty(&new_host_entry->pending_resolution_callbacks)) {
+        aws_linked_list_remove(&pending_callback->node);
     }
 
     s_clean_up_host_entry(new_host_entry);
