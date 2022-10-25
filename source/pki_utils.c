@@ -155,7 +155,7 @@ int aws_decode_pem_to_buffer_list(
     }
 
     struct aws_byte_buf decoded_buffer;
-    aws_byte_buf_init(&decoded_buffer, alloc, 0);
+    aws_byte_buf_init(&decoded_buffer, alloc, 1);
 
     for (size_t i = 0; i < aws_array_list_length(&base_64_buffer_list); ++i) {
         size_t decoded_len = 0;
@@ -184,7 +184,7 @@ int aws_decode_pem_to_buffer_list(
     err_code = AWS_OP_SUCCESS;
 
 cleanup_all:
-    aws_byte_buf_clean_up(&decoded_buffer);
+    aws_byte_buf_clean_up_secure(&decoded_buffer);
     if (err_code != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Invalid PEM buffer.");
         aws_cert_chain_clean_up(cert_chain_or_key);
