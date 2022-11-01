@@ -49,7 +49,7 @@ int aws_import_ecc_key_into_keychain(
     AWS_ASSERT(decoded_key_buffer_list);
 
     // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
-    // succedd key.
+    // succeed key.
     for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
         struct aws_byte_buf *decoded_key_buffer = NULL;
         /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
