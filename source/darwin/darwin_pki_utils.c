@@ -46,7 +46,8 @@ int aws_import_ecc_key_into_keychain(
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto ecc_import_cleanup;
     }
-    AWS_ASSERT(decoded_key_buffer_list);
+
+    AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
     // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
     // succeed key.
