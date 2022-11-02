@@ -1475,9 +1475,9 @@ static int default_resolve_host(
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
-            /* aws_last_error will be set by aws_host_address_copy or aws_array_list_push_back if something goes wrong.
-             */
-            res(resolver, host_name, aws_last_error(), NULL, user_data);
+            int last_error = aws_last_error();
+            int error_code = (last_error != AWS_ERROR_SUCCESS) ? last_error : AWS_IO_DNS_QUERY_FAILED;
+            return error_code;
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
