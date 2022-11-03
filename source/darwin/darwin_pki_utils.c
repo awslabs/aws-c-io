@@ -46,7 +46,6 @@ int aws_import_ecc_key_into_keychain(
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto ecc_import_cleanup;
     }
-    AWS_ASSERT(decoded_key_buffer_list);
 
     // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
     // succeed key.
@@ -122,13 +121,12 @@ int aws_import_public_and_private_keys_to_identity(
     SecCertificateRef certificate_ref = NULL;
     SecKeychainRef import_keychain = NULL;
 
-    if (keychain_path) {
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        /* Starting in macOS 12, SecKeychainOpen() and SecKeychainUnlock() are marked as deprecated
-         * because "Custom keychain management is no longer supported".
-         * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
+    /* SecKeychain functions are marked as deprecated.
+     * Disable compiler warnings for now, but consider removing support for keychain altogether */
 
+    if (keychain_path) {
         OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
@@ -147,8 +145,6 @@ int aws_import_public_and_private_keys_to_identity(
                 keychain_status);
             return AWS_OP_ERR;
         }
-#    pragma clang diagnostic pop
-
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {
@@ -157,6 +153,8 @@ int aws_import_public_and_private_keys_to_identity(
             return AWS_OP_ERR;
         }
     }
+
+#    pragma clang diagnostic pop
 
     aws_mutex_lock(&s_sec_mutex);
 

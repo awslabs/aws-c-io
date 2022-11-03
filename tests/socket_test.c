@@ -20,10 +20,6 @@
 #    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
-#if _MSC_VER
-#    pragma warning(disable : 4996) /* sprintf */
-#endif
-
 #if USE_VSOCK
 #    include <linux/vm_sockets.h>
 #endif
@@ -590,7 +586,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
@@ -670,7 +666,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
@@ -1088,7 +1084,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
