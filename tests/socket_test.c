@@ -20,6 +20,10 @@
 #    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
+#if _MSC_VER
+#    pragma warning(disable : 4996) /* strncpy */
+#endif
+
 #if USE_VSOCK
 #    include <linux/vm_sockets.h>
 #endif
