@@ -961,7 +961,7 @@ static bool s_is_host_entry_pinned_by_listener(struct aws_linked_list *listener_
     return false;
 }
 
-static void resolver_thread_fn(void *arg) {
+static void aws_host_resolver_thread(void *arg) {
     struct host_entry *host_entry = arg;
 
     size_t unsolicited_resolve_max = host_entry->resolution_config.max_ttl;
@@ -1359,8 +1359,9 @@ static inline int create_and_init_host_entry(
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
+    thread_options.name = aws_byte_cursor_from_c_str("AwsHostResolver"); /* 15 characters is max for Linux */
 
-    aws_thread_launch(&new_host_entry->resolver_thread, resolver_thread_fn, new_host_entry, &thread_options);
+    aws_thread_launch(&new_host_entry->resolver_thread, aws_host_resolver_thread, new_host_entry, &thread_options);
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
     return AWS_OP_SUCCESS;
