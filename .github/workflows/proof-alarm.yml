@@ -15,7 +15,9 @@ jobs:
 
     - name: Check
       run: |
-        git diff --quiet 754ba168f source/linux/epoll_event_loop.c
+        TMPFILE=$(mktemp)
+        echo "495506dac0244fd96f66dc1d11740db8  source/linux/epoll_event_loop.c" > $TMPFILE
+        md5sum --check $TMPFILE
 
     # No further steps if successful
 
