@@ -1296,7 +1296,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     return AWS_OP_SUCCESS;
 }
 
-struct write_request {
+struct socket_write_request {
     struct aws_byte_cursor cursor_cpy;
     aws_socket_on_write_completed_fn *written_fn;
     void *write_user_data;
@@ -1419,7 +1419,7 @@ int aws_socket_close(struct aws_socket *socket) {
 
         while (!aws_linked_list_empty(&socket_impl->written_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->written_queue);
-            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            struct socket_write_request *write_request = AWS_CONTAINER_OF(node, struct socket_write_request, node);
             size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
             write_request->written_fn(socket, write_request->error_code, bytes_written, write_request->write_user_data);
             aws_mem_release(socket->allocator, write_request);
@@ -1427,7 +1427,7 @@ int aws_socket_close(struct aws_socket *socket) {
 
         while (!aws_linked_list_empty(&socket_impl->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
-            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            struct socket_write_request *write_request = AWS_CONTAINER_OF(node, struct socket_write_request, node);
             size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
             write_request->written_fn(socket, AWS_IO_SOCKET_CLOSED, bytes_written, write_request->write_user_data);
             aws_mem_release(socket->allocator, write_request);
@@ -1483,7 +1483,7 @@ static void s_written_task(struct aws_task *task, void *arg, enum aws_task_statu
         struct aws_linked_list_node *stop_after = aws_linked_list_back(&socket_impl->written_queue);
         do {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->written_queue);
-            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            struct socket_write_request *write_request = AWS_CONTAINER_OF(node, struct socket_write_request, node);
             size_t bytes_written = write_request->original_buffer_len - write_request->cursor_cpy.len;
             write_request->written_fn(socket, write_request->error_code, bytes_written, write_request->write_user_data);
             aws_mem_release(socket_impl->allocator, write_request);
@@ -1500,7 +1500,7 @@ static void s_written_task(struct aws_task *task, void *arg, enum aws_task_statu
  * 1st scenario, someone called aws_socket_write() and we want to try writing now, so an error can be returned
  * immediately if something bad has happened to the socket. In this case, `parent_request` is set.
  * 2nd scenario, the event loop notified us that the socket went writable. In this case `parent_request` is NULL */
-static int s_process_write_requests(struct aws_socket *socket, struct write_request *parent_request) {
+static int s_process_socket_write_requests(struct aws_socket *socket, struct socket_write_request *parent_request) {
     struct posix_socket *socket_impl = socket->impl;
 
     if (parent_request) {
@@ -1525,7 +1525,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
     while (!aws_linked_list_empty(&socket_impl->write_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->write_queue);
-        struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+        struct socket_write_request *write_request = AWS_CONTAINER_OF(node, struct socket_write_request, node);
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
@@ -1601,7 +1601,7 @@ static int s_process_write_requests(struct aws_socket *socket, struct write_requ
     if (purge) {
         while (!aws_linked_list_empty(&socket_impl->write_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&socket_impl->write_queue);
-            struct write_request *write_request = AWS_CONTAINER_OF(node, struct write_request, node);
+            struct socket_write_request *write_request = AWS_CONTAINER_OF(node, struct socket_write_request, node);
 
             /* If this fn was invoked directly from aws_socket_write(), don't invoke the error callback
              * as the user will be able to rely on the return value from aws_socket_write() */
@@ -1677,7 +1677,7 @@ static void s_on_socket_io_event(
      * have been cleaned up, so this next branch is safe. */
     if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_WRITABLE) {
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is writable", (void *)socket, socket->io_handle.data.fd);
-        s_process_write_requests(socket, NULL);
+        s_process_socket_write_requests(socket, NULL);
     }
 
 end_check:
@@ -1850,7 +1850,8 @@ int aws_socket_write(
 
     AWS_ASSERT(written_fn);
     struct posix_socket *socket_impl = socket->impl;
-    struct write_request *write_request = aws_mem_calloc(socket->allocator, 1, sizeof(struct write_request));
+    struct socket_write_request *write_request =
+        aws_mem_calloc(socket->allocator, 1, sizeof(struct socket_write_request));
 
     if (!write_request) {
         return AWS_OP_ERR;
@@ -1862,7 +1863,7 @@ int aws_socket_write(
     write_request->cursor_cpy = *cursor;
     aws_linked_list_push_back(&socket_impl->write_queue, &write_request->node);
 
-    return s_process_write_requests(socket, write_request);
+    return s_process_socket_write_requests(socket, write_request);
 }
 
 int aws_socket_get_error(struct aws_socket *socket) {
