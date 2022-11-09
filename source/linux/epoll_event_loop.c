@@ -599,7 +599,7 @@ static void aws_event_loop_thread(void *args) {
      * process queued subscription cleanups.
      */
     while (epoll_loop->should_continue) {
-        int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
+        int event_count = aws_event_loop_listen_for_io_events(epoll_loop->epoll_fd, events, timeout);
         aws_event_loop_register_tick_start(event_loop);
 
         for (int i = 0; i < event_count; ++i) {
