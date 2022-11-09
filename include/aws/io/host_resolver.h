@@ -86,7 +86,7 @@ struct aws_host_resolver_vtable {
         struct aws_host_resolver *resolver,
         const struct aws_string *host_name,
         aws_on_host_resolved_result_fn *res,
-        struct aws_host_resolution_config *config,
+        const struct aws_host_resolution_config *config,
         void *user_data);
     /** gives your implementation a hint that an address has some failed connections occuring. Do whatever you want (or
      * nothing) about it.
@@ -204,7 +204,7 @@ AWS_IO_API int aws_host_resolver_resolve_host(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     aws_on_host_resolved_result_fn *res,
-    struct aws_host_resolution_config *config,
+    const struct aws_host_resolution_config *config,
     void *user_data);
 
 /**
