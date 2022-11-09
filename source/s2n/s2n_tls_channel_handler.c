@@ -11,12 +11,9 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
-#include <aws/io/pkcs11.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
-
-#include "../pkcs11_private.h"
 
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
@@ -67,7 +64,6 @@ struct s2n_handler {
         NEGOTIATION_SUCCEEDED,
     } state;
     struct s2n_delayed_shutdown_task delayed_shutdown_task;
-    struct aws_channel_task async_pkey_task;
 };
 
 struct s2n_ctx {
@@ -77,25 +73,29 @@ struct s2n_ctx {
     /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
 
-    /* Use a single PKCS#11 session for all TLS connections on this s2n_ctx.
-     * We do this because PKCS#11 tokens may only support a
-     * limited number of sessions (PKCS11-UG-v2.40 section 2.6.7).
-     * If this one shared session turns out to be a severe bottleneck,
-     * we could look into other setups (ex: put session on its own thread,
-     * 1 session per event-loop, 1 session per connection, etc).
+    /**
+     * Custom key operations to perform when a private key operation is required in the TLS handshake.
+     * Only will be used if non-NULL, otherwise this is ignored and the standard private key operations
+     * are performed instead.
+     * NOTE: PKCS11 also is done via this custom_key_handler.
      *
-     * The lock must be held while performing session operations.
-     * Otherwise, it would not be safe for multiple threads to share a
-     * session (PKCS11-UG-v2.40 section 2.6.7). The lock isn't needed for
-     * setup and teardown though, since we ensure nothing parallel is going
-     * on at these times */
-    struct {
-        struct aws_pkcs11_lib *lib;
-        struct aws_mutex session_lock;
-        CK_SESSION_HANDLE session_handle;
-        CK_OBJECT_HANDLE private_key_handle;
-        CK_KEY_TYPE private_key_type;
-    } pkcs11;
+     * See aws_custom_key_op_handler in tls_channel_handler.h for more details.
+     */
+    struct aws_custom_key_op_handler *custom_key_handler;
+};
+
+struct aws_tls_key_operation {
+    struct aws_allocator *alloc;
+    struct s2n_async_pkey_op *s2n_op;
+    struct s2n_handler *s2n_handler;
+    enum aws_tls_key_operation_type operation_type;
+    enum aws_tls_signature_algorithm signature_algorithm;
+    enum aws_tls_hash_algorithm digest_algorithm;
+    struct aws_byte_buf input_data;
+    struct aws_channel_task completion_task;
+    int completion_error_code;
+
+    struct aws_atomic_var complete_count;
 };
 
 AWS_STATIC_STRING_FROM_LITERAL(s_debian_path, "/etc/ssl/certs");
@@ -168,25 +168,58 @@ static const char *s_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+/* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
+static bool s_s2n_initialized_externally = false;
+
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     (void)alloc;
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
-    setenv("S2N_ENABLE_CLIENT_MODE", "1", 1);
-    setenv("S2N_DONT_MLOCK", "1", 1);
-    s2n_init();
+    /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
+     *
+     * By default, s2n uses an ataexit handler and doesn't fully clean up until the program exits.
+     * This can cause a crash if s2n is compiled into a shared library and
+     * that library is unloaded before the appexit handler runs. */
+    if (s2n_disable_atexit() != S2N_SUCCESS) {
+        /* If this call fails, then s2n is already initialized
+         * https://github.com/aws/s2n-tls/blob/2ad65c11a96368591fe809cd27fd1e390b2c8ce3/api/s2n.h#L211-L212 */
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: s2n is already initialized");
+        s_s2n_initialized_externally = true;
+    } else {
+        s_s2n_initialized_externally = false;
+    }
+
+    if (!s_s2n_initialized_externally) {
+        setenv("S2N_DONT_MLOCK", "1", 1);
+
+        if (s2n_init() != S2N_SUCCESS) {
+            fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+            AWS_FATAL_ASSERT(0 && "s2n_init() failed");
+        }
+    }
 
     s_default_ca_dir = s_determine_default_pki_dir();
     s_default_ca_file = s_determine_default_pki_ca_file();
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_TLS,
-        "ctx: Based on OS, we detected the default PKI path as %s, and ca file as %s",
-        s_default_ca_dir,
-        s_default_ca_file);
+    if (s_default_ca_dir || s_default_ca_file) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "ctx: Based on OS, we detected the default PKI path as %s, and ca file as %s",
+            s_default_ca_dir,
+            s_default_ca_file);
+    } else {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "Default TLS trust store not found on this system."
+            " TLS connections will fail unless trusted CA certificates are installed,"
+            " or \"override default trust store\" is used while creating the TLS context.");
+    }
 }
 
 void aws_tls_clean_up_static_state(void) {
-    s2n_cleanup();
+    /* only clean up s2n if we were the ones that initialized it */
+    if (!s_s2n_initialized_externally) {
+        s2n_cleanup();
+    }
 }
 
 bool aws_tls_is_alpn_available(void) {
@@ -199,11 +232,6 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             return true;
             /* PQ Crypto no-ops on android for now */
 #ifndef ANDROID
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             return true;
 #endif
@@ -604,6 +632,8 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
     switch (s2n_alg) {
         case S2N_TLS_SIGNATURE_RSA:
             return AWS_TLS_SIGNATURE_RSA;
+        case S2N_TLS_SIGNATURE_ECDSA:
+            return AWS_TLS_SIGNATURE_ECDSA;
         default:
             return AWS_TLS_SIGNATURE_UNKNOWN;
     }
@@ -626,59 +656,169 @@ static enum aws_tls_hash_algorithm s_s2n_to_aws_hash_algorithm(s2n_tls_hash_algo
     }
 }
 
-/* This task performs the PKCS#11 private key operations.
- * This task is scheduled because the s2n async private key operation is not allowed to complete synchronously */
-static void s_s2n_pkcs11_async_pkey_task(
+static void s_tls_key_operation_destroy(struct aws_tls_key_operation *operation) {
+    if (operation->s2n_op) {
+        s2n_async_pkey_op_free(operation->s2n_op);
+    }
+    if (operation->s2n_handler) {
+        aws_channel_release_hold(operation->s2n_handler->slot->channel);
+    }
+    aws_byte_buf_clean_up(&operation->input_data);
+    aws_mem_release(operation->alloc, operation);
+}
+
+/* This task finishes a private key operation on the event-loop thread.
+ * If the operation was successful, TLS negotiation is resumed.
+ * If the operation failed, the channel is shut down */
+static void s_tls_key_operation_completion_task(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
 
-    struct s2n_handler *s2n_handler = AWS_CONTAINER_OF(channel_task, struct s2n_handler, async_pkey_task);
+    (void)channel_task;
+    struct aws_tls_key_operation *operation = arg;
+    struct s2n_handler *s2n_handler = operation->s2n_handler;
     struct aws_channel_handler *handler = &s2n_handler->handler;
-    struct s2n_async_pkey_op *op = arg;
-    bool success = false;
-
-    uint8_t *input_data = NULL;     /* allocated later */
-    struct aws_byte_buf output_buf; /* initialized later */
-    AWS_ZERO_STRUCT(output_buf);
 
     /* if things started failing since this task was scheduled, just clean up and bail out */
     if (status != AWS_TASK_STATUS_RUN_READY || s2n_handler->state != NEGOTIATION_ONGOING) {
         goto clean_up;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Running PKCS#11 async pkey task", (void *)handler);
+    if (operation->completion_error_code == 0) {
+        if (s2n_async_pkey_op_apply(operation->s2n_op, s2n_handler->connection)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed applying s2n async pkey op", (void *)handler);
+            operation->completion_error_code = AWS_ERROR_INVALID_STATE;
+        }
+    }
 
-    /* We check all s2n_async_pkey_op functions for success,
-     * but they shouldn't fail if they're called correctly.
-     * Even if the output is bad, the failure will happen later in s2n_negotiate() */
+    if (operation->completion_error_code == 0) {
+        s_drive_negotiation(handler);
+    } else {
+        aws_channel_shutdown(s2n_handler->slot->channel, operation->completion_error_code);
+    }
 
+clean_up:
+    s_tls_key_operation_destroy(operation);
+}
+
+/* Common implementation for aws_tls_key_operation_complete() and aws_tls_key_operation_complete_with_error()
+ * This is called exactly once. Schedules a task to actually finish things up on the event-loop thread. */
+static void s_tls_key_operation_complete_common(
+    struct aws_tls_key_operation *operation,
+    int error_code,
+    const struct aws_byte_cursor *output) {
+
+    AWS_ASSERT((error_code != 0) ^ (output != NULL)); /* error_code XOR output must be set */
+
+    /* Ensure this can only be called once and exactly once. */
+    size_t complete_count = aws_atomic_fetch_add(&operation->complete_count, 1);
+    AWS_FATAL_ASSERT(complete_count == 0 && "TLS key operation marked complete multiple times");
+
+    struct s2n_handler *s2n_handler = operation->s2n_handler;
+    struct aws_channel_handler *handler = &s2n_handler->handler;
+
+    if (output != NULL) {
+        /* Immediately pass output through to s2n_op. */
+        if (s2n_async_pkey_op_set_output(operation->s2n_op, output->ptr, output->len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed setting output on s2n async pkey op", (void *)handler);
+            error_code = AWS_ERROR_INVALID_STATE;
+            goto done;
+        }
+    }
+
+done:
+    operation->completion_error_code = error_code;
+
+    /* Schedule a task to finish the operation.
+     * We schedule a task because the user might
+     * have completed the operation asynchronously,
+     * but we need to be on the event-loop thread to
+     * resume TLS negotiation. */
+    aws_channel_task_init(
+        &operation->completion_task,
+        s_tls_key_operation_completion_task,
+        operation,
+        "tls_key_operation_completion_task");
+    aws_channel_schedule_task_now(s2n_handler->slot->channel, &operation->completion_task);
+}
+
+void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
+    if (operation == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation complete: operation is null and therefore cannot be set to complete!");
+        return;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS key operation complete with %zu bytes of output data",
+        (void *)operation->s2n_handler,
+        output.len);
+    s_tls_key_operation_complete_common(operation, 0, &output);
+}
+
+void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
+    if (operation == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "Operation complete with error: operation is null and therefore cannot be set to complete!");
+        return;
+    }
+
+    if (error_code == 0) {
+        error_code = AWS_ERROR_UNKNOWN;
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "id=%p: TLS key operation completed with error, but no error-code set. Using %s",
+            (void *)operation->s2n_handler,
+            aws_error_name(error_code));
+    }
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS key operation complete with error %s",
+        (void *)operation->s2n_handler,
+        aws_error_name(error_code));
+
+    s_tls_key_operation_complete_common(operation, error_code, NULL);
+}
+
+static struct aws_tls_key_operation *s_tls_key_operation_new(
+    struct aws_channel_handler *handler,
+    struct s2n_async_pkey_op *s2n_op) {
+
+    struct s2n_handler *s2n_handler = handler->impl;
+
+    struct aws_tls_key_operation *operation = aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_key_operation));
+    operation->alloc = handler->alloc;
+
+    /* Copy input data */
     uint32_t input_size = 0;
-    if (s2n_async_pkey_op_get_input_size(op, &input_size)) {
+    if (s2n_async_pkey_op_get_input_size(s2n_op, &input_size)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey op size", (void *)handler);
         aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
-    input_data = aws_mem_acquire(handler->alloc, input_size);
-    if (s2n_async_pkey_op_get_input(op, input_data, input_size)) {
+    aws_byte_buf_init(&operation->input_data, operation->alloc, input_size); /* cannot fail */
+    if (s2n_async_pkey_op_get_input(s2n_op, operation->input_data.buffer, input_size)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey input", (void *)handler);
         aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
-    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_array(input_data, input_size);
+    operation->input_data.len = input_size;
 
-    s2n_async_pkey_op_type op_type = 0;
-    if (s2n_async_pkey_op_get_op_type(op, &op_type)) {
+    /* Get operation type */
+    s2n_async_pkey_op_type s2n_op_type = 0;
+    if (s2n_async_pkey_op_get_op_type(s2n_op, &s2n_op_type)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed querying s2n async pkey op type", (void *)handler);
         aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
-    /* Gather additional information if this is a SIGN operation */
-    enum aws_tls_signature_algorithm aws_sign_alg = 0;
-    enum aws_tls_hash_algorithm aws_digest_alg = 0;
-    if (op_type == S2N_ASYNC_SIGN) {
+    if (s2n_op_type == S2N_ASYNC_SIGN) {
+        operation->operation_type = AWS_TLS_KEY_OPERATION_SIGN;
+
+        /* Gather additional information if this is a SIGN operation */
         s2n_tls_signature_algorithm s2n_sign_alg = 0;
         if (s2n_connection_get_selected_client_cert_signature_algorithm(s2n_handler->connection, &s2n_sign_alg)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed getting s2n client cert signature algorithm", (void *)handler);
@@ -686,8 +826,8 @@ static void s_s2n_pkcs11_async_pkey_task(
             goto error;
         }
 
-        aws_sign_alg = s_s2n_to_aws_signature_algorithm(s2n_sign_alg);
-        if (aws_sign_alg == AWS_TLS_SIGNATURE_UNKNOWN) {
+        operation->signature_algorithm = s_s2n_to_aws_signature_algorithm(s2n_sign_alg);
+        if (operation->signature_algorithm == AWS_TLS_SIGNATURE_UNKNOWN) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
                 "id=%p: Cannot sign with s2n_tls_signature_algorithm=%d. Algorithm currently unsupported",
@@ -704,8 +844,8 @@ static void s_s2n_pkcs11_async_pkey_task(
             goto error;
         }
 
-        aws_digest_alg = s_s2n_to_aws_hash_algorithm(s2n_digest_alg);
-        if (aws_digest_alg == AWS_TLS_HASH_UNKNOWN) {
+        operation->digest_algorithm = s_s2n_to_aws_hash_algorithm(s2n_digest_alg);
+        if (operation->digest_algorithm == AWS_TLS_HASH_UNKNOWN) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
                 "id=%p: Cannot sign digest created with s2n_tls_hash_algorithm=%d. Algorithm currently unsupported",
@@ -714,113 +854,75 @@ static void s_s2n_pkcs11_async_pkey_task(
             aws_raise_error(AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED);
             goto error;
         }
-    }
 
-    /*********** BEGIN CRITICAL SECTION ***********/
-    aws_mutex_lock(&s2n_handler->s2n_ctx->pkcs11.session_lock);
-    bool success_while_locked = false;
+    } else if (s2n_op_type == S2N_ASYNC_DECRYPT) {
+        operation->operation_type = AWS_TLS_KEY_OPERATION_DECRYPT;
 
-    switch (op_type) {
-        case S2N_ASYNC_DECRYPT:
-            if (aws_pkcs11_lib_decrypt(
-                    s2n_handler->s2n_ctx->pkcs11.lib,
-                    s2n_handler->s2n_ctx->pkcs11.session_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_type,
-                    input_cursor,
-                    handler->alloc,
-                    &output_buf)) {
-
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "id=%p: PKCS#11 decrypt failed, error %s",
-                    (void *)handler,
-                    aws_error_name(aws_last_error()));
-                goto unlock;
-            }
-            break;
-
-        case S2N_ASYNC_SIGN:
-            if (aws_pkcs11_lib_sign(
-                    s2n_handler->s2n_ctx->pkcs11.lib,
-                    s2n_handler->s2n_ctx->pkcs11.session_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_handle,
-                    s2n_handler->s2n_ctx->pkcs11.private_key_type,
-                    input_cursor,
-                    handler->alloc,
-                    aws_digest_alg,
-                    aws_sign_alg,
-                    &output_buf)) {
-
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "id=%p: PKCS#11 sign failed, error %s",
-                    (void *)handler,
-                    aws_error_name(aws_last_error()));
-                goto unlock;
-            }
-            break;
-
-        default:
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Unknown s2n_async_pkey_op_type:%d", (void *)handler, (int)op_type);
-            aws_raise_error(AWS_ERROR_INVALID_STATE);
-            goto unlock;
-    }
-
-    success_while_locked = true;
-unlock:
-    aws_mutex_unlock(&s2n_handler->s2n_ctx->pkcs11.session_lock);
-    /*********** END CRITICAL SECTION ***********/
-
-    if (!success_while_locked) {
-        goto error;
-    }
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: PKCS#11 operation complete. output-size:%zu", (void *)handler, output_buf.len);
-
-    if (s2n_async_pkey_op_set_output(op, output_buf.buffer, output_buf.len)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed setting output on s2n async pkey op", (void *)handler);
+    } else {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Unknown s2n async pkey op type:%d", (void *)handler, (int)s2n_op_type);
         aws_raise_error(AWS_ERROR_INVALID_STATE);
         goto error;
     }
 
-    if (s2n_async_pkey_op_apply(op, s2n_handler->connection)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed applying s2n async pkey op", (void *)handler);
-        aws_raise_error(AWS_ERROR_INVALID_STATE);
-        goto error;
-    }
+    /* Keep channel alive until operation completes */
+    operation->s2n_handler = s2n_handler;
+    aws_channel_acquire_hold(s2n_handler->slot->channel);
 
-    /* Success! */
-    success = true;
-    goto clean_up;
+    /* Set this to zero so we can track how many times complete has been called */
+    aws_atomic_init_int(&operation->complete_count, 0);
 
+    /* Set this last. We don't want to take ownership of s2n_op until we know setup was 100% successful */
+    operation->s2n_op = s2n_op;
+
+    return operation;
 error:
-    aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
-
-clean_up:
-    s2n_async_pkey_op_free(op);
-    aws_mem_release(handler->alloc, input_data);
-    aws_byte_buf_clean_up(&output_buf);
-
-    if (success) {
-        s_drive_negotiation(handler);
-    }
+    s_tls_key_operation_destroy(operation);
+    return NULL;
 }
 
-static int s_s2n_pkcs11_async_pkey_callback(struct s2n_connection *conn, struct s2n_async_pkey_op *op) {
+struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
+    return aws_byte_cursor_from_buf(&operation->input_data);
+}
+
+enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
+    return operation->operation_type;
+}
+
+enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
+    const struct aws_tls_key_operation *operation) {
+    return operation->signature_algorithm;
+}
+
+enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation) {
+    return operation->digest_algorithm;
+}
+
+static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_async_pkey_op *s2n_op) {
     struct s2n_handler *s2n_handler = s2n_connection_get_ctx(conn);
     struct aws_channel_handler *handler = &s2n_handler->handler;
 
     AWS_ASSERT(conn == s2n_handler->connection);
     (void)conn;
 
-    /* Schedule a task to do the work.
-     * s2n can't deal with the async private key operation completing synchronously, so we can't just do it now */
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: async pkey callback received, scheduling PKCS#11 task", (void *)handler);
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: s2n async pkey callback received", (void *)handler);
 
-    aws_channel_task_init(&s2n_handler->async_pkey_task, s_s2n_pkcs11_async_pkey_task, op, "s2n_pkcs11_async_pkey_op");
-    aws_channel_schedule_task_now(s2n_handler->slot->channel, &s2n_handler->async_pkey_task);
+    /* Create the AWS wrapper around s2n_async_pkey_op */
+    struct aws_tls_key_operation *operation = s_tls_key_operation_new(handler, s2n_op);
+    if (operation == NULL) {
+        s2n_async_pkey_op_free(s2n_op);
+        return S2N_FAILURE;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: Begin TLS key operation. type=%s input_data.len=%zu signature=%s digest=%s",
+        (void *)operation,
+        aws_tls_key_operation_type_str(operation->operation_type),
+        operation->input_data.len,
+        aws_tls_signature_algorithm_str(operation->signature_algorithm),
+        aws_tls_hash_algorithm_str(operation->digest_algorithm));
+
+    aws_custom_key_op_handler_perform_operation(s2n_handler->s2n_ctx->custom_key_handler, operation);
 
     return S2N_SUCCESS;
 }
@@ -1189,16 +1291,12 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
-        if (s2n_ctx->pkcs11.session_handle != 0) {
-            aws_pkcs11_lib_close_session(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle);
-        }
-        aws_mutex_clean_up(&s2n_ctx->pkcs11.session_lock);
-        aws_pkcs11_lib_release(s2n_ctx->pkcs11.lib);
         s2n_config_free(s2n_ctx->s2n_config);
 
         if (s2n_ctx->custom_cert_chain_and_key) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
+        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
 
         aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
     }
@@ -1222,44 +1320,6 @@ static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in
     }
 
     return 0;
-}
-
-static int s_tls_ctx_pkcs11_setup(struct s2n_ctx *s2n_ctx, const struct aws_tls_ctx_options *options) {
-    /* PKCS#11 options were already sanitized (ie: check for required args) in tls_channel_handler.c */
-
-    /* anything initialized in this function is cleaned up during s_s2n_ctx_destroy()
-     * so don't worry about cleaning up unless it's some tmp heap allocation */
-
-    s2n_ctx->pkcs11.lib = aws_pkcs11_lib_acquire(options->pkcs11.lib); /* cannot fail */
-    aws_mutex_init(&s2n_ctx->pkcs11.session_lock);
-
-    CK_SLOT_ID slot_id = 0;
-    if (aws_pkcs11_lib_find_slot_with_token(
-            s2n_ctx->pkcs11.lib,
-            options->pkcs11.has_slot_id ? &options->pkcs11.slot_id : NULL,
-            options->pkcs11.token_label,
-            &slot_id /*out*/)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_pkcs11_lib_open_session(s2n_ctx->pkcs11.lib, slot_id, &s2n_ctx->pkcs11.session_handle)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_pkcs11_lib_login_user(s2n_ctx->pkcs11.lib, s2n_ctx->pkcs11.session_handle, options->pkcs11.user_pin)) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_pkcs11_lib_find_private_key(
-            s2n_ctx->pkcs11.lib,
-            s2n_ctx->pkcs11.session_handle,
-            options->pkcs11.private_key_object_label,
-            &s2n_ctx->pkcs11.private_key_handle /*out*/,
-            &s2n_ctx->pkcs11.private_key_type /*out*/)) {
-        return AWS_OP_ERR;
-    }
-
-    return AWS_OP_SUCCESS;
 }
 
 static void s_log_and_raise_s2n_errno(const char *msg) {
@@ -1306,7 +1366,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-    if (options->pkcs11.lib != NULL) {
+    if (options->custom_key_op_handler != NULL) {
         /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
@@ -1356,21 +1416,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set */
             break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2019_06:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2019-06");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2019_11:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-SIKE-TEST-TLS-1-0-2019-11");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_02:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-02");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_SIKE_TLSv1_0_2020_02:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-SIKE-TEST-TLS-1-0-2020-02");
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_KMS_PQ_TLSv1_0_2020_07:
-            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "KMS-PQ-TLS-1-0-2020-07");
-            break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "PQ-TLS-1-0-2021-05-26");
             break;
@@ -1413,14 +1458,12 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
             goto cleanup_s2n_config;
         }
-    } else if (options->pkcs11.lib != NULL) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: PKCS#11 has been set, setting it up now.");
-        if (s_tls_ctx_pkcs11_setup(s2n_ctx, options)) {
-            goto cleanup_s2n_config;
-        }
+    } else if (options->custom_key_op_handler != NULL) {
 
-        /* set callback so that we can do private key operations through PKCS#11 */
-        if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_pkcs11_async_pkey_callback)) {
+        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_acquire(options->custom_key_op_handler);
+
+        /* set callback so that we can do custom private key operations */
+        if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_async_pkey_callback)) {
             s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
             goto cleanup_s2n_config;
         }
@@ -1494,7 +1537,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     goto cleanup_s2n_config;
                 }
             }
-        } else {
+        } else if (s_default_ca_file || s_default_ca_dir) {
             /* User wants to use the system's default trust store.
              *
              * Note that s2n's trust store always starts with libcrypto's default locations.
@@ -1509,6 +1552,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 goto cleanup_s2n_config;
             }
+        } else {
+            /* Cannot find system's trust store */
+            aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS,
+                "Default TLS trust store not found on this system."
+                " Install CA certificates, or \"override default trust store\".");
+            goto cleanup_s2n_config;
         }
 
         if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {

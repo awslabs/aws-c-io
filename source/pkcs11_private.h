@@ -5,7 +5,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/io/io.h>
+#include <aws/io/tls_channel_handler.h>
 
 /* These defines must exist before the official PKCS#11 headers are included */
 #define CK_PTR *
@@ -28,22 +28,8 @@
  */
 
 struct aws_pkcs11_lib;
+struct aws_pkcs11_tls_key_handler;
 struct aws_string;
-
-enum aws_tls_hash_algorithm {
-    AWS_TLS_HASH_UNKNOWN = -1,
-    AWS_TLS_HASH_SHA1,
-    AWS_TLS_HASH_SHA224,
-    AWS_TLS_HASH_SHA256,
-    AWS_TLS_HASH_SHA384,
-    AWS_TLS_HASH_SHA512,
-};
-
-enum aws_tls_signature_algorithm {
-    AWS_TLS_SIGNATURE_UNKNOWN = -1,
-    AWS_TLS_SIGNATURE_RSA,
-    /* TODO: add support for additional algorithms (ECDSA) */
-};
 
 AWS_EXTERN_C_BEGIN
 
@@ -144,16 +130,28 @@ AWS_IO_API
 int aws_get_prefix_to_rsa_sig(enum aws_tls_hash_algorithm digest_alg, struct aws_byte_cursor *out_prefix);
 
 /**
- * Given enum, return string like: AWS_TLS_HASH_SHA256 -> "SHA256"
+ * ASN.1 DER encode a big unsigned integer. Note that the source integer may be zero padded. It may also have
+ * most significant bit set. The encoded format is canonical and unambiguous - that is, most significant
+ * bit is never set.
  */
 AWS_IO_API
-const char *aws_tls_hash_algorithm_str(enum aws_tls_hash_algorithm hash);
+int aws_pkcs11_asn1_enc_ubigint(struct aws_byte_buf *const buffer, struct aws_byte_cursor bigint);
 
 /**
- * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ * Creates a new PKCS11 TLS operation handler with an associated aws_custom_key_op_handler
+ * with a reference count set to 1.
+ *
+ * The PKCS11 TLS operation handler will automatically be destroyed when the reference count reaches zero
+ * on the aws_custom_key_op_handler.
  */
 AWS_IO_API
-const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature);
+struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_pkcs11_lib *pkcs11_lib,
+    const struct aws_byte_cursor *user_pin,
+    const struct aws_byte_cursor *match_token_label,
+    const struct aws_byte_cursor *match_private_key_label,
+    const uint64_t *match_slot_id);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PKCS11_PRIVATE_H */

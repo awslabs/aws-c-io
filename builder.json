@@ -2,11 +2,12 @@
     "name": "aws-c-io",
     "upstream": [
         { "name": "aws-c-common" },
+        { "name": "aws-c-cal" },
         {
             "name": "s2n",
+            "revision": "v1.3.11",
             "targets": ["linux", "android"]
-        },
-        { "name": "aws-c-cal" }
+        }
     ],
     "downstream": [
         { "name": "aws-c-mqtt" },

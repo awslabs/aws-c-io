@@ -27,6 +27,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/io/pipe.h>
 
 #include <aws/io/io.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -306,6 +307,12 @@ struct iocp_socket {
 
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
     SOCKET handle = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
+    if (handle == INVALID_SOCKET) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=static: socket() call failed with WSAError %d", wsa_err);
+        return aws_raise_error(s_determine_socket_error(wsa_err));
+    }
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: initializing with domain %d and type %d",
@@ -314,20 +321,24 @@ static int s_create_socket(struct aws_socket *sock, const struct aws_socket_opti
         options->domain,
         options->type);
     u_long non_blocking = 1;
-    if (handle != INVALID_SOCKET && !ioctlsocket(handle, FIONBIO, &non_blocking)) {
-        sock->io_handle.data.handle = (HANDLE)handle;
-        sock->io_handle.additional_data = NULL;
-        if (aws_socket_set_options(sock, options)) {
-            closesocket(handle);
-            sock->io_handle.data.handle = (HANDLE)INVALID_SOCKET;
-            return AWS_OP_ERR;
-        }
-        return AWS_OP_SUCCESS;
+    if (ioctlsocket(handle, FIONBIO, &non_blocking) != 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=static: ioctlsocket() call failed with WSAError %d", wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
-    int error_code = WSAGetLastError();
-    int aws_error = s_determine_socket_error(error_code);
-    return aws_raise_error(aws_error);
+    sock->io_handle.data.handle = (HANDLE)handle;
+    sock->io_handle.additional_data = NULL;
+    if (aws_socket_set_options(sock, options)) {
+        goto error;
+    }
+    return AWS_OP_SUCCESS;
+
+error:
+    closesocket(handle);
+    sock->io_handle.data.handle = (HANDLE)INVALID_SOCKET;
+    return AWS_OP_ERR;
 }
 
 static int s_socket_init(
@@ -447,6 +458,76 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     }
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->vtable->bind(socket, local_endpoint);
+}
+
+int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
+    if (socket->local_endpoint.address[0] == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+    *out_address = socket->local_endpoint;
+    return AWS_OP_SUCCESS;
+}
+
+/* Update IPV4 or IPV6 socket->local_endpoint based on the results of getsockname() */
+static int s_update_local_endpoint_ipv4_ipv6(struct aws_socket *socket) {
+    struct aws_socket_endpoint tmp_endpoint;
+    AWS_ZERO_STRUCT(tmp_endpoint);
+
+    struct sockaddr_storage address;
+    AWS_ZERO_STRUCT(address);
+    socklen_t address_size = sizeof(address);
+    if (getsockname((SOCKET)socket->io_handle.data.handle, (struct sockaddr *)&address, &address_size) != 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: getsockname() failed with error %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            wsa_err);
+        return aws_raise_error(s_determine_socket_error(wsa_err));
+    }
+
+    if (address.ss_family == AF_INET) {
+        struct sockaddr_in *s = (struct sockaddr_in *)&address;
+        tmp_endpoint.port = ntohs(s->sin_port);
+        if (InetNtopA(AF_INET, &s->sin_addr, tmp_endpoint.address, sizeof(tmp_endpoint.address)) == NULL) {
+            int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: determining local endpoint failed",
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
+            return aws_raise_error(s_determine_socket_error(wsa_err));
+        }
+    } else if (address.ss_family == AF_INET6) {
+        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
+        tmp_endpoint.port = ntohs(s->sin6_port);
+        if (InetNtopA(AF_INET6, &s->sin6_addr, tmp_endpoint.address, sizeof(tmp_endpoint.address)) == NULL) {
+            int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: determining local endpoint failed",
+                (void *)socket,
+                (void *)socket->io_handle.data.handle);
+            return aws_raise_error(s_determine_socket_error(wsa_err));
+        }
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: unknown ADDRESS_FAMILY %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            address.ss_family);
+        return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+    }
+
+    socket->local_endpoint = tmp_endpoint;
+    return AWS_OP_SUCCESS;
 }
 
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
@@ -586,27 +667,25 @@ static inline int s_process_tcp_sock_options(struct aws_socket *socket) {
 
 /* called when an IPV4 tcp socket successfully has connected. */
 static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
+    struct iocp_socket *socket_impl = socket->impl;
 
     if (s_process_tcp_sock_options(socket)) {
-        return AWS_OP_ERR;
+        goto error;
     }
 
     int connect_result = 0;
     socklen_t result_length = sizeof(connect_result);
-    struct iocp_socket *socket_impl = socket->impl;
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
     if (connect_result) {
@@ -616,56 +695,24 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             connect_result);
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(connect_result);
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+        aws_raise_error(s_determine_socket_error(connect_result));
+        goto error;
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, (void *)socket->io_handle.data.handle);
 
-    struct sockaddr_storage address;
-    AWS_ZERO_STRUCT(address);
-    socklen_t address_size = sizeof(address);
-    if (!getsockname((SOCKET)socket->io_handle.data.handle, (struct sockaddr *)&address, &address_size)) {
-        uint16_t port = 0;
-        struct sockaddr_in *s = (struct sockaddr_in *)&address;
-        port = ntohs(s->sin_port);
-        if (!InetNtopA(AF_INET, &s->sin_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address))) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: determining local endpoint failed",
-                (void *)socket,
-                (void *)socket->io_handle.data.handle);
-            socket->state = ERRORED;
-            int error = s_determine_socket_error(WSAGetLastError());
-            aws_raise_error(error);
-            socket_impl->vtable->connection_error(socket, error);
-            return AWS_OP_ERR;
-        }
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: local endpoint %s:%d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            socket->local_endpoint.address,
-            (int)port);
-        socket->local_endpoint.port = port;
-    } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: getsockname() failed with error %d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+    if (s_update_local_endpoint_ipv4_ipv6(socket)) {
+        goto error;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: local endpoint %s:%d",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        socket->local_endpoint.address,
+        (int)socket->local_endpoint.port);
 
     setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
     socket->state = CONNECTED_WRITE | CONNECTED_READ;
@@ -673,32 +720,33 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     socket->connection_result_fn(socket, AWS_ERROR_SUCCESS, socket->connect_accept_user_data);
 
     return AWS_OP_SUCCESS;
+error:
+    socket->state = ERRORED;
+    socket_impl->vtable->connection_error(socket, aws_last_error());
+    return AWS_OP_ERR;
 }
 
 /* called upon a successful TCP over IPv6 connection. */
 static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
+    struct iocp_socket *socket_impl = socket->impl;
 
     if (s_process_tcp_sock_options(socket)) {
-        socket->state = ERRORED;
-        return AWS_OP_ERR;
+        goto error;
     }
 
     int connect_result = 0;
     socklen_t result_length = sizeof(connect_result);
-    struct iocp_socket *socket_impl = socket->impl;
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
     if (connect_result) {
@@ -708,56 +756,24 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             connect_result);
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(connect_result);
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+        aws_raise_error(s_determine_socket_error(connect_result));
+        goto error;
     }
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, (void *)socket->io_handle.data.handle);
 
-    struct sockaddr_storage address;
-    AWS_ZERO_STRUCT(address);
-    socklen_t address_size = sizeof(address);
-    if (!getsockname((SOCKET)socket->io_handle.data.handle, (struct sockaddr *)&address, &address_size)) {
-        uint16_t port = 0;
-        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
-        port = ntohs(s->sin6_port);
-        if (!InetNtopA(
-                AF_INET6, &s->sin6_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address))) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: determining local endpoint failed",
-                (void *)socket,
-                (void *)socket->io_handle.data.handle);
-            socket->state = ERRORED;
-            int error = s_determine_socket_error(WSAGetLastError());
-            aws_raise_error(error);
-            socket_impl->vtable->connection_error(socket, error);
-            return AWS_OP_ERR;
-        }
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: local endpoint %s:%d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            socket->local_endpoint.address,
-            (int)port);
-    } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: getsockname() failed with error %d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
-        aws_raise_error(error);
-        socket_impl->vtable->connection_error(socket, error);
-        return AWS_OP_ERR;
+    if (s_update_local_endpoint_ipv4_ipv6(socket)) {
+        goto error;
     }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: local endpoint %s:%d",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        socket->local_endpoint.address,
+        (int)socket->local_endpoint.port);
 
     setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
 
@@ -766,6 +782,11 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     socket->connection_result_fn(socket, AWS_ERROR_SUCCESS, socket->connect_accept_user_data);
 
     return AWS_OP_SUCCESS;
+
+error:
+    socket->state = ERRORED;
+    socket_impl->vtable->connection_error(socket, aws_last_error());
+    return AWS_OP_ERR;
 }
 
 /* Outgoing UDP and Named pipe connections. */
@@ -907,13 +928,14 @@ static inline int s_tcp_connect(
 
     int reuse = 1;
     if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError());
-        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+            wsa_err);
+        return aws_raise_error(s_determine_socket_error(wsa_err));
     }
 
     struct socket_connect_args *connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct socket_connect_args));
@@ -994,6 +1016,8 @@ static inline int s_tcp_connect(
     return AWS_OP_SUCCESS;
 }
 
+/* This should be called IMMEDIATELY after failure.
+ * Otherwise, WSAGetLastError() could get cleared accidentally by a logging call */
 static inline int s_convert_pton_error(int pton_err) {
     if (pton_err == 0) {
         return AWS_IO_SOCKET_INVALID_ADDRESS;
@@ -1018,9 +1042,11 @@ static int s_ipv4_stream_connect(
     socket->connection_result_fn = on_connection_result;
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in addr_in;
+    AWS_ZERO_STRUCT(addr_in);
     int err = inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
 
     if (err != 1) {
+        int aws_err = s_convert_pton_error(err); /* call before logging or WSAError may get cleared */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%d.",
@@ -1028,7 +1054,7 @@ static int s_ipv4_stream_connect(
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
-        return aws_raise_error(s_convert_pton_error(err));
+        return aws_raise_error(aws_err);
     }
 
     AWS_LOGF_DEBUG(
@@ -1084,8 +1110,10 @@ static int s_ipv6_stream_connect(
     bind_addr.sin6_port = 0;
 
     struct sockaddr_in6 addr_in6;
+    AWS_ZERO_STRUCT(addr_in6);
     int pton_err = inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr));
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call before logging or WSAError may get cleared */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%d.",
@@ -1093,7 +1121,7 @@ static int s_ipv6_stream_connect(
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     AWS_LOGF_DEBUG(
@@ -1189,7 +1217,8 @@ static int s_local_connect(
         return AWS_OP_SUCCESS;
     }
 
-error:
+error:;
+    int win_error = GetLastError(); /* logging may reset error, so cache it */
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
@@ -1197,7 +1226,6 @@ error:
         (void *)socket->io_handle.data.handle,
         remote_endpoint->address);
     socket->state = ERRORED;
-    int win_error = GetLastError();
     int aws_error = s_determine_socket_error(win_error);
     aws_raise_error(aws_error);
     return AWS_OP_ERR;
@@ -1223,18 +1251,21 @@ static inline int s_dgram_connect(
 
     int reuse = 1;
     if (setsockopt((SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(int))) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: setsockopt() call for enabling SO_REUSEADDR failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError());
-        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
     int connect_err = connect((SOCKET)socket->io_handle.data.handle, socket_addr, (int)sock_size);
 
     if (connect_err) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Failed to connect to %s:%d with error %d.",
@@ -1242,70 +1273,31 @@ static inline int s_dgram_connect(
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error_code = WSAGetLastError();
-        int aws_error = s_determine_socket_error(error_code);
-        aws_raise_error(aws_error);
-        socket_impl->vtable->connection_error(socket, aws_error);
-        return AWS_OP_ERR;
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
-    /* keep in mind, we already know the size, since we created it. */
-    int fake_sock_size = (int)sock_size;
-    int sock_name_err = getsockname((SOCKET)socket->io_handle.data.handle, socket_addr, &fake_sock_size);
-    if (!sock_name_err) {
-        uint16_t port = 0;
-        if (socket->options.domain == AWS_SOCKET_IPV4) {
-            struct sockaddr_in *ipv4_addr = (struct sockaddr_in *)socket_addr;
-            port = ntohs(ipv4_addr->sin_port);
-            /* these came from the kernel, a.) they won't fail. b.) event if they did it's not a fatal error. Log it
-               when we make the logging pass.*/
-            InetNtopA(
-                AF_INET, &ipv4_addr->sin_addr, socket->local_endpoint.address, sizeof(socket->local_endpoint.address));
-        } else {
-            struct sockaddr_in6 *ipv6_addr = (struct sockaddr_in6 *)socket_addr;
-            port = ntohs(ipv6_addr->sin6_port);
-            /* these came from the kernel, a.) they won't fail. b.) event if they did it's not a fatal error. Log it
-            when we make the logging pass.*/
-            InetNtopA(
-                AF_INET6,
-                &ipv6_addr->sin6_addr,
-                socket->local_endpoint.address,
-                sizeof(socket->local_endpoint.address));
-        }
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: local endpoint %s:%d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            socket->local_endpoint.address,
-            (int)socket->local_endpoint.port);
+    if (s_update_local_endpoint_ipv4_ipv6(socket)) {
+        goto error;
     }
 
-    if (sock_name_err) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: Failed to connect with error %d",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            (int)WSAGetLastError());
-        socket->state = ERRORED;
-        int error = s_determine_socket_error(WSAGetLastError());
-        aws_raise_error(error);
-        return AWS_OP_ERR;
-    }
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: local endpoint %s:%d",
+        (void *)socket,
+        (void *)socket->io_handle.data.handle,
+        socket->local_endpoint.address,
+        (int)socket->local_endpoint.port);
 
     if (s_process_tcp_sock_options(socket)) {
-        socket->state = ERRORED;
-        return AWS_OP_ERR;
+        goto error;
     }
     socket->state = CONNECTED_READ | CONNECTED_WRITE;
 
     if (connect_loop) {
         if (aws_socket_assign_to_event_loop(socket, connect_loop)) {
-            socket->state = ERRORED;
-            return AWS_OP_ERR;
+            goto error;
         }
 
         socket_impl->read_io_data->sequential_task_storage.fn = s_connection_success_task;
@@ -1315,6 +1307,10 @@ static inline int s_dgram_connect(
     }
 
     return AWS_OP_SUCCESS;
+
+error:
+    socket->state = ERRORED;
+    return AWS_OP_ERR;
 }
 
 static int s_ipv4_dgram_connect(
@@ -1329,10 +1325,12 @@ static int s_ipv4_dgram_connect(
     socket->connection_result_fn = on_connection_result;
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in addr_in;
+    AWS_ZERO_STRUCT(addr_in);
     int pton_err = inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in.sin_port = htons(remote_endpoint->port);
@@ -1353,11 +1351,13 @@ static int s_ipv6_dgram_connect(
     socket->connection_result_fn = on_connection_result;
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in6 addr_in6;
+    AWS_ZERO_STRUCT(addr_in6);
     int pton_err = inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr));
 
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in6.sin6_port = htons(remote_endpoint->port);
@@ -1366,20 +1366,7 @@ static int s_ipv6_dgram_connect(
     return s_dgram_connect(socket, remote_endpoint, connect_loop, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
 }
 
-static inline int s_tcp_bind(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    struct sockaddr *sock_addr,
-    size_t sock_size) {
-    socket->local_endpoint = *local_endpoint;
-
-    AWS_LOGF_INFO(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: binding to tcp %s:%d",
-        (void *)socket,
-        (void *)socket->io_handle.data.handle,
-        local_endpoint->address,
-        (int)local_endpoint->port);
+static inline int s_tcp_bind(struct aws_socket *socket, struct sockaddr *sock_addr, size_t sock_size) {
 
     /* set this option to prevent duplicate bind calls. */
     int exclusive_use_val = 1;
@@ -1389,123 +1376,149 @@ static inline int s_tcp_bind(
             SO_EXCLUSIVEADDRUSE,
             (char *)&exclusive_use_val,
             sizeof(int))) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: setsockopt() call for enabling SO_EXCLUSIVEADDRUSE failed with WSAError %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
-            WSAGetLastError());
-        int error = s_determine_socket_error(WSAGetLastError());
-        return aws_raise_error(error);
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
-    int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
-
-    if (!error_code) {
-        socket->state = BOUND;
-        return AWS_OP_SUCCESS;
+    if (bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size) != 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: error binding. error %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
     }
 
-    AWS_LOGF_ERROR(
+    if (s_update_local_endpoint_ipv4_ipv6(socket)) {
+        goto error;
+    }
+
+    AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: error binding. error %d",
+        "id=%p handle=%p: binding to tcp %s:%d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        (int)WSAGetLastError());
+        socket->local_endpoint.address,
+        (int)socket->local_endpoint.port);
+
+    socket->state = BOUND;
+    return AWS_OP_SUCCESS;
+
+error:
     socket->state = ERRORED;
-    int error = s_determine_socket_error(WSAGetLastError());
-    return aws_raise_error(error);
+    return AWS_OP_ERR;
 }
 
 static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
+    AWS_ZERO_STRUCT(addr_in);
     int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
 
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in.sin_port = htons(local_endpoint->port);
     addr_in.sin_family = AF_INET;
 
-    return s_tcp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in, sizeof(addr_in));
+    return s_tcp_bind(socket, (struct sockaddr *)&addr_in, sizeof(addr_in));
 }
 
 static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
+    AWS_ZERO_STRUCT(addr_in6);
     int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
 
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in6.sin6_port = htons(local_endpoint->port);
     addr_in6.sin6_family = AF_INET6;
 
-    return s_tcp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
+    return s_tcp_bind(socket, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
 }
 
-static inline int s_udp_bind(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    struct sockaddr *sock_addr,
-    size_t sock_size) {
-    socket->local_endpoint = *local_endpoint;
+static inline int s_udp_bind(struct aws_socket *socket, struct sockaddr *sock_addr, size_t sock_size) {
+
+    if (bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size) != 0) {
+        int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: error binding. error %d",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle,
+            wsa_err);
+        aws_raise_error(s_determine_socket_error(wsa_err));
+        goto error;
+    }
+
+    if (s_update_local_endpoint_ipv4_ipv6(socket)) {
+        goto error;
+    }
+
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: binding to udp %s:%p",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        local_endpoint->address,
-        (int)local_endpoint->port);
-    int error_code = bind((SOCKET)socket->io_handle.data.handle, sock_addr, (int)sock_size);
+        socket->local_endpoint.address,
+        (int)socket->local_endpoint.port);
 
-    if (!error_code) {
-        socket->state = CONNECTED_READ;
-        return AWS_OP_SUCCESS;
-    }
+    socket->state = CONNECTED_READ;
+    return AWS_OP_SUCCESS;
 
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: error binding. error %d",
-        (void *)socket,
-        (void *)socket->io_handle.data.handle,
-        (int)WSAGetLastError());
+error:
     socket->state = ERRORED;
-    int error = s_determine_socket_error(WSAGetLastError());
-    return aws_raise_error(error);
+    return AWS_OP_ERR;
 }
 
 static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
+    AWS_ZERO_STRUCT(addr_in);
     int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
 
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in.sin_port = htons(local_endpoint->port);
     addr_in.sin_family = AF_INET;
 
-    return s_udp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in, sizeof(addr_in));
+    return s_udp_bind(socket, (struct sockaddr *)&addr_in, sizeof(addr_in));
 }
 
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
+    AWS_ZERO_STRUCT(addr_in6);
     int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
 
     if (pton_err != 1) {
+        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return aws_raise_error(aws_err);
     }
 
     addr_in6.sin6_port = htons(local_endpoint->port);
     addr_in6.sin6_family = AF_INET6;
 
-    return s_udp_bind(socket, local_endpoint, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
+    return s_udp_bind(socket, (struct sockaddr *)&addr_in6, sizeof(addr_in6));
 }
 
 static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
@@ -1531,16 +1544,16 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
         socket->state = BOUND;
         return AWS_OP_SUCCESS;
     } else {
+        int error_code = GetLastError(); /* logging may reset error, so cache it */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to open named pipe %s with error %d",
             (void *)socket,
             (void *)socket->io_handle.data.handle,
             local_endpoint->address,
-            (int)GetLastError());
+            error_code);
 
         socket->state = ERRORED;
-        int error_code = GetLastError();
         int aws_error = s_determine_socket_error(error_code);
         return aws_raise_error(aws_error);
     }
@@ -1560,13 +1573,13 @@ static int s_tcp_listen(struct aws_socket *socket, int backlog_size) {
         return AWS_OP_SUCCESS;
     }
 
+    error_code = GetLastError(); /* logging may reset error, so cache it */
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: listen failed with error code %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
-        (int)GetLastError());
-    error_code = GetLastError();
+        error_code);
     int aws_error = s_determine_socket_error(error_code);
     return aws_raise_error(aws_error);
 }
@@ -1732,7 +1745,7 @@ static void s_incoming_pipe_connection_event(
                     "id=%p handle=%p: named-pipe connect failed with error %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    (int)GetLastError());
+                    error_code);
                 socket->state = ERRORED;
                 socket_impl->read_io_data->in_use = false;
                 int aws_err = s_determine_socket_error(error_code);
@@ -1825,7 +1838,7 @@ static int s_socket_setup_accept(struct aws_socket *socket, struct aws_event_loo
                 "id=%p handle=%p: accept failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                (int)WSAGetLastError());
+                (int)win_err);
             socket->state = ERRORED;
             socket_impl->read_io_data->in_use = false;
             aws_mem_release(socket->allocator, socket_impl->incoming_socket);
@@ -2244,12 +2257,13 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     SO_KEEPALIVE,
                     (char *)&keep_alive,
                     sizeof(int))) {
+                int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: setsockopt() call for enabling keep-alive failed with WSAError %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    WSAGetLastError());
+                    wsa_err);
             }
         } else if (socket->options.keepalive) {
             ULONG keep_alive_timeout = (ULONG)aws_timestamp_convert(
@@ -2272,12 +2286,13 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     &bytes_returned,
                     NULL,
                     NULL)) {
+                int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: WSAIoctl() call for setting keep-alive values failed with WSAError %d",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    WSAGetLastError());
+                    wsa_err);
             }
         }
 /* this is only available in Windows 10 1703 and later. It doesn't, matter if this runs on an older version
@@ -2291,6 +2306,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     TCP_KEEPCNT,
                     (char *)&max_probes,
                     sizeof(max_probes))) {
+                int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p handle=%p: setsockopt() call for setting keep-alive probe count value failed with WSAError "
@@ -2299,7 +2315,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     "Windows 10 1703",
                     (void *)socket,
                     (void *)socket->io_handle.data.handle,
-                    WSAGetLastError());
+                    wsa_err);
             }
         }
 #endif
@@ -2673,18 +2689,18 @@ static int s_stream_subscribe_to_read(
         NULL,
         aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
     if (!success) {
-        int wsa_err = WSAGetLastError();
-        if (wsa_err != ERROR_IO_PENDING) {
+        int win_err = GetLastError();
+        if (win_err != ERROR_IO_PENDING) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket ReadFile() failed with error %d",
                 (void *)socket,
                 (void *)socket->io_handle.data.handle,
-                wsa_err);
+                win_err);
             iocp_socket->read_io_data->in_use = false;
             socket->state &= ~CONNECTED_WAITING_ON_READABLE;
 
-            int aws_error = s_determine_socket_error(wsa_err);
+            int aws_error = s_determine_socket_error(win_err);
             if (aws_error == AWS_IO_SOCKET_CLOSED) {
                 socket->state = CLOSED;
             } else {
@@ -2787,16 +2803,16 @@ static int s_local_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
                 NULL,
                 aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
             if (!success) {
-                int wsa_err = GetLastError();
-                if (wsa_err != ERROR_IO_PENDING) {
+                int win_err = GetLastError();
+                if (win_err != ERROR_IO_PENDING) {
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: ReadFile() failed with error %d",
                         (void *)socket,
                         (void *)socket->io_handle.data.handle,
-                        wsa_err);
+                        win_err);
                     iocp_socket->read_io_data->in_use = false;
-                    int aws_error = s_determine_socket_error(wsa_err);
+                    int aws_error = s_determine_socket_error(win_err);
                     if (aws_error == AWS_IO_SOCKET_CLOSED) {
                         socket->state = CLOSED;
                     } else {
@@ -2911,16 +2927,16 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
                 NULL,
                 aws_overlapped_to_windows_overlapped(&iocp_socket->read_io_data->signal));
             if (!success) {
-                int wsa_err = GetLastError();
-                if (wsa_err != ERROR_IO_PENDING) {
+                int win_err = GetLastError();
+                if (win_err != ERROR_IO_PENDING) {
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: ReadFile() for 0 byte read failed with error %d",
                         (void *)socket,
                         (void *)socket->io_handle.data.handle,
-                        wsa_err);
+                        win_err);
                     iocp_socket->read_io_data->in_use = false;
-                    int aws_error = s_determine_socket_error(wsa_err);
+                    int aws_error = s_determine_socket_error(win_err);
                     if (aws_error == AWS_IO_SOCKET_CLOSED) {
                         socket->state = CLOSED;
                     } else {
@@ -3048,7 +3064,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: ReadFile() failed with error %d",
+        "id=%p handle=%p: recv() failed with error %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);
