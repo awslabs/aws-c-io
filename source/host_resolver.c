@@ -1463,11 +1463,11 @@ static int default_resolve_host(
         aws_mutex_unlock(&host_entry->entry_lock);
 
         /* we don't want to do the callback WHILE we hold the lock someone may reentrantly call us. */
+        // TODO: Fire the callback asynchronously
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
             res(resolver, host_name, aws_last_error(), NULL, user_data);
-            result = AWS_OP_ERR;
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
