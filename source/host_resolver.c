@@ -22,18 +22,7 @@ const uint64_t NS_PER_SEC = 1000000000;
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;
     to->address = aws_string_new_from_string(to->allocator, from->address);
-
-    if (!to->address) {
-        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
-    }
-
     to->host = aws_string_new_from_string(to->allocator, from->host);
-
-    if (!to->host) {
-        aws_string_destroy((void *)to->address);
-        return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
-    }
-
     to->record_type = from->record_type;
     to->use_count = from->use_count;
     to->connection_failure_count = from->connection_failure_count;
@@ -1477,9 +1466,8 @@ static int default_resolve_host(
         if (aws_array_list_length(&callback_address_list)) {
             res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
         } else {
-            int last_error = aws_last_error();
-            int error_code = (last_error != AWS_ERROR_SUCCESS) ? last_error : AWS_IO_DNS_QUERY_FAILED;
-            return error_code;
+            res(resolver, host_name, aws_last_error(), NULL, user_data);
+            result = AWS_OP_ERR;
         }
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
