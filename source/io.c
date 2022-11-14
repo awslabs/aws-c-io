@@ -295,6 +295,9 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_STREAM_GET_LENGTH_FAILED,
         "Stream failed to get length from the underlying io source"),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_SEEK_UNSUPPORTED,
+        "Seek is not supported in the underlying io source."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_STREAM_GET_LENGTH_UNSUPPORTED,
         "Get length is not supported in the underlying io source."),
 };
