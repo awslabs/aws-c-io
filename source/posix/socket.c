@@ -101,6 +101,8 @@ static int s_determine_socket_error(int error) {
     switch (error) {
         case ECONNREFUSED:
             return AWS_IO_SOCKET_CONNECTION_REFUSED;
+        case ECONNRESET:
+            return AWS_IO_SOCKET_CLOSED;
         case ETIMEDOUT:
             return AWS_IO_SOCKET_TIMEOUT;
         case EHOSTUNREACH:
@@ -1811,7 +1813,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
-    if (error == EPIPE) {
+    if (error == EPIPE || error == ECONNRESET) {
         AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket is closed.", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
@@ -1827,7 +1829,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         (void *)socket,
         socket->io_handle.data.fd,
         strerror(error));
-    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    return aws_raise_error(s_determine_socket_error(error));
 }
 
 int aws_socket_write(
