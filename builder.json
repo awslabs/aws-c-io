@@ -10,8 +10,9 @@
         }
     ],
     "downstream": [
+        { "name": "aws-c-http" },
         { "name": "aws-c-mqtt" },
-        { "name": "aws-c-http" }
+        { "name": "aws-c-event-stream" }
     ],
     "targets": {
         "linux": {

@@ -521,8 +521,6 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     if (status == AWS_TASK_STATUS_CANCELED) {
         return;
     }
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle_data->owner->data.fd);
 
     /* If handle was unsubscribed before this task could execute, nothing to do */
     if (handle_data->state == HANDLE_STATE_UNSUBSCRIBED) {
@@ -530,6 +528,8 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     }
 
     AWS_ASSERT(handle_data->state == HANDLE_STATE_SUBSCRIBING);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle_data->owner->data.fd);
 
     /* In order to monitor both reads and writes, kqueue requires you to add two separate kevents.
      * If we're adding two separate kevents, but one of those fails, we need to remove the other kevent.

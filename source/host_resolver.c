@@ -69,7 +69,7 @@ int aws_host_resolver_resolve_host(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     aws_on_host_resolved_result_fn *res,
-    struct aws_host_resolution_config *config,
+    const struct aws_host_resolution_config *config,
     void *user_data) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->resolve_host);
     return resolver->vtable->resolve_host(resolver, host_name, res, config, user_data);
@@ -1252,7 +1252,7 @@ static inline int create_and_init_host_entry(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     aws_on_host_resolved_result_fn *res,
-    struct aws_host_resolution_config *config,
+    const struct aws_host_resolution_config *config,
     uint64_t timestamp,
     void *user_data) {
     struct host_entry *new_host_entry = aws_mem_calloc(resolver->allocator, 1, sizeof(struct host_entry));
@@ -1381,7 +1381,7 @@ static int default_resolve_host(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     aws_on_host_resolved_result_fn *res,
-    struct aws_host_resolution_config *config,
+    const struct aws_host_resolution_config *config,
     void *user_data) {
     int result = AWS_OP_SUCCESS;
 
