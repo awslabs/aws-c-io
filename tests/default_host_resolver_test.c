@@ -215,11 +215,11 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
 AWS_TEST_CASE(test_default_with_ipv4_only_lookup, s_test_default_with_ipv4_only_lookup_fn)
 
 /* there are multiple big assumptions in this test.
- * The first assumption is that s3.us-east-1.amazonaws.com will never return an IPv6 address.
+ * The first assumption is that ec2.us-east-1.amazonaws.com will never return an IPv6 address.
  * The second assumption is that the TTLs for these records are one second and that the backend resolver
  * resolves at the TTL rate.
  * The third assumption is that this test runs in less than one second after the first background resolve.
- * The fourth assumption is that S3 does not return multiple addresses per A or AAAA record.
+ * The fourth assumption is that ec2.us-east-1.api.aws does not return multiple addresses per A or AAAA record.
  * If any of these assumptions ever change, this test will likely be broken, but I don't know of a better way to test
  * this end-to-end. */
 static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocator, void *ctx) {
@@ -235,8 +235,8 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
     };
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
-    const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "s3.dualstack.us-east-1.amazonaws.com");
-    const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "s3.us-east-1.amazonaws.com");
+    const struct aws_string *host_name_1 = aws_string_new_from_c_str(allocator, "ec2.us-east-1.api.aws");
+    const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "ec2.us-east-1.amazonaws.com");
 
     ASSERT_NOT_NULL(host_name_1);
     ASSERT_NOT_NULL(host_name_2);
