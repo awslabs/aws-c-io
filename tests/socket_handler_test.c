@@ -578,12 +578,12 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         aws_byte_buf_from_empty_array(client_received_message, sizeof(client_received_message)),
         0));
 
-    struct aws_channel_handler *client_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
+    struct aws_channel_handler *client_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
-    struct aws_channel_handler *server_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
+    struct aws_channel_handler *server_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
@@ -734,12 +734,12 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
         aws_byte_buf_from_empty_array(client_received_message, sizeof(client_received_message)),
         0));
 
-    struct aws_channel_handler *client_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
+    struct aws_channel_handler *client_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
-    struct aws_channel_handler *server_rw_handler = rw_handler_new(
-        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
+    struct aws_channel_handler *server_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
