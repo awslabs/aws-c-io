@@ -161,6 +161,8 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     }
     clean_up_event_loop_base = true;
 
+    event_loop->owner = options->owner;
+
     struct kqueue_loop *impl = aws_mem_calloc(alloc, 1, sizeof(struct kqueue_loop));
     if (!impl) {
         goto clean_up;

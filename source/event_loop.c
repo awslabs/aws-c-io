@@ -4,6 +4,7 @@
  */
 
 #include <aws/io/event_loop.h>
+#include <aws/io/logging.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
@@ -124,6 +125,7 @@ static struct aws_event_loop_group *s_event_loop_group_new(
             struct aws_event_loop_options options = {
                 .clock = clock,
                 .thread_options = &thread_options,
+                .owner = el_group,
             };
 
             if (pin_threads) {
@@ -383,6 +385,22 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     event_loop->vtable->destroy(event_loop);
+}
+
+void aws_event_loop_acquire_hold_on_group(struct aws_event_loop *event_loop) {
+    AWS_ASSERT(event_loop);
+
+    if (event_loop->owner) {
+        aws_event_loop_group_acquire(event_loop->owner);
+    } else {
+        AWS_LOGF_WARN(AWS_LS_IO_EVENT_LOOP, "id=%p: Event loop does not belong to a group.", (void *)event_loop);
+    }
+}
+
+void aws_event_loop_release_hold_on_group(struct aws_event_loop *event_loop) {
+    if (event_loop && event_loop->owner) {
+        aws_event_loop_group_release(event_loop->owner);
+    }
 }
 
 int aws_event_loop_fetch_local_object(

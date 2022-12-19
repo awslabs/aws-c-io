@@ -127,6 +127,8 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         goto clean_up_loop;
     }
 
+    loop->owner = options->owner;
+
     struct epoll_loop *epoll_loop = aws_mem_calloc(alloc, 1, sizeof(struct epoll_loop));
     if (!epoll_loop) {
         goto cleanup_base_loop;

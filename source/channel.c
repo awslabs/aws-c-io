@@ -214,7 +214,6 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
 
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: Beginning creation and setup of new channel.", (void *)channel);
     channel->alloc = alloc;
-    channel->loop = creation_args->event_loop;
     channel->on_shutdown_completed = creation_args->on_shutdown_completed;
     channel->shutdown_user_data = creation_args->shutdown_user_data;
 
@@ -256,6 +255,10 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     setup_args->on_setup_completed = creation_args->on_setup_completed;
     setup_args->user_data = creation_args->setup_user_data;
 
+    /* keep loop alive until channel is destroyed */
+    channel->loop = creation_args->event_loop;
+    aws_event_loop_acquire_hold_on_group(channel->loop);
+
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args, "on_channel_setup_complete");
     aws_event_loop_schedule_task_now(creation_args->event_loop, &setup_args->task);
 
@@ -278,8 +281,6 @@ static void s_cleanup_slot(struct aws_channel_slot *slot) {
 }
 
 void aws_channel_destroy(struct aws_channel *channel) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: destroying channel.", (void *)channel);
-
     aws_channel_release_hold(channel);
 }
 
@@ -307,6 +308,8 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
 
     aws_channel_set_statistics_handler(channel, NULL);
 
+    aws_event_loop_release_hold_on_group(channel->loop);
+
     aws_mem_release(channel->alloc, channel);
 }
 
@@ -322,6 +325,7 @@ void aws_channel_release_hold(struct aws_channel *channel) {
 
     if (prev_refcount == 1) {
         /* Refcount is now 0, finish cleaning up channel memory. */
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "id=%p: destroying channel.", (void *)channel);
         if (aws_channel_thread_is_callers_thread(channel)) {
             s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
         } else {
