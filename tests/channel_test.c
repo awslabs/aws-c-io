@@ -20,9 +20,10 @@
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    bool setup_completed;    /* protected by mutex */
-    bool shutdown_completed; /* protected by mutex */
-    int error_code;          /* protected by mutex */
+    bool setup_completed;                     /* protected by mutex */
+    bool shutdown_completed;                  /* protected by mutex */
+    int error_code;                           /* protected by mutex */
+    bool event_loop_group_shutdown_completed; /* protected by mutex (not used by all tests) */
     enum aws_task_status task_status;
 };
 
@@ -57,6 +58,19 @@ static int s_channel_setup_create_and_wait(
     ASSERT_INT_EQUALS(0, test_args->error_code);
     ASSERT_SUCCESS(aws_mutex_unlock(&test_args->mutex));
     return AWS_OP_SUCCESS;
+}
+
+static void s_event_loop_group_on_shutdown_complete(void *user_data) {
+    struct channel_setup_test_args *setup_test_args = user_data;
+    aws_mutex_lock(&setup_test_args->mutex);
+    setup_test_args->event_loop_group_shutdown_completed = true;
+    aws_condition_variable_notify_all(&setup_test_args->condition_variable);
+    aws_mutex_unlock(&setup_test_args->mutex);
+}
+
+static bool s_event_loop_group_shutdown_completed_predicate(void *arg) {
+    struct channel_setup_test_args *setup_test_args = (struct channel_setup_test_args *)arg;
+    return setup_test_args->event_loop_group_shutdown_completed;
 }
 
 static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
@@ -615,6 +629,77 @@ static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, vo
 }
 
 AWS_TEST_CASE(channel_duplicate_shutdown, s_test_channel_duplicate_shutdown)
+
+/* This is a regression test. The channel didn't used to do anything to keep the event-loop alive.
+ * So if the event-loop-group was released before the channel, the loops would get destroyed,
+ * then the channel would try to schedule its own destruction task on the loop and crash. */
+static int s_test_channel_keeps_event_loop_group_alive(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    struct channel_setup_test_args test_args = {
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    struct aws_shutdown_callback_options event_loop_group_shutdown_options = {
+        .shutdown_callback_fn = s_event_loop_group_on_shutdown_complete,
+        .shutdown_callback_user_data = &test_args,
+    };
+    struct aws_event_loop_group *event_loop_group =
+        aws_event_loop_group_new_default(allocator, 1, &event_loop_group_shutdown_options);
+    ASSERT_NOT_NULL(event_loop_group);
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+
+    struct aws_channel_options channel_options = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+        .event_loop = event_loop,
+    };
+
+    struct aws_channel *channel = NULL;
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &channel_options, &test_args, &channel));
+
+    /* shut down channel, but don't clean it up yet */
+    aws_channel_shutdown(channel, 0);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_channel_test_shutdown_predicate, &test_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
+
+    /* release event loop group before channel */
+    aws_event_loop_group_release(event_loop_group);
+
+    /* wait a bit to ensure the event-loop-group doesn't shut down (because channel has a hold on it) */
+    uint64_t wait_time = aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_FAILS(
+        aws_condition_variable_wait_for_pred(
+            &test_args.condition_variable,
+            &test_args.mutex,
+            wait_time,
+            s_event_loop_group_shutdown_completed_predicate,
+            &test_args),
+        "Channel failed to keep event loop alive");
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
+
+    /* release channel for destruction */
+    aws_channel_destroy(channel);
+
+    /* event loop group should shut down now */
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &test_args.condition_variable, &test_args.mutex, s_event_loop_group_shutdown_completed_predicate, &test_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
+
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(channel_keeps_event_loop_group_alive, s_test_channel_keeps_event_loop_group_alive)
 
 struct channel_connect_test_args {
     struct aws_mutex *mutex;

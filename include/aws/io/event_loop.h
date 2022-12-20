@@ -110,6 +110,7 @@ struct aws_event_loop {
     uint64_t latest_tick_start;
     size_t current_tick_latency_sum;
     struct aws_atomic_var next_flush_time;
+    struct aws_event_loop_group *owner;
     void *impl_data;
 };
 
@@ -125,6 +126,7 @@ struct aws_event_loop_local_object {
 struct aws_event_loop_options {
     aws_io_clock_fn *clock;
     struct aws_thread_options *thread_options;
+    struct aws_event_loop_group *owner;
 };
 
 typedef struct aws_event_loop *(aws_new_event_loop_fn)(
@@ -189,6 +191,22 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
+
+/**
+ * If this event loop belongs to an aws_event_loop_group, acquire a hold on the group
+ * preventing it from being cleaned up.
+ *
+ * If the event loop is not in a group, this function does nothing,
+ * but only internal tests should ever create a naked event loop without a group.
+ */
+AWS_IO_API
+void aws_event_loop_acquire_hold_on_group(struct aws_event_loop *event_loop);
+
+/**
+ * Release a hold on the event loop's group, allowing it to be cleaned up.
+ */
+AWS_IO_API
+void aws_event_loop_release_hold_on_group(struct aws_event_loop *event_loop);
 
 /**
  * Initializes common event-loop data structures.
