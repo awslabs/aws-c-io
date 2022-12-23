@@ -616,7 +616,7 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
     struct s2n_handler *s2n_handler = handler->impl;
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in write direction", (void *)handler)
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in write direction", (void *)handler);
         s2n_blocked_status blocked;
         /* make a best effort, but the channel is going away after this run, so.... you only get one shot anyways */
         s2n_shutdown(s2n_handler->connection, &blocked);
