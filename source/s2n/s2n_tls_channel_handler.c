@@ -467,7 +467,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler)
+    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler);
     if (aws_channel_thread_is_callers_thread(s2n_handler->slot->channel)) {
         if (s2n_handler->state == NEGOTIATION_ONGOING) {
             s_drive_negotiation(handler);
