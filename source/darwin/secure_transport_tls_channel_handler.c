@@ -470,7 +470,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
                 (void *)handler,
                 (int)status,
-                (int)trust_eval)
+                (int)trust_eval);
             return AWS_OP_ERR;
         }
         return s_drive_negotiation(handler);
