@@ -1000,7 +1000,7 @@ static void s_socket_accept_event(
                         AWS_LS_IO_SOCKET,
                         "id=%p fd=%d:. Failed to determine remote address.",
                         (void *)socket,
-                        socket->io_handle.data.fd)
+                        socket->io_handle.data.fd);
                 }
                 new_sock->options.domain = AWS_SOCKET_IPV4;
             } else if (in_addr.ss_family == AF_INET6) {
@@ -1017,7 +1017,7 @@ static void s_socket_accept_event(
                         AWS_LS_IO_SOCKET,
                         "id=%p fd=%d:. Failed to determine remote address.",
                         (void *)socket,
-                        socket->io_handle.data.fd)
+                        socket->io_handle.data.fd);
                 }
                 new_sock->options.domain = AWS_SOCKET_IPV6;
             } else if (in_addr.ss_family == AF_UNIX) {

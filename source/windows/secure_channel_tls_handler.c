@@ -428,7 +428,7 @@ static int s_fillin_alpn_data(
     size_t *written) {
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "")
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "");
 
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
@@ -1518,7 +1518,7 @@ static int s_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler);
 
             /* send a TLS alert. */
             SECURITY_STATUS status;
