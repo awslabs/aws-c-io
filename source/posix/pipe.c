@@ -12,7 +12,7 @@
 #endif
 
 /* TODO: move this detection to CMAKE and a config header */
-#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 9
+#if !defined(COMPAT_MODE) && defined(__GLIBC__) && ((__GLIBC__ == 2 && __GLIBC_MINOR__ >= 9) || __GLIBC__ > 2)
 #    define HAVE_PIPE2 1
 #else
 #    define HAVE_PIPE2 0
