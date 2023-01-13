@@ -139,7 +139,7 @@ static int s_determine_socket_error(int error) {
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
 
     int fd = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
-    int errno_value = errno;
+    int errno_value = errno; /* Always cache errno before potential side-effect */
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
@@ -278,7 +278,7 @@ static int s_update_local_endpoint(struct aws_socket *socket) {
     socklen_t address_size = sizeof(address);
 
     if (getsockname(socket->io_handle.data.fd, (struct sockaddr *)&address, &address_size) != 0) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: getsockname() failed with error %d",
@@ -293,7 +293,7 @@ static int s_update_local_endpoint(struct aws_socket *socket) {
         struct sockaddr_in *s = (struct sockaddr_in *)&address;
         tmp_endpoint.port = ntohs(s->sin_port);
         if (inet_ntop(AF_INET, &s->sin_addr, tmp_endpoint.address, sizeof(tmp_endpoint.address)) == NULL) {
-            int errno_value = errno;
+            int errno_value = errno; /* Always cache errno before potential side-effect */
 
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
@@ -308,7 +308,7 @@ static int s_update_local_endpoint(struct aws_socket *socket) {
         struct sockaddr_in6 *s = (struct sockaddr_in6 *)&address;
         tmp_endpoint.port = ntohs(s->sin6_port);
         if (inet_ntop(AF_INET6, &s->sin6_addr, tmp_endpoint.address, sizeof(tmp_endpoint.address)) == NULL) {
-            int errno_value = errno;
+            int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: inet_ntop() failed with error %d",
@@ -382,7 +382,7 @@ static int s_on_connection_success(struct aws_socket *socket) {
     socklen_t result_length = sizeof(connect_result);
 
     if (getsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to determine connection error %d",
@@ -672,7 +672,7 @@ int aws_socket_connect(
     }
 
     if (pton_err != 1) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to parse address %s:%d.",
@@ -725,7 +725,7 @@ int aws_socket_connect(
     }
 
     if (error_code) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         if (errno_value == EINPROGRESS || errno_value == EALREADY) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET,
@@ -844,7 +844,7 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     }
 
     if (pton_err != 1) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to parse address %s:%d.",
@@ -856,7 +856,7 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     }
 
     if (bind(socket->io_handle.data.fd, (struct sockaddr *)&address.sock_addr_types, sock_size) != 0) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: bind failed with error code %d",
@@ -926,7 +926,7 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
         return AWS_OP_SUCCESS;
     }
 
-    int errno_value = errno;
+    int errno_value = errno; /* Always cache errno before potential side-effect */
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
@@ -964,7 +964,7 @@ static void s_socket_accept_event(
 
             in_fd = accept(handle->data.fd, (struct sockaddr *)&in_addr, &in_len);
             if (in_fd == -1) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
 
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
                     break;
@@ -1236,7 +1236,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     int option_value = 1;
     if (AWS_UNLIKELY(setsockopt(
             socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL_SOCK_OPT, &option_value, sizeof(option_value)))) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: setsockopt() for NO_SIGNAL_SOCK_OPT failed with errno %d.",
@@ -1248,7 +1248,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     int reuse = 1;
     if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)))) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: setsockopt() for SO_REUSEADDR failed with errno %d.",
@@ -1262,7 +1262,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int keep_alive = 1;
             if (AWS_UNLIKELY(
                     setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_KEEPALIVE, &keep_alive, sizeof(int)))) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling SO_KEEPALIVE failed with errno %d.",
@@ -1276,7 +1276,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int ival_in_secs = socket->options.keep_alive_interval_sec;
             if (AWS_UNLIKELY(setsockopt(
                     socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPIDLE, &ival_in_secs, sizeof(ival_in_secs)))) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPIDLE for TCP failed with errno %d.",
@@ -1288,7 +1288,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             ival_in_secs = socket->options.keep_alive_timeout_sec;
             if (AWS_UNLIKELY(setsockopt(
                     socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPINTVL, &ival_in_secs, sizeof(ival_in_secs)))) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPINTVL for TCP failed with errno %d.",
@@ -1302,7 +1302,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int max_probes = socket->options.keep_alive_max_failed_probes;
             if (AWS_UNLIKELY(
                     setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_KEEPCNT, &max_probes, sizeof(max_probes)))) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
                 AWS_LOGF_WARN(
                     AWS_LS_IO_SOCKET,
                     "id=%p fd=%d: setsockopt() for enabling TCP_KEEPCNT for TCP failed with errno %d.",
@@ -1462,7 +1462,7 @@ int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_directio
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p fd=%d: shutting down in direction %d", (void *)socket, socket->io_handle.data.fd, dir);
     if (shutdown(socket->io_handle.data.fd, how)) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         int aws_error = s_determine_socket_error(errno_value);
         return aws_raise_error(aws_error);
     }
@@ -1558,7 +1558,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
 
         ssize_t written = send(
             socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL_SEND);
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
@@ -1799,7 +1799,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
     }
 
     ssize_t read_val = read(socket->io_handle.data.fd, buffer->buffer + buffer->len, buffer->capacity - buffer->len);
-    int errno_value = errno;
+    int errno_value = errno; /* Always cache errno before potential side-effect */
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET, "id=%p fd=%d: read of %d", (void *)socket, socket->io_handle.data.fd, (int)read_val);

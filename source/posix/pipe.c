@@ -276,7 +276,7 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
     ssize_t read_val = read(read_impl->handle.data.fd, dst_buffer->buffer + dst_buffer->len, num_bytes_to_read);
 
     if (read_val < 0) {
-        int errno_value = errno;
+        int errno_value = errno; /* Always cache errno before potential side-effect */
         if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
@@ -450,7 +450,7 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
             ssize_t write_val = write(write_impl->handle.data.fd, request->cursor.ptr, request->cursor.len);
 
             if (write_val < 0) {
-                int errno_value = errno;
+                int errno_value = errno; /* Always cache errno before potential side-effect */
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
                     /* The pipe is no longer writable. Bail out */
                     write_impl->is_writable = false;
