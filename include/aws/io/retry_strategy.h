@@ -120,11 +120,11 @@ struct aws_exponential_backoff_retry_options {
     uint64_t (*generate_random)(void);
 
     /*
-     * By default this will be set to use aws_device_random.If you want something else, set it here.
+     * By default this will be set to use aws_device_random. If you want something else, set it here.
      */
     generate_random_fn *generate_random_callback;
     /**
-     * Optional user data for the generate random callback
+     * Optional user data for the generate random callback.
      */
     void *generate_random_user_data;
 };
