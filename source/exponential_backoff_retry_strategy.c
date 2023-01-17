@@ -29,6 +29,8 @@ struct exponential_backoff_retry_token {
     /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
     uint64_t (*generate_random)(void);
+    generate_random_fn *generate_random_callback;
+    void *generate_random_user_data;
     struct aws_task retry_task;
 
     struct {
@@ -131,6 +133,9 @@ static int s_exponential_retry_acquire_token(
         exponential_backoff_strategy->config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->jitter_mode = exponential_backoff_strategy->config.jitter_mode;
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
+    backoff_retry_token->generate_random_callback = exponential_backoff_strategy->config.generate_random_callback;
+    backoff_retry_token->generate_random_user_data = exponential_backoff_strategy->config.generate_random_user_data;
+
     aws_atomic_init_int(&backoff_retry_token->current_retry_count, 0);
     aws_atomic_init_int(&backoff_retry_token->last_backoff, 0);
 
@@ -158,8 +163,12 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
     if (!diff) {
         return 0;
     }
-
-    uint64_t random = token->generate_random();
+    uint64_t random;
+    if (token->generate_random_callback) {
+        random = token->generate_random_callback(token->generate_random_user_data);
+    } else {
+        random = token->generate_random();
+    }
     return min + random % (diff);
 }
 
@@ -297,7 +306,8 @@ static struct aws_retry_strategy_vtable s_exponential_retry_vtable = {
     .release_token = s_exponential_backoff_release_token,
 };
 
-static uint64_t s_default_gen_rand(void) {
+static uint64_t s_default_gen_rand(void *user_data) {
+    (void)user_data;
     uint64_t res = 0;
     aws_device_random_u64(&res);
     return res;
@@ -341,8 +351,9 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     exponential_backoff_strategy->config.el_group =
         aws_ref_count_acquire(&exponential_backoff_strategy->config.el_group->ref_count);
 
-    if (!exponential_backoff_strategy->config.generate_random) {
-        exponential_backoff_strategy->config.generate_random = s_default_gen_rand;
+    if (!exponential_backoff_strategy->config.generate_random &&
+        !exponential_backoff_strategy->config.generate_random_callback) {
+        exponential_backoff_strategy->config.generate_random_callback = s_default_gen_rand;
     }
 
     if (!exponential_backoff_strategy->config.max_retries) {
