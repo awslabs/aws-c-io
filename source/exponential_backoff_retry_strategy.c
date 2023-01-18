@@ -29,9 +29,10 @@ struct exponential_backoff_retry_token {
     /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
     uint64_t (*generate_random)(void);
-    generate_random_fn *generate_random_impl;
+    aws_generate_random_fn *generate_random_impl;
     void *generate_random_user_data;
     struct aws_task retry_task;
+    const struct aws_shutdown_callback_options *shutdown_options;
 
     struct {
         struct aws_mutex mutex;
@@ -45,7 +46,14 @@ static void s_exponential_retry_destroy(struct aws_retry_strategy *retry_strateg
     if (retry_strategy) {
         struct exponential_backoff_strategy *exponential_strategy = retry_strategy->impl;
         struct aws_event_loop_group *el_group = exponential_strategy->config.el_group;
+        aws_simple_completion_callback *completion_callback =
+            exponential_strategy->config.shutdown_options->shutdown_callback_fn;
+        void *completion_user_data = exponential_strategy->config.shutdown_options->shutdown_callback_user_data;
+
         aws_mem_release(retry_strategy->allocator, exponential_strategy);
+        if (completion_callback != NULL) {
+            completion_callback(completion_user_data);
+        }
         aws_ref_count_release(&el_group->ref_count);
     }
 }
@@ -135,6 +143,7 @@ static int s_exponential_retry_acquire_token(
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
     backoff_retry_token->generate_random_impl = exponential_backoff_strategy->config.generate_random_impl;
     backoff_retry_token->generate_random_user_data = exponential_backoff_strategy->config.generate_random_user_data;
+    backoff_retry_token->shutdown_options = exponential_backoff_strategy->config.shutdown_options;
 
     aws_atomic_init_int(&backoff_retry_token->current_retry_count, 0);
     aws_atomic_init_int(&backoff_retry_token->last_backoff, 0);

@@ -38,7 +38,7 @@ typedef void(aws_retry_strategy_on_retry_ready_fn)(struct aws_retry_token *token
 /**
  * Optional function to supply your own generate random implementation
  */
-typedef uint64_t(generate_random_fn)(void *user_data);
+typedef uint64_t(aws_generate_random_fn)(void *user_data);
 
 enum aws_retry_error_type {
     /** This is a connection level error such as a socket timeout, socket connect error, tls negotiation timeout etc...
@@ -122,11 +122,17 @@ struct aws_exponential_backoff_retry_options {
     /*
      * By default this will be set to use aws_device_random. If you want something else, set it here.
      */
-    generate_random_fn *generate_random_impl;
+    aws_generate_random_fn *generate_random_impl;
     /**
      * Optional user data for the generate random generate_random_impl.
      */
     void *generate_random_user_data;
+
+    /**
+     * Optional shutdown callback that gets invoked, with appropriate user data,
+     * when the resources used by the retry_strategy are no longer in use.
+     */
+    const struct aws_shutdown_callback_options *shutdown_options;
 };
 
 struct aws_standard_retry_options {
