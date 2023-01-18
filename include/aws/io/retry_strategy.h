@@ -36,7 +36,7 @@ typedef void(aws_retry_strategy_on_retry_token_acquired_fn)(
 typedef void(aws_retry_strategy_on_retry_ready_fn)(struct aws_retry_token *token, int error_code, void *user_data);
 
 /**
- * Optional callback to supply your own generate random implementation
+ * Optional function to supply your own generate random implementation
  */
 typedef uint64_t(generate_random_fn)(void *user_data);
 
@@ -114,7 +114,7 @@ struct aws_exponential_backoff_retry_options {
      * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
     enum aws_exponential_backoff_jitter_mode jitter_mode;
 
-    /** Deprecated. Use generate_random_callback instead
+    /** Deprecated. Use generate_random_impl instead
      * By default this will be set to use aws_device_random. If you want something else, set it here.
      * */
     uint64_t (*generate_random)(void);
@@ -122,9 +122,9 @@ struct aws_exponential_backoff_retry_options {
     /*
      * By default this will be set to use aws_device_random. If you want something else, set it here.
      */
-    generate_random_fn *generate_random_callback;
+    generate_random_fn *generate_random_impl;
     /**
-     * Optional user data for the generate random callback.
+     * Optional user data for the generate random generate_random_impl.
      */
     void *generate_random_user_data;
 };

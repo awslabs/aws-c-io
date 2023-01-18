@@ -29,7 +29,7 @@ struct exponential_backoff_retry_token {
     /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
     uint64_t (*generate_random)(void);
-    generate_random_fn *generate_random_callback;
+    generate_random_fn *generate_random_impl;
     void *generate_random_user_data;
     struct aws_task retry_task;
 
@@ -133,7 +133,7 @@ static int s_exponential_retry_acquire_token(
         exponential_backoff_strategy->config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->jitter_mode = exponential_backoff_strategy->config.jitter_mode;
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
-    backoff_retry_token->generate_random_callback = exponential_backoff_strategy->config.generate_random_callback;
+    backoff_retry_token->generate_random_impl = exponential_backoff_strategy->config.generate_random_impl;
     backoff_retry_token->generate_random_user_data = exponential_backoff_strategy->config.generate_random_user_data;
 
     aws_atomic_init_int(&backoff_retry_token->current_retry_count, 0);
@@ -164,8 +164,8 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
         return 0;
     }
     uint64_t random;
-    if (token->generate_random_callback) {
-        random = token->generate_random_callback(token->generate_random_user_data);
+    if (token->generate_random_impl) {
+        random = token->generate_random_impl(token->generate_random_user_data);
     } else {
         random = token->generate_random();
     }
@@ -352,8 +352,8 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
         aws_ref_count_acquire(&exponential_backoff_strategy->config.el_group->ref_count);
 
     if (!exponential_backoff_strategy->config.generate_random &&
-        !exponential_backoff_strategy->config.generate_random_callback) {
-        exponential_backoff_strategy->config.generate_random_callback = s_default_gen_rand;
+        !exponential_backoff_strategy->config.generate_random_impl) {
+        exponential_backoff_strategy->config.generate_random_impl = s_default_gen_rand;
     }
 
     if (!exponential_backoff_strategy->config.max_retries) {
