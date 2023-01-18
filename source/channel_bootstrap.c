@@ -144,7 +144,6 @@ struct client_connection_args {
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
     if (args != NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: s_client_connection_args_acquire", (void *)args);
         aws_ref_count_acquire(&args->ref_count);
     }
 
@@ -153,7 +152,6 @@ static struct client_connection_args *s_client_connection_args_acquire(struct cl
 
 static void s_client_connection_args_destroy(struct client_connection_args *args) {
     AWS_ASSERT(args);
-    AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: client_connection_args_destroy", (void *)args);
 
     struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_client_bootstrap_release(args->bootstrap);
@@ -170,7 +168,6 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
     if (args != NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: s_client_connection_args_release", (void *)args);
         aws_ref_count_release(&args->ref_count);
     }
 }
