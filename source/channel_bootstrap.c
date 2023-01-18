@@ -25,7 +25,7 @@
 
 static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: bootstrap destroying", (void *)bootstrap);
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
     void *user_data = bootstrap->user_data;
 
@@ -41,6 +41,7 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
 
 struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
     if (bootstrap != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: acquiring bootstrap reference", (void *)bootstrap);
         aws_ref_count_acquire(&bootstrap->ref_count);
     }
 
@@ -48,8 +49,8 @@ struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_boot
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     if (bootstrap != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
         aws_ref_count_release(&bootstrap->ref_count);
     }
 }
@@ -144,6 +145,7 @@ struct client_connection_args {
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
     if (args != NULL) {
+        AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "acquiring client connection args, args=%p", (void *)args);
         aws_ref_count_acquire(&args->ref_count);
     }
 
@@ -152,6 +154,7 @@ static struct client_connection_args *s_client_connection_args_acquire(struct cl
 
 static void s_client_connection_args_destroy(struct client_connection_args *args) {
     AWS_ASSERT(args);
+    AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "destroying client connection args, args=%p", (void *)args);
 
     struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_client_bootstrap_release(args->bootstrap);
@@ -168,6 +171,7 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
     if (args != NULL) {
+        AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "releasing client connection args, args=%p", (void *)args);
         aws_ref_count_release(&args->ref_count);
     }
 }
