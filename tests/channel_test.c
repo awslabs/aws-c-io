@@ -20,9 +20,10 @@
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    bool setup_completed;    /* protected by mutex */
-    bool shutdown_completed; /* protected by mutex */
-    int error_code;          /* protected by mutex */
+    bool setup_completed;              /* protected by mutex */
+    bool shutdown_completed;           /* protected by mutex */
+    int error_code;                    /* protected by mutex */
+    bool destruction_callback_invoked; /* protected by mutex */
     enum aws_task_status task_status;
 };
 
@@ -860,3 +861,66 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 }
 
 AWS_TEST_CASE(channel_connect_some_hosts_timeout, s_test_channel_connect_some_hosts_timeout);
+
+static void s_channel_test_destruction(void *context) {
+    struct channel_setup_test_args *test_args = context;
+
+    aws_mutex_lock(&test_args->mutex);
+    test_args->destruction_callback_invoked = true;
+    aws_mutex_unlock(&test_args->mutex);
+    aws_condition_variable_notify_all(&test_args->condition_variable);
+}
+
+static bool s_destruction_callback_invoked_pred(void *user_data) {
+    struct channel_setup_test_args *test_args = user_data;
+    return test_args->destruction_callback_invoked;
+}
+
+static int s_channel_invokes_destruction_callback_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_channel *channel = NULL;
+
+    struct channel_setup_test_args test_args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .setup_completed = false,
+        .shutdown_completed = false,
+        .task_status = 100,
+        .destruction_callback_invoked = false,
+    };
+
+    struct aws_channel_options args = {
+        .on_setup_completed = s_channel_setup_test_on_setup_completed,
+        .setup_user_data = &test_args,
+        .on_shutdown_completed = s_channel_test_shutdown,
+        .shutdown_user_data = &test_args,
+        .on_destruction_completed = s_channel_test_destruction,
+        .destruction_user_data = &test_args,
+        .event_loop = event_loop,
+    };
+
+    ASSERT_SUCCESS(s_channel_setup_create_and_wait(allocator, &args, &test_args, &channel));
+
+    aws_channel_destroy(channel);
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &test_args.condition_variable,
+        &test_args.mutex,
+        aws_timestamp_convert(2, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL),
+        s_destruction_callback_invoked_pred,
+        &test_args));
+
+    ASSERT_TRUE(test_args.destruction_callback_invoked);
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
+
+    aws_event_loop_destroy(event_loop);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_invokes_destruction_callback, s_channel_invokes_destruction_callback_fn)

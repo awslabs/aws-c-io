@@ -496,7 +496,7 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
      * Channel tasks that are triggered by time and the scheduler will still be in the list.  Now-tasks that are being
      * run by the cross thread task processing logic have already been removed from the cross thread list.
      */
-    if (channel_task->node.next != NULL) {
+    if (aws_linked_list_node_is_in_list(&channel_task->node)) {
         aws_linked_list_remove(&channel_task->node);
     }
 
