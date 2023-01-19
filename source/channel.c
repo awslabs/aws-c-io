@@ -496,13 +496,6 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
         aws_linked_list_remove(&channel_task->node);
     }
 
-    /*
-     * Clear channel value in case the task gets reused.  Submission will reset it; all submissions pass through
-     * s_reset_pending_channel_task
-     */
-    AWS_FATAL_ASSERT(channel_task->wrapper_task.arg == channel);
-    channel_task->wrapper_task.arg = NULL;
-
     channel_task->task_fn(channel_task, channel_task->arg, status);
 
     aws_channel_release_hold(channel);
@@ -600,19 +593,11 @@ static void s_reset_pending_channel_task(
     struct aws_channel_task *channel_task,
     uint64_t run_at_nanos) {
 
-    /* Sure hope this was zeroed */
-    struct aws_channel *old_channel = channel_task->wrapper_task.arg;
-    AWS_FATAL_ASSERT(old_channel == NULL);
-
-    /* Also handles the degenerate, possibly not-possible case where the task is reused with the same channel target */
-    if (channel != NULL) {
-        aws_channel_acquire_hold(channel);
-    }
+    /* Acquire at submission time, release on run (cancelled or otherwise) */
+    aws_channel_acquire_hold(channel);
 
     /* Reset every property on channel task other than user's fn & arg.*/
     aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
-
-    AWS_FATAL_ASSERT(channel_task->wrapper_task.arg == channel);
 
     channel_task->wrapper_task.timestamp = run_at_nanos;
     aws_linked_list_node_reset(&channel_task->node);
