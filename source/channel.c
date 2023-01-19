@@ -492,8 +492,20 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
         status = AWS_TASK_STATUS_CANCELED;
     }
 
-    aws_linked_list_remove(&channel_task->node);
+    if (channel_task->node.next != NULL) {
+        aws_linked_list_remove(&channel_task->node);
+    }
+
+    /*
+     * Clear channel value in case the task gets reused.  Submission will reset it; all submissions pass through
+     * s_reset_pending_channel_task
+     */
+    AWS_FATAL_ASSERT(channel_task->wrapper_task.arg == channel);
+    channel_task->wrapper_task.arg = NULL;
+
     channel_task->task_fn(channel_task, channel_task->arg, status);
+
+    aws_channel_release_hold(channel);
 }
 
 static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -519,7 +531,7 @@ static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum
 
         if ((channel_task->wrapper_task.timestamp == 0) || (status == AWS_TASK_STATUS_CANCELED)) {
             /* Run "now" tasks, and canceled tasks, immediately */
-            channel_task->task_fn(channel_task, channel_task->arg, status);
+            s_channel_task_run(&channel_task->wrapper_task, channel_task->wrapper_task.arg, status);
         } else {
             /* "Future" tasks are scheduled with the event-loop. */
             aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
@@ -551,17 +563,6 @@ static void s_register_pending_task_in_event_loop(
         (void *)channel,
         (void *)&channel_task->wrapper_task);
 
-    /* If channel is shut down, run task immediately as canceled */
-    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_CHANNEL,
-            "id=%p: Running %s channel task immediately as canceled due to shut down channel",
-            (void *)channel,
-            channel_task->type_tag);
-        channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
-        return;
-    }
-
     aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
     if (run_at_nanos == 0) {
         aws_event_loop_schedule_task_now(channel->loop, &channel_task->wrapper_task);
@@ -579,27 +580,19 @@ static void s_register_pending_task_cross_thread(struct aws_channel *channel, st
         "outside the event-loop thread.",
         (void *)channel,
         (void *)&channel_task->wrapper_task);
-    /* Outside event-loop thread... */
-    bool should_cancel_task = false;
 
     /* Begin Critical Section */
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
-    if (channel->cross_thread_tasks.is_channel_shut_down) {
-        should_cancel_task = true; /* run task outside critical section to avoid deadlock */
-    } else {
-        bool list_was_empty = aws_linked_list_empty(&channel->cross_thread_tasks.list);
-        aws_linked_list_push_back(&channel->cross_thread_tasks.list, &channel_task->node);
 
-        if (list_was_empty) {
-            aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
-        }
+    bool list_was_empty = aws_linked_list_empty(&channel->cross_thread_tasks.list);
+    aws_linked_list_push_back(&channel->cross_thread_tasks.list, &channel_task->node);
+
+    if (list_was_empty) {
+        aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
     }
+
     aws_mutex_unlock(&channel->cross_thread_tasks.lock);
     /* End Critical Section */
-
-    if (should_cancel_task) {
-        channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
-    }
 }
 
 static void s_reset_pending_channel_task(
@@ -607,8 +600,20 @@ static void s_reset_pending_channel_task(
     struct aws_channel_task *channel_task,
     uint64_t run_at_nanos) {
 
+    /* Sure hope this was zeroed */
+    struct aws_channel *old_channel = channel_task->wrapper_task.arg;
+    AWS_FATAL_ASSERT(old_channel == NULL);
+
+    /* Also handles the degenerate, possibly not-possible case where the task is reused with the same channel target */
+    if (channel != NULL) {
+        aws_channel_acquire_hold(channel);
+    }
+
     /* Reset every property on channel task other than user's fn & arg.*/
     aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
+
+    AWS_FATAL_ASSERT(channel_task->wrapper_task.arg == channel);
+
     channel_task->wrapper_task.timestamp = run_at_nanos;
     aws_linked_list_node_reset(&channel_task->node);
 }
