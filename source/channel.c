@@ -322,12 +322,8 @@ void aws_channel_release_hold(struct aws_channel *channel) {
 
     if (prev_refcount == 1) {
         /* Refcount is now 0, finish cleaning up channel memory. */
-        if (aws_channel_thread_is_callers_thread(channel)) {
-            s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
-        } else {
-            aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel, "final_channel_deletion");
-            aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
-        }
+        aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel, "final_channel_deletion");
+        aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
     }
 }
 

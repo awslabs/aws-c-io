@@ -26,20 +26,6 @@ typedef void(aws_channel_on_setup_completed_fn)(struct aws_channel *channel, int
 /* Callback called when a channel is completely shutdown. error_code refers to the reason the channel was closed. */
 typedef void(aws_channel_on_shutdown_completed_fn)(struct aws_channel *channel, int error_code, void *user_data);
 
-/**
- * Optional callback invoked when a channel is destroyed.  The destruction callback is invoked if and only if a
- * channel was successfully set up (the on setup callback was invoked with a success result).
- *
- * This callback is used by the bootstrapping process; it is not expected to be interacted with directly by other
- * callers.
- *
- * The primary purpose of this is to allow client architectures that support reconnections to know when all channel
- * tasks -- including ones submitted during or at the exact moment of channel shutdown notification -- have been
- * completed.  This allows the client to safely reconnect without risking a cancelled task interfering with a
- * fast re-connection, which can happen under certain conditions (domain sockets, for example).
- */
-typedef void(aws_channel_on_destruction_fn)(void *user_data);
-
 struct aws_channel_slot {
     struct aws_allocator *alloc;
     struct aws_channel *channel;
@@ -165,10 +151,8 @@ struct aws_channel_options {
     struct aws_event_loop *event_loop;
     aws_channel_on_setup_completed_fn *on_setup_completed;
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
-    aws_channel_on_destruction_fn *on_destruction_completed;
     void *setup_user_data;
     void *shutdown_user_data;
-    void *destruction_user_data;
     bool enable_read_back_pressure;
 };
 

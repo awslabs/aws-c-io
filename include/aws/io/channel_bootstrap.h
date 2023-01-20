@@ -161,11 +161,6 @@ struct aws_server_bootstrap {
  * setup_callback - callback invoked once the channel is ready for use and TLS has been negotiated or if an error
  *   is encountered
  * shutdown_callback - callback invoked once the channel has shutdown.
- * channel_destruction_callback - callback invoked once the channel has destroyed itself and the internal connection
- *   args have destroyed themselves.  This callback is only invoked in scenarios where the shutdown callback would
- *   be invoked (a successful connection establishment).  This callback is invoked strictly after the shutdown callback.
- *   Waiting on this callback lets you safely guarantee that all channel-related functionality (tasks) have fully
- *   executed (successfully or cancelled).
  * enable_read_back_pressure - controls whether or not back pressure will be applied in the channel
  * user_data - arbitrary data to pass back to the various callbacks
  * requested_event_loop - if set, the connection will be placed on the requested event loop rather than one
@@ -185,7 +180,6 @@ struct aws_socket_channel_bootstrap_options {
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
     aws_client_bootstrap_on_channel_event_fn *setup_callback;
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
-    aws_channel_on_destruction_fn *channel_destruction_callback;
     bool enable_read_back_pressure;
     void *user_data;
     struct aws_event_loop *requested_event_loop;

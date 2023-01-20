@@ -89,7 +89,6 @@ add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
 add_net_test_case(channel_connect_some_hosts_timeout)
-add_test_case(channel_invokes_destruction_callback)
 
 add_net_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_resolver_ipv6_address_lookup)
@@ -128,7 +127,6 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 add_test_case(socket_pinned_event_loop)
-add_test_case(socket_bootstrap_destruction_callback)
 
 if (NOT BYO_CRYPTO)
     # Badssl-based tests (https://badssl.com/dashboard/) - use remote endpoints for now, later transition to

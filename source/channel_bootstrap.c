@@ -122,7 +122,6 @@ struct client_connection_args {
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
     aws_client_bootstrap_on_channel_event_fn *setup_callback;
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
-    aws_channel_on_destruction_fn *channel_destruction_callback;
     struct client_channel_data channel_data;
     struct aws_socket_options outgoing_options;
     uint16_t outgoing_port;
@@ -133,7 +132,6 @@ struct client_connection_args {
     bool connection_chosen;
     bool setup_called;
     bool enable_read_back_pressure;
-    bool should_invoke_destruction_callback;
     struct aws_event_loop *requested_event_loop;
 
     /*
@@ -168,18 +166,7 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
         aws_tls_connection_options_clean_up(&args->channel_data.tls_options);
     }
 
-    aws_channel_on_destruction_fn *destruction_callback = NULL;
-    void *destruction_user_data = NULL;
-    if (args->should_invoke_destruction_callback) {
-        destruction_callback = args->channel_destruction_callback;
-        destruction_user_data = args->user_data;
-    }
-
     aws_mem_release(allocator, args);
-
-    if (destruction_callback != NULL) {
-        (*destruction_callback)(destruction_user_data);
-    }
 }
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
@@ -215,8 +202,6 @@ static void s_connection_args_setup_callback(
     /* if setup_callback is called with an error, we will not call shutdown_callback */
     if (error_code) {
         args->shutdown_callback = NULL;
-    } else {
-        args->should_invoke_destruction_callback = true;
     }
     s_client_connection_args_release(args);
 }
@@ -447,12 +432,6 @@ error:
     /* the channel shutdown callback will clean the channel up */
 }
 
-static void s_on_client_channel_on_destruction(void *user_data) {
-    struct client_connection_args *connection_args = user_data;
-
-    s_client_connection_args_release(connection_args);
-}
-
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -467,12 +446,10 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     s_connection_args_shutdown_callback(connection_args, error_code, channel);
 
+    aws_channel_destroy(channel);
     aws_socket_clean_up(connection_args->channel_data.socket);
     aws_mem_release(allocator, connection_args->channel_data.socket);
-
-    connection_args->channel_data.socket = NULL;
-
-    aws_channel_destroy(channel);
+    s_client_connection_args_release(connection_args);
 }
 
 static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
@@ -549,8 +526,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         .setup_user_data = connection_args,
         .shutdown_user_data = connection_args,
         .on_shutdown_completed = s_on_client_channel_on_shutdown,
-        .on_destruction_completed = s_on_client_channel_on_destruction,
-        .destruction_user_data = connection_args,
     };
 
     args.enable_read_back_pressure = connection_args->enable_read_back_pressure;
@@ -809,7 +784,6 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     client_connection_args->creation_callback = options->creation_callback;
     client_connection_args->setup_callback = options->setup_callback;
     client_connection_args->shutdown_callback = options->shutdown_callback;
-    client_connection_args->channel_destruction_callback = options->channel_destruction_callback;
     client_connection_args->outgoing_options = *socket_options;
     client_connection_args->outgoing_port = port;
     client_connection_args->enable_read_back_pressure = options->enable_read_back_pressure;
