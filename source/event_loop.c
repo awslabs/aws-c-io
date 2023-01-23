@@ -72,6 +72,8 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
     aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
 }
 
+static char s_group_id_char = 'A';
+
 static struct aws_event_loop_group *s_event_loop_group_new(
     struct aws_allocator *alloc,
     aws_io_clock_fn *clock,
@@ -116,6 +118,8 @@ static struct aws_event_loop_group *s_event_loop_group_new(
         goto on_error;
     }
 
+    char group_id_char = s_group_id_char++;
+
     for (uint16_t i = 0; i < el_count; ++i) {
         /* Don't pin to hyper-threads if a user cared enough to specify a NUMA node */
         if (!pin_threads || (i < group_cpu_count && !usable_cpus[i].suspected_hyper_thread)) {
@@ -131,8 +135,10 @@ static struct aws_event_loop_group *s_event_loop_group_new(
             }
 
             /* Thread name should be <= 15 characters */
+
             char thread_name[32] = {0};
-            int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop %d", (int)i + 1);
+            int thread_name_len =
+                snprintf(thread_name, sizeof(thread_name), "EventLoop %c %d", group_id_char, (int)i + 1);
             if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_STRLEN) {
                 snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
             }

@@ -15,6 +15,7 @@
 #include <aws/common/encoding.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
+#include <aws/common/trace_event.h>
 
 #include <AvailabilityMacros.h>
 #include <CoreFoundation/CoreFoundation.h>
@@ -529,6 +530,8 @@ static int s_process_write_message(
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
     }
 
+    AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "TLS::Write");
+
     secure_transport_handler->latest_message_on_completion = message->on_completion;
     secure_transport_handler->latest_message_completion_user_data = message->user_data;
 
@@ -541,11 +544,13 @@ static int s_process_write_message(
     if (status != noErr) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", (void *)handler, (int)status);
+        AWS_TRACE_EVENT_END_SCOPED();
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
     aws_mem_release(message->allocator, message);
 
+    AWS_TRACE_EVENT_END_SCOPED();
     return AWS_OP_SUCCESS;
 }
 
@@ -585,6 +590,8 @@ static int s_process_read_message(
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
+    AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "TLS::Read");
+
     if (message) {
         aws_linked_list_push_back(&secure_transport_handler->input_queue, &message->queueing_handle);
 
@@ -596,6 +603,7 @@ static int s_process_read_message(
                 aws_channel_shutdown(
                     secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
+            AWS_TRACE_EVENT_END_SCOPED();
             return AWS_OP_SUCCESS;
         }
     }
@@ -617,6 +625,7 @@ static int s_process_read_message(
         if (!outgoing_read_message) {
             /* even though this is a failure, this handler has taken ownership of the message */
             aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
+            AWS_TRACE_EVENT_END_SCOPED();
             return AWS_OP_SUCCESS;
         }
 
@@ -663,6 +672,7 @@ static int s_process_read_message(
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
                 aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
                 /* incoming message was pushed to the input_queue, so this handler owns it now */
+                AWS_TRACE_EVENT_END_SCOPED();
                 return AWS_OP_SUCCESS;
             }
         } else {
@@ -675,6 +685,7 @@ static int s_process_read_message(
         (void *)handler,
         (unsigned long long)downstream_window - processed);
 
+    AWS_TRACE_EVENT_END_SCOPED();
     return AWS_OP_SUCCESS;
 }
 

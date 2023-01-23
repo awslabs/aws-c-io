@@ -137,6 +137,17 @@ struct aws_event_loop_group {
     struct aws_array_list event_loops;
     struct aws_ref_count ref_count;
     struct aws_shutdown_callback_options shutdown_options;
+    struct aws_string *name;
+};
+
+struct aws_event_loop_group_options {
+    aws_io_clock_fn *clock;
+    uint16_t max_threads;
+    bool pinned_to_cpu_group;
+    uint16_t cpu_group;
+    aws_new_event_loop_fn *new_loop_fn;
+    void *new_loop_user_data;
+    const struct aws_shutdown_callback_options *shutdown_options;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -385,6 +396,10 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
 AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_from_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_group_options *options);
 /**
  * Creates an event loop group, with clock, number of loops to manage, and the function to call for creating a new
  * event loop.

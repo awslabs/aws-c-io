@@ -6,6 +6,7 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
+#include <aws/common/trace_event.h>
 
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
@@ -493,6 +494,8 @@ static int s_s2n_handler_process_read_message(
         return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
     }
 
+    AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "TLS::Read");
+
     if (message) {
         aws_linked_list_push_back(&s2n_handler->input_queue, &message->queueing_handle);
 
@@ -503,6 +506,7 @@ static int s_s2n_handler_process_read_message(
             } else {
                 aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
+            AWS_TRACE_EVENT_END_SCOPED();
             return AWS_OP_SUCCESS;
         }
     }
@@ -522,6 +526,7 @@ static int s_s2n_handler_process_read_message(
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
         if (!outgoing_read_message) {
+            AWS_TRACE_EVENT_END_SCOPED();
             return AWS_OP_ERR;
         }
 
@@ -547,6 +552,7 @@ static int s_s2n_handler_process_read_message(
                 s2n_connection_get_alert(s2n_handler->connection));
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            AWS_TRACE_EVENT_END_SCOPED();
             return AWS_OP_SUCCESS;
         }
 
@@ -575,6 +581,7 @@ static int s_s2n_handler_process_read_message(
         (void *)handler,
         (unsigned long long)downstream_window - processed);
 
+    AWS_TRACE_EVENT_END_SCOPED();
     return AWS_OP_SUCCESS;
 }
 
@@ -589,6 +596,8 @@ static int s_s2n_handler_process_write_message(
         return aws_raise_error(AWS_IO_TLS_ERROR_NOT_NEGOTIATED);
     }
 
+    AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "TLS::Write");
+
     s2n_handler->latest_message_on_completion = message->on_completion;
     s2n_handler->latest_message_completion_user_data = message->user_data;
 
@@ -601,11 +610,13 @@ static int s_s2n_handler_process_write_message(
     ssize_t message_len = (ssize_t)message->message_data.len;
 
     if (write_code < message_len) {
+        AWS_TRACE_EVENT_END_SCOPED();
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
     aws_mem_release(message->allocator, message);
 
+    AWS_TRACE_EVENT_END_SCOPED();
     return AWS_OP_SUCCESS;
 }
 

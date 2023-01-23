@@ -6,6 +6,7 @@
 
 #include <aws/common/error.h>
 #include <aws/common/task_scheduler.h>
+#include <aws/common/trace_event.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
@@ -97,11 +98,15 @@ static int s_socket_process_write_message(
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
+    AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "Socket::Write");
+
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
+        AWS_TRACE_EVENT_END_SCOPED();
         return AWS_OP_ERR;
     }
 
+    AWS_TRACE_EVENT_END_SCOPED();
     return AWS_OP_SUCCESS;
 }
 
@@ -149,7 +154,10 @@ static void s_do_read(struct socket_handler *socket_handler) {
             break;
         }
 
-        if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
+        AWS_TRACE_EVENT_BEGIN_SCOPED("aws-io", "Socket::Read");
+        int err = aws_socket_read(socket_handler->socket, &message->message_data, &read);
+        AWS_TRACE_EVENT_END_SCOPED();
+        if (err) {
             aws_mem_release(message->allocator, message);
             break;
         }
