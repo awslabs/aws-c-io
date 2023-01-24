@@ -912,7 +912,7 @@ static void aws_event_loop_thread(void *user_data) {
         }
 
         /* Invoke each handle's event callback (unless the handle has been unsubscribed) */
-        AWS_TRACE_EVENT_BEGIN("aws-io", "EventLoop::EventCallbacks");
+        // AWS_TRACE_EVENT_BEGIN("", "EventLoop::EventCallbacks");
         for (int i = 0; i < num_io_handle_events; ++i) {
             struct handle_data *handle_data = io_handle_events[i];
 
@@ -922,15 +922,15 @@ static void aws_event_loop_thread(void *user_data) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     handle_data->owner->data.fd);
-                AWS_TRACE_EVENT_BEGIN("aws-io", "EventLoop::EventCallback", i);
+                // AWS_TRACE_EVENT_BEGIN("", "EventLoop::EventCallback", i);
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
-                AWS_TRACE_EVENT_END("aws-io", "EventLoop::EventCallback", i);
+                // AWS_TRACE_EVENT_END("", "EventLoop::EventCallback", i);
             }
 
             handle_data->events_this_loop = 0;
         }
-        AWS_TRACE_EVENT_END("aws-io", "EventLoop::EventCallbacks");
+        // AWS_TRACE_EVENT_END("", "EventLoop::EventCallbacks");
 
         /* Process cross_thread_data */
         if (should_process_cross_thread_data) {
@@ -942,9 +942,9 @@ static void aws_event_loop_thread(void *user_data) {
         event_loop->clock(&now_ns); /* If clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
-        AWS_TRACE_EVENT_BEGIN("aws-io", "EventLoop::RunTasks");
+        // AWS_TRACE_EVENT_BEGIN("", "EventLoop::RunTasks");
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
-        AWS_TRACE_EVENT_END("aws-io", "EventLoop::RunTasks");
+        // AWS_TRACE_EVENT_END("", "EventLoop::RunTasks");
 
         /* Set timeout for next kevent() call.
          * If clock fails, or scheduler has no tasks, use default timeout */
