@@ -80,7 +80,7 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
-int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_string *host) {
+int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, const struct aws_string *host) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->purge_cache_address);
     return resolver->vtable->purge_cache_address(resolver, host);
 }
@@ -552,7 +552,7 @@ static inline void process_records(
     }
 }
 
-static int resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_string *host) {
+static int resolver_purge_cache_address(struct aws_host_resolver *resolver, const struct aws_string *host) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
     AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, host->bytes);
