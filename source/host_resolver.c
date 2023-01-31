@@ -80,6 +80,11 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
+int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_string *host) {
+    AWS_ASSERT(resolver->vtable && resolver->vtable->purge_cache_address);
+    return resolver->vtable->purge_cache_address(resolver, host);
+}
+
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->record_connection_failure);
     return resolver->vtable->record_connection_failure(resolver, address);
@@ -547,15 +552,15 @@ static inline void process_records(
     }
 }
 
-static int resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+static int resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_string *host) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, address->host->bytes);
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, host->bytes);
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&default_host_resolver->host_entry_table, address->host, &element)) {
+    if (aws_hash_table_find(&default_host_resolver->host_entry_table, host, &element)) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
         return AWS_OP_ERR;
     }

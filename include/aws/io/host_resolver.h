@@ -96,7 +96,7 @@ struct aws_host_resolver_vtable {
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
     /** wipe out anything cached for this address */
-    int (*purge_cache_address)(struct aws_host_resolver *resolver, struct aws_host_address *address);
+    int (*purge_cache_address)(struct aws_host_resolver *resolver, struct aws_string *host);
     /** get number of addresses for a given host. */
     size_t (*get_host_address_count)(
         struct aws_host_resolver *resolver,
@@ -221,6 +221,11 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
  * calls purge_cache on the vtable.
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
+
+/**
+ * calls purge_cache_address on the vtable.
+ */
+AWS_IO_API int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_string *host);
 
 /**
  * get number of addresses for a given host.
