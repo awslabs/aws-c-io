@@ -94,6 +94,9 @@ struct aws_host_resolver_vtable {
     int (*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
+
+    /** wipe out anything cached for this address */
+    int (*purge_cache_address)(struct aws_host_resolver *resolver, struct aws_host_address *address);
     /** get number of addresses for a given host. */
     size_t (*get_host_address_count)(
         struct aws_host_resolver *resolver,

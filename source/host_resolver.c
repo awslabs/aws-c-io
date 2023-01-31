@@ -547,6 +547,35 @@ static inline void process_records(
     }
 }
 
+static int resolver_purge_cache_address(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, address->host->bytes);
+
+    aws_mutex_lock(&default_host_resolver->resolver_lock);
+
+    struct aws_hash_element *element = NULL;
+    if (aws_hash_table_find(&default_host_resolver->host_entry_table, address->host, &element)) {
+        aws_mutex_unlock(&default_host_resolver->resolver_lock);
+        return AWS_OP_ERR;
+    }
+
+    if (element == NULL) {
+    }
+
+    struct host_entry *host_entry = NULL;
+    if (element != NULL) {
+        host_entry = element->value;
+        AWS_FATAL_ASSERT(host_entry);
+    }
+    s_clean_up_host_entry(host_entry);
+
+    aws_hash_table_remove_element(&default_host_resolver->host_entry_table, element);
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+    return AWS_OP_SUCCESS;
+}
+
 static int resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
@@ -1545,6 +1574,7 @@ static struct aws_host_resolver_vtable s_vtable = {
     .add_host_listener = default_add_host_listener,
     .remove_host_listener = default_remove_host_listener,
     .destroy = resolver_destroy,
+    .purge_cache_address = resolver_purge_cache_address,
 };
 
 static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
