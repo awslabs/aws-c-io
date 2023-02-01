@@ -1028,13 +1028,12 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
         callback_data2.a_address.host->len);
     ASSERT_TRUE(callback_data2.a_address.address->len > 1);
     ASSERT_FALSE(callback_data2.has_aaaa_address);
+    aws_host_address_clean_up(&callback_data2.a_address);
+    aws_mutex_unlock(&mutex);
 
     address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
     ASSERT_INT_EQUALS(address_count, 1);
-
-    aws_host_address_clean_up(&callback_data2.a_address);
-    aws_mutex_unlock(&mutex);
 
     aws_string_destroy((void *)host_name);
     aws_host_resolver_release(resolver);
