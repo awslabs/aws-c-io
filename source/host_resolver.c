@@ -80,9 +80,13 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
-int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, const struct aws_string *host) {
+int aws_host_resolver_purge_cache_address(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host,
+    aws_on_host_purge_complete_fn *on_purge_complete_callback,
+    void *user_data) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->purge_cache_address);
-    return resolver->vtable->purge_cache_address(resolver, host);
+    return resolver->vtable->purge_cache_address(resolver, host, on_purge_complete_callback, user_data);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
@@ -233,6 +237,7 @@ struct host_entry {
     enum default_resolver_state state;
     struct aws_array_list new_addresses;
     struct aws_array_list expired_addresses;
+    struct aws_shutdown_callback_options shutdown_options;
 };
 
 /*
@@ -417,8 +422,12 @@ static void s_on_host_entry_shutdown_completion(void *user_data) {
     struct aws_host_resolver *resolver = entry->resolver;
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
+    aws_simple_completion_callback *completion_callback = entry->shutdown_options.shutdown_callback_fn;
+    void *completion_user_data = entry->shutdown_options.shutdown_callback_user_data;
     s_clean_up_host_entry(entry);
-
+    if (completion_callback != NULL) {
+        completion_callback(completion_user_data);
+    }
     bool cleanup_resolver = false;
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
@@ -552,7 +561,11 @@ static inline void process_records(
     }
 }
 
-static int resolver_purge_cache_address(struct aws_host_resolver *resolver, const struct aws_string *host) {
+static int resolver_purge_cache_address(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *host,
+    aws_on_host_purge_complete_fn *on_purge_complete_callback,
+    void *user_data) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
     AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, host->bytes);
@@ -572,6 +585,14 @@ static int resolver_purge_cache_address(struct aws_host_resolver *resolver, cons
 
     struct host_entry *host_entry = element->value;
     AWS_FATAL_ASSERT(host_entry);
+
+    aws_mutex_lock(&host_entry->entry_lock);
+    struct aws_shutdown_callback_options options;
+    AWS_ZERO_STRUCT(options);
+    options.shutdown_callback_fn = on_purge_complete_callback;
+    options.shutdown_callback_user_data = user_data;
+    host_entry->shutdown_options = options;
+    aws_mutex_unlock(&host_entry->entry_lock);
 
     s_shutdown_host_entry(host_entry);
 
