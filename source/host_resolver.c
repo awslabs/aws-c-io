@@ -1544,18 +1544,22 @@ static size_t default_get_host_address_count(
     uint32_t flags) {
     struct default_host_resolver *default_host_resolver = host_resolver->impl;
     size_t address_count = 0;
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 trying to find the element");
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     struct aws_hash_element *element = NULL;
     aws_hash_table_find(&default_host_resolver->host_entry_table, host_name, &element);
     if (element != NULL) {
+        AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 found the element");
+
         struct host_entry *host_entry = element->value;
         if (host_entry != NULL) {
             aws_mutex_lock(&host_entry->entry_lock);
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A) != 0) {
                 address_count += aws_cache_get_element_count(host_entry->a_records);
+                AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 address count:%d", address_count);
             }
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA) != 0) {
