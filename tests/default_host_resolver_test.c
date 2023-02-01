@@ -1005,6 +1005,8 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
 
     /* If the host is really gone, we shouldn't have any addresses. */
     ASSERT_INT_EQUALS(address_count, 0);
+    struct aws_mutex mutex2 = AWS_MUTEX_INIT;
+
     struct default_host_callback_data callback_data2 = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
@@ -1015,9 +1017,9 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data2));
 
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex2));
     aws_condition_variable_wait_pred(
-        &callback_data2.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data2);
+        &callback_data2.condition_variable, &mutex2, s_default_host_resolved_predicate, &callback_data2);
 
     ASSERT_TRUE(callback_data2.has_a_address);
     ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, callback_data2.a_address.record_type);
@@ -1029,7 +1031,7 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
     ASSERT_TRUE(callback_data2.a_address.address->len > 1);
     ASSERT_FALSE(callback_data2.has_aaaa_address);
     aws_host_address_clean_up(&callback_data2.a_address);
-    aws_mutex_unlock(&mutex);
+    aws_mutex_unlock(&mutex2);
 
     address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
