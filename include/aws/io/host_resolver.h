@@ -66,6 +66,8 @@ typedef int(aws_resolve_host_implementation_fn)(
     struct aws_array_list *output_addresses,
     void *user_data);
 
+typedef void(aws_on_host_purge_complete_fn)(void *);
+
 struct aws_host_resolution_config {
     aws_resolve_host_implementation_fn *impl;
     size_t max_ttl;
@@ -96,7 +98,11 @@ struct aws_host_resolver_vtable {
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
     /** wipe out anything cached for this address */
-    int (*purge_cache_address)(struct aws_host_resolver *resolver, const struct aws_string *host);
+    int (*purge_cache_address)(
+        struct aws_host_resolver *resolver,
+        const struct aws_string *host,
+        aws_on_host_purge_complete_fn *on_purge_complete_callback,
+        void *user_data);
     /** get number of addresses for a given host. */
     size_t (*get_host_address_count)(
         struct aws_host_resolver *resolver,
@@ -225,7 +231,11 @@ AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver)
 /**
  * calls purge_cache_address on the vtable.
  */
-AWS_IO_API int aws_host_resolver_purge_cache_address(struct aws_host_resolver *resolver, const struct aws_string *host);
+AWS_IO_API int aws_host_resolver_purge_cache_address(
+    struct aws_host_resolver *resolver,
+    const struct aws_string *hostaws_host_resolver_purge_cache_address,
+    aws_on_host_purge_complete_fn *on_purge_complete_callback,
+    void *user_data);
 
 /**
  * get number of addresses for a given host.

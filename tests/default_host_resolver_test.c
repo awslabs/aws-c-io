@@ -35,6 +35,15 @@ static bool s_default_host_resolved_predicate(void *arg) {
     return callback_data->invoked;
 }
 
+static void s_default_host_purge_callback(void *user_data) {
+    struct default_host_callback_data *callback_data = user_data;
+    aws_mutex_lock(callback_data->mutex);
+    callback_data->invoked = true;
+    callback_data->callback_thread_id = aws_thread_current_thread_id();
+    aws_mutex_unlock(callback_data->mutex);
+    aws_condition_variable_notify_one(&callback_data->condition_variable);
+}
+
 static void s_default_host_resolved_test_callback(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -945,7 +954,6 @@ AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lo
 
 static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
     aws_io_library_init(allocator);
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
@@ -998,7 +1006,13 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
     ASSERT_INT_EQUALS(address_count, 1);
 
-    ASSERT_SUCCESS(aws_host_resolver_purge_cache_address(resolver, host_name));
+    ASSERT_SUCCESS(
+        aws_host_resolver_purge_cache_address(resolver, host_name, s_default_host_purge_callback, &callback_data));
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+    callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
 
     address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
