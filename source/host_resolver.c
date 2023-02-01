@@ -1559,7 +1559,7 @@ static size_t default_get_host_address_count(
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A) != 0) {
                 address_count += aws_cache_get_element_count(host_entry->a_records);
-                AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 address count:%d", address_count);
+                AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 address count:%zu", address_count);
             }
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA) != 0) {
