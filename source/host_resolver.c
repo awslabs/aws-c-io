@@ -576,6 +576,8 @@ static int resolver_purge_cache_address(struct aws_host_resolver *resolver, cons
     s_shutdown_host_entry(host_entry);
 
     aws_hash_table_remove_element(&default_host_resolver->host_entry_table, element);
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 removed element in the cache");
+
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
@@ -1390,6 +1392,7 @@ static inline int create_and_init_host_entry(
             aws_hash_table_put(&default_host_resolver->host_entry_table, host_string_copy, new_host_entry, NULL))) {
         goto setup_host_entry_error;
     }
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 put the element in the cache");
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
