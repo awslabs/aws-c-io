@@ -565,15 +565,15 @@ static int resolver_purge_cache_address(struct aws_host_resolver *resolver, cons
         return AWS_OP_ERR;
     }
 
+    // Return success if entry doesn't exist in cache.
     if (element == NULL) {
+        return AWS_OP_SUCCESS;
     }
 
-    struct host_entry *host_entry = NULL;
-    if (element != NULL) {
-        host_entry = element->value;
-        AWS_FATAL_ASSERT(host_entry);
-    }
-    s_clean_up_host_entry(host_entry);
+    struct host_entry *host_entry = element->value;
+    AWS_FATAL_ASSERT(host_entry);
+
+    s_shutdown_host_entry(host_entry);
 
     aws_hash_table_remove_element(&default_host_resolver->host_entry_table, element);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
