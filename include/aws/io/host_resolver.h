@@ -81,6 +81,13 @@ struct aws_host_listener;
 
 struct aws_host_listener_options;
 
+struct aws_host_resolver_purge_host_options {
+    struct aws_host_resolver *resolver;
+    const struct aws_string *host;
+    aws_on_host_purge_complete_fn *on_host_purge_complete_callback;
+    void *user_data;
+};
+
 /** should you absolutely disdain the default implementation, feel free to implement your own. */
 struct aws_host_resolver_vtable {
     /** clean up everything you allocated, but not resolver itself. */
@@ -101,11 +108,7 @@ struct aws_host_resolver_vtable {
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
     /** wipe out anything cached for a specific host */
-    int (*purge_host_cache)(
-        struct aws_host_resolver *resolver,
-        const struct aws_string *host,
-        aws_on_host_purge_complete_fn *on_purge_complete_callback,
-        void *user_data);
+    int (*purge_host_cache)(const struct aws_host_resolver_purge_host_options *options);
     /** get number of addresses for a given host. */
     size_t (*get_host_address_count)(
         struct aws_host_resolver *resolver,
@@ -234,11 +237,7 @@ AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver)
 /**
  * Removes the cache for specified host asynchronously.
  */
-AWS_IO_API int aws_host_resolver_purge_host_cache(
-    struct aws_host_resolver *resolver,
-    const struct aws_string *hostaws_host_resolver_purge_cache_address,
-    aws_on_host_purge_complete_fn *on_host_purge_complete_callback,
-    void *user_data);
+AWS_IO_API int aws_host_resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options);
 
 /**
  * get number of addresses for a given host.

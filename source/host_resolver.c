@@ -80,13 +80,10 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
-int aws_host_resolver_purge_host_cache(
-    struct aws_host_resolver *resolver,
-    const struct aws_string *host,
-    aws_on_host_purge_complete_fn *on_host_purge_complete_callback,
-    void *user_data) {
-    AWS_ASSERT(resolver->vtable && resolver->vtable->purge_host_cache);
-    return resolver->vtable->purge_host_cache(resolver, host, on_host_purge_complete_callback, user_data);
+int aws_host_resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options) {
+    AWS_ASSERT(options && options->resolver);
+    AWS_ASSERT(options->resolver->vtable && options->resolver->vtable->purge_host_cache);
+    return options->resolver->vtable->purge_host_cache(options);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
@@ -557,26 +554,22 @@ static inline void process_records(
     }
 }
 
-static int resolver_purge_host_cache(
-    struct aws_host_resolver *resolver,
-    const struct aws_string *host,
-    aws_on_host_purge_complete_fn *on_purge_complete_callback,
-    void *user_data) {
-    struct default_host_resolver *default_host_resolver = resolver->impl;
+static int resolver_purge_host_cache(struct aws_host_resolver_purge_host_options *options) {
+    struct default_host_resolver *default_host_resolver = options->resolver->impl;
 
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, host->bytes);
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)options->resolver, options->host->bytes);
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     struct aws_hash_element *element = NULL;
-    aws_hash_table_find(&default_host_resolver->host_entry_table, host, &element);
+    aws_hash_table_find(&default_host_resolver->host_entry_table, options->host, &element);
 
     /* Success if entry doesn't exist in cache. */
     if (element == NULL) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
-        if (on_purge_complete_callback != NULL) {
-            on_purge_complete_callback(user_data);
+        if (options->on_host_purge_complete_callback != NULL) {
+            options->on_host_purge_complete_callback(options->user_data);
         }
         return AWS_OP_SUCCESS;
     }
@@ -586,8 +579,8 @@ static int resolver_purge_host_cache(
 
     /* Setup the on_host_purge_ complete callback. */
     aws_mutex_lock(&host_entry->entry_lock);
-    host_entry->on_host_purge_complete = on_purge_complete_callback;
-    host_entry->on_host_purge_complete_user_data = user_data;
+    host_entry->on_host_purge_complete = options->on_host_purge_complete_callback;
+    host_entry->on_host_purge_complete_user_data = options->user_data;
     aws_mutex_unlock(&host_entry->entry_lock);
 
     s_shutdown_host_entry(host_entry);
