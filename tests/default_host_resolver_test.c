@@ -952,7 +952,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
 }
 AWS_TEST_CASE(test_resolver_ipv4_address_lookup, s_test_resolver_ipv4_address_lookup_fn)
 
-static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocator *allocator, void *ctx) {
+static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
 
@@ -1051,7 +1051,7 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
 
     return 0;
 }
-AWS_TEST_CASE(test_resolver_purge_cache_address, s_test_resolver_test_resolver_purge_cache_address)
+AWS_TEST_CASE(test_resolver_purge_host_cache, s_test_resolver_purge_host_cache)
 
 static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

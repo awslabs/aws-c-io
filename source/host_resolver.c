@@ -83,10 +83,10 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
 int aws_host_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_string *host,
-    aws_on_host_purge_complete_fn *on_purge_complete_callback,
+    aws_on_host_purge_complete_fn *on_host_purge_complete_callback,
     void *user_data) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->purge_host_cache);
-    return resolver->vtable->purge_host_cache(resolver, host, on_purge_complete_callback, user_data);
+    return resolver->vtable->purge_host_cache(resolver, host, on_host_purge_complete_callback, user_data);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
@@ -569,19 +569,22 @@ static int resolver_purge_host_cache(
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     struct aws_hash_element *element = NULL;
-    if (aws_hash_table_find(&default_host_resolver->host_entry_table, host, &element)) {
-        aws_mutex_unlock(&default_host_resolver->resolver_lock);
-        return AWS_OP_ERR;
-    }
+    aws_hash_table_find(&default_host_resolver->host_entry_table, host, &element);
 
-    // Return success if entry doesn't exist in cache.
+    /* Success if entry doesn't exist in cache. */
     if (element == NULL) {
+        aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+        if (on_purge_complete_callback != NULL) {
+            on_purge_complete_callback(user_data);
+        }
         return AWS_OP_SUCCESS;
     }
 
     struct host_entry *host_entry = element->value;
     AWS_FATAL_ASSERT(host_entry);
 
+    /* Setup the on_host_purge_ complete callback. */
     aws_mutex_lock(&host_entry->entry_lock);
     host_entry->on_host_purge_complete = on_purge_complete_callback;
     host_entry->on_host_purge_complete_user_data = user_data;
@@ -589,8 +592,8 @@ static int resolver_purge_host_cache(
 
     s_shutdown_host_entry(host_entry);
     aws_hash_table_remove_element(&default_host_resolver->host_entry_table, element);
-    aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
     return AWS_OP_SUCCESS;
 }
 
@@ -1566,7 +1569,6 @@ static size_t default_get_host_address_count(
     struct aws_hash_element *element = NULL;
     aws_hash_table_find(&default_host_resolver->host_entry_table, host_name, &element);
     if (element != NULL) {
-
         struct host_entry *host_entry = element->value;
         if (host_entry != NULL) {
             aws_mutex_lock(&host_entry->entry_lock);

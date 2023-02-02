@@ -66,6 +66,9 @@ typedef int(aws_resolve_host_implementation_fn)(
     struct aws_array_list *output_addresses,
     void *user_data);
 
+/**
+ * Invoked when host is removed from cache.
+ */
 typedef void(aws_on_host_purge_complete_fn)(void *);
 
 struct aws_host_resolution_config {
@@ -97,7 +100,7 @@ struct aws_host_resolver_vtable {
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
-    /** wipe out anything cached for this address */
+    /** wipe out anything cached for a specific host */
     int (*purge_host_cache)(
         struct aws_host_resolver *resolver,
         const struct aws_string *host,
@@ -229,12 +232,12 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
 
 /**
- * calls purge_host_cache on the vtable.
+ * Removes the cache for specified host asynchronously.
  */
 AWS_IO_API int aws_host_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_string *hostaws_host_resolver_purge_cache_address,
-    aws_on_host_purge_complete_fn *on_purge_complete_callback,
+    aws_on_host_purge_complete_fn *on_host_purge_complete_callback,
     void *user_data);
 
 /**
