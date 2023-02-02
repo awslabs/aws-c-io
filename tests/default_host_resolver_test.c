@@ -1007,7 +1007,7 @@ static int s_test_resolver_test_resolver_purge_cache_address(struct aws_allocato
     ASSERT_INT_EQUALS(address_count, 1);
 
     ASSERT_SUCCESS(
-        aws_host_resolver_purge_cache_address(resolver, host_name, s_default_host_purge_callback, &callback_data));
+        aws_host_resolver_purge_host_cache(resolver, host_name, s_default_host_purge_callback, &callback_data));
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
