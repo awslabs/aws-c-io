@@ -421,6 +421,7 @@ static void s_on_host_entry_shutdown_completion(void *user_data) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
     s_clean_up_host_entry(entry);
+
     bool cleanup_resolver = false;
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);

@@ -1023,7 +1023,7 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
 
     /* If the host is really gone, we shouldn't have any addresses. */
     ASSERT_INT_EQUALS(address_count, 0);
-    /* try readding the host */
+    /* try it again */
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
