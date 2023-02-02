@@ -235,7 +235,7 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
 
 /**
- * Removes the cache for specified host asynchronously.
+ * Removes the cache for a host asynchronously.
  */
 AWS_IO_API int aws_host_resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options);
 

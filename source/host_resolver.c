@@ -554,7 +554,7 @@ static inline void process_records(
     }
 }
 
-static int resolver_purge_host_cache(struct aws_host_resolver_purge_host_options *options) {
+static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options) {
     struct default_host_resolver *default_host_resolver = options->resolver->impl;
 
     AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)options->resolver, options->host->bytes);
