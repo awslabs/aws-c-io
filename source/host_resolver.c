@@ -422,12 +422,7 @@ static void s_on_host_entry_shutdown_completion(void *user_data) {
     struct aws_host_resolver *resolver = entry->resolver;
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
-    aws_simple_completion_callback *completion_callback = entry->shutdown_options.shutdown_callback_fn;
-    void *completion_user_data = entry->shutdown_options.shutdown_callback_user_data;
     s_clean_up_host_entry(entry);
-    if (completion_callback != NULL) {
-        completion_callback(completion_user_data);
-    }
     bool cleanup_resolver = false;
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
@@ -595,9 +590,6 @@ static int resolver_purge_cache_address(
     aws_mutex_unlock(&host_entry->entry_lock);
 
     s_shutdown_host_entry(host_entry);
-
-    aws_hash_table_remove_element(&default_host_resolver->host_entry_table, element);
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 removed element in the cache");
 
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
@@ -1229,6 +1221,11 @@ static void aws_host_resolver_thread(void *arg) {
         keep_going = host_entry->state == DRS_ACTIVE;
         if (!keep_going) {
             aws_hash_table_remove(&resolver->host_entry_table, host_entry->host_name, NULL, NULL);
+            aws_simple_completion_callback *completion_callback = host_entry->shutdown_options.shutdown_callback_fn;
+            void *completion_user_data = host_entry->shutdown_options.shutdown_callback_user_data;
+            if (completion_callback != NULL) {
+                completion_callback(completion_user_data);
+            }
 
             /* Move any local listeners we have back to the listener entry */
             if (s_resolver_thread_move_listeners_to_listener_entry(resolver, host_entry->host_name, &listener_list)) {
@@ -1413,7 +1410,6 @@ static inline int create_and_init_host_entry(
             aws_hash_table_put(&default_host_resolver->host_entry_table, host_string_copy, new_host_entry, NULL))) {
         goto setup_host_entry_error;
     }
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 put the element in the cache");
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
@@ -1568,14 +1564,12 @@ static size_t default_get_host_address_count(
     uint32_t flags) {
     struct default_host_resolver *default_host_resolver = host_resolver->impl;
     size_t address_count = 0;
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 trying to find the element");
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
     struct aws_hash_element *element = NULL;
     aws_hash_table_find(&default_host_resolver->host_entry_table, host_name, &element);
     if (element != NULL) {
-        AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 found the element");
 
         struct host_entry *host_entry = element->value;
         if (host_entry != NULL) {
@@ -1583,7 +1577,6 @@ static size_t default_get_host_address_count(
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A) != 0) {
                 address_count += aws_cache_get_element_count(host_entry->a_records);
-                AWS_LOGF_INFO(AWS_LS_IO_DNS, "waahm7 address count:%zu", address_count);
             }
 
             if ((flags & AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA) != 0) {
