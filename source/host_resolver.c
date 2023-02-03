@@ -1438,37 +1438,31 @@ static int default_resolve_host(
         /* these will all need to be copied so that we don't hold the lock during the callback. */
         if (aaaa_record) {
             struct aws_host_address aaaa_record_cpy;
-            if (!aws_host_address_copy(aaaa_record, &aaaa_record_cpy)) {
-                aws_array_list_push_back(&callback_address_list, &aaaa_record_cpy);
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_DNS,
-                    "id=%p: vending address %s for host %s to caller",
-                    (void *)resolver,
-                    aaaa_record->address->bytes,
-                    host_entry->host_name->bytes);
-            }
+            aws_host_address_copy(aaaa_record, &aaaa_record_cpy);
+            aws_array_list_push_back(&callback_address_list, &aaaa_record_cpy);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                (void *)resolver,
+                aaaa_record->address->bytes,
+                host_entry->host_name->bytes);
         }
         if (a_record) {
             struct aws_host_address a_record_cpy;
-            if (!aws_host_address_copy(a_record, &a_record_cpy)) {
-                aws_array_list_push_back(&callback_address_list, &a_record_cpy);
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_DNS,
-                    "id=%p: vending address %s for host %s to caller",
-                    (void *)resolver,
-                    a_record->address->bytes,
-                    host_entry->host_name->bytes);
-            }
+            aws_host_address_copy(a_record, &a_record_cpy);
+            aws_array_list_push_back(&callback_address_list, &a_record_cpy);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                (void *)resolver,
+                a_record->address->bytes,
+                host_entry->host_name->bytes);
         }
         aws_mutex_unlock(&host_entry->entry_lock);
 
         /* we don't want to do the callback WHILE we hold the lock someone may reentrantly call us. */
         // TODO: Fire the callback asynchronously
-        if (aws_array_list_length(&callback_address_list)) {
-            res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
-        } else {
-            res(resolver, host_name, aws_last_error(), NULL, user_data);
-        }
+        res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
             struct aws_host_address *address_ptr = NULL;
