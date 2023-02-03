@@ -1005,6 +1005,8 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     size_t address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
     ASSERT_INT_EQUALS(address_count, 1);
+
+    /* purge the host */
     struct aws_host_resolver_purge_host_options purge_host_options = {
         .resolver = resolver,
         .host = host_name,
