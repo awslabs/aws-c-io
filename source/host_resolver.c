@@ -2,6 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
 
 #include <aws/common/atomics.h>
@@ -11,6 +12,7 @@
 #include <aws/common/lru_cache.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
+#include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
 #include <aws/io/logging.h>
@@ -159,6 +161,8 @@ struct default_host_resolver {
      * Function to use to query current time.  Overridable in construction options.
      */
     aws_io_clock_fn *system_clock_fn;
+
+    struct aws_event_loop_group *event_loop_group;
 };
 
 /* Default host resolver implementation for listener. */
@@ -210,6 +214,12 @@ struct host_listener_entry {
 
     /* Linked list of struct host_listener */
     struct aws_linked_list listeners;
+};
+
+struct host_purge_callback_options {
+    struct aws_allocator *allocator;
+    aws_on_host_purge_complete_fn *on_host_purge_complete;
+    void *on_host_purge_complete_user_data;
 };
 
 struct host_entry {
@@ -319,7 +329,7 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
 
 static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
-
+    aws_event_loop_group_release(default_host_resolver->event_loop_group);
     aws_hash_table_clean_up(&default_host_resolver->host_entry_table);
     aws_hash_table_clean_up(&default_host_resolver->listener_entry_table);
 
@@ -555,6 +565,14 @@ static inline void process_records(
     }
 }
 
+static void s_async_purge_host_cache_callback(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)status;
+    struct host_purge_callback_options *options = arg;
+    aws_mem_release(options->allocator, task);
+    options->on_host_purge_complete(options->on_host_purge_complete_user_data);
+    aws_mem_release(options->allocator, options);
+}
+
 static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options) {
     struct default_host_resolver *default_host_resolver = options->resolver->impl;
 
@@ -568,9 +586,21 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
     /* Success if entry doesn't exist in cache. */
     if (element == NULL) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
-
         if (options->on_host_purge_complete_callback != NULL) {
-            options->on_host_purge_complete_callback(options->user_data);
+            /*Sechedule completion callback asynchronouly */
+            struct host_purge_callback_options *purge_callback_options =
+                aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct host_purge_callback_options));
+            purge_callback_options->allocator = default_host_resolver->allocator;
+            purge_callback_options->on_host_purge_complete = options->on_host_purge_complete_callback;
+            purge_callback_options->on_host_purge_complete_user_data = options->user_data;
+
+            struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
+            AWS_FATAL_ASSERT(task);
+            aws_task_init(
+                task, s_async_purge_host_cache_callback, purge_callback_options, "async_purge_host_address_task");
+
+            struct aws_event_loop *loop = aws_event_loop_group_get_next_loop(default_host_resolver->event_loop_group);
+            aws_event_loop_schedule_task_now(loop, task);
         }
         return AWS_OP_SUCCESS;
     }
@@ -1635,6 +1665,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     resolver->allocator = allocator;
     resolver->impl = default_host_resolver;
 
+    default_host_resolver->event_loop_group = aws_event_loop_group_acquire(options->el_group);
     default_host_resolver->allocator = allocator;
     default_host_resolver->pending_host_entry_shutdown_completion_callbacks = 0;
     default_host_resolver->state = DRS_ACTIVE;
