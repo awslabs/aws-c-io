@@ -565,7 +565,7 @@ static inline void process_records(
     }
 }
 
-static void s_async_purge_host_cache_callback(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)status;
     struct host_purge_callback_options *options = arg;
     aws_mem_release(options->allocator, task);
@@ -595,9 +595,8 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
             purge_callback_options->on_host_purge_complete_user_data = options->user_data;
 
             struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
-            AWS_FATAL_ASSERT(task);
             aws_task_init(
-                task, s_async_purge_host_cache_callback, purge_callback_options, "async_purge_host_address_task");
+                task, s_purge_host_cache_callback_task, purge_callback_options, "async_purge_host_address_task");
 
             struct aws_event_loop *loop = aws_event_loop_group_get_next_loop(default_host_resolver->event_loop_group);
             aws_event_loop_schedule_task_now(loop, task);
