@@ -1637,9 +1637,6 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     const struct aws_host_resolver_default_options *options) {
     AWS_FATAL_ASSERT(options != NULL);
 
-    /* NOTE: we don't use el_group yet, but we will in the future. Also, we
-      don't want host resolvers getting cleaned up after el_groups; this will force that
-      in bindings, and encourage it in C land. */
     AWS_ASSERT(options->el_group);
 
     struct aws_host_resolver *resolver = NULL;
