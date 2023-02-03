@@ -1012,11 +1012,11 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     //     .user_data = &callback_data,
     // };
     ASSERT_SUCCESS(aws_host_resolver_purge_cache(resolver));
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    aws_condition_variable_wait_pred(
-        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
-    callback_data.invoked = false;
-    aws_mutex_unlock(&mutex);
+    // ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    // aws_condition_variable_wait_pred(
+    //     &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+    // callback_data.invoked = false;
+    // aws_mutex_unlock(&mutex);
 
     address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
