@@ -589,7 +589,7 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
     if (element == NULL) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
         if (options->on_host_purge_complete_callback != NULL) {
-            /*Sechedule completion callback asynchronouly */
+            /* Schedule completion callback asynchronouly */
             struct host_purge_callback_options *purge_callback_options =
                 aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct host_purge_callback_options));
             purge_callback_options->allocator = default_host_resolver->allocator;
@@ -609,7 +609,7 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
     struct host_entry *host_entry = element->value;
     AWS_FATAL_ASSERT(host_entry);
 
-    /* Setup the on_host_purge_ complete callback. */
+    /* Setup the on_host_purge_complete callback. */
     aws_mutex_lock(&host_entry->entry_lock);
     host_entry->on_host_purge_complete = options->on_host_purge_complete_callback;
     host_entry->on_host_purge_complete_user_data = options->user_data;
