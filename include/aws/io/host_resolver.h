@@ -83,8 +83,11 @@ struct aws_host_listener_options;
 
 struct aws_host_resolver_purge_host_options {
     struct aws_host_resolver *resolver;
+    /* the host to purge the cache for */
     const struct aws_string *host;
+    /* Callback to invoke when the purge is complete */
     aws_on_host_purge_complete_fn *on_host_purge_complete_callback;
+    /* user-data will be passed as it is in the callback. */
     void *user_data;
 };
 
