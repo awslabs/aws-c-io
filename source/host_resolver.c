@@ -330,6 +330,7 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
 
 static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
+
     aws_event_loop_group_release(default_host_resolver->event_loop_group);
     aws_hash_table_clean_up(&default_host_resolver->host_entry_table);
     aws_hash_table_clean_up(&default_host_resolver->listener_entry_table);
@@ -1284,6 +1285,7 @@ done:
     aws_array_list_clean_up(&address_list);
     aws_array_list_clean_up(&new_address_list);
     aws_array_list_clean_up(&expired_address_list);
+
     /* trigger the purge complete callback */
     if (host_entry->on_host_purge_complete != NULL) {
         host_entry->on_host_purge_complete(host_entry->on_host_purge_complete_user_data);
