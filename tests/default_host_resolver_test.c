@@ -35,14 +35,14 @@ static bool s_default_host_resolved_predicate(void *arg) {
     return callback_data->invoked;
 }
 
-static void s_default_host_purge_callback(void *user_data) {
-    struct default_host_callback_data *callback_data = user_data;
-    aws_mutex_lock(callback_data->mutex);
-    callback_data->invoked = true;
-    callback_data->callback_thread_id = aws_thread_current_thread_id();
-    aws_mutex_unlock(callback_data->mutex);
-    aws_condition_variable_notify_one(&callback_data->condition_variable);
-}
+// static void s_default_host_purge_callback(void *user_data) {
+//     struct default_host_callback_data *callback_data = user_data;
+//     aws_mutex_lock(callback_data->mutex);
+//     callback_data->invoked = true;
+//     callback_data->callback_thread_id = aws_thread_current_thread_id();
+//     aws_mutex_unlock(callback_data->mutex);
+//     aws_condition_variable_notify_one(&callback_data->condition_variable);
+// }
 
 static void s_default_host_resolved_test_callback(
     struct aws_host_resolver *resolver,
