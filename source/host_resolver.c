@@ -318,6 +318,7 @@ static void s_clear_default_resolver_entry_table(struct default_host_resolver *r
     aws_hash_table_clear(table);
 }
 
+/* TODO: add a callback to notify when purge has completed */
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
