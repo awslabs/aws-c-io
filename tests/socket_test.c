@@ -657,7 +657,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     };
 
     struct aws_shutdown_callback_options shutdown_options = {
-        .shutdown_callback_fn = s_test_host_resolved_test_callback,
+        .shutdown_callback_fn = s_test_host_resolver_shutdown_callback,
         .shutdown_callback_user_data = &host_callback_data,
     };
     shutdown_options.shutdown_callback_fn = s_test_host_resolver_shutdown_callback;
