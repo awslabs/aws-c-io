@@ -88,7 +88,7 @@ struct aws_host_resolver_purge_host_options {
     /* Callback to invoke when the purge is complete */
     aws_on_host_purge_complete_fn *on_host_purge_complete_callback;
     /* user_data will be passed as it is in the callback. */
-    void *user_data;
+    void *on_host_purge_complete_user_data;
 };
 
 /** should you absolutely disdain the default implementation, feel free to implement your own. */
