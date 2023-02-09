@@ -830,22 +830,24 @@ static struct aws_channel_handler *s_tls_handler_new(
         goto cleanup_st_handler;
     }
 
+    OSStatus setProtocolStatus = errSecSuccess;
     switch (secure_transport_ctx->minimum_version) {
         case AWS_IO_SSLv3:
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocol3);
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocol3);
             break;
         case AWS_IO_TLSv1:
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol1);
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol1);
             break;
         case AWS_IO_TLSv1_1:
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
             break;
         case AWS_IO_TLSv1_2:
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
             break;
         case AWS_IO_TLSv1_3:
 #if TLS13_AVAILABLE
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
+            AWS_LOGF_WARN(AWS_LS_IO_TLS, "TLS 1.3 currently not supported. Will use system default TLS instead");
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
 #else
             AWS_LOGF_FATAL(
                 AWS_LS_IO_TLS,
@@ -863,9 +865,18 @@ static struct aws_channel_handler *s_tls_handler_new(
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
         default:
             /* kSSLProtocolUnknown means use system defaults. */
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocolUnknown);
+            setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocolUnknown);
 
             break;
+    }
+
+    if (setProtocolStatus != errSecSuccess) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "Non success error code returned setting minimum TLS. TLS error code value: %i",
+            setProtocolStatus);
+    } else {
+        AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Minimum TLS set successfully");
     }
 
     if (SSLSetIOFuncs(secure_transport_handler->ctx, s_read_cb, s_write_cb) != noErr ||
