@@ -872,8 +872,8 @@ static struct aws_channel_handler *s_tls_handler_new(
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocolUnknown);
             /**
              * Despite Apple saying that kSSLProtocolUnknown sets the default and is a valid value, it returns an error
-             * with the SSLSetProtocolVersionMin function... So - just pretend everything is OK via overriding the status
-             * so functionally everything is exactly the same despite it returning an error.
+             * with the SSLSetProtocolVersionMin function... So - just pretend everything is OK via overriding the
+             * status so functionally everything is exactly the same despite it returning an error.
              */
             setProtocolStatus = errSecSuccess;
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum TLS to: System defaults.");
