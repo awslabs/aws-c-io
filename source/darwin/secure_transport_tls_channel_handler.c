@@ -834,15 +834,19 @@ static struct aws_channel_handler *s_tls_handler_new(
     switch (secure_transport_ctx->minimum_version) {
         case AWS_IO_SSLv3:
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocol3);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum SSL to: 3");
             break;
         case AWS_IO_TLSv1:
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol1);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum TLS to: 1");
             break;
         case AWS_IO_TLSv1_1:
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum TLS to: 1.1");
             break;
         case AWS_IO_TLSv1_2:
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum TLS to: 1.2");
             break;
         case AWS_IO_TLSv1_3:
 #if TLS13_AVAILABLE
@@ -866,6 +870,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         default:
             /* kSSLProtocolUnknown means use system defaults. */
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocolUnknown);
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Attempted to set minimum TLS to: System defaults");
 
             break;
     }
