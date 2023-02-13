@@ -871,10 +871,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     if (setProtocolStatus != errSecSuccess) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_FATAL(
             AWS_LS_IO_TLS,
-            "Non success error code returned setting minimum TLS. TLS error code value: %i",
+            "Non-success error code returned setting minimum TLS. TLS error code value: %i",
             setProtocolStatus);
+        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+        goto cleanup_ssl_ctx;
     } else {
         AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Minimum TLS set successfully");
     }
