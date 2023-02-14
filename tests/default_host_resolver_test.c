@@ -1010,7 +1010,7 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     struct aws_host_resolver_purge_host_options purge_host_options = {
         .host = host_name,
         .on_host_purge_complete_callback = s_default_host_purge_callback,
-        .on_host_purge_complete_user_data = &callback_data,
+        .user_data = &callback_data,
     };
     ASSERT_SUCCESS(aws_host_resolver_purge_host_cache(resolver, &purge_host_options));
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));

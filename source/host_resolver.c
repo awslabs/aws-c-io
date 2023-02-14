@@ -235,7 +235,7 @@ struct host_listener_entry {
 struct host_purge_callback_options {
     struct aws_allocator *allocator;
     aws_on_host_purge_complete_fn *on_host_purge_complete;
-    void *on_host_purge_complete_user_data;
+    void *user_data;
 };
 
 struct host_entry {
@@ -587,7 +587,7 @@ static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, e
     (void)status;
     struct host_purge_callback_options *options = arg;
     aws_mem_release(options->allocator, task);
-    options->on_host_purge_complete(options->on_host_purge_complete_user_data);
+    options->on_host_purge_complete(options->user_data);
     aws_mem_release(options->allocator, options);
 }
 
@@ -612,7 +612,7 @@ static int s_resolver_purge_host_cache(
                 aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct host_purge_callback_options));
             purge_callback_options->allocator = default_host_resolver->allocator;
             purge_callback_options->on_host_purge_complete = options->on_host_purge_complete_callback;
-            purge_callback_options->on_host_purge_complete_user_data = options->on_host_purge_complete_user_data;
+            purge_callback_options->user_data = options->user_data;
 
             struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
             aws_task_init(
@@ -633,7 +633,7 @@ static int s_resolver_purge_host_cache(
     AWS_FATAL_ASSERT(!host_entry->on_host_purge_complete);
     AWS_FATAL_ASSERT(!host_entry->on_host_purge_complete_user_data);
     host_entry->on_host_purge_complete = options->on_host_purge_complete_callback;
-    host_entry->on_host_purge_complete_user_data = options->on_host_purge_complete_user_data;
+    host_entry->on_host_purge_complete_user_data = options->user_data;
     aws_mutex_unlock(&host_entry->entry_lock);
 
     s_shutdown_host_entry(host_entry);
