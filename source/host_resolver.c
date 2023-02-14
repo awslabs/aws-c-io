@@ -85,21 +85,12 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
 int aws_host_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_host_resolver_purge_host_options *options) {
-    if (!resolver) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Resolver is required for purging cache address");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-    if (!options) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Purge Host Options are required for purging cache address");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-    if (!resolver->vtable) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Resolver's vtable is required for purging cache address");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(resolver->vtable);
+
     if (!resolver->vtable->purge_host_cache) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_host_cache function address is required for purging cache address");
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_host_cache function is not supported");
+        return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
     }
     return resolver->vtable->purge_host_cache(resolver, options);
 }
@@ -593,8 +584,14 @@ static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, e
 static int s_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_host_resolver_purge_host_options *options) {
-    struct default_host_resolver *default_host_resolver = resolver->impl;
 
+    AWS_PRECONDITION(resolver);
+    if (options == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Cannot purge host cache; options structure is NULL.");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
+    struct default_host_resolver *default_host_resolver = resolver->impl;
     AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, options->host->bytes);
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
