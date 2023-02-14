@@ -1008,12 +1008,11 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
 
     /* purge the host */
     struct aws_host_resolver_purge_host_options purge_host_options = {
-        .resolver = resolver,
         .host = host_name,
         .on_host_purge_complete_callback = s_default_host_purge_callback,
         .on_host_purge_complete_user_data = &callback_data,
     };
-    ASSERT_SUCCESS(aws_host_resolver_purge_host_cache(&purge_host_options));
+    ASSERT_SUCCESS(aws_host_resolver_purge_host_cache(resolver, &purge_host_options));
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
@@ -1027,7 +1026,7 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     ASSERT_INT_EQUALS(address_count, 0);
 
     /* try purging it again */
-    ASSERT_SUCCESS(aws_host_resolver_purge_host_cache(&purge_host_options));
+    ASSERT_SUCCESS(aws_host_resolver_purge_host_cache(resolver, &purge_host_options));
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);

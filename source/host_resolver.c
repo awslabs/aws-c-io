@@ -82,10 +82,26 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
-int aws_host_resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options) {
-    AWS_ASSERT(options && options->resolver);
-    AWS_ASSERT(options->resolver->vtable && options->resolver->vtable->purge_host_cache);
-    return options->resolver->vtable->purge_host_cache(options);
+int aws_host_resolver_purge_host_cache(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_resolver_purge_host_options *options) {
+    if (!resolver) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Resolver is required for purging cache address");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+    if (!options) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Purge Host Options are required for purging cache address");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+    if (!resolver->vtable) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "Resolver's vtable is required for purging cache address");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+    if (!resolver->vtable->purge_host_cache) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_host_cache function address is required for purging cache address");
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+    return resolver->vtable->purge_host_cache(resolver, options);
 }
 
 int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
@@ -575,10 +591,12 @@ static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, e
     aws_mem_release(options->allocator, options);
 }
 
-static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_options *options) {
-    struct default_host_resolver *default_host_resolver = options->resolver->impl;
+static int s_resolver_purge_host_cache(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_resolver_purge_host_options *options) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
 
-    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)options->resolver, options->host->bytes);
+    AWS_LOGF_INFO(AWS_LS_IO_DNS, "id=%p: purging record for %s", (void *)resolver, options->host->bytes);
 
     aws_mutex_lock(&default_host_resolver->resolver_lock);
 
@@ -601,6 +619,7 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
                 task, s_purge_host_cache_callback_task, purge_callback_options, "async_purge_host_address_task");
 
             struct aws_event_loop *loop = aws_event_loop_group_get_next_loop(default_host_resolver->event_loop_group);
+            AWS_FATAL_ASSERT(loop != NULL);
             aws_event_loop_schedule_task_now(loop, task);
         }
         return AWS_OP_SUCCESS;
@@ -611,6 +630,8 @@ static int resolver_purge_host_cache(const struct aws_host_resolver_purge_host_o
 
     /* Setup the on_host_purge_complete callback. */
     aws_mutex_lock(&host_entry->entry_lock);
+    AWS_FATAL_ASSERT(!host_entry->on_host_purge_complete);
+    AWS_FATAL_ASSERT(!host_entry->on_host_purge_complete_user_data);
     host_entry->on_host_purge_complete = options->on_host_purge_complete_callback;
     host_entry->on_host_purge_complete_user_data = options->on_host_purge_complete_user_data;
     aws_mutex_unlock(&host_entry->entry_lock);
@@ -1624,7 +1645,7 @@ static struct aws_host_resolver_vtable s_vtable = {
     .add_host_listener = default_add_host_listener,
     .remove_host_listener = default_remove_host_listener,
     .destroy = resolver_destroy,
-    .purge_host_cache = resolver_purge_host_cache,
+    .purge_host_cache = s_resolver_purge_host_cache,
 };
 
 static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
