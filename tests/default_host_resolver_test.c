@@ -1082,6 +1082,9 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "127.0.0.1");
     ASSERT_NOT_NULL(host_name);
 
+    const struct aws_string *host_name_2 = aws_string_new_from_c_str(allocator, "127.0.0.2");
+    ASSERT_NOT_NULL(host_name_2);
+
     struct aws_host_resolution_config config = {
         .max_ttl = 10,
         .impl = aws_default_dns_resolve,
@@ -1117,8 +1120,33 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     aws_host_address_clean_up(&callback_data.a_address);
     aws_mutex_unlock(&mutex);
 
+    /* Resolve second host*/
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    callback_data.invoked = false;
+    ASSERT_TRUE(callback_data.has_a_address);
+    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, callback_data.a_address.record_type);
+    ASSERT_BIN_ARRAYS_EQUALS(
+        aws_string_bytes(host_name_2),
+        host_name->len,
+        aws_string_bytes(callback_data.a_address.host),
+        callback_data.a_address.host->len);
+    ASSERT_TRUE(callback_data.a_address.address->len > 1);
+    ASSERT_FALSE(callback_data.has_aaaa_address);
+    aws_host_address_clean_up(&callback_data.a_address);
+    aws_mutex_unlock(&mutex);
+
     size_t address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
+    ASSERT_INT_EQUALS(address_count, 1);
+
+    address_count = aws_host_resolver_get_host_address_count(
+        resolver, host_name_2, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
     ASSERT_INT_EQUALS(address_count, 1);
 
     ASSERT_SUCCESS(aws_host_resolver_purge_cache_v2(resolver, s_default_host_purge_callback, &callback_data));
@@ -1130,6 +1158,12 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
 
     address_count = aws_host_resolver_get_host_address_count(
         resolver, host_name, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
+
+    /* If the host is really gone, we shouldn't have any addresses. */
+    ASSERT_INT_EQUALS(address_count, 0);
+
+    address_count = aws_host_resolver_get_host_address_count(
+        resolver, host_name_2, AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_A | AWS_GET_HOST_ADDRESS_COUNT_RECORD_TYPE_AAAA);
 
     /* If the host is really gone, we shouldn't have any addresses. */
     ASSERT_INT_EQUALS(address_count, 0);
@@ -1167,6 +1201,8 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     ASSERT_INT_EQUALS(address_count, 1);
 
     aws_string_destroy((void *)host_name);
+    aws_string_destroy((void *)host_name_2);
+
     aws_host_resolver_release(resolver);
     aws_event_loop_group_release(el_group);
 
