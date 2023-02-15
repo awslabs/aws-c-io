@@ -355,53 +355,90 @@ static void s_purge_cache_callback(void *user_data) {
 /*
  * resolver lock must be held before calling this function
  */
-static void s_clear_default_resolver_entry_table_synced(
-    struct default_host_resolver *resolver,
-    aws_simple_completion_callback *on_purge_cache_complete_callback,
-    void *user_data) {
-
-    struct host_purge_callback_options *purge_callback_options = NULL;
-    if (on_purge_cache_complete_callback) {
-        purge_callback_options =
-            s_host_purge_callback_options_new(resolver->allocator, on_purge_cache_complete_callback, user_data);
-    }
+static void s_clear_default_resolver_entry_table_synced(struct default_host_resolver *resolver) {
 
     struct aws_hash_table *table = &resolver->host_entry_table;
     for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct host_entry *entry = iter.element.value;
-        if (on_purge_cache_complete_callback) {
-            /* acquire a refernce to wait for the callback to trigger */
-            aws_ref_count_acquire(&purge_callback_options->ref_count);
-            entry->on_host_purge_complete = s_purge_cache_callback;
-            entry->on_host_purge_complete_user_data = purge_callback_options;
-        }
         s_shutdown_host_entry(entry);
     }
 
-    /* release the original reference */
-    if (on_purge_cache_complete_callback) {
-        aws_ref_count_release(&purge_callback_options->ref_count);
-    }
     aws_hash_table_clear(table);
 }
 
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table_synced(default_host_resolver, NULL, NULL);
+    s_clear_default_resolver_entry_table_synced(default_host_resolver);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
+}
+
+static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)status;
+    struct host_purge_callback_options *options = arg;
+    aws_mem_release(options->allocator, task);
+    aws_ref_count_release(&options->ref_count);
+}
+
+static void s_sechdule_purge_cache_callback_async(
+    struct default_host_resolver *default_host_resolver,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
+    void *user_data) {
+
+    struct host_purge_callback_options *purge_callback_options = s_host_purge_callback_options_new(
+        default_host_resolver->allocator, on_purge_cache_complete_callback, user_data);
+    purge_callback_options->allocator = default_host_resolver->allocator;
+
+    struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
+    aws_task_init(task, s_purge_host_cache_callback_task, purge_callback_options, "async_purge_host_address_task");
+
+    struct aws_event_loop *loop = aws_event_loop_group_get_next_loop(default_host_resolver->event_loop_group);
+    AWS_FATAL_ASSERT(loop != NULL);
+    aws_event_loop_schedule_task_now(loop, task);
 }
 
 static int resolver_purge_cache_with_callback(
     struct aws_host_resolver *resolver,
     aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
+
+    if (!on_purge_cache_complete_callback) {
+        return resolver_purge_cache(resolver);
+    }
+
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table_synced(default_host_resolver, on_purge_cache_complete_callback, user_data);
+    struct aws_hash_table *table = &default_host_resolver->host_entry_table;
+
+    /* Success if hash table is already empty. */
+    if (!aws_hash_table_get_entry_count(table)) {
+        /* Schedule completion callback asynchronouly */
+        aws_mutex_unlock(&default_host_resolver->resolver_lock);
+        if (on_purge_cache_complete_callback) {
+            s_sechdule_purge_cache_callback_async(default_host_resolver, on_purge_cache_complete_callback, user_data);
+        }
+        return AWS_OP_SUCCESS;
+    }
+
+    struct host_purge_callback_options *purge_callback_options = purge_callback_options =
+        s_host_purge_callback_options_new(resolver->allocator, on_purge_cache_complete_callback, user_data);
+
+    for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
+         aws_hash_iter_next(&iter)) {
+        struct host_entry *entry = iter.element.value;
+        /* acquire a refernce to wait for the callback to trigger */
+        aws_ref_count_acquire(&purge_callback_options->ref_count);
+        entry->on_host_purge_complete = s_purge_cache_callback;
+        entry->on_host_purge_complete_user_data = purge_callback_options;
+        s_shutdown_host_entry(entry);
+    }
+
+    /* release the original reference */
+    aws_ref_count_release(&purge_callback_options->ref_count);
+    aws_hash_table_clear(table);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
@@ -436,7 +473,7 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
 
     AWS_FATAL_ASSERT(default_host_resolver->state == DRS_ACTIVE);
 
-    s_clear_default_resolver_entry_table_synced(default_host_resolver, NULL, NULL);
+    s_clear_default_resolver_entry_table_synced(default_host_resolver);
     default_host_resolver->state = DRS_SHUTTING_DOWN;
     if (default_host_resolver->pending_host_entry_shutdown_completion_callbacks == 0) {
         cleanup_resolver = true;
@@ -646,13 +683,6 @@ static inline void process_records(
     }
 }
 
-static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)status;
-    struct host_purge_callback_options *options = arg;
-    aws_mem_release(options->allocator, task);
-    aws_ref_count_release(&options->ref_count);
-}
-
 static int s_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_host_resolver_purge_host_options *options) {
@@ -676,18 +706,8 @@ static int s_resolver_purge_host_cache(
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
         if (options->on_host_purge_complete_callback != NULL) {
             /* Schedule completion callback asynchronouly */
-
-            struct host_purge_callback_options *purge_callback_options = s_host_purge_callback_options_new(
-                resolver->allocator, options->on_host_purge_complete_callback, options->user_data);
-            purge_callback_options->allocator = default_host_resolver->allocator;
-
-            struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
-            aws_task_init(
-                task, s_purge_host_cache_callback_task, purge_callback_options, "async_purge_host_address_task");
-
-            struct aws_event_loop *loop = aws_event_loop_group_get_next_loop(default_host_resolver->event_loop_group);
-            AWS_FATAL_ASSERT(loop != NULL);
-            aws_event_loop_schedule_task_now(loop, task);
+            s_sechdule_purge_cache_callback_async(
+                default_host_resolver, options->on_host_purge_complete_callback, options->user_data);
         }
         return AWS_OP_SUCCESS;
     }
