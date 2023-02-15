@@ -84,7 +84,7 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
 
 int aws_host_resolver_purge_cache_v2(
     struct aws_host_resolver *resolver,
-    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
     AWS_PRECONDITION(resolver);
     AWS_PRECONDITION(resolver->vtable);
@@ -94,7 +94,7 @@ int aws_host_resolver_purge_cache_v2(
         return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
     }
 
-    return resolver->vtable->purge_cache_v2(resolver, on_resolver_purge_complete_callback, user_data);
+    return resolver->vtable->purge_cache_v2(resolver, on_purge_cache_complete_callback, user_data);
 }
 
 int aws_host_resolver_purge_host_cache(
@@ -334,20 +334,20 @@ static void s_purge_cache_callback(void *user_data) {
  */
 static void s_clear_default_resolver_entry_table(
     struct default_host_resolver *resolver,
-    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
 
     struct aws_ref_count *ref_count = NULL;
-    if (on_resolver_purge_complete_callback) {
+    if (on_purge_cache_complete_callback) {
         ref_count = aws_mem_calloc(resolver->allocator, 1, sizeof(struct aws_ref_count));
-        aws_ref_count_init(ref_count, user_data, on_resolver_purge_complete_callback);
+        aws_ref_count_init(ref_count, user_data, on_purge_cache_complete_callback);
     }
 
     struct aws_hash_table *table = &resolver->host_entry_table;
     for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct host_entry *entry = iter.element.value;
-        if (on_resolver_purge_complete_callback) {
+        if (on_purge_cache_complete_callback) {
             entry->on_host_purge_complete = s_purge_cache_callback;
             entry->on_host_purge_complete_user_data = aws_ref_count_acquire(ref_count);
         }
@@ -371,11 +371,11 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
 
 static int resolver_purge_cache_v2(
     struct aws_host_resolver *resolver,
-    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table(default_host_resolver, on_resolver_purge_complete_callback, user_data);
+    s_clear_default_resolver_entry_table(default_host_resolver, on_purge_cache_complete_callback, user_data);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;

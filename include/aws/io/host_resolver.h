@@ -112,7 +112,7 @@ struct aws_host_resolver_vtable {
     /** wipe out anything you have cached. */
     int (*purge_cache_v2)(
         struct aws_host_resolver *resolver,
-        aws_simple_completion_callback *on_resolver_purge_complete_callback,
+        aws_simple_completion_callback *on_purge_cache_complete_callback,
         void *user_data);
 
     /** wipe out anything cached for a specific host */
@@ -251,7 +251,7 @@ AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver)
  */
 AWS_IO_API int aws_host_resolver_purge_cache_v2(
     struct aws_host_resolver *resolver,
-    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data);
 
 /**
