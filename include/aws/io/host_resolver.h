@@ -247,7 +247,8 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
 
 /**
- * calls purge_resolver_cache on the vtable.
+ * Calls aws_host_resolver_purge_cache_with_callback on the vtable which will wipe out everything host resolver has
+ * cached.
  */
 AWS_IO_API int aws_host_resolver_purge_cache_with_callback(
     struct aws_host_resolver *resolver,
