@@ -82,19 +82,19 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
-int aws_host_resolver_purge_cache_v2(
+int aws_host_resolver_purge_cache_with_callback(
     struct aws_host_resolver *resolver,
     aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
     AWS_PRECONDITION(resolver);
     AWS_PRECONDITION(resolver->vtable);
 
-    if (!resolver->vtable->purge_cache_v2) {
-        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_cache_v2 function is not supported");
+    if (!resolver->vtable->purge_cache_with_callback) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_cache_with_callback function is not supported");
         return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
     }
 
-    return resolver->vtable->purge_cache_v2(resolver, on_purge_cache_complete_callback, user_data);
+    return resolver->vtable->purge_cache_with_callback(resolver, on_purge_cache_complete_callback, user_data);
 }
 
 int aws_host_resolver_purge_host_cache(
@@ -395,7 +395,7 @@ static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     return AWS_OP_SUCCESS;
 }
 
-static int resolver_purge_cache_v2(
+static int resolver_purge_cache_with_callback(
     struct aws_host_resolver *resolver,
     aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
@@ -1706,7 +1706,7 @@ static size_t default_get_host_address_count(
 
 static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
-    .purge_cache_v2 = resolver_purge_cache_v2,
+    .purge_cache_with_callback = resolver_purge_cache_with_callback,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
     .get_host_address_count = default_get_host_address_count,

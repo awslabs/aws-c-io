@@ -105,12 +105,12 @@ struct aws_host_resolver_vtable {
     int (*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
 
     /**
-     * @Deprecated Use purge_cache_v2 instead
+     * @Deprecated Use purge_cache_with_callback instead
      * wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
     /** wipe out anything you have cached. */
-    int (*purge_cache_v2)(
+    int (*purge_cache_with_callback)(
         struct aws_host_resolver *resolver,
         aws_simple_completion_callback *on_purge_cache_complete_callback,
         void *user_data);
@@ -241,7 +241,7 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
     struct aws_host_address *address);
 
 /**
- * @Deprecated Use aws_host_resolver_purge_cache_v2 instead
+ * @Deprecated Use purge_cache_with_callback instead
  * calls purge_cache on the vtable.
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
@@ -249,7 +249,7 @@ AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver)
 /**
  * calls purge_resolver_cache on the vtable.
  */
-AWS_IO_API int aws_host_resolver_purge_cache_v2(
+AWS_IO_API int aws_host_resolver_purge_cache_with_callback(
     struct aws_host_resolver *resolver,
     aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data);
