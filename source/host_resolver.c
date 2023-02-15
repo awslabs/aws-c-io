@@ -360,6 +360,7 @@ static void s_clear_default_resolver_entry_table(
          aws_hash_iter_next(&iter)) {
         struct host_entry *entry = iter.element.value;
         if (on_purge_cache_complete_callback) {
+            /* acquire a refernce to wait for the callback to trigger */
             aws_ref_count_acquire(&purge_callback_options->ref_count);
             entry->on_host_purge_complete = s_purge_cache_callback;
             entry->on_host_purge_complete_user_data = purge_callback_options;
@@ -367,6 +368,7 @@ static void s_clear_default_resolver_entry_table(
         s_shutdown_host_entry(entry);
     }
 
+    /* release the original reference */
     if (on_purge_cache_complete_callback) {
         aws_ref_count_release(&purge_callback_options->ref_count);
     }
