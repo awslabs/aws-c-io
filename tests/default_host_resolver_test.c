@@ -1100,6 +1100,7 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
         .mutex = &mutex,
     };
 
+    /* resolve first host */
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
@@ -1120,7 +1121,7 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     aws_host_address_clean_up(&callback_data.a_address);
     aws_mutex_unlock(&mutex);
 
-    /* Resolve second host*/
+    /* resolve second host */
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name_2, s_default_host_resolved_test_callback, &config, &callback_data));
 
