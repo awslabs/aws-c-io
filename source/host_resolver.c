@@ -355,7 +355,7 @@ static void s_purge_cache_callback(void *user_data) {
 /*
  * resolver lock must be held before calling this function
  */
-static void s_clear_default_resolver_entry_table(
+static void s_clear_default_resolver_entry_table_synced(
     struct default_host_resolver *resolver,
     aws_simple_completion_callback *on_purge_cache_complete_callback,
     void *user_data) {
@@ -389,7 +389,7 @@ static void s_clear_default_resolver_entry_table(
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table(default_host_resolver, NULL, NULL);
+    s_clear_default_resolver_entry_table_synced(default_host_resolver, NULL, NULL);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
@@ -401,7 +401,7 @@ static int resolver_purge_cache_with_callback(
     void *user_data) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table(default_host_resolver, on_purge_cache_complete_callback, user_data);
+    s_clear_default_resolver_entry_table_synced(default_host_resolver, on_purge_cache_complete_callback, user_data);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
@@ -436,7 +436,7 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
 
     AWS_FATAL_ASSERT(default_host_resolver->state == DRS_ACTIVE);
 
-    s_clear_default_resolver_entry_table(default_host_resolver, NULL, NULL);
+    s_clear_default_resolver_entry_table_synced(default_host_resolver, NULL, NULL);
     default_host_resolver->state = DRS_SHUTTING_DOWN;
     if (default_host_resolver->pending_host_entry_shutdown_completion_callbacks == 0) {
         cleanup_resolver = true;
