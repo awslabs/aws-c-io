@@ -19,7 +19,7 @@
 
 const uint64_t NS_PER_SEC = 1000000000;
 
-void aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
+int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;
     to->address = aws_string_new_from_string(to->allocator, from->address);
     to->host = aws_string_new_from_string(to->allocator, from->host);
@@ -233,7 +233,9 @@ struct aws_host_address_cache_entry {
 int aws_host_address_cache_entry_copy(
     const struct aws_host_address_cache_entry *from,
     struct aws_host_address_cache_entry *to) {
-    aws_host_address_copy(&from->address, &to->address);
+    if (aws_host_address_copy(&from->address, &to->address)) {
+        return AWS_OP_ERR;
+    }
 
     to->entry = from->entry;
 
@@ -427,7 +429,7 @@ static int s_copy_address_into_array_list(struct aws_host_address *address, stru
      * But there's no nice copy construction into an array list, so we get to
      *   (1) Push a zeroed dummy element onto the array list
      *   (2) Get its pointer
-     *   (3) Call aws_host_address_copy onto it.
+     *   (3) Call aws_host_address_copy onto it.  If that fails, pop the dummy element.
      */
     struct aws_host_address dummy;
     AWS_ZERO_STRUCT(dummy);
@@ -440,7 +442,10 @@ static int s_copy_address_into_array_list(struct aws_host_address *address, stru
     aws_array_list_get_at_ptr(address_list, (void **)&dest_copy, aws_array_list_length(address_list) - 1);
     AWS_FATAL_ASSERT(dest_copy != NULL);
 
-    aws_host_address_copy(address, dest_copy);
+    if (aws_host_address_copy(address, dest_copy)) {
+        aws_array_list_pop_back(address_list);
+        return AWS_OP_ERR;
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -737,7 +742,14 @@ static void s_update_address_cache(
 
             struct aws_host_address new_address_copy;
 
-            aws_host_address_copy(&address_to_cache_entry->address, &new_address_copy);
+            if (aws_host_address_copy(&address_to_cache_entry->address, &new_address_copy)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_DNS,
+                    "static: could not copy address for new-address list for host '%s' in s_update_address_cache.",
+                    host_entry->host_name->bytes);
+
+                continue;
+            }
 
             if (aws_array_list_push_back(&host_entry->new_addresses, &new_address_copy)) {
                 aws_host_address_clean_up(&new_address_copy);
