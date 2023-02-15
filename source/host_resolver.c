@@ -353,8 +353,9 @@ static void s_clear_default_resolver_entry_table(
         }
         s_shutdown_host_entry(entry);
     }
-
-    aws_ref_count_release(ref_count);
+    if (ref_count) {
+        aws_ref_count_release(ref_count);
+    }
     aws_hash_table_clear(table);
 }
 
