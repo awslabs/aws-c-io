@@ -82,6 +82,21 @@ int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver) {
     return resolver->vtable->purge_cache(resolver);
 }
 
+int aws_host_resolver_purge_cache_v2(
+    struct aws_host_resolver *resolver,
+    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    void *user_data) {
+    AWS_PRECONDITION(resolver);
+    AWS_PRECONDITION(resolver->vtable);
+
+    if (!resolver->vtable->purge_cache_v2) {
+        AWS_LOGF_ERROR(AWS_LS_IO_DNS, "purge_cache_v2 function is not supported");
+        return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    }
+
+    return resolver->vtable->purge_cache_v2(resolver, on_resolver_purge_complete_callback, user_data);
+}
+
 int aws_host_resolver_purge_host_cache(
     struct aws_host_resolver *resolver,
     const struct aws_host_resolver_purge_host_options *options) {
@@ -225,7 +240,8 @@ struct host_listener_entry {
 
 struct host_purge_callback_options {
     struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
+    aws_simple_completion_callback *on_host_purge_complete;
+    void *user_data;
 };
 
 struct host_entry {
@@ -250,7 +266,7 @@ struct host_entry {
     enum default_resolver_state state;
     struct aws_array_list new_addresses;
     struct aws_array_list expired_addresses;
-    aws_on_host_purge_complete_fn *on_host_purge_complete;
+    aws_simple_completion_callback *on_host_purge_complete;
     void *on_host_purge_complete_user_data;
 };
 
@@ -309,18 +325,36 @@ static void s_remove_host_listener_from_entry(
     struct host_listener *listener);
 
 static void s_host_listener_destroy(struct host_listener *listener);
-
+static void s_purge_cache_callback(void *user_data) {
+    struct aws_ref_count *ref_count = user_data;
+    aws_ref_count_release(ref_count);
+}
 /*
  * resolver lock must be held before calling this function
  */
-static void s_clear_default_resolver_entry_table(struct default_host_resolver *resolver) {
+static void s_clear_default_resolver_entry_table(
+    struct default_host_resolver *resolver,
+    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    void *user_data) {
+
+    struct aws_ref_count *ref_count = NULL;
+    if (on_resolver_purge_complete_callback) {
+        ref_count = aws_mem_calloc(resolver->allocator, 1, sizeof(struct aws_ref_count));
+        aws_ref_count_init(ref_count, user_data, on_resolver_purge_complete_callback);
+    }
+
     struct aws_hash_table *table = &resolver->host_entry_table;
     for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct host_entry *entry = iter.element.value;
+        if (on_resolver_purge_complete_callback) {
+            entry->on_host_purge_complete = s_purge_cache_callback;
+            entry->on_host_purge_complete_user_data = aws_ref_count_acquire(ref_count);
+        }
         s_shutdown_host_entry(entry);
     }
 
+    aws_ref_count_release(ref_count);
     aws_hash_table_clear(table);
 }
 
@@ -328,7 +362,19 @@ static void s_clear_default_resolver_entry_table(struct default_host_resolver *r
 static int resolver_purge_cache(struct aws_host_resolver *resolver) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
     aws_mutex_lock(&default_host_resolver->resolver_lock);
-    s_clear_default_resolver_entry_table(default_host_resolver);
+    s_clear_default_resolver_entry_table(default_host_resolver, NULL, NULL);
+    aws_mutex_unlock(&default_host_resolver->resolver_lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int resolver_purge_cache_v2(
+    struct aws_host_resolver *resolver,
+    aws_simple_completion_callback *on_resolver_purge_complete_callback,
+    void *user_data) {
+    struct default_host_resolver *default_host_resolver = resolver->impl;
+    aws_mutex_lock(&default_host_resolver->resolver_lock);
+    s_clear_default_resolver_entry_table(default_host_resolver, on_resolver_purge_complete_callback, user_data);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
@@ -363,7 +409,7 @@ static void resolver_destroy(struct aws_host_resolver *resolver) {
 
     AWS_FATAL_ASSERT(default_host_resolver->state == DRS_ACTIVE);
 
-    s_clear_default_resolver_entry_table(default_host_resolver);
+    s_clear_default_resolver_entry_table(default_host_resolver, NULL, NULL);
     default_host_resolver->state = DRS_SHUTTING_DOWN;
     if (default_host_resolver->pending_host_entry_shutdown_completion_callbacks == 0) {
         cleanup_resolver = true;
@@ -577,7 +623,7 @@ static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, e
     (void)status;
     struct host_purge_callback_options *options = arg;
     aws_mem_release(options->allocator, task);
-    aws_ref_count_release(&options->ref_count);
+    options->on_host_purge_complete(options->user_data);
     aws_mem_release(options->allocator, options);
 }
 
@@ -607,10 +653,8 @@ static int s_resolver_purge_host_cache(
             struct host_purge_callback_options *purge_callback_options =
                 aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct host_purge_callback_options));
             purge_callback_options->allocator = default_host_resolver->allocator;
-            aws_ref_count_init(
-                &purge_callback_options->ref_count,
-                options->user_data,
-                (aws_simple_completion_callback *)options->on_host_purge_complete_callback);
+            purge_callback_options->on_host_purge_complete = options->on_host_purge_complete_callback;
+            purge_callback_options->user_data = options->user_data;
 
             struct aws_task *task = aws_mem_calloc(default_host_resolver->allocator, 1, sizeof(struct aws_task));
             aws_task_init(
@@ -1637,6 +1681,7 @@ static size_t default_get_host_address_count(
 
 static struct aws_host_resolver_vtable s_vtable = {
     .purge_cache = resolver_purge_cache,
+    .purge_cache_v2 = resolver_purge_cache_v2,
     .resolve_host = default_resolve_host,
     .record_connection_failure = resolver_record_connection_failure,
     .get_host_address_count = default_get_host_address_count,
