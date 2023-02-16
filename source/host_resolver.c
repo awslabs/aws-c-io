@@ -419,6 +419,7 @@ static int resolver_purge_cache_with_callback(
         return AWS_OP_SUCCESS;
     }
 
+    /* purge all cache */
     struct host_purge_callback_options *purge_callback_options = purge_callback_options =
         s_host_purge_callback_options_new(resolver->allocator, on_purge_cache_complete_callback, user_data);
 
@@ -433,10 +434,10 @@ static int resolver_purge_cache_with_callback(
         entry->state = DRS_SHUTTING_DOWN;
         aws_mutex_unlock(&entry->entry_lock);
     }
+    aws_hash_table_clear(table);
 
     /* release the original reference */
     aws_ref_count_release(&purge_callback_options->ref_count);
-    aws_hash_table_clear(table);
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     return AWS_OP_SUCCESS;
