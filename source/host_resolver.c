@@ -356,7 +356,6 @@ static void s_purge_cache_callback(void *user_data) {
  * resolver lock must be held before calling this function
  */
 static void s_clear_default_resolver_entry_table_synced(struct default_host_resolver *resolver) {
-
     struct aws_hash_table *table = &resolver->host_entry_table;
     for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
@@ -415,11 +414,8 @@ static int resolver_purge_cache_with_callback(
 
     /* Success if hash table is already empty. */
     if (!aws_hash_table_get_entry_count(table)) {
-        /* Schedule completion callback asynchronouly */
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
-        if (on_purge_cache_complete_callback) {
-            s_sechdule_purge_cache_callback_async(default_host_resolver, on_purge_cache_complete_callback, user_data);
-        }
+        s_sechdule_purge_cache_callback_async(default_host_resolver, on_purge_cache_complete_callback, user_data);
         return AWS_OP_SUCCESS;
     }
 
