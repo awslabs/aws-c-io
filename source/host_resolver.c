@@ -431,9 +431,11 @@ static int resolver_purge_cache_with_callback(
         struct host_entry *entry = iter.element.value;
         /* acquire a refernce to wait for the callback to trigger */
         aws_ref_count_acquire(&purge_callback_options->ref_count);
+        aws_mutex_lock(&entry->entry_lock);
         entry->on_host_purge_complete = s_purge_cache_callback;
         entry->on_host_purge_complete_user_data = purge_callback_options;
-        s_shutdown_host_entry(entry);
+        entry->state = DRS_SHUTTING_DOWN;
+        aws_mutex_unlock(&entry->entry_lock);
     }
 
     /* release the original reference */
