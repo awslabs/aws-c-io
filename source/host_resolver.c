@@ -95,7 +95,9 @@ int aws_host_resolver_purge_host_cache(
     return resolver->vtable->purge_host_cache(resolver, options);
 }
 
-int aws_host_resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+int aws_host_resolver_record_connection_failure(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_address *address) {
     AWS_ASSERT(resolver->vtable && resolver->vtable->record_connection_failure);
     return resolver->vtable->record_connection_failure(resolver, address);
 }
@@ -640,7 +642,9 @@ static int s_resolver_purge_host_cache(
     return AWS_OP_SUCCESS;
 }
 
-static int resolver_record_connection_failure(struct aws_host_resolver *resolver, struct aws_host_address *address) {
+static int resolver_record_connection_failure(
+    struct aws_host_resolver *resolver,
+    const struct aws_host_address *address) {
     struct default_host_resolver *default_host_resolver = resolver->impl;
 
     AWS_LOGF_INFO(
