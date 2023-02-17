@@ -66,11 +66,6 @@ typedef int(aws_resolve_host_implementation_fn)(
     struct aws_array_list *output_addresses,
     void *user_data);
 
-/**
- * Invoked when host is removed from cache.
- */
-typedef void(aws_on_host_purge_complete_fn)(void *);
-
 struct aws_host_resolution_config {
     aws_resolve_host_implementation_fn *impl;
     size_t max_ttl;
@@ -85,7 +80,7 @@ struct aws_host_resolver_purge_host_options {
     /* the host to purge the cache for */
     const struct aws_string *host;
     /* Callback to invoke when the purge is complete */
-    aws_on_host_purge_complete_fn *on_host_purge_complete_callback;
+    aws_simple_completion_callback *on_host_purge_complete_callback;
     /* user_data will be passed as it is in the callback. */
     void *user_data;
 };
@@ -109,8 +104,16 @@ struct aws_host_resolver_vtable {
      */
     int (*record_connection_failure)(struct aws_host_resolver *resolver, const struct aws_host_address *address);
 
-    /** wipe out anything you have cached. */
+    /**
+     * @Deprecated Use purge_cache_with_callback instead
+     * wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
+
+    /** wipe out anything you have cached. */
+    int (*purge_cache_with_callback)(
+        struct aws_host_resolver *resolver,
+        aws_simple_completion_callback *on_purge_cache_complete_callback,
+        void *user_data);
 
     /** wipe out anything cached for a specific host */
     int (*purge_host_cache)(
@@ -238,9 +241,19 @@ AWS_IO_API int aws_host_resolver_record_connection_failure(
     const struct aws_host_address *address);
 
 /**
+ * @Deprecated Use purge_cache_with_callback instead
  * calls purge_cache on the vtable.
  */
 AWS_IO_API int aws_host_resolver_purge_cache(struct aws_host_resolver *resolver);
+
+/**
+ * Calls aws_host_resolver_purge_cache_with_callback on the vtable which will wipe out everything host resolver has
+ * cached.
+ */
+AWS_IO_API int aws_host_resolver_purge_cache_with_callback(
+    struct aws_host_resolver *resolver,
+    aws_simple_completion_callback *on_purge_cache_complete_callback,
+    void *user_data);
 
 /**
  * Removes the cache for a host asynchronously.
