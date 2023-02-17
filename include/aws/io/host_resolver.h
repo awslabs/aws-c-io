@@ -107,6 +107,7 @@ struct aws_host_resolver_vtable {
     /**
      * @Deprecated Use purge_cache_with_callback instead
      * wipe out anything you have cached. */
+
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
     /** wipe out anything you have cached. */
