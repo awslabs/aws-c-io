@@ -108,7 +108,7 @@ struct aws_host_resolver_vtable {
      * nothing) about it.
      */
     int (*record_connection_failure)(struct aws_host_resolver *resolver, const struct aws_host_address *address);
-    
+
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
 
