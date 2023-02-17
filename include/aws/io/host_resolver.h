@@ -91,7 +91,7 @@ struct aws_host_resolver_vtable {
     /** gives your implementation a hint that an address has some failed connections occuring. Do whatever you want (or
      * nothing) about it.
      */
-    int (*record_connection_failure)(struct aws_host_resolver *resolver, struct aws_host_address *address);
+    int (*record_connection_failure)(struct aws_host_resolver *resolver, const struct aws_host_address *address);
     /** wipe out anything you have cached. */
     int (*purge_cache)(struct aws_host_resolver *resolver);
     /** get number of addresses for a given host. */
@@ -212,7 +212,7 @@ AWS_IO_API int aws_host_resolver_resolve_host(
  */
 AWS_IO_API int aws_host_resolver_record_connection_failure(
     struct aws_host_resolver *resolver,
-    struct aws_host_address *address);
+    const struct aws_host_address *address);
 
 /**
  * calls purge_cache on the vtable.
