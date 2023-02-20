@@ -24,18 +24,7 @@ const uint64_t NS_PER_SEC = 1000000000;
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;
     to->address = aws_string_new_from_string(to->allocator, from->address);
-
-    if (!to->address) {
-        return AWS_OP_ERR;
-    }
-
     to->host = aws_string_new_from_string(to->allocator, from->host);
-
-    if (!to->host) {
-        aws_string_destroy((void *)to->address);
-        return AWS_OP_ERR;
-    }
-
     to->record_type = from->record_type;
     to->use_count = from->use_count;
     to->connection_failure_count = from->connection_failure_count;
@@ -1526,10 +1515,7 @@ static inline int create_and_init_host_entry(
     new_host_entry->resolution_config = *config;
     aws_condition_variable_init(&new_host_entry->entry_signal);
 
-    if (aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator)) {
-        goto setup_host_entry_error;
-    }
-
+    aws_thread_init(&new_host_entry->resolver_thread, resolver->allocator);
     thread_init = true;
     struct default_host_resolver *default_host_resolver = resolver->impl;
     if (AWS_UNLIKELY(
@@ -1540,8 +1526,10 @@ static inline int create_and_init_host_entry(
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
     thread_options.name = aws_byte_cursor_from_c_str("AwsHostResolver"); /* 15 characters is max for Linux */
-
-    aws_thread_launch(&new_host_entry->resolver_thread, aws_host_resolver_thread, new_host_entry, &thread_options);
+    if (aws_thread_launch(
+            &new_host_entry->resolver_thread, aws_host_resolver_thread, new_host_entry, &thread_options)) {
+        goto setup_host_entry_error;
+    }
     ++default_host_resolver->pending_host_entry_shutdown_completion_callbacks;
 
     return AWS_OP_SUCCESS;
@@ -1550,6 +1538,10 @@ setup_host_entry_error:
 
     if (thread_init) {
         aws_thread_clean_up(&new_host_entry->resolver_thread);
+    }
+    // If we registered a callback, clear it. So that we don’t trigger callback and return an error.
+    if (!aws_linked_list_empty(&new_host_entry->pending_resolution_callbacks)) {
+        aws_linked_list_remove(&pending_callback->node);
     }
 
     s_clean_up_host_entry(new_host_entry);
@@ -1626,37 +1618,31 @@ static int default_resolve_host(
         /* these will all need to be copied so that we don't hold the lock during the callback. */
         if (aaaa_record) {
             struct aws_host_address aaaa_record_cpy;
-            if (!aws_host_address_copy(aaaa_record, &aaaa_record_cpy)) {
-                aws_array_list_push_back(&callback_address_list, &aaaa_record_cpy);
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_DNS,
-                    "id=%p: vending address %s for host %s to caller",
-                    (void *)resolver,
-                    aaaa_record->address->bytes,
-                    host_entry->host_name->bytes);
-            }
+            aws_host_address_copy(aaaa_record, &aaaa_record_cpy);
+            aws_array_list_push_back(&callback_address_list, &aaaa_record_cpy);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                (void *)resolver,
+                aaaa_record->address->bytes,
+                host_entry->host_name->bytes);
         }
         if (a_record) {
             struct aws_host_address a_record_cpy;
-            if (!aws_host_address_copy(a_record, &a_record_cpy)) {
-                aws_array_list_push_back(&callback_address_list, &a_record_cpy);
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_DNS,
-                    "id=%p: vending address %s for host %s to caller",
-                    (void *)resolver,
-                    a_record->address->bytes,
-                    host_entry->host_name->bytes);
-            }
+            aws_host_address_copy(a_record, &a_record_cpy);
+            aws_array_list_push_back(&callback_address_list, &a_record_cpy);
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_DNS,
+                "id=%p: vending address %s for host %s to caller",
+                (void *)resolver,
+                a_record->address->bytes,
+                host_entry->host_name->bytes);
         }
         aws_mutex_unlock(&host_entry->entry_lock);
 
         /* we don't want to do the callback WHILE we hold the lock someone may reentrantly call us. */
-        if (aws_array_list_length(&callback_address_list)) {
-            res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
-        } else {
-            res(resolver, host_name, aws_last_error(), NULL, user_data);
-            result = AWS_OP_ERR;
-        }
+        // TODO: Fire the callback asynchronously
+        res(resolver, host_name, AWS_OP_SUCCESS, &callback_address_list, user_data);
 
         for (size_t i = 0; i < aws_array_list_length(&callback_address_list); ++i) {
             struct aws_host_address *address_ptr = NULL;
