@@ -43,7 +43,7 @@ static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef *pro
     (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                         \
     (TARGET_OS_WATCH && __WATCH_OS_VERSION_MAX_ALLOWED >= 40000)
 #    define ALPN_AVAILABLE true
-#    define TLS13_AVAILABLE true
+#    define TLS13_AVAILABLE false /* TLS 1.3 is not supported in the SecureTransport framework */
 #else
 #    define ALPN_AVAILABLE false
 #    define TLS13_AVAILABLE false
@@ -850,7 +850,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             break;
         case AWS_IO_TLSv1_3:
 #if TLS13_AVAILABLE
-            AWS_LOGF_WARN(AWS_LS_IO_TLS, "TLS 1.3 currently not supported. Will use system default TLS instead");
+            AWS_LOGF_WARN(AWS_LS_IO_TLS, "TLS 1.3 is currently not supported on MacOS");
             setProtocolStatus = SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
 #else
             AWS_LOGF_FATAL(
@@ -882,12 +882,10 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     if (setProtocolStatus != errSecSuccess) {
-        AWS_LOGF_FATAL(
+        AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
             "Non-success error code returned setting minimum TLS. TLS error code value: %i",
             setProtocolStatus);
-        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-        goto cleanup_ssl_ctx;
     } else {
         AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Minimum TLS set successfully");
     }
