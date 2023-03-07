@@ -809,6 +809,17 @@ static int s_verify_negotiation_fails_with_ca_override(
     return AWS_OP_SUCCESS;
 }
 
+static int s_default_pki_path_exists_fn() {
+    const char *dir = s_determine_default_pki_dir();
+    const char *file = s_determine_default_pki_ca_file();
+
+    ASSERT_TRUE(dir != NULL || file != NULL);
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(default_pki_path_exists, s_default_pki_path_exists_fn)
+
 AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {

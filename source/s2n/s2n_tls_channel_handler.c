@@ -104,7 +104,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
 
-static const char *s_determine_default_pki_dir(void) {
+const char *s_determine_default_pki_dir(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_path)) {
         return aws_string_c_str(s_debian_path);
@@ -140,7 +140,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pe
 AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
 
-static const char *s_determine_default_pki_ca_file(void) {
+const char *s_determine_default_pki_ca_file(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_ca_file_path)) {
         return aws_string_c_str(s_debian_ca_file_path);
