@@ -809,7 +809,7 @@ static int s_verify_negotiation_fails_with_ca_override(
     return AWS_OP_SUCCESS;
 }
 
-static int s_default_pki_path_exists_fn() {
+static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *ctx) {
     const char *dir = s_determine_default_pki_dir();
     const char *file = s_determine_default_pki_ca_file();
 
