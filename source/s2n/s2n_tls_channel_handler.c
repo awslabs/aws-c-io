@@ -120,12 +120,12 @@ static const char *s_determine_default_pki_dir(void) {
         return aws_string_c_str(s_android_path);
     }
 
-    /* Free BSD */
+    /* FreeBSD */
     if (aws_path_exists(s_free_bsd_path)) {
         return aws_string_c_str(s_free_bsd_path);
     }
 
-    /* Net BSD */
+    /* NetBSD */
     if (aws_path_exists(s_net_bsd_path)) {
         return aws_string_c_str(s_net_bsd_path);
     }
@@ -138,6 +138,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_old_rhel_ca_file_path, "/etc/pki/tls/certs/ca-b
 AWS_STATIC_STRING_FROM_LITERAL(s_open_suse_ca_file_path, "/etc/ssl/ca-bundle.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
+AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
 
 static const char *s_determine_default_pki_ca_file(void) {
     /* debian variants */
@@ -163,6 +164,11 @@ static const char *s_determine_default_pki_ca_file(void) {
     /* Modern RHEL variants */
     if (aws_path_exists(s_modern_rhel_ca_file_path)) {
         return aws_string_c_str(s_modern_rhel_ca_file_path);
+    }
+
+    /* OpenBSD */
+    if (aws_path_exists(s_openbsd_ca_file_path)) {
+        return aws_string_c_str(s_openbsd_ca_file_path);
     }
 
     return NULL;
