@@ -810,6 +810,9 @@ static int s_verify_negotiation_fails_with_ca_override(
 }
 
 static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
     const char *dir = s_determine_default_pki_dir();
     const char *file = s_determine_default_pki_ca_file();
 
