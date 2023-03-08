@@ -23,6 +23,8 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
+#    include <aws/io/private/pki_utils.h>
+
 #    ifdef _WIN32
 #        define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
 #    else
