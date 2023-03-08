@@ -13,9 +13,6 @@ struct aws_channel_handler;
 struct aws_pkcs11_session;
 struct aws_string;
 
-const char *s_determine_default_pki_dir(void);
-const char *s_determine_default_pki_ca_file(void);
-
 enum aws_tls_versions {
     AWS_IO_SSLv3,
     AWS_IO_TLSv1,

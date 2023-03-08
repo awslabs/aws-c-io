@@ -104,7 +104,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
 
-const char *s_determine_default_pki_dir(void) {
+AWS_IO_API const char *aws_determine_default_pki_dir(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_path)) {
         return aws_string_c_str(s_debian_path);
@@ -140,7 +140,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pe
 AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
 
-const char *s_determine_default_pki_ca_file(void) {
+AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_ca_file_path)) {
         return aws_string_c_str(s_debian_ca_file_path);
@@ -204,8 +204,8 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
         }
     }
 
-    s_default_ca_dir = s_determine_default_pki_dir();
-    s_default_ca_file = s_determine_default_pki_ca_file();
+    s_default_ca_dir = aws_determine_default_pki_dir();
+    s_default_ca_file = aws_determine_default_pki_ca_file();
     if (s_default_ca_dir || s_default_ca_file) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
