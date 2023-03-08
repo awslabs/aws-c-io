@@ -145,7 +145,9 @@ if (NOT BYO_CRYPTO)
 
     # Badssl - Certificate Validation endpoint suite
     # For each failure case, we also include a positive test that verifies success when peer verification is disabled
-    add_test_case(default_pki_path_exists)
+    if (USE_S2N)
+        add_test_case(default_pki_path_exists)
+    endif()
     add_net_test_case(tls_client_channel_negotiation_error_expired)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host)
     add_net_test_case(tls_client_channel_negotiation_error_wrong_host_with_ca_override)
