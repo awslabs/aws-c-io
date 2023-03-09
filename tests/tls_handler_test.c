@@ -816,10 +816,14 @@ static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *c
     (void)ctx;
     (void)allocator;
 
-    const char *dir = aws_determine_default_pki_dir();
-    const char *file = aws_determine_default_pki_ca_file();
-
-    ASSERT_TRUE(dir != NULL || file != NULL);
+#        if !defined(__OpenBSD__)
+    /*
+     * OpenBSD's standard PKI directory doesn't exist on fresh installs which means this
+     * test will normally fail.
+     */
+    ASSERT_NOT_NULL(aws_determine_default_pki_dir());
+#        endif /* __OpenBSD__ */
+    ASSERT_NOT_NULL(aws_determine_default_pki_ca_file());
 
     return AWS_OP_SUCCESS;
 }

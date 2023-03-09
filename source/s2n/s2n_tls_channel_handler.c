@@ -105,7 +105,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
 
 AWS_IO_API const char *aws_determine_default_pki_dir(void) {
-    /* debian variants */
+    /* debian variants; OpenBSD (although the directory doesn't exist by default) */
     if (aws_path_exists(s_debian_path)) {
         return aws_string_c_str(s_debian_path);
     }
