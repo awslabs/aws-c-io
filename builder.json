@@ -5,7 +5,7 @@
         { "name": "aws-c-cal" },
         {
             "name": "s2n",
-            "revision": "v1.3.38",
+            "revision": "v1.3.33",
             "targets": ["linux", "android", "openbsd"]
         }
     ],
