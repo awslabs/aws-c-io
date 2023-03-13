@@ -17,6 +17,10 @@ class Pkcs11TestSetup(Builder.Action):
     """
 
     def run(self, env):
+        if not env.project.needs_tests(env):
+            print("Skipping PKCS#11 setup because tests disabled for project")
+            return
+
         self.env = env
 
         # total hack: don't run PKCS#11 tests when building all C libs with -DBUILD_SHARED_LIBS=ON.
