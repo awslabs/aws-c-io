@@ -20,7 +20,7 @@
 #    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
 #endif
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* strncpy */
 #endif
 
@@ -513,6 +513,16 @@ static bool s_test_host_resolved_predicate(void *arg) {
     return callback_data->invoked;
 }
 
+static void s_test_host_resolver_shutdown_callback(void *user_data) {
+    struct test_host_callback_data *callback_data = user_data;
+
+    aws_mutex_lock(callback_data->mutex);
+    callback_data->invoked = true;
+    aws_mutex_unlock(callback_data->mutex);
+
+    aws_condition_variable_notify_one(&callback_data->condition_variable);
+}
+
 static void s_test_host_resolved_test_callback(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -639,21 +649,28 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver_default_options resolver_options = {
-        .el_group = el_group,
-        .max_entries = 2,
-    };
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
-
-    struct aws_host_resolution_config resolution_config = {
-        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
-
     struct test_host_callback_data host_callback_data = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
         .has_a_address = false,
         .mutex = &mutex,
     };
+
+    struct aws_shutdown_callback_options shutdown_options = {
+        .shutdown_callback_fn = s_test_host_resolver_shutdown_callback,
+        .shutdown_callback_user_data = &host_callback_data,
+    };
+    shutdown_options.shutdown_callback_fn = s_test_host_resolver_shutdown_callback;
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 2,
+        .shutdown_options = &shutdown_options,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    struct aws_host_resolution_config resolution_config = {
+        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
 
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
     struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
@@ -663,9 +680,15 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+    host_callback_data.invoked = false;
     aws_mutex_unlock(&mutex);
 
     aws_host_resolver_release(resolver);
+    /* wait for shutdown callback */
+    aws_mutex_lock(&mutex);
+    aws_condition_variable_wait_pred(
+        &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+    aws_mutex_unlock(&mutex);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
 
