@@ -144,7 +144,24 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 
     set(EVENT_LOOP_DEFINE "KQUEUE")
     set(USE_S2N ON)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    option(USE_VSOCK
+            "Build in support for VSOCK sockets"
+            OFF)
 
+    file(GLOB AWS_IO_OS_HEADERS
+            )
+
+    file(GLOB AWS_IO_OS_SRC
+            "source/linux/*.c"
+            "source/posix/*.c"
+            )
+    set(PLATFORM_LIBS "")
+
+    set(EVENT_LOOP_DEFINE "POLL")
+    set(USE_S2N ON)
+else ()
+    message(FATAL_ERROR "Unknown platform!")
 endif()
 
 if (BYO_CRYPTO)
