@@ -434,3 +434,8 @@ cleanup_handler:
 
     return NULL;
 }
+
+const struct aws_socket *aws_socket_channel_handler_get_socket(const struct aws_channel_handler *handler) {
+    const struct socket_handler *socket_handler = handler->impl;
+    return socket_handler->socket;
+}

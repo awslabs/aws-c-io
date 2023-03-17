@@ -5,7 +5,10 @@
 
 #include <aws/io/stream.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/file.h>
+#include <aws/common/string.h>
+#include <aws/common/thread.h>
 #include <aws/common/trace_event.h>
 #include <aws/io/file_utils.h>
 
@@ -224,6 +227,7 @@ struct aws_input_stream_file_impl {
     struct aws_input_stream base;
     struct aws_allocator *allocator;
     FILE *file;
+    struct aws_string *name;
     bool close_on_clean_up;
 };
 
@@ -244,6 +248,12 @@ static int s_aws_input_stream_file_seek(
 static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
     struct aws_input_stream_file_impl *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_file_impl, base);
 
+#define GRAEBM 0
+#if GRAEBM
+    uint64_t start = 0;
+    aws_high_res_clock_get_ticks(&start);
+#endif /* GRAEBM */
+
     size_t max_read = dest->capacity - dest->len;
     size_t actually_read = fread(dest->buffer + dest->len, 1, max_read, impl->file);
     if (actually_read == 0) {
@@ -253,6 +263,21 @@ static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct 
     }
 
     dest->len += actually_read;
+
+#if GRAEBM
+    uint64_t end = 0;
+    aws_high_res_clock_get_ticks(&end);
+
+    double duration = (end - start) / 1e9;
+    fprintf(
+        stderr,
+        "%.4f,%.2f,%.2f,,,,,,,,,%p,%s\n",
+        duration,
+        (start - g_app_start_time) / 1e9,
+        (end - g_app_start_time) / 1e9,
+        (void *)aws_thread_current_thread_id(),
+        aws_string_c_str(impl->name));
+#endif /* GRAEBM */
 
     return AWS_OP_SUCCESS;
 }
@@ -277,6 +302,7 @@ static void s_aws_input_stream_file_destroy(struct aws_input_stream_file_impl *i
     if (impl->close_on_clean_up && impl->file) {
         fclose(impl->file);
     }
+    aws_string_destroy(impl->name);
     aws_mem_release(impl->allocator, impl);
 }
 
@@ -296,6 +322,7 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
         goto on_error;
     }
 
+    impl->name = aws_string_new_from_c_str(allocator, file_name);
     impl->close_on_clean_up = true;
     impl->allocator = allocator;
     impl->base.vtable = &s_aws_input_stream_file_vtable;

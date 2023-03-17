@@ -503,6 +503,9 @@ struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel)
 AWS_IO_API
 int aws_channel_trigger_read(struct aws_channel *channel);
 
+AWS_IO_API
+const struct aws_socket *aws_channel_get_socket(const struct aws_channel *channel);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_CHANNEL_H */

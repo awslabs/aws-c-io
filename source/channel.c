@@ -1194,3 +1194,9 @@ int aws_channel_trigger_read(struct aws_channel *channel) {
 
     return AWS_OP_SUCCESS;
 }
+
+const struct aws_socket *aws_socket_channel_handler_get_socket(const struct aws_channel_handler *handler);
+
+const struct aws_socket *aws_channel_get_socket(const struct aws_channel *channel) {
+    return aws_socket_channel_handler_get_socket(channel->first->handler);
+}

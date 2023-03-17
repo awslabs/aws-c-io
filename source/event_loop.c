@@ -138,7 +138,7 @@ static struct aws_event_loop_group *s_event_loop_group_new(
 
             char thread_name[32] = {0};
             int thread_name_len =
-                snprintf(thread_name, sizeof(thread_name), "EventLoop %c %d", group_id_char, (int)i + 1);
+                snprintf(thread_name, sizeof(thread_name), "EventLoop %c %02d", group_id_char, (int)i + 1);
             if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_STRLEN) {
                 snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
             }
