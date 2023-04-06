@@ -1130,12 +1130,9 @@ static void aws_host_resolver_thread(void *arg) {
     struct host_entry *host_entry = arg;
 
     size_t unsolicited_resolve_max = host_entry->resolution_config.max_ttl;
-    if (unsolicited_resolve_max == 0) {
-        unsolicited_resolve_max = 1;
-    }
 
     uint64_t max_no_solicitation_interval =
-        aws_timestamp_convert(unsolicited_resolve_max, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        aws_timestamp_convert(aws_max_size(unsolicited_resolve_max, 1), AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     struct aws_linked_list listener_list;
     aws_linked_list_init(&listener_list);
