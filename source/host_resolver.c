@@ -281,6 +281,7 @@ int aws_host_address_cache_entry_copy(
 static void s_shutdown_host_entry(struct host_entry *entry) {
     aws_mutex_lock(&entry->entry_lock);
     entry->state = DRS_SHUTTING_DOWN;
+    aws_condition_variable_notify_all(&entry->entry_signal);
     aws_mutex_unlock(&entry->entry_lock);
 }
 
