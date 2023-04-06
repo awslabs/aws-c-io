@@ -1130,9 +1130,12 @@ static void aws_host_resolver_thread(void *arg) {
     struct host_entry *host_entry = arg;
 
     size_t unsolicited_resolve_max = host_entry->resolution_config.max_ttl;
+    if (unsolicited_resolve_max == 0) {
+        unsolicited_resolve_max = 1;
+    }
 
     uint64_t max_no_solicitation_interval =
-        aws_timestamp_convert(aws_max_size(unsolicited_resolve_max, 1), AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        aws_timestamp_convert(unsolicited_resolve_max, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     struct aws_linked_list listener_list;
     aws_linked_list_init(&listener_list);
@@ -1430,7 +1433,8 @@ static inline int create_and_init_host_entry(
     new_host_entry->allocator = resolver->allocator;
     new_host_entry->last_resolve_request_timestamp_ns = timestamp;
     new_host_entry->resolves_since_last_request = 0;
-    new_host_entry->resolve_frequency_ns = NS_PER_SEC;
+    new_host_entry->resolve_frequency_ns =
+        (config->resolve_frequency_ns != 0) ? config->resolve_frequency_ns : NS_PER_SEC;
     new_host_entry->state = DRS_ACTIVE;
 
     bool thread_init = false;
@@ -1817,6 +1821,13 @@ size_t aws_host_resolver_get_host_address_count(
     const struct aws_string *host_name,
     uint32_t flags) {
     return resolver->vtable->get_host_address_count(resolver, host_name, flags);
+}
+
+void aws_host_resolver_init_default_resolution_config(struct aws_host_resolution_config *config) {
+    config->impl = aws_default_dns_resolve;
+    config->max_ttl = AWS_DEFAULT_DNS_TTL;
+    config->impl_data = NULL;
+    config->resolve_frequency_ns = NS_PER_SEC;
 }
 
 enum find_listener_entry_flags {

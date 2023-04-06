@@ -10,6 +10,8 @@
 
 struct aws_event_loop_group;
 
+#define AWS_DEFAULT_DNS_TTL 30
+
 enum aws_address_record_type {
     /* ipv4 address. */
     AWS_ADDRESS_RECORD_TYPE_A,
@@ -70,6 +72,7 @@ struct aws_host_resolution_config {
     aws_resolve_host_implementation_fn *impl;
     size_t max_ttl;
     void *impl_data;
+    uint64_t resolve_frequency_ns; /* 0 defaults to 1 second interval */
 };
 
 struct aws_host_listener;
@@ -269,6 +272,8 @@ AWS_IO_API size_t aws_host_resolver_get_host_address_count(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
     uint32_t flags);
+
+AWS_IO_API void aws_host_resolver_init_default_resolution_config(struct aws_host_resolution_config *config);
 
 /* Callback for receiving new host addresses from a listener. Memory for the new address list is only guaranteed to
  * exist during the callback, and must be copied if the caller needs it to persist after. */
