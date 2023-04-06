@@ -20,6 +20,7 @@
 #include <inttypes.h>
 
 const uint64_t NS_PER_SEC = 1000000000;
+const size_t AWS_DEFAULT_DNS_TTL = 30;
 
 int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to) {
     to->allocator = from->allocator;

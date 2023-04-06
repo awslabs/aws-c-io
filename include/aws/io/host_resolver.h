@@ -10,8 +10,6 @@
 
 struct aws_event_loop_group;
 
-#define AWS_DEFAULT_DNS_TTL 30
-
 enum aws_address_record_type {
     /* ipv4 address. */
     AWS_ADDRESS_RECORD_TYPE_A,
