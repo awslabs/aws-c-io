@@ -873,15 +873,8 @@ static bool s_host_entry_finished_pred(void *user_data) {
 static void aws_host_resolver_thread(void *arg) {
     struct host_entry *host_entry = arg;
 
-    /* resolve frequency is > 0 by host entry construction */
-    uint64_t unnormalized_unsolicited_resolve_max =
-        aws_mul_u64_saturating(host_entry->resolution_config.max_ttl, NS_PER_SEC);
-    unnormalized_unsolicited_resolve_max = aws_add_u64_saturating(unnormalized_unsolicited_resolve_max, NS_PER_SEC - 1);
-    uint64_t unsolicited_resolve_max =
-        unnormalized_unsolicited_resolve_max / (uint64_t)host_entry->resolve_frequency_ns;
-
-    uint64_t max_no_solicitation_interval =
-        aws_timestamp_convert(unsolicited_resolve_max, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t max_no_solicitation_interval = aws_timestamp_convert(
+        aws_max_u64(1, host_entry->resolution_config.max_ttl), AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     uint64_t wait_between_resolves_interval =
         aws_min_u64(max_no_solicitation_interval, host_entry->resolve_frequency_ns);
