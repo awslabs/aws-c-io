@@ -1492,7 +1492,7 @@ struct aws_host_resolver *aws_host_resolver_new_default(
     if (options->system_clock_override_fn != NULL) {
         default_host_resolver->system_clock_fn = options->system_clock_override_fn;
     } else {
-        default_host_resolver->system_clock_fn = aws_sys_clock_get_ticks;
+        default_host_resolver->system_clock_fn = aws_high_res_clock_get_ticks;
     }
 
     return resolver;

@@ -339,17 +339,34 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(test_default_with_multiple_lookups, s_test_default_with_multiple_lookups_fn)
 
+static struct aws_mutex s_time_lock = AWS_MUTEX_INIT;
+static uint64_t s_current_time = 0;
+
+static int s_clock_fn(uint64_t *current_time) {
+    aws_mutex_lock(&s_time_lock);
+    *current_time = s_current_time;
+    aws_mutex_unlock(&s_time_lock);
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_set_time(uint64_t current_time) {
+    aws_mutex_lock(&s_time_lock);
+    s_current_time = current_time;
+    aws_mutex_unlock(&s_time_lock);
+}
+
 static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
 
+    s_set_time(0);
+
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
 
     struct aws_host_resolver_default_options resolver_options = {
-        .el_group = el_group,
-        .max_entries = 10,
-    };
+        .el_group = el_group, .max_entries = 10, .system_clock_override_fn = s_clock_fn};
     struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
 
     const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
@@ -367,7 +384,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
         .max_ttl = 2,
         .impl = mock_dns_resolve,
         .impl_data = &mock_resolver,
-        .resolve_frequency_ns = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL)};
+        .resolve_frequency_ns = aws_timestamp_convert(500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL)};
 
     struct aws_host_address host_address_1_ipv4 = {
         .address = addr1_ipv4,
@@ -434,6 +451,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
         .mutex = &mutex,
     };
 
+    /* t = 0s */
     ASSERT_SUCCESS(aws_host_resolver_resolve_host(
         resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
 
@@ -446,7 +464,11 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
-    /* sleep a bit more than one second, as a result the next resolve should run.*/
+
+    /* bump us up to near expiration time, but not quite, t = 1.5s */
+    s_set_time(aws_timestamp_convert(1500, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+    /* over-sleep; several resolves should run.  The second address should have an expiry time based on t = 1.5s */
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
     callback_data.invoked = false;
@@ -459,6 +481,10 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_condition_variable_wait_pred(
         &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
 
+    /*
+     * We still get address 1 on the second resolve because address 2 was put as MRU when it was resolved on the
+     * second iteration of the resolver loop.
+     */
     ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv6, callback_data.aaaa_address.address));
     ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
 
@@ -483,7 +509,10 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
-    /* sleep a bit more than one second, as a result the next resolve should run.*/
+    /* bump us past expiration time, t = 2.001 */
+    s_set_time(aws_timestamp_convert(2001, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+    /* over-sleep to allow the host resolver thread to run at least one more iteration to cull the expired record */
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
     /* note that normally, the first address would come back, but the TTL is expired (we set it to two seconds).
@@ -504,7 +533,12 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
     aws_host_address_clean_up(&callback_data.aaaa_address);
     aws_host_address_clean_up(&callback_data.a_address);
 
-    /* sleep so entry two expires. Now everything is expired, but because the last thing we resolved was addr 2, it
+    /*
+     * t = 4, all addresses should be expired
+     */
+    s_set_time(aws_timestamp_convert(4, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+
+    /* over-sleep so entry two expires. Now everything is expired, but because the last thing we resolved was addr 2, it
      * should still be there. */
     aws_thread_current_sleep(FORCE_RESOLVE_SLEEP_TIME);
 
