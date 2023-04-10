@@ -34,7 +34,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <stdlib.h>
 #include <string.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
