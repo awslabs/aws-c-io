@@ -205,8 +205,8 @@ int aws_host_address_cache_entry_copy(
 static void s_shutdown_host_entry(struct host_entry *entry) {
     aws_mutex_lock(&entry->entry_lock);
     entry->state = DRS_SHUTTING_DOWN;
-    aws_condition_variable_notify_all(&entry->entry_signal);
     aws_mutex_unlock(&entry->entry_lock);
+    aws_condition_variable_notify_all(&entry->entry_signal);
 }
 
 struct host_purge_callback_options {
@@ -1525,9 +1525,13 @@ size_t aws_host_resolver_get_host_address_count(
     return resolver->vtable->get_host_address_count(resolver, host_name, flags);
 }
 
-void aws_host_resolver_init_default_resolution_config(struct aws_host_resolution_config *config) {
-    config->impl = aws_default_dns_resolve;
-    config->max_ttl = AWS_DEFAULT_DNS_TTL;
-    config->impl_data = NULL;
-    config->resolve_frequency_ns = NS_PER_SEC;
+struct aws_host_resolution_config aws_host_resolver_init_default_resolution_config(void) {
+    struct aws_host_resolution_config config = {
+        .impl = aws_default_dns_resolve,
+        .max_ttl = AWS_DEFAULT_DNS_TTL,
+        .impl_data = NULL,
+        .resolve_frequency_ns = NS_PER_SEC,
+    };
+
+    return config;
 }

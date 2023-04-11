@@ -264,7 +264,12 @@ AWS_IO_API size_t aws_host_resolver_get_host_address_count(
     const struct aws_string *host_name,
     uint32_t flags);
 
-AWS_IO_API void aws_host_resolver_init_default_resolution_config(struct aws_host_resolution_config *config);
+/**
+ * Returns the default host resolution config used internally if none specified.
+ *
+ * @return default host resolution config
+ */
+AWS_IO_API struct aws_host_resolution_config aws_host_resolver_init_default_resolution_config(void);
 
 AWS_EXTERN_C_END
 

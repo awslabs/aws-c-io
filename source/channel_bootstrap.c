@@ -83,7 +83,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     if (options->host_resolution_config) {
         bootstrap->host_resolver_config = *options->host_resolution_config;
     } else {
-        aws_host_resolver_init_default_resolution_config(&bootstrap->host_resolver_config);
+        bootstrap->host_resolver_config = aws_host_resolver_init_default_resolution_config();
     }
 
     return bootstrap;
