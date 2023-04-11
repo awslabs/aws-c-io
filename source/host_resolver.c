@@ -870,6 +870,14 @@ static bool s_host_entry_finished_pred(void *user_data) {
     return entry->state == DRS_SHUTTING_DOWN;
 }
 
+static bool s_host_entry_finished_or_pending_request_pred(void *user_data) {
+    struct host_entry *entry = user_data;
+
+    return entry->state == DRS_SHUTTING_DOWN || !aws_linked_list_empty(&entry->pending_resolution_callbacks);
+}
+
+static const uint64_t AWS_MINIMUM_WAIT_BETWEEN_DNS_QUERIES_NS = 100000000; /* 100 ms */
+
 static void aws_host_resolver_thread(void *arg) {
     struct host_entry *host_entry = arg;
 
@@ -878,6 +886,12 @@ static void aws_host_resolver_thread(void *arg) {
 
     uint64_t wait_between_resolves_interval =
         aws_min_u64(max_no_solicitation_interval, host_entry->resolve_frequency_ns);
+
+    uint64_t shutdown_only_wait_time = AWS_MINIMUM_WAIT_BETWEEN_DNS_QUERIES_NS;
+    uint64_t request_interruptible_wait_time = 0;
+    if (wait_between_resolves_interval > shutdown_only_wait_time) {
+        request_interruptible_wait_time = wait_between_resolves_interval - shutdown_only_wait_time;
+    }
 
     struct aws_linked_list listener_list;
     aws_linked_list_init(&listener_list);
@@ -1027,13 +1041,47 @@ static void aws_host_resolver_thread(void *arg) {
 
         ++host_entry->resolves_since_last_request;
 
-        /* wait for a quit notification or the base resolve frequency time interval */
+        /*
+         * A long resolve frequency matched with a connection failure can induce a state of DNS starvation, where
+         * additional resolution requests go into the queue but since there's no good records and the thread is sleeping
+         * for a long time, nothing happens.
+         *
+         * While we could make the wait predicate also check the queue of requests, there is a worry that a
+         * host that can't be resolved (user error, dns record removal, etc...) could lead to a "spammy" scenario
+         * where the thread generates DNS requests extremely quickly, ie, the sleep becomes almost instant.
+         *
+         * We'd like to be able to express the wait here as something a bit more complex:
+         *
+         * "Wait until either (1) shutdown notice, or (2) a small amount of time has passed and there are pending
+         * requests, or (3) the resolution interval has passed"
+         *
+         * While seemingly complicated, we can do this actually just by chaining two waits:
+         *
+         * (1) The first wait is for a short amount of time and only predicates on the shutdown notice
+         * (2) The second wait is for the remaining frequency interval and predicates on either the shutdown notice
+         *     or a pending resolve request
+         *
+         * This leaves us with wait behavior where:
+         *  (1) Shutdown always fully interrupts and immediately causes the thread function to complete
+         *  (2) Absent shutdown, there is always a controllable, non-trivial sleep between resolves
+         *  (3) Starvation is avoided as pending requests can wake the resolver thread independent of resolution
+         *      frequency
+         */
         aws_condition_variable_wait_for_pred(
             &host_entry->entry_signal,
             &host_entry->entry_lock,
-            wait_between_resolves_interval,
+            shutdown_only_wait_time,
             s_host_entry_finished_pred,
             host_entry);
+
+        if (request_interruptible_wait_time > 0) {
+            aws_condition_variable_wait_for_pred(
+                &host_entry->entry_signal,
+                &host_entry->entry_lock,
+                request_interruptible_wait_time,
+                s_host_entry_finished_or_pending_request_pred,
+                host_entry);
+        }
 
         aws_mutex_unlock(&host_entry->entry_lock);
 
