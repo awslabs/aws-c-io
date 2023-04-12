@@ -205,8 +205,12 @@ int aws_host_address_cache_entry_copy(
 static void s_shutdown_host_entry(struct host_entry *entry) {
     aws_mutex_lock(&entry->entry_lock);
     entry->state = DRS_SHUTTING_DOWN;
-    aws_mutex_unlock(&entry->entry_lock);
+    /*
+     * intentionally signal under the lock; we can't guarantee the resolver
+     * is still around once the lock is released.
+     */
     aws_condition_variable_notify_all(&entry->entry_signal);
+    aws_mutex_unlock(&entry->entry_lock);
 }
 
 struct host_purge_callback_options {
@@ -1425,6 +1429,11 @@ static int default_resolve_host(
         pending_callback->user_data = user_data;
         pending_callback->callback = res;
         aws_linked_list_push_back(&host_entry->pending_resolution_callbacks, &pending_callback->node);
+        /*
+         * intentionally signal under the lock; similar to the shutdown case, we can't guarantee the resolver
+         * is still around once the lock is released.
+         */
+        aws_condition_variable_notify_all(&host_entry->entry_signal);
     } else {
         result = AWS_OP_ERR;
     }
