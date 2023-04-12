@@ -1328,3 +1328,115 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
     return 0;
 }
 AWS_TEST_CASE(test_resolver_ipv6_address_lookup, s_test_resolver_ipv6_address_lookup_fn)
+
+static int s_test_resolver_low_frequency_starvation_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
+
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(mock_dns_resolver_init(&mock_resolver, 1000, allocator));
+
+    struct aws_host_resolution_config config = {
+        .max_ttl = 30,
+        .impl = mock_dns_resolve,
+        .impl_data = &mock_resolver,
+        .resolve_frequency_ns = aws_timestamp_convert(120, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL),
+    };
+
+    struct aws_host_address host_address_1_ipv4 = {
+        .address = addr1_ipv4,
+        .allocator = allocator,
+        .expiry = 0,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .connection_failure_count = 0,
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+        .use_count = 0,
+        .weight = 0,
+    };
+
+    struct aws_array_list address_list_1;
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&address_list_1, allocator, 2, sizeof(struct aws_host_address)));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv4));
+
+    ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_resolver, &address_list_1));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+        .mutex = &mutex,
+    };
+
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    callback_data.invoked = false;
+
+    aws_mutex_unlock(&mutex);
+
+    uint64_t starvation_start = 0;
+    aws_high_res_clock_get_ticks(&starvation_start);
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv4));
+
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    aws_mutex_lock(&mutex);
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    uint64_t starvation_end = 0;
+    aws_high_res_clock_get_ticks(&starvation_end);
+
+    uint64_t starvation_ms =
+        aws_timestamp_convert(starvation_end - starvation_start, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
+
+    /*
+     * verify that the time it took to get a resolution was non-trivial (in this case we check half the minimum
+     * between-resolve wait time) and also not huge (resolve frequency is two minutes after all)
+     */
+    ASSERT_TRUE(starvation_ms > 50);
+    ASSERT_TRUE(starvation_ms < 1000);
+
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.a_address);
+
+    aws_mutex_unlock(&mutex);
+
+    aws_host_resolver_release(resolver);
+    aws_string_destroy((void *)host_name);
+    aws_event_loop_group_release(el_group);
+
+    aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_low_frequency_starvation, s_test_resolver_low_frequency_starvation_fn)
