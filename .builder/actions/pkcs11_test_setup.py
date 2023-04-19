@@ -27,8 +27,10 @@ class Pkcs11TestSetup(Builder.Action):
         # here's what happens:  libsofthsm2.so loads the system libcrypto.so and
         # s2n loads the aws-lc's libcrypto.so and really strange things start happening.
         # this wouldn't happen in the real world, just in our tests, so just bail out
+        print("env.args.args: " + str(env.args.args))
         if any('BUILD_SHARED_LIBS=ON' in arg for arg in env.args.args):
-            print("WARNING: PKCS#11 tests disabled when BUILD_SHARED_LIBS=ON due to weird libcrypto.so behavior")
+            print(
+                "WARNING: PKCS#11 tests disabled when BUILD_SHARED_LIBS=ON due to weird libcrypto.so behavior")
             return
 
         # try to install softhsm
@@ -73,15 +75,14 @@ class Pkcs11TestSetup(Builder.Action):
         # some installers put it in weird places where ldconfig doesn't look
         # (like in a subfolder under lib/)
 
-        for lib_dir in ['lib64', 'lib']: # search lib64 before lib
-            for base_dir in ['/usr/local', '/usr', '/',]:
+        for lib_dir in ['lib64', 'lib']:  # search lib64 before lib
+            for base_dir in ['/usr/local', '/usr', '/', ]:
                 search_dir = os.path.join(base_dir, lib_dir)
                 for root, dirs, files in os.walk(search_dir):
                     for file_name in files:
                         if 'libsofthsm2.so' in file_name:
                             return os.path.join(root, file_name)
         return None
-
 
     def _exec_softhsm2_util(self, *args, **kwargs):
         if not 'check' in kwargs:
