@@ -27,12 +27,11 @@ class Pkcs11TestSetup(Builder.Action):
         # here's what happens:  libsofthsm2.so loads the system libcrypto.so and
         # s2n loads the aws-lc's libcrypto.so and really strange things start happening.
         # this wouldn't happen in the real world, just in our tests, so just bail out
-        for i in env.project.config['cmake_args']:
-            print("env.project.config: " + i)
-        if any('BUILD_SHARED_LIBS=ON' in arg for arg in env.args.args):
-            print(
-                "WARNING: PKCS#11 tests disabled when BUILD_SHARED_LIBS=ON due to weird libcrypto.so behavior")
-            return
+        if hasattr(env.args, "cmake_extra"):
+            if any('BUILD_SHARED_LIBS=ON' in arg for arg in env.args.cmake_extra):
+                print(
+                    "WARNING: PKCS#11 tests disabled when BUILD_SHARED_LIBS=ON due to weird libcrypto.so behavior")
+                return
 
         # try to install softhsm
         try:
