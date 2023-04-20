@@ -2218,7 +2218,7 @@ static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import.allocator, &cert_cur, &key_cur));
     /* import happens here */
     ASSERT_NULL(aws_tls_client_ctx_new(import.allocator, &tls_options));
-    ASSERT_INT_EQUALS(aws_last_error(), AWS_IO_TLS_CTX_ERROR);
+    ASSERT_INT_EQUALS(AWS_IO_FILE_VALIDATION_FAILURE, aws_last_error());
     aws_tls_ctx_options_clean_up(&tls_options);
     aws_byte_buf_clean_up(&import.cert_buf);
     aws_byte_buf_clean_up(&import.key_buf);
