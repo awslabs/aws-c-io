@@ -2173,6 +2173,41 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
 
+static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    /* temporarily disable this on apple until we can fix importing to be more robust */
+    /* temporarily disable this on linux until we can make CRYPTO_zalloc behave and stop angering ASan */
+#    if defined(__APPLE__) || defined(__linux__)
+    return AWS_OP_SUCCESS;
+#    endif
+
+    aws_io_library_init(allocator);
+    struct import_info import;
+    AWS_ZERO_STRUCT(import);
+    import.allocator = allocator;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import.cert_buf, import.allocator, "testcert-invalid.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import.key_buf, import.allocator, "testkey-invalid.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import.cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import.key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import.allocator, &cert_cur, &key_cur));
+    /* import happens here */
+    ASSERT_NULL(aws_tls_client_ctx_new(import.allocator, &tls_options));
+    ASSERT_INT_EQUALS(aws_last_error(), AWS_IO_TLS_CTX_ERROR);
+    aws_tls_ctx_options_clean_up(&tls_options);
+    aws_byte_buf_clean_up(&import.cert_buf);
+    aws_byte_buf_clean_up(&import.key_buf);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_invalid_cert_import, s_test_invalid_cert_import)
+
 static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
