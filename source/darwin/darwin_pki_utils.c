@@ -187,6 +187,10 @@ int aws_import_public_and_private_keys_to_identity(
             result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
             goto done;
         }
+    } else if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
+        result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
     }
 
     /* if it's already there, just convert this over to a cert and then let the keychain give it back to us. */

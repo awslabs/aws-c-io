@@ -100,17 +100,7 @@ add_net_test_case(test_default_with_ipv4_only_lookup)
 add_test_case(test_resolver_ttls)
 add_test_case(test_resolver_connect_failure_recording)
 add_test_case(test_resolver_ttl_refreshes_on_resolve)
-
-add_net_test_case(test_resolver_listener_create_destroy)
-#add_net_test_case(test_resolver_add_listener_before_host)
-#add_net_test_case(test_resolver_add_listener_after_host)
-#add_net_test_case(test_resolver_add_multiple_listeners_fn)
-add_net_test_case(test_resolver_listener_host_re_add_fn)
-add_net_test_case(test_resolver_listener_multiple_results)
-add_net_test_case(test_resolver_listener_address_expired_fn)
-add_net_test_case(test_resolver_pinned_host_entry)
-add_net_test_case(test_resolver_unpinned_host_entry)
-add_net_test_case(test_resolver_address_promote_demote_listener_callbacks)
+add_test_case(test_resolver_low_frequency_starvation)
 
 add_test_case(test_pem_single_cert_parse)
 add_test_case(test_pem_private_key_parse)
@@ -131,6 +121,10 @@ add_test_case(socket_handler_close)
 add_test_case(socket_pinned_event_loop)
 
 if (NOT BYO_CRYPTO)
+    if (USE_S2N)
+        add_net_test_case(default_pki_path_exists)
+    endif()
+
     # Badssl-based tests (https://badssl.com/dashboard/) - use remote endpoints for now, later transition to
     # internal hosting using the bad ssl container/server setup and dns redirects per
     # https://github.com/chromium/badssl.com
@@ -297,6 +291,10 @@ endif()
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
+
+if (USE_S2N)
+    target_compile_definitions(${PROJECT_NAME}-tests PRIVATE "-DUSE_S2N")
+endif()
 
 #SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD

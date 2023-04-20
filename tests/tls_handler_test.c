@@ -23,6 +23,8 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
+#    include <aws/io/private/pki_utils.h>
+
 #    ifdef _WIN32
 #        define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
 #    else
@@ -808,6 +810,26 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     return AWS_OP_SUCCESS;
 }
+
+#    if defined(USE_S2N)
+static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+#        if !defined(__OpenBSD__)
+    /*
+     * OpenBSD's standard PKI directory doesn't exist on fresh installs which means this
+     * test will normally fail.
+     */
+    ASSERT_NOT_NULL(aws_determine_default_pki_dir());
+#        endif /* __OpenBSD__ */
+    ASSERT_NOT_NULL(aws_determine_default_pki_ca_file());
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(default_pki_path_exists, s_default_pki_path_exists_fn)
+#    endif /* defined(USE_S2N) */
 
 AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired.badssl.com");
 
