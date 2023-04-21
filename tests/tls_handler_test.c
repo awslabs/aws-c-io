@@ -2197,11 +2197,6 @@ AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
 
 static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_array_list certificates;
-    AWS_ZERO_STRUCT(certificates);
-
-    aws_cert_chain_clean_up(&certificates);
-
     /* temporarily disable this on apple until we can fix importing to be more robust */
     /* temporarily disable this on linux until we can make CRYPTO_zalloc behave and stop angering ASan */
 #    if defined(__APPLE__) || defined(__linux__)
