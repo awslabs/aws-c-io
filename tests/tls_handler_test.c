@@ -2197,6 +2197,7 @@ AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
 
 static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+    (void)allocator;
     AWS_ASSERT(false);
     //     /* temporarily disable this on linux until we can make CRYPTO_zalloc behave and stop angering ASan */
     // #    if defined(__linux__)
