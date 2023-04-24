@@ -568,15 +568,14 @@ int aws_import_key_pair_to_cert_context(
         return AWS_OP_ERR;
     }
 
-    if (aws_array_list_init_dynamic(&private_keys, alloc, 1, sizeof(struct aws_byte_buf))) {
-        aws_array_list_clean_up(&certificates);
-        return AWS_OP_ERR;
-    }
-
     if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &certificates)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
+    }
+
+    if (aws_array_list_init_dynamic(&private_keys, alloc, 1, sizeof(struct aws_byte_buf))) {
+        goto cleanup;
     }
 
     if (aws_decode_pem_to_buffer_list(alloc, private_key, &private_keys)) {
