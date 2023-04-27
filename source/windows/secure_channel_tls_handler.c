@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #    pragma warning(disable : 4306) /* Identifier is type cast to a larger pointer. */
@@ -59,6 +59,7 @@ struct secure_channel_ctx {
     HCRYPTPROV crypto_provider;
     HCRYPTKEY private_key;
     bool verify_peer;
+    bool should_free_pcerts;
 };
 
 struct secure_channel_handler {
@@ -427,7 +428,7 @@ static int s_fillin_alpn_data(
     size_t *written) {
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "")
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "");
 
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
@@ -1517,7 +1518,7 @@ static int s_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler);
 
             /* send a TLS alert. */
             SECURITY_STATUS status;
@@ -1841,7 +1842,15 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     }
 
     if (secure_channel_ctx->pcerts) {
-        CertFreeCertificateContext(secure_channel_ctx->pcerts);
+        /**
+         * Only free the private certificate context if the private key is NOT
+         * from the certificate context because freeing the private key
+         * using CryptDestroyKey frees the certificate context and then
+         * trying to access it leads to a access violation.
+         */
+        if (secure_channel_ctx->should_free_pcerts == true) {
+            CertFreeCertificateContext(secure_channel_ctx->pcerts);
+        }
     }
 
     if (secure_channel_ctx->cert_store) {
@@ -1887,6 +1896,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
+    secure_channel_ctx->should_free_pcerts = true;
 
     secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
 
@@ -2015,6 +2025,7 @@ struct aws_tls_ctx *s_ctx_new(
 
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;
+        secure_channel_ctx->should_free_pcerts = false;
     }
 
     return &secure_channel_ctx->ctx;

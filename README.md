@@ -86,7 +86,7 @@ Typical Client API Usage Pattern:
         struct aws_socket_options sock_options = { ... };
         struct aws_socket_endpoint endpoint = { ... };
 
-        if (aws_client_bootstrap_new_tls_socket_channel(&client_bootrap, &endpoint, &sock_options, &tls_options,
+        if (aws_client_bootstrap_new_tls_socket_channel(&client_bootstrap, &endpoint, &sock_options, &tls_options,
                 your_channel_setup_callback, your_channel_shutdown_callback, your_context_data) {
             goto cleanup;
         }
@@ -137,7 +137,7 @@ Typical Server API Usage Pattern:
         aws_server_bootstrap_remove_socket_listener(listener);
         aws_server_bootstrap_clean_up(&server_bootstrap);
         aws_tls_server_ctx_destroy(tls_ctx);
-        awS_event_loop_group_clean_up(&el_group);
+        aws_event_loop_group_clean_up(&el_group);
         aws_io_library_clean_up();
 
 If you are building a protocol on top of sockets without the use of TLS, you can still use this pattern as your starting point.

@@ -133,7 +133,7 @@ elseif (APPLE)
     list(APPEND PLATFORM_LIBS "-framework Security")
     set(EVENT_LOOP_DEFINE "KQUEUE")
 
-elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
             )
 
@@ -188,6 +188,10 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
+endif()
+
+if (USE_S2N)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE "-DUSE_S2N")
 endif()
 
 if (BUILD_RELOCATABLE_BINARIES)

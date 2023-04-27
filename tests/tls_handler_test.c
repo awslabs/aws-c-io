@@ -23,9 +23,7 @@
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
 
-#    if _MSC_VER
-#        pragma warning(disable : 4996) /* sprintf */
-#    endif
+#    include <aws/io/private/pki_utils.h>
 
 #    ifdef _WIN32
 #        define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
@@ -400,7 +398,12 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    sprintf(tester->endpoint.address, LOCAL_SOCK_TEST_PATTERN, (long long unsigned)tester->timestamp, server_index);
+    snprintf(
+        tester->endpoint.address,
+        sizeof(tester->endpoint.address),
+        LOCAL_SOCK_TEST_PATTERN,
+        (long long unsigned)tester->timestamp,
+        server_index);
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, tls_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
@@ -807,6 +810,20 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     return AWS_OP_SUCCESS;
 }
+
+#    if defined(USE_S2N)
+static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_TRUE(
+        aws_determine_default_pki_dir() != NULL || aws_determine_default_pki_ca_file() != NULL,
+        "Default TLS trust store not found on this system.");
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(default_pki_path_exists, s_default_pki_path_exists_fn)
+#    endif /* defined(USE_S2N) */
 
 AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired.badssl.com");
 
@@ -2137,10 +2154,10 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
         import->allocator = allocator;
 
         char filename[1024];
-        sprintf(filename, "testcert%u.pem", (uint32_t)idx);
+        snprintf(filename, sizeof(filename), "testcert%u.pem", (uint32_t)idx);
         ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import->cert_buf, import->allocator, filename));
 
-        sprintf(filename, "testkey.pem");
+        snprintf(filename, sizeof(filename), "testkey.pem");
         ASSERT_SUCCESS(aws_byte_buf_init_from_file(&import->key_buf, import->allocator, filename));
 
         struct aws_thread *thread = &import->thread;

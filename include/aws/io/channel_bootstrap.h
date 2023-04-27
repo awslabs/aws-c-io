@@ -82,7 +82,7 @@ struct aws_client_bootstrap_options {
     /* Optional. If none is provided then default settings are used.
      * This object is deep-copied by bootstrap.
      * */
-    struct aws_host_resolution_config *host_resolution_config;
+    const struct aws_host_resolution_config *host_resolution_config;
 
     /* Optional. If provided, callback is invoked when client bootstrap has completely shut down. */
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
@@ -185,6 +185,7 @@ struct aws_socket_channel_bootstrap_options {
     bool enable_read_back_pressure;
     void *user_data;
     struct aws_event_loop *requested_event_loop;
+    const struct aws_host_resolution_config *host_resolution_override_config;
 };
 
 /**

@@ -12,7 +12,7 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 /* non-constant aggregate initializer */
 #    pragma warning(disable : 4204)
 /* allow automatic variable to escape scope
@@ -21,11 +21,9 @@
 #    pragma warning(disable : 4221)
 #endif
 
-#define DEFAULT_DNS_TTL 30
-
 static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: destroying", (void *)bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: bootstrap destroying", (void *)bootstrap);
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
     void *user_data = bootstrap->user_data;
 
@@ -41,6 +39,7 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
 
 struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_bootstrap *bootstrap) {
     if (bootstrap != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: acquiring bootstrap reference", (void *)bootstrap);
         aws_ref_count_acquire(&bootstrap->ref_count);
     }
 
@@ -48,8 +47,8 @@ struct aws_client_bootstrap *aws_client_bootstrap_acquire(struct aws_client_boot
 }
 
 void aws_client_bootstrap_release(struct aws_client_bootstrap *bootstrap) {
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
     if (bootstrap != NULL) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
         aws_ref_count_release(&bootstrap->ref_count);
     }
 }
@@ -84,11 +83,7 @@ struct aws_client_bootstrap *aws_client_bootstrap_new(
     if (options->host_resolution_config) {
         bootstrap->host_resolver_config = *options->host_resolution_config;
     } else {
-        bootstrap->host_resolver_config = (struct aws_host_resolution_config){
-            .impl = aws_default_dns_resolve,
-            .max_ttl = DEFAULT_DNS_TTL,
-            .impl_data = NULL,
-        };
+        bootstrap->host_resolver_config = aws_host_resolver_init_default_resolution_config();
     }
 
     return bootstrap;
@@ -144,6 +139,7 @@ struct client_connection_args {
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
     if (args != NULL) {
+        AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "acquiring client connection args, args=%p", (void *)args);
         aws_ref_count_acquire(&args->ref_count);
     }
 
@@ -152,6 +148,7 @@ static struct client_connection_args *s_client_connection_args_acquire(struct cl
 
 static void s_client_connection_args_destroy(struct client_connection_args *args) {
     AWS_ASSERT(args);
+    AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "destroying client connection args, args=%p", (void *)args);
 
     struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_client_bootstrap_release(args->bootstrap);
@@ -168,6 +165,7 @@ static void s_client_connection_args_destroy(struct client_connection_args *args
 
 static void s_client_connection_args_release(struct client_connection_args *args) {
     if (args != NULL) {
+        AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "releasing client connection args, args=%p", (void *)args);
         aws_ref_count_release(&args->ref_count);
     }
 }
@@ -189,18 +187,17 @@ static void s_connection_args_setup_callback(
     int error_code,
     struct aws_channel *channel) {
     /* setup_callback is always called exactly once */
-    AWS_ASSERT(!args->setup_called);
-    if (!args->setup_called) {
-        AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
-        aws_client_bootstrap_on_channel_event_fn *setup_callback = args->setup_callback;
-        setup_callback(args->bootstrap, error_code, channel, args->user_data);
-        args->setup_called = true;
-        /* if setup_callback is called with an error, we will not call shutdown_callback */
-        if (error_code) {
-            args->shutdown_callback = NULL;
-        }
-        s_client_connection_args_release(args);
+    AWS_FATAL_ASSERT(!args->setup_called);
+
+    AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
+    aws_client_bootstrap_on_channel_event_fn *setup_callback = args->setup_callback;
+    setup_callback(args->bootstrap, error_code, channel, args->user_data);
+    args->setup_called = true;
+    /* if setup_callback is called with an error, we will not call shutdown_callback */
+    if (error_code) {
+        args->shutdown_callback = NULL;
     }
+    s_client_connection_args_release(args);
 }
 
 static void s_connection_args_creation_callback(struct client_connection_args *args, struct aws_channel *channel) {
@@ -696,9 +693,19 @@ static void s_on_host_resolved(
     /* ...then schedule all the tasks, which cannot fail */
     for (size_t i = 0; i < host_addresses_len; ++i) {
         struct connection_task_data *task_data = tasks[i];
-        /* each task needs to hold a ref to the args until completed */
+        /**
+         * Acquire on the connection args to make sure connection args outlive the tasks to attempt connection.
+         *
+         * Once upon a time, the connection attempt tasks were scheduled right after acquiring the connection args,
+         * which lead to a crash that when the attempt connection tasks run and the attempt connection succeed and
+         * closed before the other tasks can acquire on the connection args, the connection args had be destroyed before
+         * acquire and lead to a crash.
+         */
         s_client_connection_args_acquire(task_data->args);
+    }
 
+    for (size_t i = 0; i < host_addresses_len; ++i) {
+        struct connection_task_data *task_data = tasks[i];
         aws_task_init(&task_data->task, s_attempt_connection, task_data, "attempt_connection");
         aws_event_loop_schedule_task_now(connect_loop, &task_data->task);
     }
@@ -816,11 +823,16 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
             goto error;
         }
 
+        const struct aws_host_resolution_config *host_resolution_config = &bootstrap->host_resolver_config;
+        if (options->host_resolution_override_config) {
+            host_resolution_config = options->host_resolution_override_config;
+        }
+
         if (aws_host_resolver_resolve_host(
                 bootstrap->host_resolver,
                 client_connection_args->host_name,
                 s_on_host_resolved,
-                &bootstrap->host_resolver_config,
+                host_resolution_config,
                 client_connection_args)) {
             goto error;
         }
@@ -1335,8 +1347,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
     AWS_PRECONDITION(bootstrap_options);
     AWS_PRECONDITION(bootstrap_options->bootstrap);
-    AWS_PRECONDITION(bootstrap_options->incoming_callback)
-    AWS_PRECONDITION(bootstrap_options->shutdown_callback)
+    AWS_PRECONDITION(bootstrap_options->incoming_callback);
+    AWS_PRECONDITION(bootstrap_options->shutdown_callback);
 
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
@@ -1348,7 +1360,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new "
         "server socket listener for %s:%d",
-        (void *)server_connection_args->bootstrap,
+        (void *)bootstrap_options->bootstrap,
         bootstrap_options->host_name,
         (int)bootstrap_options->port);
 

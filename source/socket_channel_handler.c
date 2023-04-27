@@ -12,7 +12,7 @@
 #include <aws/io/socket.h>
 #include <aws/io/statistics.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 
@@ -425,4 +425,10 @@ cleanup_handler:
     aws_mem_release(allocator, handler);
 
     return NULL;
+}
+
+const struct aws_socket *aws_socket_handler_get_socket(const struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(handler);
+    const struct socket_handler *socket_handler = handler->impl;
+    return socket_handler->socket;
 }

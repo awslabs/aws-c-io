@@ -14,7 +14,7 @@
 #include <aws/io/message_pool.h>
 #include <aws/io/statistics.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #endif
 
@@ -80,7 +80,7 @@ struct aws_channel {
     size_t window_update_batch_emit_threshold;
     struct aws_channel_task window_update_task;
     bool read_back_pressure_enabled;
-    bool window_update_in_progress;
+    bool window_update_scheduled;
 };
 
 struct channel_setup_args {
@@ -162,7 +162,7 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
                 AWS_LS_IO_CHANNEL,
                 "id=%p: message pool %p found in event-loop local storage: using it.",
                 (void *)setup_args->channel,
-                (void *)message_pool)
+                (void *)message_pool);
         }
 
         setup_args->channel->msg_pool = message_pool;
@@ -540,45 +540,38 @@ void aws_channel_task_init(
     channel_task->type_tag = type_tag;
 }
 
-/* Common functionality for scheduling "now" and "future" tasks.
- * For "now" tasks, pass 0 for `run_at_nanos` */
-static void s_register_pending_task(
+static void s_register_pending_task_in_event_loop(
     struct aws_channel *channel,
     struct aws_channel_task *channel_task,
     uint64_t run_at_nanos) {
 
-    /* Reset every property on channel task other than user's fn & arg.*/
-    aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
-    channel_task->wrapper_task.timestamp = run_at_nanos;
-    aws_linked_list_node_reset(&channel_task->node);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL,
+        "id=%p: scheduling task with wrapper task id %p.",
+        (void *)channel,
+        (void *)&channel_task->wrapper_task);
 
-    if (aws_channel_thread_is_callers_thread(channel)) {
-        AWS_LOGF_TRACE(
+    /* If channel is shut down, run task immediately as canceled */
+    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL,
-            "id=%p: scheduling task with wrapper task id %p.",
+            "id=%p: Running %s channel task immediately as canceled due to shut down channel",
             (void *)channel,
-            (void *)&channel_task->wrapper_task);
-
-        /* If channel is shut down, run task immediately as canceled */
-        if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_CHANNEL,
-                "id=%p: Running %s channel task immediately as canceled due to shut down channel",
-                (void *)channel,
-                channel_task->type_tag);
-            channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
-            return;
-        }
-
-        aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
-        if (run_at_nanos == 0) {
-            aws_event_loop_schedule_task_now(channel->loop, &channel_task->wrapper_task);
-        } else {
-            aws_event_loop_schedule_task_future(
-                channel->loop, &channel_task->wrapper_task, channel_task->wrapper_task.timestamp);
-        }
+            channel_task->type_tag);
+        channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
         return;
     }
+
+    aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
+    if (run_at_nanos == 0) {
+        aws_event_loop_schedule_task_now(channel->loop, &channel_task->wrapper_task);
+    } else {
+        aws_event_loop_schedule_task_future(
+            channel->loop, &channel_task->wrapper_task, channel_task->wrapper_task.timestamp);
+    }
+}
+
+static void s_register_pending_task_cross_thread(struct aws_channel *channel, struct aws_channel_task *channel_task) {
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
@@ -609,8 +602,41 @@ static void s_register_pending_task(
     }
 }
 
+static void s_reset_pending_channel_task(
+    struct aws_channel *channel,
+    struct aws_channel_task *channel_task,
+    uint64_t run_at_nanos) {
+
+    /* Reset every property on channel task other than user's fn & arg.*/
+    aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
+    channel_task->wrapper_task.timestamp = run_at_nanos;
+    aws_linked_list_node_reset(&channel_task->node);
+}
+
+/* Common functionality for scheduling "now" and "future" tasks.
+ * For "now" tasks, pass 0 for `run_at_nanos` */
+static void s_register_pending_task(
+    struct aws_channel *channel,
+    struct aws_channel_task *channel_task,
+    uint64_t run_at_nanos) {
+
+    s_reset_pending_channel_task(channel, channel_task, run_at_nanos);
+
+    if (aws_channel_thread_is_callers_thread(channel)) {
+        s_register_pending_task_in_event_loop(channel, channel_task, run_at_nanos);
+    } else {
+        s_register_pending_task_cross_thread(channel, channel_task);
+    }
+}
+
 void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task) {
     s_register_pending_task(channel, task, 0);
+}
+
+void aws_channel_schedule_task_now_serialized(struct aws_channel *channel, struct aws_channel_task *task) {
+
+    s_reset_pending_channel_task(channel, task, 0);
+    s_register_pending_task_cross_thread(channel, task);
 }
 
 void aws_channel_schedule_task_future(
@@ -807,6 +833,8 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
     (void)channel_task;
     struct aws_channel *channel = arg;
 
+    channel->window_update_scheduled = false;
+
     if (status == AWS_TASK_STATUS_RUN_READY && channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
         /* get the right-most slot to start the updates. */
         struct aws_channel_slot *slot = channel->first;
@@ -826,7 +854,6 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
                         "channel %p: channel update task failed with status %d",
                         (void *)slot->channel,
                         aws_last_error());
-                    slot->channel->window_update_in_progress = false;
                     aws_channel_shutdown(channel, aws_last_error());
                     return;
                 }
@@ -834,7 +861,6 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
             slot = slot->adj_left;
         }
     }
-    channel->window_update_in_progress = false;
 }
 
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
@@ -843,9 +869,9 @@ int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t
         slot->current_window_update_batch_size =
             aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
-        if (!slot->channel->window_update_in_progress &&
+        if (!slot->channel->window_update_scheduled &&
             slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
-            slot->channel->window_update_in_progress = true;
+            slot->channel->window_update_scheduled = true;
             aws_channel_task_init(
                 &slot->channel->window_update_task, s_window_update_task, slot->channel, "window update task");
             aws_channel_schedule_task_now(slot->channel, &slot->channel->window_update_task);

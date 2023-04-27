@@ -18,6 +18,80 @@ static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
 #if !defined(AWS_OS_IOS)
 
+/*
+ * Helper function to import ECC private key in PEM format into `import_keychain`. Return
+ * AWS_OP_SUCCESS if successfully imported a private key or find a duplicate key in the
+ * `import_keychain`, otherwise return AWS_OP_ERR.
+ * `private_key`: UTF-8 key data in PEM format. If the key file contains multiple key sections,
+ * the function will only import the first valid key.
+ * `import_keychain`: The keychain to be imported to. `import_keychain` should not be NULL.
+ */
+int aws_import_ecc_key_into_keychain(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *private_key,
+    SecKeychainRef import_keychain) {
+    // Ensure imported_keychain is not NULL
+    AWS_PRECONDITION(import_keychain != NULL);
+
+    int result = AWS_OP_ERR;
+    struct aws_array_list decoded_key_buffer_list;
+    /* Init empty array list, ideally, the PEM should only has one key included. */
+    if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 1, sizeof(struct aws_byte_buf))) {
+        return result;
+    }
+
+    /* Decode PEM format file to DER format */
+    if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
+        goto ecc_import_cleanup;
+    }
+    AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
+
+    // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
+    // succeed key.
+    for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
+        struct aws_byte_buf *decoded_key_buffer = NULL;
+        /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
+        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, index);
+        AWS_ASSERT(decoded_key_buffer);
+        CFDataRef key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
+        if (!key_data) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
+            continue;
+        }
+
+        /* Import ECC key data into keychain. */
+        SecExternalFormat format = kSecFormatOpenSSL;
+        SecExternalItemType item_type = kSecItemTypePrivateKey;
+        SecItemImportExportKeyParameters import_params;
+        AWS_ZERO_STRUCT(import_params);
+        import_params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
+        import_params.passphrase = CFSTR("");
+
+        OSStatus key_status =
+            SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, NULL);
+
+        /* Clean up key buffer */
+        CFRelease(key_data);
+
+        // As long as we found an imported key, ignore the rest of keys
+        if (key_status == errSecSuccess || key_status == errSecDuplicateItem) {
+            result = AWS_OP_SUCCESS;
+            break;
+        } else {
+            // Log the error code for key importing
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC private key with OSStatus %d", (int)key_status);
+        }
+    }
+
+ecc_import_cleanup:
+    // Zero out the array list and release it
+    aws_cert_chain_clean_up(&decoded_key_buffer_list);
+    aws_array_list_clean_up(&decoded_key_buffer_list);
+    return result;
+}
+
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -48,13 +122,12 @@ int aws_import_public_and_private_keys_to_identity(
     SecCertificateRef certificate_ref = NULL;
     SecKeychainRef import_keychain = NULL;
 
-    if (keychain_path) {
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        /* Starting in macOS 12, SecKeychainOpen() and SecKeychainUnlock() are marked as deprecated
-         * because "Custom keychain management is no longer supported".
-         * Disable compiler warnings for now, but consider removing support for keychain_path altogether */
+    /* SecKeychain functions are marked as deprecated.
+     * Disable compiler warnings for now, but consider removing support for keychain altogether */
 
+    if (keychain_path) {
         OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
@@ -73,8 +146,6 @@ int aws_import_public_and_private_keys_to_identity(
                 keychain_status);
             return AWS_OP_ERR;
         }
-#    pragma clang diagnostic pop
-
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {
@@ -83,6 +154,8 @@ int aws_import_public_and_private_keys_to_identity(
             return AWS_OP_ERR;
         }
     }
+
+#    pragma clang diagnostic pop
 
     aws_mutex_lock(&s_sec_mutex);
 
@@ -104,7 +177,17 @@ int aws_import_public_and_private_keys_to_identity(
         goto done;
     }
 
-    if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+    /*
+     * If the key format is unknown, we tried to decode the key into DER format import it.
+     * The PEM file might contians multiple key sections, we will only add the first succeed key into the keychain.
+     */
+    if (key_status == errSecUnknownFormat) {
+        AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
+        if (aws_import_ecc_key_into_keychain(alloc, cf_alloc, private_key, import_keychain)) {
+            result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto done;
+        }
+    } else if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
         result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         goto done;
@@ -180,7 +263,7 @@ done:
     return result;
 }
 
-#endif /* AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
