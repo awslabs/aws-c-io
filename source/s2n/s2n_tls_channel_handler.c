@@ -230,7 +230,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
     if (!s_s2n_initialized_externally) {
         //setenv("S2N_DONT_MLOCK", "1", 1);
-        s_override_s2n_mem_functions(alloc)
+        s_override_s2n_mem_functions(alloc);
 
         if (s2n_init() != S2N_SUCCESS) {
             fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
