@@ -1667,7 +1667,6 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
         .max_entries = 1,
     };
     tester->resolver = aws_host_resolver_new_default(allocator, &resolver_options);
-    aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
