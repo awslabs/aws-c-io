@@ -92,8 +92,6 @@ static int s_tls_client_opt_tester_init(
     struct tls_opt_tester *tester,
     struct aws_byte_cursor server_name) {
 
-    aws_io_library_init(allocator);
-
     aws_tls_ctx_options_init_default_client(&tester->ctx_options, allocator);
 
 #    ifdef __APPLE__
@@ -159,6 +157,7 @@ static int s_tls_test_arg_init(
 
 static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
+    aws_io_library_init(allocator);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
@@ -495,7 +494,6 @@ static struct aws_byte_buf s_tls_test_handle_write(
 
 static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    aws_io_library_init(allocator);
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot.");
@@ -770,8 +768,6 @@ static int s_verify_negotiation_fails(
     uint16_t port,
     void (*context_options_override_fn)(struct aws_tls_ctx_options *)) {
 
-    aws_io_library_init(allocator);
-
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct aws_tls_ctx_options client_ctx_options;
@@ -793,8 +789,6 @@ static int s_verify_negotiation_fails_with_ca_override(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     const char *root_ca_path) {
-
-    aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
@@ -1033,8 +1027,6 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     const char *host_name = "aws-crt-test-stuff.s3.amazonaws.com";
     uint16_t port = 80; /* Note: intentionally wrong and not 443 */
 
-    aws_io_library_init(allocator);
-
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_opt_tester client_tls_opt_tester;
@@ -1098,8 +1090,6 @@ static int s_verify_good_host(
     const struct aws_string *host_name,
     uint16_t port,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
-
-    aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
@@ -1419,8 +1409,6 @@ static void s_reset_arg_state(struct tls_test_args *setup_test_args) {
 static int s_tls_server_multiple_connections_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    aws_io_library_init(allocator);
-
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args;
@@ -1568,8 +1556,6 @@ static void s_on_client_connected_do_hangup(struct aws_socket *socket, int error
 static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    aws_io_library_init(allocator);
-
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     struct tls_test_args outgoing_args;
@@ -1681,6 +1667,7 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
         .max_entries = 1,
     };
     tester->resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+    aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
@@ -1695,7 +1682,6 @@ static bool s_stats_processed_predicate(void *user_data) {
 
 static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_statistics_init(allocator, &c_tester));
 
@@ -1833,8 +1819,6 @@ AWS_TEST_CASE(tls_channel_statistics_test, s_tls_channel_statistics_test)
 
 static int s_tls_certificate_chain_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
-    aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
@@ -2196,6 +2180,12 @@ static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx
     return AWS_OP_SUCCESS;
 #    endif
     aws_io_library_init(allocator);
+    // (void)ctx;
+    // (void)allocator;
+    // int *ptr;
+    // ptr = (int *)malloc(1 * sizeof(int));
+    // (void)ptr;
+    // printf("%d", ptr[200]);
     struct aws_byte_buf cert_buf, key_buf;
 
     AWS_ZERO_STRUCT(cert_buf);
