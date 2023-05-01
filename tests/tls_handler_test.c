@@ -22,7 +22,6 @@
 #    include <aws/common/string.h>
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
-#    include <unistd.h>
 
 #    include <aws/io/private/pki_utils.h>
 
@@ -2199,7 +2198,7 @@ static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf);
     aws_io_library_clean_up();
-    sleep(2);
+
     return AWS_OP_SUCCESS;
 }
 
