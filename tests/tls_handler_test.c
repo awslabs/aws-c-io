@@ -22,6 +22,7 @@
 #    include <aws/common/string.h>
 #    include <read_write_test_handler.h>
 #    include <statistics_handler_test.h>
+#    include <unistd.h>
 
 #    include <aws/io/private/pki_utils.h>
 
