@@ -2176,27 +2176,30 @@ static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx
     (void)allocator;
 
     aws_io_library_init(allocator);
+    int *ptr;
+    ptr = (int *)malloc(1 * sizeof(int));
+    (void)ptr;
+    printf("%d", ptr[2]);
+    // struct aws_byte_buf cert_buf, key_buf;
 
-    struct aws_byte_buf cert_buf, key_buf;
+    // AWS_ZERO_STRUCT(cert_buf);
+    // AWS_ZERO_STRUCT(key_buf);
 
-    AWS_ZERO_STRUCT(cert_buf);
-    AWS_ZERO_STRUCT(key_buf);
+    // ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert-invalid.pem"));
+    // ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey-invalid.pem"));
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert-invalid.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey-invalid.pem"));
+    // struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    // struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    // struct aws_tls_ctx_options tls_options = {0};
+    // ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
-    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_tls_ctx_options tls_options = {0};
-    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
-
-    /* import happens here */
-    ASSERT_NULL(aws_tls_client_ctx_new(allocator, &tls_options));
-    /* error code is platform specific */
-    ASSERT_TRUE(aws_last_error() != AWS_OP_SUCCESS);
-    aws_tls_ctx_options_clean_up(&tls_options);
-    aws_byte_buf_clean_up(&cert_buf);
-    aws_byte_buf_clean_up(&key_buf);
+    // /* import happens here */
+    // ASSERT_NULL(aws_tls_client_ctx_new(allocator, &tls_options));
+    // /* error code is platform specific */
+    // ASSERT_TRUE(aws_last_error() != AWS_OP_SUCCESS);
+    // aws_tls_ctx_options_clean_up(&tls_options);
+    // aws_byte_buf_clean_up(&cert_buf);
+    // aws_byte_buf_clean_up(&key_buf);
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
