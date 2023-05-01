@@ -2170,13 +2170,12 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
 }
 
 AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
-
+static volatile int *ptr;
 static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
 
     aws_io_library_init(allocator);
-    volatile int *ptr;
     ptr = (int *)malloc(1 * sizeof(int));
     (void)ptr;
     // struct aws_byte_buf cert_buf, key_buf;
