@@ -2179,7 +2179,6 @@ static int s_test_invalid_cert_import(struct aws_allocator *allocator, void *ctx
     int *ptr;
     ptr = (int *)malloc(1 * sizeof(int));
     (void)ptr;
-    printf("%d", ptr[2]);
     // struct aws_byte_buf cert_buf, key_buf;
 
     // AWS_ZERO_STRUCT(cert_buf);
