@@ -11,6 +11,7 @@
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
+struct aws_async_stream;
 struct aws_input_stream;
 struct aws_byte_buf;
 
@@ -129,6 +130,17 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_file(
  * Destruction does not close the file.
  */
 AWS_IO_API struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file);
+
+/*
+ * Create a new async stream that reads from an aws_input_stream.
+ * The async stream will read synchronously from the aws_input_stream,
+ * it will never actually do anything async.
+ * The async stream will acquire a reference to the aws_input_stream.
+ * This function cannot fail.
+ */
+AWS_IO_API struct aws_async_stream *aws_async_stream_new_from_input_stream(
+    struct aws_allocator *alloc,
+    struct aws_input_stream *source);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

@@ -5,7 +5,10 @@
 
 #include <aws/io/stream.h>
 
+#include <aws/common/async_stream.h>
+#include <aws/common/byte_handle.h>
 #include <aws/common/file.h>
+#include <aws/common/future.h>
 #include <aws/io/file_utils.h>
 
 #include <errno.h>
@@ -340,4 +343,66 @@ struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *strea
 
 void aws_input_stream_destroy(struct aws_input_stream *stream) {
     aws_input_stream_release(stream);
+}
+
+/*******************************************************************************
+ * aws_async_stream_wrapping_input_stream
+ ******************************************************************************/
+
+struct aws_async_stream_wrapping_input_stream {
+    struct aws_async_stream base;
+    struct aws_input_stream *source;
+};
+
+static void s_async_stream_wrapping_input_stream_destroy(struct aws_async_stream *async_stream) {
+    struct aws_async_stream_wrapping_input_stream *async_impl = async_stream->impl;
+    aws_input_stream_release(async_impl->source);
+    aws_mem_release(async_stream->alloc, async_impl);
+}
+
+static struct aws_future *s_async_stream_wrapping_input_stream_read_once(
+    struct aws_async_stream *async_stream,
+    struct aws_byte_buf *dest) {
+
+    struct aws_async_stream_wrapping_input_stream *async_impl = async_stream->impl;
+
+    struct aws_future *future = aws_future_new(async_stream->alloc, AWS_FUTURE_BOOL);
+
+    /* read from stream */
+    if (aws_input_stream_read(async_impl->source, dest) != AWS_OP_SUCCESS) {
+        aws_future_set_error(future, aws_last_error());
+        goto done;
+    }
+
+    /* check if stream is done */
+    struct aws_stream_status status;
+    if (aws_input_stream_get_status(async_impl->source, &status) != AWS_OP_SUCCESS) {
+        aws_future_set_error(future, aws_last_error());
+        goto done;
+    }
+
+    aws_future_set_bool(future, status.is_end_of_stream);
+done:
+    return future;
+}
+
+static const struct aws_async_stream_vtable s_async_stream_wrapping_input_stream_vtable = {
+    .destroy = s_async_stream_wrapping_input_stream_destroy,
+    .read_once = s_async_stream_wrapping_input_stream_read_once,
+};
+
+struct aws_async_stream *aws_async_stream_new_from_input_stream(
+    struct aws_allocator *alloc,
+    struct aws_input_stream *source) {
+
+    AWS_PRECONDITION(source);
+
+    struct aws_async_stream_wrapping_input_stream *async_impl =
+        aws_mem_calloc(alloc, 1, sizeof(struct aws_async_stream_wrapping_input_stream));
+
+    aws_async_stream_init_base(&async_impl->base, alloc, &s_async_stream_wrapping_input_stream_vtable, async_impl);
+
+    async_impl->source = aws_input_stream_acquire(source);
+
+    return &async_impl->base;
 }
