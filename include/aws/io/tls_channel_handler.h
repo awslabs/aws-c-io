@@ -8,6 +8,8 @@
 #include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_channel_slot;
 struct aws_channel_handler;
 struct aws_pkcs11_session;
@@ -914,5 +916,6 @@ AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_TLS_CHANNEL_HANDLER_H */

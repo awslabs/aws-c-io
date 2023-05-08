@@ -9,6 +9,8 @@
 #include <aws/common/atomics.h>
 #include <aws/common/byte_buf.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_retry_strategy;
 struct aws_retry_token;
 struct aws_event_loop_group;
@@ -232,5 +234,6 @@ AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
     const struct aws_standard_retry_options *config);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_CLIENT_RETRY_STRATEGY_H */

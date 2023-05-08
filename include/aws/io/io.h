@@ -10,6 +10,8 @@
 #include <aws/common/linked_list.h>
 #include <aws/io/exports.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 #define AWS_C_IO_PACKAGE_ID 1
 
 struct aws_io_handle {
@@ -271,5 +273,6 @@ AWS_IO_API
 void aws_io_fatal_assert_library_initialized(void);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_IO_H */

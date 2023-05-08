@@ -9,6 +9,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_client_bootstrap;
 struct aws_socket;
 struct aws_socket_options;
@@ -305,5 +307,6 @@ AWS_IO_API void aws_server_bootstrap_destroy_socket_listener(
     struct aws_socket *listener);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_CHANNEL_BOOTSTRAP_H */
