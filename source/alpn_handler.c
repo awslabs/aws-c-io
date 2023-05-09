@@ -4,6 +4,7 @@
  */
 
 #include <aws/io/channel.h>
+#include <aws/io/test_header.h>
 #include <aws/io/tls_channel_handler.h>
 
 struct alpn_handler {
@@ -15,7 +16,7 @@ static int s_alpn_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-
+    printf("%d", AWS_TEST);
     if (message->message_tag != AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE) {
         return aws_raise_error(AWS_IO_MISSING_ALPN_MESSAGE);
     }
