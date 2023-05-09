@@ -177,7 +177,7 @@ file(GLOB IO_SRC
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_IO")
-aws_check_headers(${PROJECT_NAME} ${IO_HEADERS})
+aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 
