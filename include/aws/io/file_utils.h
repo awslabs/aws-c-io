@@ -9,7 +9,4 @@
 /* Just shim the code that's in to common, maintain the public interface */
 #include <aws/common/file.h>
 
-AWS_PUSH_SANE_WARNING_LEVEL
-AWS_POP_SANE_WARNING_LEVEL
-
 #endif /* AWS_IO_FILE_UTILS_H */
