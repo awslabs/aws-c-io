@@ -6,8 +6,8 @@ on:
       - 'main'
 
 env:
-  BUILDER_VERSION: header-warnings
-  BUILDER_SOURCE: channels
+  BUILDER_VERSION: v0.9.42
+  BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
   LINUX_BASE_IMAGE: ubuntu-18-x64
@@ -110,7 +110,7 @@ jobs:
         python builder.pyz build -p ${{ env.PACKAGE_NAME }} --compiler msvc-16
 
   windows-vc14:
-    runs-on: windows-2019 # windows-2019 is last env with Visual Studio 2015 (v14.0)
+    runs-on: windows-2022
     strategy:
       matrix:
         arch: [x86, x64]
