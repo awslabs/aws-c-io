@@ -10,6 +10,8 @@
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
+#define AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE 0x01
+
 struct aws_channel_slot;
 struct aws_channel_handler;
 struct aws_pkcs11_session;
@@ -255,8 +257,6 @@ struct aws_tls_ctx_options {
 struct aws_tls_negotiated_protocol_message {
     struct aws_byte_buf protocol;
 };
-
-static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 
 typedef struct aws_channel_handler *(
     *aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol, void *user_data);
