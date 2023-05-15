@@ -8,6 +8,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 enum aws_socket_domain {
     AWS_SOCKET_IPV4,
     AWS_SOCKET_IPV6,
@@ -301,5 +303,6 @@ AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
 AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_SOCKET_H */

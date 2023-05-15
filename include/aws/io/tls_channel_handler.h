@@ -8,6 +8,10 @@
 #include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
+#define AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE 0x01
+
 struct aws_channel_slot;
 struct aws_channel_handler;
 struct aws_pkcs11_session;
@@ -253,8 +257,6 @@ struct aws_tls_ctx_options {
 struct aws_tls_negotiated_protocol_message {
     struct aws_byte_buf protocol;
 };
-
-static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 
 typedef struct aws_channel_handler *(
     *aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol, void *user_data);
@@ -914,5 +916,6 @@ AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_TLS_CHANNEL_HANDLER_H */
