@@ -18,12 +18,6 @@
 #include "statistics_handler_test.h"
 #include <read_write_test_handler.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock" PRInSTR
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock" PRInSTR ".sock"
-#endif
-
 struct socket_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -300,17 +294,7 @@ static int s_local_server_tester_init(
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
 
-    struct aws_uuid uuid;
-    ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
-    uuid_buf.len = 0;
-    aws_uuid_to_str(&uuid, &uuid_buf);
-    snprintf(
-        tester->endpoint.address,
-        sizeof(tester->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        AWS_BYTE_BUF_PRI(uuid_buf));
+    aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
 
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
