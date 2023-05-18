@@ -385,6 +385,7 @@ static int s_tls_local_server_tester_init(
     int server_index,
     const char *cert_path,
     const char *pkey_path) {
+    (void)server_index;
     AWS_ZERO_STRUCT(*tester);
     ASSERT_SUCCESS(s_tls_server_opt_tester_init(allocator, &tester->server_tls_opt_tester, cert_path, pkey_path));
     aws_tls_connection_options_set_callbacks(&tester->server_tls_opt_tester.opt, s_tls_on_negotiated, NULL, NULL, args);
