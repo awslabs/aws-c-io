@@ -23,6 +23,12 @@
 #    include <linux/vm_sockets.h>
 #endif
 
+#ifdef _WIN32
+#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock" PRInSTR
+#else
+#    define LOCAL_SOCK_TEST_PATTERN "testsock" PRInSTR ".sock"
+#endif
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -408,21 +414,13 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
 
-    struct aws_byte_buf endpoint_buf = aws_byte_buf_from_empty_array(endpoint.address, sizeof(endpoint.address));
-#ifdef _WIN32
-    AWS_FATAL_ASSERT(
-        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
-#else
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
-#endif
-    /* Use UUID to generate a random endpoint for the socket */
     struct aws_uuid uuid;
     ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
-
-#ifndef _WIN32
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
-#endif
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, AWS_BYTE_BUF_PRI(uuid_buf));
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -1587,21 +1585,13 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
 
-    struct aws_byte_buf endpoint_buf = aws_byte_buf_from_empty_array(endpoint.address, sizeof(endpoint.address));
-#ifdef _WIN32
-    AWS_FATAL_ASSERT(
-        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
-#else
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
-#endif
-    /* Use UUID to generate a random endpoint for the socket */
     struct aws_uuid uuid;
     ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
-
-#ifndef _WIN32
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
-#endif
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, AWS_BYTE_BUF_PRI(uuid_buf));
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1693,21 +1683,13 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
 
-    struct aws_byte_buf endpoint_buf = aws_byte_buf_from_empty_array(endpoint.address, sizeof(endpoint.address));
-#    ifdef _WIN32
-    AWS_FATAL_ASSERT(
-        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
-#    else
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
-#    endif
-    /* Use UUID to generate a random endpoint for the socket */
     struct aws_uuid uuid;
     ASSERT_SUCCESS(aws_uuid_init(&uuid));
-    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
-
-#    ifndef _WIN32
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
-#    endif
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, AWS_BYTE_BUF_PRI(uuid_buf));
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
