@@ -283,8 +283,8 @@ static int s_local_server_tester_init(
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
     snprintf(
-        state_test_data->endpoint.address,
-        sizeof(state_test_data->endpoint.address),
+        tester->endpoint.address,
+        sizeof(tester->endpoint.address),
         LOCAL_SOCK_TEST_PATTERN,
         AWS_BYTE_BUF_PRI(uuid_buf));
 
