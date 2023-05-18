@@ -16,6 +16,7 @@
 #    include <aws/common/clock.h>
 #    include <aws/common/condition_variable.h>
 #    include <aws/common/thread.h>
+#    include <aws/common/uuid.h>
 
 #    include <aws/testing/aws_test_harness.h>
 
@@ -24,12 +25,6 @@
 #    include <statistics_handler_test.h>
 
 #    include <aws/io/private/pki_utils.h>
-
-#    ifdef _WIN32
-#        define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu_%d"
-#    else
-#        define LOCAL_SOCK_TEST_PATTERN "testsock%llu_%d.sock"
-#    endif
 
 struct tls_test_args {
     struct aws_allocator *allocator;
@@ -139,7 +134,6 @@ struct tls_local_server_tester {
     struct aws_socket_endpoint endpoint;
     struct aws_server_bootstrap *server_bootstrap;
     struct aws_socket *listener;
-    uint64_t timestamp;
 };
 
 static int s_tls_test_arg_init(
@@ -397,13 +391,24 @@ static int s_tls_local_server_tester_init(
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    snprintf(
-        tester->endpoint.address,
-        sizeof(tester->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)tester->timestamp,
-        server_index);
+
+    struct aws_byte_buf endpoint_buf =
+        aws_byte_buf_from_empty_array(tester->endpoint.address, sizeof(tester->endpoint.address));
+#    ifdef _WIN32
+    AWS_FATAL_ASSERT(
+        aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("\\\\.\\pipe\\testsock")));
+#    else
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str("testsock")));
+#    endif
+    /* Use UUID to generate a random endpoint for the socket */
+    struct aws_uuid uuid;
+    ASSERT_SUCCESS(aws_uuid_init(&uuid));
+    ASSERT_SUCCESS(aws_uuid_to_str(&uuid, &endpoint_buf));
+
+#    ifndef _WIN32
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_cursor(&endpoint_buf, aws_byte_cursor_from_c_str(".sock")));
+#    endif
+
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, tls_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
