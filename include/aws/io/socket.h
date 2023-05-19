@@ -302,6 +302,12 @@ AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
  */
 AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
 
+/**
+ * Assigns a random address (UUID) for use with AWS_SOCKET_LOCAL (Unix Domain Sockets).
+ * For use in internal tests only.
+ */
+AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint);
+
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 

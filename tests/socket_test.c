@@ -14,12 +14,6 @@
 #include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* strncpy */
 #endif
@@ -410,13 +404,9 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
-
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -1578,12 +1568,9 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
-
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1672,11 +1659,9 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));

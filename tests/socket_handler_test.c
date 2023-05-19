@@ -17,12 +17,6 @@
 #include "statistics_handler_test.h"
 #include <read_write_test_handler.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 struct socket_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -80,7 +74,6 @@ struct local_server_tester {
     struct aws_socket_endpoint endpoint;
     struct aws_server_bootstrap *server_bootstrap;
     struct aws_socket *listener;
-    uint64_t timestamp;
 };
 
 static bool s_pinned_channel_setup_predicate(void *user_data) {
@@ -300,12 +293,8 @@ static int s_local_server_tester_init(
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
 
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    snprintf(
-        tester->endpoint.address,
-        sizeof(tester->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)tester->timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
+
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 

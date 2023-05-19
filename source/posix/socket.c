@@ -9,6 +9,7 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
+#include <aws/common/uuid.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
@@ -1906,4 +1907,13 @@ int aws_socket_get_error(struct aws_socket *socket) {
 
 bool aws_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.fd >= 0;
+}
+
+void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
+    struct aws_uuid uuid;
+    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
+    AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
+    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
