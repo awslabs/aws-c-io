@@ -18,9 +18,7 @@
 #    include <aws/io/tls_channel_handler.h>
 
 #    include <aws/common/atomics.h>
-#    include <aws/common/clock.h>
 #    include <aws/common/condition_variable.h>
-#    include <aws/common/uuid.h>
 
 #    include <aws/testing/aws_test_harness.h>
 

@@ -3238,8 +3238,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
     char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
-    uuid_buf.len = 0;
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
 }
