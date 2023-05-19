@@ -13,6 +13,7 @@
 #    include <aws/io/socket.h>
 #    include <aws/io/tls_channel_handler.h>
 
+#    include <aws/common/clock.h>
 #    include <aws/common/condition_variable.h>
 #    include <aws/common/thread.h>
 

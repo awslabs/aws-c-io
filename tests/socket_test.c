@@ -5,6 +5,7 @@
 
 #include <aws/testing/aws_test_harness.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
 #include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
