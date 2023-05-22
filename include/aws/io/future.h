@@ -1,5 +1,5 @@
-#ifndef AWS_COMMON_FUTURE_BASE_H
-#define AWS_COMMON_FUTURE_BASE_H
+#ifndef AWS_IO_FUTURE_H
+#define AWS_IO_FUTURE_H
 
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -263,4 +263,4 @@ AWS_FUTURE_T_DECLARATION_END(aws_future_void)
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 
-#endif /* AWS_COMMON_FUTURE_BASE_H */
+#endif /* AWS_IO_FUTURE_H */
