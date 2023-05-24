@@ -57,36 +57,94 @@ struct aws_future_impl *aws_future_impl_release(struct aws_future_impl *promise)
 AWS_IO_API
 struct aws_future_impl *aws_future_impl_acquire(struct aws_future_impl *promise);
 
+/**
+ * Set future as done, with an error_code.
+ * If the future is already done, this call is ignored.
+ */
 AWS_IO_API
 void aws_future_impl_set_error(struct aws_future_impl *promise, int error_code);
 
+/**
+ * For T stored by value, set future as done, with a valid result.
+ * @param src_address   Address of result T, to get memcpy'd into this future.
+ *                      If T has a clean_up() destructor, the future takes ownership,
+ *                      and will call clean_up() when appropriate.
+ *                      If the future is already done, this new value is
+ *                      not used, it is immediately destroyed.
+ */
 AWS_IO_API
 void aws_future_impl_set_result_by_memcpy(struct aws_future_impl *promise, void *src_address);
 
+/**
+ * For T stored as pointer, set future as done, with a valid result.
+ * @param pointer   Pointer to result T, to store in this future.
+ *                  If T has a destructor, the future takes ownership,
+ *                  and will call the destructor when appropriate.
+ *                  If the future is already done, this new value is
+ *                  not used, it is immediately destroyed.
+ */
 AWS_IO_API
 void aws_future_impl_set_result_as_pointer(struct aws_future_impl *promise, void *pointer);
 
+/**
+ * Return whether the future is done.
+ */
 AWS_IO_API
 bool aws_future_impl_is_done(const struct aws_future_impl *future);
 
+/**
+ * Register completion callback to be invoked as soon as possible.
+ * If the future is already done, the callback runs immediately.
+ * If the future finishes on any other thread, it runs on that other thread.
+ */
 AWS_IO_API
 void aws_future_impl_register_callback(struct aws_future_impl *future, aws_future_on_done_fn *on_done, void *user_data);
 
+/**
+ * Register completion callback, but only if the future isn't done yet.
+ * Returns true if the callback was registered, and false if the future is already done.
+ * Use this when you do not want to risk the callback firing immediately.
+ * For example: If you're calling an async function repeatedly,
+ * and synchronous completion could lead to stack overflow.
+ * Or if you are holding a non-recursive mutex, and the callback also
+ * needs the mutex, and an immediate callback would deadlock.
+ */
 AWS_IO_API
 bool aws_future_impl_register_callback_if_not_done(
     struct aws_future_impl *future,
     aws_future_on_done_fn *on_done,
     void *user_data);
 
+/**
+ * Wait (up to duration_ns) for future to complete.
+ * Returns true if future completes in this time.
+ * This blocks the current thread, and is probably only useful for tests and sample programs.
+ */
 AWS_IO_API
 bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t duration_ns);
 
+/**
+ * Get the error-code of a completed future.
+ * WARNING: You MUST NOT call this until the future is done.
+ * If it returns 0, then the future completed successfully,
+ * you may now call get_result() instead.
+ */
 AWS_IO_API
 int aws_future_impl_get_error(const struct aws_future_impl *future);
 
+/**
+ * Get the result of a completed future (for result T stored by value).
+ * WARNING 1: You MUST NOT call this until the future is done.
+ * WARNING 2: You MUST NOT call this unless get_error() returned 0.
+ */
 AWS_IO_API
 void *aws_future_impl_get_result_address(const struct aws_future_impl *future);
 
+/**
+ * Get the result of a completed future (for result T stored as pointer).
+ * WARNING 1: You MUST NOT call this until the future is done.
+ * WARNING 2: You MUST NOT call this unless get_error() returned 0.
+ */
 AWS_IO_API
 void *aws_future_impl_get_result_as_pointer(const struct aws_future_impl *future);
 
@@ -116,6 +174,12 @@ void *aws_future_impl_get_result_as_pointer(const struct aws_future_impl *future
     AWS_STATIC_IMPL                                                                                                    \
     void FUTURE##_register_callback(struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {          \
         aws_future_impl_register_callback((struct aws_future_impl *)future, on_done, user_data);                       \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL                                                                                                    \
+    bool FUTURE##_register_callback_if_not_done(                                                                       \
+        struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {                                      \
+        return aws_future_impl_register_callback_if_not_done((struct aws_future_impl *)future, on_done, user_data);    \
     }
 
 /**
@@ -139,16 +203,33 @@ void *aws_future_impl_get_result_as_pointer(const struct aws_future_impl *future
                                                                                                                        \
     AWS_FUTURE_T_DECLARATION_END(FUTURE)
 
+#if 0 /* TODO */
 /**
  * Declares a future that holds T by value, with destructor like: void aws_T_clean_up(T*)
  * Use with types like aws_byte_buf.
  */
-/* TODO: #define AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP(FUTURE, T, CLEAN_UP_FN) */
+#    define AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP(FUTURE, T, CLEAN_UP_FN)
+#endif /* TODO */
 
 /**
  * Declares a future that holds T*, with no destructor.
  */
-/* TODO: #define AWS_DECLARE_FUTURE_T_POINTER(FUTURE, T) */
+#define AWS_DECLARE_FUTURE_T_POINTER(FUTURE, T)                                                                        \
+    AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE)                                                                             \
+                                                                                                                       \
+    AWS_STATIC_IMPL struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                         \
+        return (struct FUTURE *)aws_future_impl_new_pointer(alloc);                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T *result) {                                       \
+        aws_future_impl_set_result_as_pointer((struct aws_future_impl *)future, result);                               \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
+        return aws_future_impl_get_result_as_pointer((const struct aws_future_impl *)future);                          \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_FUTURE_T_DECLARATION_END(FUTURE)
 
 /**
  * Declares a future that holds T*, with destructor like: void aws_T_destroy(T*)
