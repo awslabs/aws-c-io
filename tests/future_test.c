@@ -4,6 +4,7 @@
  */
 #include <aws/io/future.h>
 
+#include <aws/common/ref_count.h>
 #include <aws/common/thread.h>
 #include <aws/testing/aws_test_harness.h>
 
@@ -51,19 +52,18 @@ static int s_test_future_void(struct aws_allocator *alloc, void *ctx) {
 AWS_TEST_CASE(future_void, s_test_future_void)
 
 struct future_size_callback_recorder {
-    struct aws_future_size *future;
+    struct aws_future_size *future; /* record all state when this future's callback fires */
     int error_code;
     size_t result;
     aws_thread_id_t thread_id;
     int invoke_count;
 };
 
-static void s_record_on_future_size_done(struct aws_future_size *future, void *user_data) {
+static void s_record_on_future_size_done(void *user_data) {
     struct future_size_callback_recorder *recorder = user_data;
-    recorder->future = future;
-    recorder->error_code = aws_future_size_get_error(future);
+    recorder->error_code = aws_future_size_get_error(recorder->future);
     if (recorder->error_code == 0) {
-        recorder->result = aws_future_size_get_result(future);
+        recorder->result = aws_future_size_get_result(recorder->future);
     }
     recorder->thread_id = aws_thread_current_thread_id();
     recorder->invoke_count++;
@@ -73,15 +73,15 @@ static void s_record_on_future_size_done(struct aws_future_size *future, void *u
 static int s_test_future_callback_fires_immediately(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
 
-    struct aws_future_size *future = aws_future_size_new(alloc);
-    aws_future_size_set_result(future, 123);
-
     struct future_size_callback_recorder recorder;
     AWS_ZERO_STRUCT(recorder);
-    aws_future_size_register_callback(future, s_record_on_future_size_done, &recorder);
+
+    recorder.future = aws_future_size_new(alloc);
+    aws_future_size_set_result(recorder.future, 123);
+
+    aws_future_size_register_callback(recorder.future, s_record_on_future_size_done, &recorder);
 
     /* callback should have fired immediately, on main thread, since future was already done */
-    ASSERT_PTR_EQUALS(future, recorder.future);
     ASSERT_INT_EQUALS(1, recorder.invoke_count);
     ASSERT_INT_EQUALS(0, recorder.error_code);
     ASSERT_UINT_EQUALS(123, recorder.result);
@@ -89,7 +89,7 @@ static int s_test_future_callback_fires_immediately(struct aws_allocator *alloc,
     aws_thread_id_t main_thread_id = aws_thread_current_thread_id();
     ASSERT_INT_EQUALS(0, memcmp(&main_thread_id, &recorder.thread_id, sizeof(aws_thread_id_t)));
 
-    aws_future_size_release(future);
+    aws_future_size_release(recorder.future);
     return 0;
 }
 AWS_TEST_CASE(future_callback_fires_immediately, s_test_future_callback_fires_immediately);
