@@ -102,17 +102,9 @@ void aws_future_impl_register_callback(struct aws_future_impl *future, aws_futur
  * Returns true if the callback was registered, or false if the callback
  * is already complete.
  *
- * If the future isn't done yet, the callback is registered and true is returned.
- * If the future is already done, false is returned.
- *
  * Use this when you can't risk the callback running immediately.
  * For example: If you're calling an async function repeatedly,
- * and synchronous completion could lead to stack overflow.
- *
- * For example: If you're recursively calling an async function,
- * then calling it again from the completion callback, synchronous
- * completion could lead to stack overflow.
- *
+ * and synchronous completion could lead to stack overflow due to recursion.
  * Or if you are holding a non-recursive mutex, and the callback also
  * needs the mutex, and an immediate callback would deadlock.
  *
@@ -126,12 +118,12 @@ bool aws_future_impl_register_callback_if_not_done(
     void *user_data);
 
 /**
- * Wait (up to duration_ns) for future to complete.
+ * Wait (up to timeout_ns) for future to complete.
  * Returns true if future completes in this time.
  * This blocks the current thread, and is probably only useful for tests and sample programs.
  */
 AWS_IO_API
-bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t duration_ns);
+bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns);
 
 /**
  * Get the error-code of a completed future.
@@ -201,6 +193,11 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
     bool FUTURE##_register_callback_if_not_done(                                                                       \
         struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {                                      \
         return aws_future_impl_register_callback_if_not_done((struct aws_future_impl *)future, on_done, user_data);    \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL                                                                                                    \
+    bool FUTURE##_wait(struct FUTURE *future, uint64_t timeout_ns) {                                                   \
+        return aws_future_impl_wait((struct aws_future_impl *)future, timeout_ns);                                     \
     }
 
 /**

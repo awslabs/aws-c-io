@@ -306,3 +306,30 @@ bool aws_future_impl_register_callback_if_not_done(
 
     return !already_done;
 }
+
+static bool s_future_impl_is_done_pred(void *user_data) {
+    struct aws_future_impl *future = user_data;
+    return future->is_done;
+}
+
+bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns) {
+    AWS_ASSERT(future);
+
+    /* this function is conceptually const, but we need to use synchronization primitives */
+    struct aws_future_impl *mutable_future = (struct aws_future_impl *)future;
+
+    /* BEGIN CRITICAL SECTION */
+    aws_mutex_lock(&mutable_future->lock);
+
+    bool is_done = aws_condition_variable_wait_for_pred(
+                       &mutable_future->wait_cvar,
+                       &mutable_future->lock,
+                       (int64_t)timeout_ns,
+                       s_future_impl_is_done_pred,
+                       mutable_future) == AWS_OP_SUCCESS;
+
+    aws_mutex_unlock(&mutable_future->lock);
+    /* END CRITICAL SECTION */
+
+    return is_done;
+}
