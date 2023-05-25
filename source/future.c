@@ -30,10 +30,11 @@ struct aws_future_impl {
     } result_dtor;
     int error_code;
     /* sum of bit fields should be 32 */
-#define AWS_FUTURE_RESULT_SIZE_BIT_COUNT 28
+#define AWS_FUTURE_RESULT_SIZE_BIT_COUNT 27
     unsigned int result_size : AWS_FUTURE_RESULT_SIZE_BIT_COUNT;
     unsigned int type : 3; /* aws_future_type */
     unsigned int is_done : 1;
+    unsigned int owns_result : 1;
 };
 
 static void s_future_impl_result_dtor(struct aws_future_impl *future, void *result_addr) {
@@ -62,10 +63,16 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
     }
 }
 
+static void *s_future_impl_get_result_address(struct aws_future_impl *future) {
+    const struct aws_future_impl *address_of_memory_after_this_struct = future + 1;
+    void *result_addr = (void *)address_of_memory_after_this_struct;
+    return result_addr;
+}
+
 static void s_future_impl_destroy(void *user_data) {
     struct aws_future_impl *future = user_data;
-    if (future->is_done && !future->error_code) {
-        s_future_impl_result_dtor(future, aws_future_impl_get_result_address(future));
+    if (future->owns_result && !future->error_code) {
+        s_future_impl_result_dtor(future, s_future_impl_get_result_address(future));
     }
     aws_condition_variable_clean_up(&future->wait_cvar);
     aws_mutex_clean_up(&future->lock);
@@ -169,21 +176,22 @@ int aws_future_impl_get_error(const struct aws_future_impl *future) {
     return future->error_code;
 }
 
-void *aws_future_impl_get_result_address(const struct aws_future_impl *future) {
+void aws_future_impl_get_result_by_value(struct aws_future_impl *future, void *dst_address) {
     AWS_ASSERT(future != NULL);
     /* not bothering with lock, none of this can change after future is done */
     AWS_FATAL_ASSERT(future->is_done && "Cannot get result before future is done");
     AWS_FATAL_ASSERT(!future->error_code && "Cannot get result from future that failed with an error");
+    AWS_FATAL_ASSERT(future->owns_result && "Result was already taken from future");
 
-    const struct aws_future_impl *address_of_memory_after_this_struct = future + 1;
-    void *result_addr = (void *)address_of_memory_after_this_struct;
-    return result_addr;
+    void *result_addr = s_future_impl_get_result_address(future);
+    memcpy(dst_address, result_addr, future->result_size);
+    memset(result_addr, 0, future->result_size);
+    future->owns_result = false;
 }
 
-void *aws_future_impl_get_result_as_pointer(const struct aws_future_impl *future) {
-    void *result_addr = aws_future_impl_get_result_address(future);
-    void **pointer_addr = result_addr;
-    void *pointer = *pointer_addr;
+void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future) {
+    void *pointer;
+    aws_future_impl_get_result_by_value(future, &pointer);
     return pointer;
 }
 
@@ -204,7 +212,8 @@ static void s_future_impl_set_done(struct aws_future_impl *future, void *src_add
         if (is_error) {
             future->error_code = error_code;
         } else {
-            memcpy(aws_future_impl_get_result_address(future), src_address, future->result_size);
+            memcpy(s_future_impl_get_result_address(future), src_address, future->result_size);
+            future->owns_result = true;
         }
 
         aws_condition_variable_notify_all(&future->wait_cvar);
@@ -236,16 +245,14 @@ void aws_future_impl_set_error(struct aws_future_impl *future, int error_code) {
     s_future_impl_set_done(future, NULL /*src_address*/, error_code);
 }
 
-void aws_future_impl_set_result_by_memcpy(struct aws_future_impl *future, void *src_address) {
+void aws_future_impl_set_result(struct aws_future_impl *future, void *src_address) {
     AWS_ASSERT(future);
     AWS_ASSERT(src_address);
     s_future_impl_set_done(future, src_address, 0 /*error_code*/);
-}
 
-void aws_future_impl_set_result_as_pointer(struct aws_future_impl *future, void *pointer) {
-    AWS_ASSERT(future);
-    void *src_address = &pointer;
-    s_future_impl_set_done(future, src_address, 0 /*error_code*/);
+    /* the future "takes ownership" of the result.
+     * zero out memory at the src_address to reinforce this transfer of ownership. */
+    memset(src_address, 0, future->result_size);
 }
 
 void aws_future_impl_register_callback(
@@ -276,4 +283,26 @@ void aws_future_impl_register_callback(
     if (already_done) {
         on_done(user_data);
     }
+}
+
+bool aws_future_impl_register_callback_if_not_done(
+    struct aws_future_impl *future,
+    aws_future_on_done_fn *on_done,
+    void *on_done_user_data) {
+
+    /* BEGIN CRITICAL SECTION */
+    aws_mutex_lock(&future->lock);
+
+    AWS_FATAL_ASSERT(future->on_done_cb == NULL && "Future done callback must only be set once");
+
+    bool already_done = future->is_done != 0;
+    if (!already_done) {
+        future->on_done_cb = on_done;
+        future->on_done_user_data = on_done_user_data;
+    }
+
+    aws_mutex_unlock(&future->lock);
+    /* END CRITICAL SECTION */
+
+    return !already_done;
 }
