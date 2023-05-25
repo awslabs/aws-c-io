@@ -156,8 +156,9 @@ static int s_test_future_callback_fires_on_another_thread(struct aws_allocator *
 
     aws_future_size_register_callback(recorder.future, s_record_on_future_size_done, &recorder);
 
-    /* wait until future completes */
-    ASSERT_TRUE(aws_future_size_wait(recorder.future, MAX_TIMEOUT_NS));
+    /* Wait until other thread joins, at which point the future is complete and the callback has fired */
+    aws_thread_set_managed_join_timeout_ns(MAX_TIMEOUT_NS);
+    ASSERT_SUCCESS(aws_thread_join_all_managed());
 
     /* callback should have fired on the other thread */
     ASSERT_INT_EQUALS(1, recorder.invoke_count);
@@ -167,7 +168,6 @@ static int s_test_future_callback_fires_on_another_thread(struct aws_allocator *
     aws_thread_id_t main_thread_id = aws_thread_current_thread_id();
     ASSERT_TRUE(memcmp(&main_thread_id, &recorder.thread_id, sizeof(aws_thread_id_t)) != 0);
 
-    ASSERT_SUCCESS(aws_thread_join_all_managed());
     aws_future_size_release(recorder.future);
     aws_common_library_clean_up();
     return 0;
