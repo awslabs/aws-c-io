@@ -24,14 +24,14 @@ struct aws_future_impl {
     aws_future_on_done_fn *on_done_cb;
     void *on_done_user_data;
     union {
-        aws_future_result_clean_up_fn *clean_up;
-        aws_future_result_destroy_fn *destroy;
-        aws_future_result_release_fn *release;
+        aws_future_impl_result_clean_up_fn *clean_up;
+        aws_future_impl_result_destroy_fn *destroy;
+        aws_future_impl_result_release_fn *release;
     } result_dtor;
     int error_code;
     /* sum of bit fields should be 32 */
-#define AWS_FUTURE_RESULT_SIZE_BIT_COUNT 27
-    unsigned int result_size : AWS_FUTURE_RESULT_SIZE_BIT_COUNT;
+#define aws_future_impl_result_SIZE_BIT_COUNT 27
+    unsigned int result_size : aws_future_impl_result_SIZE_BIT_COUNT;
     unsigned int type : 3; /* aws_future_type */
     unsigned int is_done : 1;
     unsigned int owns_result : 1;
@@ -85,7 +85,7 @@ static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, si
     future->alloc = alloc;
 
     /* we store result_size in a bit field, ensure the number will fit */
-    AWS_ASSERT(result_size <= (UINT_MAX >> (32 - AWS_FUTURE_RESULT_SIZE_BIT_COUNT)));
+    AWS_ASSERT(result_size <= (UINT_MAX >> (32 - aws_future_impl_result_SIZE_BIT_COUNT)));
     future->result_size = (unsigned int)result_size;
 
     aws_ref_count_init(&future->ref_count, future, s_future_impl_destroy);
@@ -103,7 +103,7 @@ struct aws_future_impl *aws_future_impl_new_by_value(struct aws_allocator *alloc
 struct aws_future_impl *aws_future_impl_new_by_value_with_clean_up(
     struct aws_allocator *alloc,
     size_t result_size,
-    aws_future_result_clean_up_fn *result_clean_up) {
+    aws_future_impl_result_clean_up_fn *result_clean_up) {
 
     AWS_ASSERT(result_clean_up);
     struct aws_future_impl *future = s_future_impl_new(alloc, result_size);
@@ -120,7 +120,7 @@ struct aws_future_impl *aws_future_impl_new_pointer(struct aws_allocator *alloc)
 
 struct aws_future_impl *aws_future_impl_new_pointer_with_destroy(
     struct aws_allocator *alloc,
-    aws_future_result_destroy_fn *result_destroy) {
+    aws_future_impl_result_destroy_fn *result_destroy) {
 
     AWS_ASSERT(result_destroy);
     struct aws_future_impl *future = s_future_impl_new(alloc, sizeof(void *));
@@ -131,7 +131,7 @@ struct aws_future_impl *aws_future_impl_new_pointer_with_destroy(
 
 struct aws_future_impl *aws_future_impl_new_pointer_with_release(
     struct aws_allocator *alloc,
-    aws_future_result_release_fn *result_release) {
+    aws_future_impl_result_release_fn *result_release) {
 
     AWS_ASSERT(result_release);
     struct aws_future_impl *future = s_future_impl_new(alloc, sizeof(void *));

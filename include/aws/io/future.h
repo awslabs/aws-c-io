@@ -15,12 +15,12 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_future_impl;
 
+/** Completion callback for aws_future<T> */
 typedef void(aws_future_on_done_fn)(void *user_data);
-typedef void(aws_future_destroy_result_fn)(void *);
 
-typedef void(aws_future_result_clean_up_fn)(void *result_addr);
-typedef void(aws_future_result_destroy_fn)(void *result);
-typedef void *(aws_future_result_release_fn)(void *result);
+typedef void(aws_future_impl_result_clean_up_fn)(void *result_addr);
+typedef void(aws_future_impl_result_destroy_fn)(void *result);
+typedef void *(aws_future_impl_result_release_fn)(void *result);
 
 AWS_EXTERN_C_BEGIN
 
@@ -33,7 +33,7 @@ AWS_IO_API
 struct aws_future_impl *aws_future_impl_new_by_value_with_clean_up(
     struct aws_allocator *alloc,
     size_t result_size,
-    aws_future_result_clean_up_fn *result_clean_up);
+    aws_future_impl_result_clean_up_fn *result_clean_up);
 
 /** Create future holding T*, with no destructor */
 AWS_IO_API
@@ -43,13 +43,13 @@ struct aws_future_impl *aws_future_impl_new_pointer(struct aws_allocator *alloc)
 AWS_IO_API
 struct aws_future_impl *aws_future_impl_new_pointer_with_destroy(
     struct aws_allocator *alloc,
-    aws_future_result_destroy_fn *result_destroy);
+    aws_future_impl_result_destroy_fn *result_destroy);
 
 /** Create future holding T*, with destructor: T* aws_T_release(T*) */
 AWS_IO_API
 struct aws_future_impl *aws_future_impl_new_pointer_with_release(
     struct aws_allocator *alloc,
-    aws_future_result_release_fn *result_release);
+    aws_future_impl_result_release_fn *result_release);
 
 AWS_IO_API
 struct aws_future_impl *aws_future_impl_release(struct aws_future_impl *promise);
@@ -223,14 +223,30 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
                                                                                                                        \
     AWS_FUTURE_T_DECLARATION_END(FUTURE)
 
-#if 0 /* TODO */
 /**
  * Declares a future that holds T by value, with destructor like: void aws_T_clean_up(T*)
  * Use with types like aws_byte_buf.
  */
-#    define AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP(FUTURE, T, CLEAN_UP_FN)
-#endif /* TODO */
-
+#define AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP(FUTURE, T, CLEAN_UP_FN)                                            \
+    AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE)                                                                             \
+                                                                                                                       \
+    AWS_STATIC_IMPL struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                         \
+        void (*clean_up_fn)(T *) = CLEAN_UP_FN; /* check clean_up() function signature */                              \
+        return (struct FUTURE *)aws_future_impl_new_by_value_with_clean_up(                                            \
+            alloc, sizeof(T), (aws_future_impl_result_clean_up_fn)clean_up_fn);                                        \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T *result) {                                       \
+        aws_future_impl_set_result((struct aws_future_impl *)future, result);                                          \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL T FUTURE##_get_result(struct FUTURE *future) {                                                     \
+        T value;                                                                                                       \
+        aws_future_impl_get_result_by_value((struct aws_future_impl *)future, &value);                                 \
+        return value;                                                                                                  \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_FUTURE_T_DECLARATION_END(FUTURE)
 /**
  * Declares a future that holds T*, with no destructor.
  */
@@ -261,7 +277,7 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
     AWS_STATIC_IMPL struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                         \
         void (*destroy_fn)(T *) = DESTROY_FN; /* check destroy() function signature */                                 \
         return (struct FUTURE *)aws_future_impl_new_pointer_with_destroy(                                              \
-            alloc, (aws_future_result_destroy_fn *)destroy_fn);                                                        \
+            alloc, (aws_future_impl_result_destroy_fn *)destroy_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T **result) {                                      \
@@ -284,7 +300,7 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
     AWS_STATIC_IMPL struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                         \
         T *(*release_fn)(T *) = RELEASE_FN; /* check release() function signature */                                   \
         return (struct FUTURE *)aws_future_impl_new_pointer_with_release(                                              \
-            alloc, (aws_future_result_release_fn *)release_fn);                                                        \
+            alloc, (aws_future_impl_result_release_fn *)release_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T **result) {                                      \
