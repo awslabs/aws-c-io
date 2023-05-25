@@ -289,18 +289,14 @@ static int s_test_future_pointer_with_destroy(struct aws_allocator *alloc, void 
     aws_future_destroyme_release(future);
     ASSERT_FALSE(original_destroyme_died);
 
-    /* get result */
+    /* get result (without taking ownership) */
     struct aws_destroyme *destroyme_from_future = aws_future_destroyme_get_result(future);
     ASSERT_NOT_NULL(destroyme_from_future);
     ASSERT_PTR_EQUALS(destroyme_pointer_copy, destroyme_from_future);
     ASSERT_FALSE(original_destroyme_died);
 
-    /* destroy future, result should stay alive since we took ownership */
+    /* result should be destroyed along with future */
     aws_future_destroyme_release(future);
-    ASSERT_FALSE(original_destroyme_died);
-
-    /* OK, finally delete destroyme */
-    aws_destroyme_destroy(destroyme_from_future);
     ASSERT_TRUE(original_destroyme_died);
 
     aws_common_library_clean_up();
@@ -362,17 +358,13 @@ static int s_test_future_pointer_with_release(struct aws_allocator *alloc, void 
     ASSERT_TRUE(aws_future_refcountme_is_done(future));
     ASSERT_FALSE(original_refcountme_died);
 
-    /* get result */
+    /* get result (without taking ownership) */
     struct aws_refcountme *refcountme_from_future = aws_future_refcountme_get_result(future);
     ASSERT_NOT_NULL(refcountme_from_future);
     ASSERT_PTR_EQUALS(refcountme_pointer_copy, refcountme_from_future);
 
-    /* destroy future, result should stay alive since we took ownership */
+    /* result should be destroyed along with future */
     aws_future_refcountme_release(future);
-    ASSERT_FALSE(original_refcountme_died);
-
-    /* OK, finally delete refcountme */
-    aws_refcountme_release(refcountme_from_future);
     ASSERT_TRUE(original_refcountme_died);
 
     aws_common_library_clean_up();
@@ -449,29 +441,26 @@ static int s_test_future_set_multiple_times(struct aws_allocator *alloc, void *c
      * the future should continue treating result1 as the result
      * result2 will simply be destroyed */
     aws_future_destroyme_set_result(future, &result2);
+    ASSERT_PTR_EQUALS(result1_pointer_copy, aws_future_destroyme_get_result(future));
+    ASSERT_FALSE(result1_destroyed);
     ASSERT_NULL(result2);
     ASSERT_TRUE(result2_destroyed);
-    ASSERT_FALSE(result1_destroyed);
 
     /* likewise, result3 should be ignored and destroyed */
     aws_future_destroyme_set_result(future, &result3);
+    ASSERT_PTR_EQUALS(result1_pointer_copy, aws_future_destroyme_get_result(future));
+    ASSERT_FALSE(result1_destroyed);
     ASSERT_NULL(result3);
     ASSERT_TRUE(result3_destroyed);
-    ASSERT_FALSE(result1_destroyed);
 
     /* setting an error is ignored, if there's already a result */
     aws_future_destroyme_set_error(future, 999);
+    ASSERT_PTR_EQUALS(result1_pointer_copy, aws_future_destroyme_get_result(future));
+    ASSERT_FALSE(result1_destroyed);
     ASSERT_INT_EQUALS(0, aws_future_destroyme_get_error(future));
-    ASSERT_FALSE(result1_destroyed);
 
-    /* ensure the actual result is still result1 */
-    struct aws_destroyme *resul1_from_future = aws_future_destroyme_get_result(future);
-    ASSERT_PTR_EQUALS(result1_pointer_copy, resul1_from_future);
-
-    /* cleanup */
+    /* result1 should finally be destroyed when the future is destroyed */
     aws_future_destroyme_release(future);
-    ASSERT_FALSE(result1_destroyed);
-    aws_destroyme_destroy(resul1_from_future);
     ASSERT_TRUE(result1_destroyed);
 
     aws_common_library_clean_up();
