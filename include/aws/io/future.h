@@ -76,7 +76,7 @@ void aws_future_impl_set_error(struct aws_future_impl *promise, int error_code);
  * WARNING: src_address MUST NOT be NULL.
  */
 AWS_IO_API
-void aws_future_impl_set_result(struct aws_future_impl *promise, void *src_address);
+void aws_future_impl_give_result(struct aws_future_impl *promise, void *src_address);
 
 /**
  * Return whether the future is done.
@@ -205,7 +205,7 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T result) {                                        \
-        aws_future_impl_set_result((struct aws_future_impl *)future, &result);                                         \
+        aws_future_impl_give_result((struct aws_future_impl *)future, &result);                                        \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T FUTURE##_get_result(struct FUTURE *future) {                                                     \
@@ -227,8 +227,8 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
             alloc, sizeof(T), (aws_future_impl_result_clean_up_fn)clean_up_fn);                                        \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T *result) {                                       \
-        aws_future_impl_set_result((struct aws_future_impl *)future, result);                                          \
+    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T *result) {                                      \
+        aws_future_impl_give_result((struct aws_future_impl *)future, result);                                         \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
@@ -253,7 +253,7 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T *result) {                                       \
-        aws_future_impl_set_result((struct aws_future_impl *)future, &result);                                         \
+        aws_future_impl_give_result((struct aws_future_impl *)future, &result);                                        \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
@@ -275,8 +275,8 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
             alloc, (aws_future_impl_result_destroy_fn *)destroy_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T **result) {                                      \
-        aws_future_impl_set_result((struct aws_future_impl *)future, result);                                          \
+    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T **result) {                                     \
+        aws_future_impl_give_result((struct aws_future_impl *)future, result);                                         \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
@@ -304,8 +304,8 @@ void *aws_future_impl_get_result_as_pointer(struct aws_future_impl *future);
             alloc, (aws_future_impl_result_release_fn *)release_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T **result) {                                      \
-        aws_future_impl_set_result((struct aws_future_impl *)future, result);                                          \
+    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T **result) {                                     \
+        aws_future_impl_give_result((struct aws_future_impl *)future, result);                                         \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \

@@ -239,7 +239,7 @@ void aws_future_impl_set_error(struct aws_future_impl *future, int error_code) {
     s_future_impl_set_done(future, NULL /*src_address*/, error_code);
 }
 
-void aws_future_impl_set_result(struct aws_future_impl *future, void *src_address) {
+void aws_future_impl_give_result(struct aws_future_impl *future, void *src_address) {
     AWS_ASSERT(future);
     AWS_ASSERT(src_address);
     s_future_impl_set_done(future, src_address, 0 /*error_code*/);
