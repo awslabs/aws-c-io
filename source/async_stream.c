@@ -35,7 +35,7 @@ struct aws_async_stream *aws_async_stream_release(struct aws_async_stream *strea
     return NULL;
 }
 
-struct aws_future_bool *aws_async_stream_read_once(struct aws_async_stream *stream, struct aws_byte_buf *dest) {
+struct aws_future_bool *aws_async_stream_read(struct aws_async_stream *stream, struct aws_byte_buf *dest) {
     /* Deal with this edge case here, instead of relying on every implementation to do it right. */
     if (dest->len == dest->capacity) {
         struct aws_future_bool *future = aws_future_bool_new(stream->alloc);
@@ -43,7 +43,7 @@ struct aws_future_bool *aws_async_stream_read_once(struct aws_async_stream *stre
         return future;
     }
 
-    return stream->vtable->read_once(stream, dest);
+    return stream->vtable->read(stream, dest);
 }
 
 /* Data to perform the aws_async_stream_read_to_fill() job */
@@ -51,7 +51,7 @@ struct aws_async_stream_fill_job {
     struct aws_allocator *alloc;
     struct aws_async_stream *stream;
     struct aws_byte_buf *dest;
-    /* Future for each read_once step */
+    /* Future for each read() step */
     struct aws_future_bool *read1_future;
     /* Future to set when this job completes */
     struct aws_future_bool *my_future;
@@ -68,10 +68,10 @@ static void s_async_stream_fill_job_complete(struct aws_async_stream_fill_job *j
     aws_mem_release(job->alloc, job);
 }
 
-/* Call read_once() in a loop.
- * It would be simpler to set a completion callback for each read_once() call,
+/* Call read() in a loop.
+ * It would be simpler to set a completion callback for each read() call,
  * but this risks our call stack growing large if there are many small, synchronous, reads.
- * So be complicated and loop until a read_once call is actually async,
+ * So be complicated and loop until a read() ) call is actually async,
  * and only then set the completion callback (which is this same function, where we resume looping). */
 static void s_async_stream_fill_job_loop(void *user_data) {
     struct aws_async_stream_fill_job *job = user_data;
@@ -100,7 +100,7 @@ static void s_async_stream_fill_job_loop(void *user_data) {
         }
 
         /* Kick off a read, which may or may not complete async */
-        job->read1_future = aws_async_stream_read_once(job->stream, job->dest);
+        job->read1_future = aws_async_stream_read(job->stream, job->dest);
     }
 }
 

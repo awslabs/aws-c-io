@@ -1,9 +1,17 @@
+/**
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
+
 #ifndef AWS_IO_ASYNC_STREAM_H
 #define AWS_IO_ASYNC_STREAM_H
 
 /**
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0.
+ * THIS IS AN EXPERIMENTAL AND UNSTABLE API
+ * TODO: should this live in stream.h, next to aws_input_stream?
+ * TODO: modify API to return byte-bufs, instead of filling in the provided byte-buf?
+ *       this would avoid a copy in the use cases we know of, but it's a bit more complex
+ * TODO: P
  */
 
 #include <aws/io/io.h>
@@ -23,7 +31,7 @@ struct aws_async_stream {
 
 struct aws_async_stream_vtable {
     void (*destroy)(struct aws_async_stream *stream);
-    struct aws_future_bool *(*read_once)(struct aws_async_stream *stream, struct aws_byte_buf *dest);
+    struct aws_future_bool *(*read)(struct aws_async_stream *stream, struct aws_byte_buf *dest);
 };
 
 AWS_EXTERN_C_BEGIN
@@ -61,11 +69,10 @@ struct aws_async_stream *aws_async_stream_release(struct aws_async_stream *strea
  * Returns aws_future<bool>, which on completion holds a bool indicating EOF or an error code.
  */
 AWS_IO_API
-struct aws_future_bool *aws_async_stream_read_once(struct aws_async_stream *stream, struct aws_byte_buf *dest);
+struct aws_future_bool *aws_async_stream_read(struct aws_async_stream *stream, struct aws_byte_buf *dest);
 
 /**
- * Read from the async stream until the buffer is full or EOF is reached.
- * This may perform multiple read_once() calls under the hood.
+ * Read repeatedly from the async stream until the buffer is full, or EOF is reached.
  * The read may complete synchronously, and may complete on another thread.
  * Returns aws_future<bool>, which on completion holds a bool indicating EOF or an error code.
  */

@@ -9,6 +9,8 @@
 /*
 
 // THIS IS AN EXPERIMENTAL AND UNSTABLE API
+// TODO: API for callback to fire on event-loop
+// TODO: API for cancelling
 //
 // An aws_future is used to deliver the results of an asynchronous function.
 //
