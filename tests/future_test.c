@@ -523,7 +523,7 @@ static int s_test_future_set_error(struct aws_allocator *alloc, void *ctx) {
 
     /* Set error code */
     aws_future_destroyme_set_error(future, 999);
-    ASSERT_TRUE(aws_future_destroyme_is_done);
+    ASSERT_TRUE(aws_future_destroyme_is_done(future));
     ASSERT_INT_EQUALS(999, aws_future_destroyme_get_error(future));
 
     /* Attempts to change the error should be ignored */

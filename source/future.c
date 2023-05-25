@@ -303,7 +303,7 @@ bool aws_future_impl_register_callback_if_not_done(
 
 static bool s_future_impl_is_done_pred(void *user_data) {
     struct aws_future_impl *future = user_data;
-    return future->is_done;
+    return future->is_done != 0;
 }
 
 bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns) {
