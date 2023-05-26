@@ -6,7 +6,9 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/ref_count.h>
+#include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+#include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/testing/aws_test_harness.h>
 
@@ -65,7 +67,9 @@ AWS_TEST_CASE(future_void, s_test_future_void)
 struct future_size_callback_recorder {
     struct aws_future_size *future;    /* record all state when this future's callback fires */
     struct aws_event_loop *event_loop; /* record whether callback fires on this event-loop's thread */
+    struct aws_channel *channel;
 
+    /* record state of the world when callback invoked */
     int error_code;
     size_t result;
     aws_thread_id_t thread_id;
@@ -230,6 +234,7 @@ static int s_test_future_register_callback_if_not_done(struct aws_allocator *all
 }
 AWS_TEST_CASE(future_register_callback_if_not_done, s_test_future_register_callback_if_not_done)
 
+/* Test that an event-loop callback still runs if it's registered after the future is already done */
 static int s_test_future_register_event_loop_callback_after_done(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
@@ -262,6 +267,7 @@ static int s_test_future_register_event_loop_callback_after_done(struct aws_allo
 }
 AWS_TEST_CASE(future_register_event_loop_callback_after_done, s_test_future_register_event_loop_callback_after_done)
 
+/* Test that an event-loop callback still runs if it's registered before the future is done */
 static int s_test_future_register_event_loop_callback_before_done(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
@@ -293,6 +299,117 @@ static int s_test_future_register_event_loop_callback_before_done(struct aws_all
     return 0;
 }
 AWS_TEST_CASE(future_register_event_loop_callback_before_done, s_test_future_register_event_loop_callback_before_done)
+
+void s_set_result_from_event_loop_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct future_size_callback_recorder *recorder = user_data;
+
+    AWS_FATAL_ASSERT(recorder->invoke_count == 0); /* The future shouldn't be done yet */
+
+    aws_future_size_set_result(recorder->future, 1234567);
+
+    /* The callback should NOT be invoked from the same callstack as set_result().
+     * The callback should run as its own scheduled task */
+    AWS_FATAL_ASSERT(recorder->invoke_count == 0);
+}
+
+/* Test that an event-loop callback always runs as its own scheduled task.
+ * Even if set_result() is called from the event-loop thread, the callback
+ * should NOT run in the same callstack as set_result() */
+static int s_test_future_register_event_loop_callback_always_scheduled(struct aws_allocator *alloc, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(alloc);
+
+    struct future_size_callback_recorder recorder = {
+        .future = aws_future_size_new(alloc),
+        .event_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks),
+    };
+    ASSERT_SUCCESS(aws_event_loop_run(recorder.event_loop));
+
+    /* register callback before result is set */
+    aws_future_size_register_event_loop_callback(
+        recorder.future, recorder.event_loop, s_record_on_future_size_done, &recorder);
+
+    struct aws_task set_result_from_event_loop_task;
+    aws_task_init(
+        &set_result_from_event_loop_task, s_set_result_from_event_loop_task, &recorder, "set_result_from_event_loop");
+
+    aws_event_loop_schedule_task_now(recorder.event_loop, &set_result_from_event_loop_task);
+
+    /* Wait until event loop is destroyed, at which point the future is complete and the callback has fired */
+    aws_event_loop_destroy(recorder.event_loop);
+
+    /* callback should have fired on event-loop thread */
+    ASSERT_INT_EQUALS(1, recorder.invoke_count);
+    ASSERT_INT_EQUALS(0, recorder.error_code);
+    ASSERT_UINT_EQUALS(1234567, recorder.result);
+    ASSERT_TRUE(recorder.is_event_loop_thread);
+
+    /* cleanup */
+    aws_future_size_release(recorder.future);
+    aws_io_library_clean_up();
+    return 0;
+}
+AWS_TEST_CASE(
+    future_register_event_loop_callback_always_scheduled,
+    s_test_future_register_event_loop_callback_always_scheduled)
+
+static void s_on_channel_setup(struct aws_channel *channel, int error_code, void *user_data) {
+    struct aws_future_void *setup_future = user_data;
+    if (error_code) {
+        aws_future_void_set_error(setup_future, error_code);
+    } else {
+        aws_future_void_set_result(setup_future);
+    }
+}
+
+/* Test channel callback */
+static int s_test_future_register_channel_callback(struct aws_allocator *alloc, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(alloc);
+
+    /* Set up event-loop */
+    struct future_size_callback_recorder recorder = {
+        .future = aws_future_size_new(alloc),
+        .event_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks),
+    };
+    ASSERT_SUCCESS(aws_event_loop_run(recorder.event_loop));
+
+    /* Set up channel */
+    struct aws_future_void *channel_setup_future = aws_future_void_new(alloc);
+    struct aws_channel_options channel_options = {
+        .event_loop = recorder.event_loop,
+        .on_setup_completed = s_on_channel_setup,
+        .setup_user_data = channel_setup_future,
+    };
+    struct aws_channel *channel = aws_channel_new(alloc, &channel_options);
+    ASSERT_TRUE(aws_future_void_wait(channel_setup_future, MAX_TIMEOUT_NS));
+    ASSERT_INT_EQUALS(0, aws_future_void_get_error(channel_setup_future));
+
+    /* register callback after result already set */
+    aws_future_size_set_result(recorder.future, 234567);
+
+    aws_future_size_register_channel_callback(recorder.future, channel, s_record_on_future_size_done, &recorder);
+
+    /* wait until channel/event-loop are destroyed,
+     * at which point the future is complete and the callback has fired */
+    aws_channel_release_hold(channel);
+    aws_event_loop_destroy(recorder.event_loop);
+
+    /* callback should have fired on channel/event-loop thread */
+    ASSERT_INT_EQUALS(1, recorder.invoke_count);
+    ASSERT_INT_EQUALS(0, recorder.error_code);
+    ASSERT_UINT_EQUALS(234567, recorder.result);
+    ASSERT_TRUE(recorder.is_event_loop_thread);
+
+    /* cleanup */
+    aws_future_void_release(channel_setup_future);
+    aws_future_size_release(recorder.future);
+    aws_io_library_clean_up();
+    return 0;
+}
+AWS_TEST_CASE(future_register_channel_callback, s_test_future_register_channel_callback);
 
 static int s_test_future_wait_timeout(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
