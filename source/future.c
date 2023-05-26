@@ -72,7 +72,7 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
         case AWS_FUTURE_T_POINTER_WITH_RELEASE: {
             void *result = *(void **)result_addr;
             if (result) {
-                future->result_dtor.destroy(result);
+                future->result_dtor.release(result);
             }
         } break;
 

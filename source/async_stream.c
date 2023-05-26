@@ -52,7 +52,7 @@ struct aws_async_stream_fill_job {
     struct aws_async_stream *stream;
     struct aws_byte_buf *dest;
     /* Future for each read() step */
-    struct aws_future_bool *read1_future;
+    struct aws_future_bool *read_future;
     /* Future to set when this job completes */
     struct aws_future_bool *my_future;
 };
@@ -77,20 +77,20 @@ static void s_async_stream_fill_job_loop(void *user_data) {
     struct aws_async_stream_fill_job *job = user_data;
 
     while (true) {
-        /* Process read1_future from previous iteration of loop.
+        /* Process read_future from previous iteration of loop.
          * It's NULL the first time the job ever enters the loop.
-         * But it's set in subsequent runs of the loop, and when this is a read1_future completion callback. */
-        if (job->read1_future) {
-            if (aws_future_bool_register_callback_if_not_done(job->read1_future, s_async_stream_fill_job_loop, job)) {
+         * But it's set in subsequent runs of the loop, and when this is a read_future completion callback. */
+        if (job->read_future) {
+            if (aws_future_bool_register_callback_if_not_done(job->read_future, s_async_stream_fill_job_loop, job)) {
                 /* not done, we'll resume this loop when callback fires */
                 return;
             }
 
-            /* read1_future is done */
-            int error_code = aws_future_bool_get_error(job->read1_future);
-            bool eof = error_code ? false : aws_future_bool_get_result(job->read1_future);
+            /* read_future is done */
+            int error_code = aws_future_bool_get_error(job->read_future);
+            bool eof = error_code ? false : aws_future_bool_get_result(job->read_future);
             bool reached_capacity = job->dest->len == job->dest->capacity;
-            job->read1_future = aws_future_bool_release(job->read1_future); /* release and NULL */
+            job->read_future = aws_future_bool_release(job->read_future); /* release and NULL */
 
             if (error_code || eof || reached_capacity) {
                 /* job complete! */
@@ -100,7 +100,7 @@ static void s_async_stream_fill_job_loop(void *user_data) {
         }
 
         /* Kick off a read, which may or may not complete async */
-        job->read1_future = aws_async_stream_read(job->stream, job->dest);
+        job->read_future = aws_async_stream_read(job->stream, job->dest);
     }
 }
 
