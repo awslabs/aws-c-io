@@ -20,7 +20,7 @@ enum aws_future_type {
 };
 
 struct aws_future_callback_data {
-    aws_future_on_done_fn *fn;
+    aws_future_callback_fn *fn;
     void *user_data;
     union aws_future_callback_union {
         struct aws_event_loop *event_loop;
@@ -33,6 +33,8 @@ struct aws_future_callback_data {
     } type;
 };
 
+/* When allocating aws_future<T> on the heap, we make 1 allocation containing:
+ * aws_future_impl followed by T */
 struct aws_future_impl {
     struct aws_allocator *alloc;
     struct aws_ref_count ref_count;
@@ -46,8 +48,8 @@ struct aws_future_impl {
     } result_dtor;
     int error_code;
     /* sum of bit fields should be 32 */
-#define aws_future_impl_result_SIZE_BIT_COUNT 27
-    unsigned int result_size : aws_future_impl_result_SIZE_BIT_COUNT;
+#define BIT_COUNT_FOR_SIZEOF_RESULT 27
+    unsigned int sizeof_result : BIT_COUNT_FOR_SIZEOF_RESULT;
     unsigned int type : 3; /* aws_future_type */
     unsigned int is_done : 1;
     unsigned int owns_result : 1;
@@ -89,14 +91,14 @@ static void s_future_impl_destroy(void *user_data) {
     aws_mem_release(future->alloc, future);
 }
 
-static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, size_t result_size) {
-    size_t total_size = sizeof(struct aws_future_impl) + result_size;
+static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, size_t sizeof_result) {
+    size_t total_size = sizeof(struct aws_future_impl) + sizeof_result;
     struct aws_future_impl *future = aws_mem_calloc(alloc, 1, total_size);
     future->alloc = alloc;
 
-    /* we store result_size in a bit field, ensure the number will fit */
-    AWS_ASSERT(result_size <= (UINT_MAX >> (32 - aws_future_impl_result_SIZE_BIT_COUNT)));
-    future->result_size = (unsigned int)result_size;
+    /* we store sizeof_result in a bit field, ensure the number will fit */
+    AWS_ASSERT(sizeof_result <= (UINT_MAX >> (32 - BIT_COUNT_FOR_SIZEOF_RESULT)));
+    future->sizeof_result = (unsigned int)sizeof_result;
 
     aws_ref_count_init(&future->ref_count, future, s_future_impl_destroy);
     aws_mutex_init(&future->lock);
@@ -104,19 +106,19 @@ static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, si
     return future;
 }
 
-struct aws_future_impl *aws_future_impl_new_by_value(struct aws_allocator *alloc, size_t result_size) {
-    struct aws_future_impl *future = s_future_impl_new(alloc, result_size);
+struct aws_future_impl *aws_future_impl_new_by_value(struct aws_allocator *alloc, size_t sizeof_result) {
+    struct aws_future_impl *future = s_future_impl_new(alloc, sizeof_result);
     future->type = AWS_FUTURE_T_BY_VALUE;
     return future;
 }
 
 struct aws_future_impl *aws_future_impl_new_by_value_with_clean_up(
     struct aws_allocator *alloc,
-    size_t result_size,
+    size_t sizeof_result,
     aws_future_impl_result_clean_up_fn *result_clean_up) {
 
     AWS_ASSERT(result_clean_up);
-    struct aws_future_impl *future = s_future_impl_new(alloc, result_size);
+    struct aws_future_impl *future = s_future_impl_new(alloc, sizeof_result);
     future->type = AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP;
     future->result_dtor.clean_up = result_clean_up;
     return future;
@@ -200,8 +202,8 @@ void *aws_future_impl_get_result_address(const struct aws_future_impl *future) {
 
 void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_address) {
     void *result_addr = aws_future_impl_get_result_address(future);
-    memcpy(dst_address, result_addr, future->result_size);
-    memset(result_addr, 0, future->result_size);
+    memcpy(dst_address, result_addr, future->sizeof_result);
+    memset(result_addr, 0, future->sizeof_result);
     future->owns_result = false;
 }
 
@@ -209,7 +211,7 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
 struct aws_future_event_loop_callback_job {
     struct aws_allocator *alloc;
     struct aws_task task;
-    aws_future_on_done_fn *callback;
+    aws_future_callback_fn *callback;
     void *user_data;
 };
 
@@ -225,7 +227,7 @@ static void s_future_impl_event_loop_callback_task(struct aws_task *task, void *
 struct aws_future_channel_callback_job {
     struct aws_allocator *alloc;
     struct aws_channel_task task;
-    aws_future_on_done_fn *callback;
+    aws_future_callback_fn *callback;
     void *user_data;
 };
 
@@ -289,7 +291,7 @@ static void s_future_impl_set_done(struct aws_future_impl *future, void *src_add
             future->error_code = error_code;
         } else {
             future->owns_result = true;
-            memcpy(aws_future_impl_get_result_address(future), src_address, future->result_size);
+            memcpy(aws_future_impl_get_result_address(future), src_address, future->sizeof_result);
         }
 
         aws_condition_variable_notify_all(&future->wait_cvar);
@@ -328,7 +330,7 @@ void aws_future_impl_give_result(struct aws_future_impl *future, void *src_addre
 
     /* the future "takes ownership" of the result.
      * zero out memory at the src_address to reinforce this transfer of ownership. */
-    memset(src_address, 0, future->result_size);
+    memset(src_address, 0, future->sizeof_result);
 }
 
 /* Returns true if callback was registered, or false if callback was ignored
@@ -363,7 +365,7 @@ static bool s_future_impl_register_callback(
 
 void aws_future_impl_register_callback(
     struct aws_future_impl *future,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data) {
 
     AWS_ASSERT(future);
@@ -379,7 +381,7 @@ void aws_future_impl_register_callback(
 
 bool aws_future_impl_register_callback_if_not_done(
     struct aws_future_impl *future,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data) {
 
     AWS_ASSERT(future);
@@ -396,7 +398,7 @@ bool aws_future_impl_register_callback_if_not_done(
 void aws_future_impl_register_event_loop_callback(
     struct aws_future_impl *future,
     struct aws_event_loop *event_loop,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data) {
 
     AWS_ASSERT(future);
@@ -417,7 +419,7 @@ void aws_future_impl_register_event_loop_callback(
 void aws_future_impl_register_channel_callback(
     struct aws_future_impl *future,
     struct aws_channel *channel,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data) {
 
     AWS_ASSERT(future);

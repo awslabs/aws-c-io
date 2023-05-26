@@ -172,7 +172,7 @@ int aws_future_T_get_error(const struct aws_future_T *future);
 // will run synchronously on whatever thread completes the future.
 //
 // WARNING: You MUST NOT register more than one callback.
-void aws_future_T_register_callback(struct aws_future_T *future, aws_future_on_done_fn *on_done, void *user_data);
+void aws_future_T_register_callback(struct aws_future_T *future, aws_future_callback_fn *on_done, void *user_data);
 
 // If the future isn't done yet, then register the completion callback.
 //
@@ -189,7 +189,7 @@ void aws_future_T_register_callback(struct aws_future_T *future, aws_future_on_d
 // the callback has been invoked.
 bool aws_future_T_register_callback_if_not_done(
     struct aws_future_T *future,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data);
 
 // Register completion callback to run async on an event-loop thread.
@@ -205,7 +205,7 @@ bool aws_future_T_register_callback_if_not_done(
 void aws_future_impl_register_event_loop_callback(
     struct aws_future_impl *future,
     struct aws_event_loop *event_loop,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data);
 
 // Wait (up to timeout_ns) for future to complete.
@@ -227,7 +227,7 @@ struct aws_event_loop;
 struct aws_future_impl;
 
 /** Completion callback for aws_future<T> */
-typedef void(aws_future_on_done_fn)(void *user_data);
+typedef void(aws_future_callback_fn)(void *user_data);
 
 typedef void(aws_future_impl_result_clean_up_fn)(void *result_addr);
 typedef void(aws_future_impl_result_destroy_fn)(void *result);
@@ -237,13 +237,13 @@ AWS_EXTERN_C_BEGIN
 
 /* Create future holding T by value, with no destructor */
 AWS_IO_API
-struct aws_future_impl *aws_future_impl_new_by_value(struct aws_allocator *alloc, size_t result_size);
+struct aws_future_impl *aws_future_impl_new_by_value(struct aws_allocator *alloc, size_t sizeof_result);
 
 /* Create future holding T by value, with destructor: void aws_T_clean_up(T*) */
 AWS_IO_API
 struct aws_future_impl *aws_future_impl_new_by_value_with_clean_up(
     struct aws_allocator *alloc,
-    size_t result_size,
+    size_t sizeof_result,
     aws_future_impl_result_clean_up_fn *result_clean_up);
 
 /* Create future holding T*, with no destructor */
@@ -278,26 +278,29 @@ AWS_IO_API
 bool aws_future_impl_is_done(const struct aws_future_impl *future);
 
 AWS_IO_API
-void aws_future_impl_register_callback(struct aws_future_impl *future, aws_future_on_done_fn *on_done, void *user_data);
+void aws_future_impl_register_callback(
+    struct aws_future_impl *future,
+    aws_future_callback_fn *on_done,
+    void *user_data);
 
 AWS_IO_API
 bool aws_future_impl_register_callback_if_not_done(
     struct aws_future_impl *future,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data);
 
 AWS_IO_API
 void aws_future_impl_register_event_loop_callback(
     struct aws_future_impl *future,
     struct aws_event_loop *event_loop,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data);
 
 AWS_IO_API
 void aws_future_impl_register_channel_callback(
     struct aws_future_impl *future,
     struct aws_channel *channel,
-    aws_future_on_done_fn *on_done,
+    aws_future_callback_fn *on_done,
     void *user_data);
 
 AWS_IO_API
@@ -338,23 +341,30 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL                                                                                                    \
-    void FUTURE##_register_callback(struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {          \
+    void FUTURE##_register_callback(struct FUTURE *future, aws_future_callback_fn *on_done, void *user_data) {         \
         aws_future_impl_register_callback((struct aws_future_impl *)future, on_done, user_data);                       \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL                                                                                                    \
     bool FUTURE##_register_callback_if_not_done(                                                                       \
-        struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {                                      \
+        struct FUTURE *future, aws_future_callback_fn *on_done, void *user_data) {                                     \
                                                                                                                        \
         return aws_future_impl_register_callback_if_not_done((struct aws_future_impl *)future, on_done, user_data);    \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL                                                                                                    \
     void FUTURE##_register_event_loop_callback(                                                                        \
-        struct FUTURE *future, struct aws_event_loop *event_loop, aws_future_on_done_fn *on_done, void *user_data) {   \
+        struct FUTURE *future, struct aws_event_loop *event_loop, aws_future_callback_fn *on_done, void *user_data) {  \
                                                                                                                        \
         aws_future_impl_register_event_loop_callback(                                                                  \
             (struct aws_future_impl *)future, event_loop, on_done, user_data);                                         \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL                                                                                                    \
+    void FUTURE##_register_channel_callback(                                                                           \
+        struct FUTURE *future, struct aws_channel *channel, aws_future_callback_fn *on_done, void *user_data) {        \
+                                                                                                                       \
+        aws_future_impl_register_channel_callback((struct aws_future_impl *)future, channel, on_done, user_data);      \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL                                                                                                    \
