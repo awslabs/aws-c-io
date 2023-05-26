@@ -222,6 +222,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 #    pragma warning(disable : 5039) // reference to potentially throwing function passed to extern C function
 #endif
 
+struct aws_channel;
 struct aws_event_loop;
 struct aws_future_impl;
 
@@ -289,6 +290,13 @@ AWS_IO_API
 void aws_future_impl_register_event_loop_callback(
     struct aws_future_impl *future,
     struct aws_event_loop *event_loop,
+    aws_future_on_done_fn *on_done,
+    void *user_data);
+
+AWS_IO_API
+void aws_future_impl_register_channel_callback(
+    struct aws_future_impl *future,
+    struct aws_channel *channel,
     aws_future_on_done_fn *on_done,
     void *user_data);
 
