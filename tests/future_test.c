@@ -356,6 +356,7 @@ AWS_TEST_CASE(
     s_test_future_register_event_loop_callback_always_scheduled)
 
 static void s_on_channel_setup(struct aws_channel *channel, int error_code, void *user_data) {
+    (void)channel;
     struct aws_future_void *setup_future = user_data;
     if (error_code) {
         aws_future_void_set_error(setup_future, error_code);
