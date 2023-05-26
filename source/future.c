@@ -7,6 +7,8 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/io/event_loop.h>
 
 enum aws_future_type {
     AWS_FUTURE_T_BY_VALUE,
@@ -23,6 +25,7 @@ struct aws_future_impl {
     struct aws_condition_variable wait_cvar;
     aws_future_on_done_fn *on_done_cb;
     void *on_done_user_data;
+    struct aws_event_loop *on_done_event_loop;
     union {
         aws_future_impl_result_clean_up_fn *clean_up;
         aws_future_impl_result_destroy_fn *destroy;
@@ -189,6 +192,46 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
     future->owns_result = false;
 }
 
+/* Data for invoking callback as a task on an event-loop */
+struct aws_future_done_event_loop_job {
+    struct aws_allocator *alloc;
+    struct aws_task task;
+    aws_future_on_done_fn *on_done_cb;
+    void *user_data;
+};
+
+static void s_future_impl_event_loop_callback_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_future_done_event_loop_job *job = arg;
+    job->on_done_cb(job->user_data);
+    aws_mem_release(job->alloc, job);
+}
+
+static void s_future_impl_invoke_callback(
+    aws_future_on_done_fn *on_done_cb,
+    void *user_data,
+    struct aws_event_loop *event_loop,
+    struct aws_allocator *alloc) {
+
+    if (event_loop) {
+        /* Schedule the callback as a task on the event-loop */
+        struct aws_future_done_event_loop_job *job =
+            aws_mem_calloc(alloc, 1, sizeof(struct aws_future_done_event_loop_job));
+        job->alloc = alloc;
+        aws_task_init(&job->task, s_future_impl_event_loop_callback_task, job, "aws_future_event_loop_callback");
+        job->on_done_cb = on_done_cb;
+        job->user_data = user_data;
+        aws_event_loop_schedule_task_now(event_loop, &job->task);
+
+        // TODO: aws_event_loop_release(event_loop);
+
+    } else {
+        /* Invoke callback immediately */
+        on_done_cb(user_data);
+    }
+}
+
 static void s_future_impl_set_done(struct aws_future_impl *future, void *src_address, int error_code) {
     bool is_error = error_code != 0;
 
@@ -197,12 +240,14 @@ static void s_future_impl_set_done(struct aws_future_impl *future, void *src_add
 
     aws_future_on_done_fn *on_done_cb = future->on_done_cb;
     void *on_done_user_data = future->on_done_user_data;
+    struct aws_event_loop *on_done_event_loop = future->on_done_event_loop;
 
     bool first_time = !future->is_done;
     if (first_time) {
         future->is_done = true;
         future->on_done_cb = NULL;
         future->on_done_user_data = NULL;
+        future->on_done_event_loop = NULL;
         if (is_error) {
             future->error_code = error_code;
         } else {
@@ -219,7 +264,7 @@ static void s_future_impl_set_done(struct aws_future_impl *future, void *src_add
     if (first_time) {
         /* invoke done callback outside critical section to avoid deadlock */
         if (on_done_cb) {
-            on_done_cb(on_done_user_data);
+            s_future_impl_invoke_callback(on_done_cb, on_done_user_data, on_done_event_loop, future->alloc);
         }
     } else if (!error_code) {
         /* future was already done, so just destroy this newer result */
@@ -273,7 +318,7 @@ void aws_future_impl_register_callback(
     aws_mutex_unlock(&future->lock);
     /* END CRITICAL SECTION */
 
-    /* if already done, fire callback now */
+    /* if already done, invoke callback now */
     if (already_done) {
         on_done(user_data);
     }
@@ -283,6 +328,9 @@ bool aws_future_impl_register_callback_if_not_done(
     struct aws_future_impl *future,
     aws_future_on_done_fn *on_done,
     void *on_done_user_data) {
+
+    AWS_ASSERT(future);
+    AWS_ASSERT(on_done);
 
     /* BEGIN CRITICAL SECTION */
     aws_mutex_lock(&future->lock);
@@ -299,6 +347,41 @@ bool aws_future_impl_register_callback_if_not_done(
     /* END CRITICAL SECTION */
 
     return !already_done;
+}
+
+void aws_future_impl_register_event_loop_callback(
+    struct aws_future_impl *future,
+    struct aws_event_loop *event_loop,
+    aws_future_on_done_fn *on_done,
+    void *user_data) {
+
+    AWS_ASSERT(future);
+    AWS_ASSERT(event_loop);
+    AWS_ASSERT(on_done);
+
+    // TODO: aws_event_loop_acquire(event_loop);
+
+    /* BEGIN CRITICAL SECTION */
+    aws_mutex_lock(&future->lock);
+
+    AWS_FATAL_ASSERT(future->on_done_cb == NULL && "Future done callback must only be set once");
+
+    bool already_done = future->is_done != 0;
+
+    /* if not done, store callback and event-loop for later */
+    if (!already_done) {
+        future->on_done_cb = on_done;
+        future->on_done_user_data = user_data;
+        future->on_done_event_loop = event_loop;
+    }
+
+    aws_mutex_unlock(&future->lock);
+    /* END CRITICAL SECTION */
+
+    /* if already done, schedule the callback to run as an event-loop task */
+    if (already_done) {
+        s_future_impl_invoke_callback(on_done, user_data, event_loop, future->alloc);
+    }
 }
 
 static bool s_future_impl_is_done_pred(void *user_data) {

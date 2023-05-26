@@ -9,33 +9,33 @@
 /*
 
 // THIS IS AN EXPERIMENTAL AND UNSTABLE API
-// TODO: API for callback to fire on event-loop
+// TODO: API for callback to invoke on event-loop
 // TODO: API for cancelling
 //
-// An aws_future is used to deliver the results of an asynchronous function.
+// An aws_future is used to deliver the result of an asynchronous function.
 //
-// When an async function is called, it creates an aws_future and returns it to the caller.
-// The async function is the "producer", it creates the result and gives it to the future.
-// The caller is the "consumer" that waits until the future is done and then takes the result.
-// Typically, the consumer waits by registering a callback to fire when the future is done.
+// When an async function is called, it creates a future and returns it to the caller.
+// When the async work is finished, it completes the future by setting an error or result value.
+// The caller waits until the future is done, checks for error, and then gets
+// the result if everything was OK. Typically, the caller waits by registering
+// a callback that the future invokes when it's done.
 //
-// The future "owns" the result. If result type T has a "destructor"
-// (clean_up(), destroy(), or release() function), and a future containing
-// a result is freed, the result's destructor is called.
-// If T has a destructor, the future has give_result() and take_result()
-// functions that explicitly transfer ownership to and from the future.
+// If result type T has a "destructor" (clean_up(), destroy(), or release() function),
+// then the future has give_result() and take_result() functions that explicitly
+// transfer ownership to and from the future.
+// If the future dies, and still "owns" the resource, it calls the destructor.
 // If T has no destructor, the future has set_result() and get_result()
 // functions that simply copy T by value.
 
 //
 // --- Design (if you're curious) ---
 //
-// This class was developed to give the "consumer" more control over how
-// the callback is invoked. In the past, we passed completion callbacks to the async
+// This class was developed to give the user more control over how the completion
+// callback is invoked. In the past, we passed completion callbacks to the async
 // function. But this could lead to issues when an async function "sometimes"
 // completed synchronously and "sometimes" completed async. The async function
 // would need to stress about how to schedule the callback so it was always async,
-// or more typically just fire it whenever and leave the caller to figure it out.
+// or more typically just invoke it whenever and leave the caller to figure it out.
 //
 // This class is also an experiment with "templates/generics in C".
 // In order to make the class type-safe, we use macros to define a unique
@@ -165,11 +165,11 @@ bool aws_future_T_is_done(const struct aws_future_T *future);
 // WARNING: You MUST NOT call this until the future is done.
 int aws_future_T_get_error(const struct aws_future_T *future);
 
-// Register completion callback to be invoked as soon as possible.
+// Register callback to be invoked when the future completes.
 //
-// If the future is already done, the callback runs immediately on the calling thread.
-// If the future completes after the callback is registered, the callback
-// will run on whatever thread completes the future.
+// If the future is already done, the callback runs synchronously on the calling thread.
+// If the future isn't done yet, the callback is registered, and it
+// will run synchronously on whatever thread completes the future.
 //
 // WARNING: You MUST NOT register more than one callback.
 void aws_future_T_register_callback(struct aws_future_T *future, aws_future_on_done_fn *on_done, void *user_data);
@@ -177,9 +177,9 @@ void aws_future_T_register_callback(struct aws_future_T *future, aws_future_on_d
 // If the future isn't done yet, then register the completion callback.
 //
 // Returns true if the callback was registered,
-// or false if the future is already complete.
+// or false if the future is already done.
 //
-// Use this when you can't risk the callback running immediately.
+// Use this when you can't risk the callback running synchronously.
 // For example: If you're calling an async function repeatedly,
 // and synchronous completion could lead to stack overflow due to recursion.
 // Or if you are holding a non-recursive mutex, and the callback also
@@ -187,9 +187,26 @@ void aws_future_T_register_callback(struct aws_future_T *future, aws_future_on_d
 //
 // WARNING: If a callback is registered, you MUST NOT call this again until
 // the callback has been invoked.
-bool aws_future_T_register_callback_if_not_done(struct aws_future_T *future,
-                                                aws_future_on_done_fn *on_done,
-                                                void *user_data);
+bool aws_future_T_register_callback_if_not_done(
+    struct aws_future_T *future,
+    aws_future_on_done_fn *on_done,
+    void *user_data);
+
+// Register completion callback to run async on an event-loop thread.
+//
+// When the future completes, the callback is scheduled to run as an event-loop task.
+// The callback is guaranteed not to run synchronously from the thread
+// registering the callback or from the thread completing the future.
+//
+// Use this when you want the callback to run on a particular event-loop thread,
+// or you want to ensure the callback is never run synchronously.
+//
+// WARNING: You MUST NOT register more than one callback.
+void aws_future_impl_register_event_loop_callback(
+    struct aws_future_impl *future,
+    struct aws_event_loop *event_loop,
+    aws_future_on_done_fn *on_done,
+    void *user_data);
 
 // Wait (up to timeout_ns) for future to complete.
 // Returns true if future completes in this time.
@@ -205,6 +222,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 #    pragma warning(disable : 5039) // reference to potentially throwing function passed to extern C function
 #endif
 
+struct aws_event_loop;
 struct aws_future_impl;
 
 /** Completion callback for aws_future<T> */
@@ -268,6 +286,13 @@ bool aws_future_impl_register_callback_if_not_done(
     void *user_data);
 
 AWS_IO_API
+void aws_future_impl_register_event_loop_callback(
+    struct aws_future_impl *future,
+    struct aws_event_loop *event_loop,
+    aws_future_on_done_fn *on_done,
+    void *user_data);
+
+AWS_IO_API
 bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns);
 
 AWS_IO_API
@@ -312,7 +337,16 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
     AWS_STATIC_IMPL                                                                                                    \
     bool FUTURE##_register_callback_if_not_done(                                                                       \
         struct FUTURE *future, aws_future_on_done_fn *on_done, void *user_data) {                                      \
+                                                                                                                       \
         return aws_future_impl_register_callback_if_not_done((struct aws_future_impl *)future, on_done, user_data);    \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL                                                                                                    \
+    void FUTURE##_register_event_loop_callback(                                                                        \
+        struct FUTURE *future, struct aws_event_loop *event_loop, aws_future_on_done_fn *on_done, void *user_data) {   \
+                                                                                                                       \
+        aws_future_impl_register_event_loop_callback(                                                                  \
+            (struct aws_future_impl *)future, event_loop, on_done, user_data);                                         \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL                                                                                                    \

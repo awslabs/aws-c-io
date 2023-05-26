@@ -7,6 +7,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/ref_count.h>
 #include <aws/common/thread.h>
+#include <aws/io/event_loop.h>
 #include <aws/testing/aws_test_harness.h>
 
 #include "future_test.h"
@@ -17,7 +18,7 @@
 /* Run through the basics of an AWS_FUTURE_T_BY_VALUE */
 static int s_test_future_by_value(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_bool *future = aws_future_bool_new(alloc);
     ASSERT_NOT_NULL(future);
@@ -33,7 +34,7 @@ static int s_test_future_by_value(struct aws_allocator *alloc, void *ctx) {
     future = aws_future_bool_release(future);
     ASSERT_NULL(future);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_by_value, s_test_future_by_value)
@@ -41,7 +42,7 @@ AWS_TEST_CASE(future_by_value, s_test_future_by_value)
 /* Run through the basics of an aws_future<void> */
 static int s_test_future_void(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_void *future = aws_future_void_new(alloc);
     ASSERT_NOT_NULL(future);
@@ -56,16 +57,19 @@ static int s_test_future_void(struct aws_allocator *alloc, void *ctx) {
     future = aws_future_void_release(future);
     ASSERT_NULL(future);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_void, s_test_future_void)
 
 struct future_size_callback_recorder {
-    struct aws_future_size *future; /* record all state when this future's callback fires */
+    struct aws_future_size *future;    /* record all state when this future's callback fires */
+    struct aws_event_loop *event_loop; /* record whether callback fires on this event-loop's thread */
+
     int error_code;
     size_t result;
     aws_thread_id_t thread_id;
+    bool is_event_loop_thread;
     int invoke_count;
 };
 
@@ -77,12 +81,16 @@ static void s_record_on_future_size_done(void *user_data) {
     }
     recorder->thread_id = aws_thread_current_thread_id();
     recorder->invoke_count++;
+
+    if (recorder->event_loop) {
+        recorder->is_event_loop_thread = aws_event_loop_thread_is_callers_thread(recorder->event_loop);
+    }
 }
 
 /* Test callback firing immediately upon registration */
 static int s_test_future_callback_fires_immediately(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct future_size_callback_recorder recorder;
     AWS_ZERO_STRUCT(recorder);
@@ -101,7 +109,7 @@ static int s_test_future_callback_fires_immediately(struct aws_allocator *alloc,
     ASSERT_INT_EQUALS(0, memcmp(&main_thread_id, &recorder.thread_id, sizeof(aws_thread_id_t)));
 
     aws_future_size_release(recorder.future);
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_callback_fires_immediately, s_test_future_callback_fires_immediately);
@@ -137,6 +145,7 @@ static struct aws_future_size *s_start_thread_job(struct aws_allocator *alloc, u
 
     struct aws_thread_options thread_options = *aws_default_thread_options();
     thread_options.join_strategy = AWS_TJS_MANAGED;
+    thread_options.name = aws_byte_cursor_from_c_str("FutureSizeJob");
 
     AWS_FATAL_ASSERT(aws_thread_launch(&thread, s_run_thread_job, job, &thread_options) == AWS_OP_SUCCESS);
 
@@ -147,7 +156,7 @@ static struct aws_future_size *s_start_thread_job(struct aws_allocator *alloc, u
  * This is the first test that looks like real-world use of aws_future */
 static int s_test_future_callback_fires_on_another_thread(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     /* Kick off thread, which will set result in 1sec */
     struct future_size_callback_recorder recorder = {
@@ -169,14 +178,14 @@ static int s_test_future_callback_fires_on_another_thread(struct aws_allocator *
     ASSERT_TRUE(memcmp(&main_thread_id, &recorder.thread_id, sizeof(aws_thread_id_t)) != 0);
 
     aws_future_size_release(recorder.future);
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_callback_fires_on_another_thread, s_test_future_callback_fires_on_another_thread);
 
 static int s_test_future_register_callback_if_not_done(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     {
         /* the callback should not get registered if future is already done */
@@ -216,14 +225,78 @@ static int s_test_future_register_callback_if_not_done(struct aws_allocator *all
 
         aws_future_size_release(recorder.future);
     }
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_register_callback_if_not_done, s_test_future_register_callback_if_not_done)
 
+static int s_test_future_register_event_loop_callback_after_done(struct aws_allocator *alloc, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(alloc);
+
+    struct future_size_callback_recorder recorder = {
+        .future = aws_future_size_new(alloc),
+        .event_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks),
+    };
+    ASSERT_SUCCESS(aws_event_loop_run(recorder.event_loop));
+
+    /* register callback after result already set */
+    aws_future_size_set_result(recorder.future, 765);
+
+    aws_future_size_register_event_loop_callback(
+        recorder.future, recorder.event_loop, s_record_on_future_size_done, &recorder);
+
+    /* Wait until event loop is destroyed, at which point the future is complete and the callback has fired */
+    aws_event_loop_destroy(recorder.event_loop);
+
+    /* callback should have fired on event-loop thread */
+    ASSERT_INT_EQUALS(1, recorder.invoke_count);
+    ASSERT_INT_EQUALS(0, recorder.error_code);
+    ASSERT_UINT_EQUALS(765, recorder.result);
+    ASSERT_TRUE(recorder.is_event_loop_thread);
+
+    /* cleanup */
+    aws_future_size_release(recorder.future);
+    aws_io_library_clean_up();
+    return 0;
+}
+AWS_TEST_CASE(future_register_event_loop_callback_after_done, s_test_future_register_event_loop_callback_after_done)
+
+static int s_test_future_register_event_loop_callback_before_done(struct aws_allocator *alloc, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(alloc);
+
+    struct future_size_callback_recorder recorder = {
+        .future = aws_future_size_new(alloc),
+        .event_loop = aws_event_loop_new_default(alloc, aws_high_res_clock_get_ticks),
+    };
+    ASSERT_SUCCESS(aws_event_loop_run(recorder.event_loop));
+
+    /* register callback before result is set */
+    aws_future_size_register_event_loop_callback(
+        recorder.future, recorder.event_loop, s_record_on_future_size_done, &recorder);
+
+    aws_future_size_set_result(recorder.future, 765);
+
+    /* Wait until event loop is destroyed, at which point the future is complete and the callback has fired */
+    aws_event_loop_destroy(recorder.event_loop);
+
+    /* callback should have fired on event-loop thread */
+    ASSERT_INT_EQUALS(1, recorder.invoke_count);
+    ASSERT_INT_EQUALS(0, recorder.error_code);
+    ASSERT_UINT_EQUALS(765, recorder.result);
+    ASSERT_TRUE(recorder.is_event_loop_thread);
+
+    /* cleanup */
+    aws_future_size_release(recorder.future);
+    aws_io_library_clean_up();
+    return 0;
+}
+AWS_TEST_CASE(future_register_event_loop_callback_before_done, s_test_future_register_event_loop_callback_before_done)
+
 static int s_test_future_wait_timeout(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_void *future = aws_future_void_new(alloc);
 
@@ -241,7 +314,7 @@ static int s_test_future_wait_timeout(struct aws_allocator *alloc, void *ctx) {
     ASSERT_TRUE(duration_ns >= (uint64_t)(0.9 * ONE_SEC_IN_NS));
 
     aws_future_void_release(future);
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_wait_timeout, s_test_future_wait_timeout)
@@ -269,7 +342,7 @@ void aws_destroyme_destroy(struct aws_destroyme *destroyme) {
 /* Run through the basics of an AWS_FUTURE_T_POINTER_WITH_DESTROY */
 static int s_test_future_pointer_with_destroy(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_destroyme *future = aws_future_destroyme_new(alloc);
     ASSERT_FALSE(aws_future_destroyme_is_done(future));
@@ -299,7 +372,7 @@ static int s_test_future_pointer_with_destroy(struct aws_allocator *alloc, void 
     aws_future_destroyme_release(future);
     ASSERT_TRUE(original_destroyme_died);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_pointer_with_destroy, s_test_future_pointer_with_destroy)
@@ -343,7 +416,7 @@ struct aws_refcountme *aws_refcountme_release(struct aws_refcountme *refcountme)
 /* Run through the basics of an AWS_FUTURE_T_POINTER_WITH_RELEASE */
 static int s_test_future_pointer_with_release(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_refcountme *future = aws_future_refcountme_new(alloc);
     ASSERT_FALSE(aws_future_refcountme_is_done(future));
@@ -367,7 +440,7 @@ static int s_test_future_pointer_with_release(struct aws_allocator *alloc, void 
     aws_future_refcountme_release(future);
     ASSERT_TRUE(original_refcountme_died);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_pointer_with_release, s_test_future_pointer_with_release)
@@ -375,7 +448,7 @@ AWS_TEST_CASE(future_pointer_with_release, s_test_future_pointer_with_release)
 /* Test that take_result() transfers ownership */
 static int s_test_future_take_result(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     { /* AWS_FUTURE_T_POINTER_WITH_DESTROY */
         bool destroyme_died = false;
@@ -415,7 +488,7 @@ static int s_test_future_take_result(struct aws_allocator *alloc, void *ctx) {
         ASSERT_TRUE(refcountme_died);
     }
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_take_result, s_test_future_take_result)
@@ -424,7 +497,7 @@ AWS_TEST_CASE(future_take_result, s_test_future_take_result)
  * We know this works because the destructor for destroyme and refcountme will assert if NULL is passed in */
 static int s_test_future_can_die_incomplete(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_destroyme *future_destroyme = aws_future_destroyme_new(alloc);
     aws_future_destroyme_release(future_destroyme);
@@ -432,7 +505,7 @@ static int s_test_future_can_die_incomplete(struct aws_allocator *alloc, void *c
     struct aws_future_refcountme *future_refcountme = aws_future_refcountme_new(alloc);
     aws_future_refcountme_release(future_refcountme);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_can_die_incomplete, s_test_future_can_die_incomplete)
@@ -459,7 +532,7 @@ static int s_test_future_by_pointer_accepts_null_result(struct aws_allocator *al
         ASSERT_NULL(aws_future_refcountme_get_result(future));
         aws_future_refcountme_release(future);
     }
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_by_pointer_accepts_null_result, s_test_future_by_pointer_accepts_null_result)
@@ -510,14 +583,14 @@ static int s_test_future_set_multiple_times(struct aws_allocator *alloc, void *c
     aws_future_destroyme_release(future);
     ASSERT_TRUE(result1_destroyed);
 
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_set_multiple_times, s_test_future_set_multiple_times)
 
 static int s_test_future_set_error(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
-    aws_common_library_init(alloc);
+    aws_io_library_init(alloc);
 
     struct aws_future_destroyme *future = aws_future_destroyme_new(alloc);
 
@@ -539,7 +612,7 @@ static int s_test_future_set_error(struct aws_allocator *alloc, void *ctx) {
     ASSERT_TRUE(result_destroyed);
 
     aws_future_destroyme_release(future);
-    aws_common_library_clean_up();
+    aws_io_library_clean_up();
     return 0;
 }
 AWS_TEST_CASE(future_set_error, s_test_future_set_error)
