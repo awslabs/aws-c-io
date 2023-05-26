@@ -11,7 +11,6 @@
  * TODO: should this live in stream.h, next to aws_input_stream?
  * TODO: modify API to return byte-bufs, instead of filling in the provided byte-buf?
  *       this would avoid a copy in the use cases we know of, but it's a bit more complex
- * TODO: P
  */
 
 #include <aws/io/io.h>

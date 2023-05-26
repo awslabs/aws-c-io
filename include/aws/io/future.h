@@ -21,40 +21,11 @@
 // a callback that the future invokes when it's done.
 //
 // If result type T has a "destructor" (clean_up(), destroy(), or release() function),
-// then the future has give_result() and take_result() functions that explicitly
+// then the future has set_result_by_move() and get_result_by_move() functions that explicitly
 // transfer ownership to and from the future.
 // If the future dies, and still "owns" the resource, it calls the destructor.
 // If T has no destructor, the future has set_result() and get_result()
 // functions that simply copy T by value.
-
-//
-// --- Design (if you're curious) ---
-//
-// This class was developed to give the user more control over how the completion
-// callback is invoked. In the past, we passed completion callbacks to the async
-// function. But this could lead to issues when an async function "sometimes"
-// completed synchronously and "sometimes" completed async. The async function
-// would need to stress about how to schedule the callback so it was always async,
-// or more typically just invoke it whenever and leave the caller to figure it out.
-//
-// This class is also an experiment with "templates/generics in C".
-// In order to make the class type-safe, we use macros to define a unique
-// API for each result type T we need to store in a future.
-// If we refer to aws_future<struct aws_byte_buf>, we mean a struct named
-// aws_future_byte_buf, which stores an aws_byte_buf by value.
-// This could lead to code bloat, but the type-safety seems worth it.
-//
-// future is defined in aws-c-io, instead of aws-c-common, so it can
-// easily integrate with aws_event_loop and aws_channel.
-//
-// It's legal to call set_error() or set_result() multiple times.
-// If the future is already done, it ignores the call.
-// If result T has a destructor, the new result is immediately freed instead of saved.
-// This design lets us deal with ambiguity where it's not 100% certain whether a handoff occurred.
-// For example: if we call from C->Java and an exception is thrown,
-// it's not clear whether Java got the handoff. In this case, we can safely
-// call set_error(), completing the future if necessary,
-// or being ignored if the future was already done.
 
 //
 // --- Defining new aws_future types ---
@@ -100,39 +71,39 @@ T aws_future_T_get_result(const struct aws_future_T *future);
 
 // For AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP
 //
-// give_result() transfers ownership of the result to the future.
+// set_result_by_move() transfers ownership of the result to the future.
 // The memory at value_address is memcpy'd into the future,
 // and then zeroed out to help prevent accidental reuse.
-// It is safe to give the result multiple times. If the future is already done,
+// It is safe to call this multiple times. If the future is already done,
 // the new result is destroyed instead of saved.
 //
-// Both a take_result() and get_result() are available.
-// take_result() returns T by value, and gives you ownership of the result.
-// get_result() returns T*, and the future continues owning it.
+// Both a get_result_by_move() and peek_result() are available.
+// get_result_by_move() returns T by value, and gives you ownership of the result.
+// peek_result() returns T*, and the future continues owning it.
 
-void aws_future_T_give_result(struct aws_future_T *future, T *value_address);
+void aws_future_T_set_result_by_move(struct aws_future_T *future, T *value_address);
 
-T* aws_future_T_get_result(const struct aws_future_T *future);
+T aws_future_T_get_result_by_move(struct aws_future_T *future);
 
-T aws_future_T_take_result(struct aws_future_T *future);
+T* aws_future_T_peek_result(const struct aws_future_T *future); peek_result()
 
 // For AWS_DECLARE_FUTURE_T_POINTER_WITH_DESTROY and AWS_DECLARE_FUTURE_T_POINTER_WITH_RELEASE
 //
-// give_result() transfers ownership of the result to the future.
+// set_result_by_move() transfers ownership of the result to the future.
 // The value at pointer_address is copied into the future,
 // and then set NULL to help prevent accidental reuse.
 // You are allowed to pass a pointer to NULL if you
 // want the result to convey "success, but no data".
 // If the future is already done, this new result is destroyed instead of saved.
 //
-// Both a take_result() and get_result() are available.
+// Both a get_result_by_move() and peek_result() are available.
 // You can take ownership of the result, or let the future continue owning it.
 
-void aws_future_T_give_result(struct aws_future_T *future, T **pointer_address);
+void aws_future_T_set_result_by_move(struct aws_future_T *future, T **pointer_address);
 
-T* aws_future_T_get_result(const struct aws_future_T *future);
+T* aws_future_T_get_result_by_move(struct aws_future_T *future);
 
-T* aws_future_T_take_result(struct aws_future_T *future);
+T* aws_future_T_peek_result(const struct aws_future_T *future);
 
 //
 // --- API (common) ---
@@ -213,6 +184,35 @@ void aws_future_impl_register_event_loop_callback(
 // This blocks the current thread, and is probably only useful for tests and sample programs.
 bool aws_future_T_wait(struct aws_future_T *future, uint64_t timeout_ns);
 
+//
+// --- Design (if you're curious) ---
+//
+// This class was developed to give the user more control over how the completion
+// callback is invoked. In the past, we passed completion callbacks to the async
+// function. But this could lead to issues when an async function "sometimes"
+// completed synchronously and "sometimes" completed async. The async function
+// would need to stress about how to schedule the callback so it was always async,
+// or more typically just invoke it whenever and leave the caller to figure it out.
+//
+// This class is also an experiment with "templates/generics in C".
+// In order to make the class type-safe, we use macros to define a unique
+// API for each result type T we need to store in a future.
+// If we refer to aws_future<struct aws_byte_buf>, we mean a struct named
+// aws_future_byte_buf, which stores an aws_byte_buf by value.
+// This could lead to code bloat, but the type-safety seems worth it.
+//
+// future is defined in aws-c-io, instead of aws-c-common, so it can
+// easily integrate with aws_event_loop and aws_channel.
+//
+// It's legal to call set_error() or set_result() multiple times.
+// If the future is already done, it ignores the call.
+// If result T has a destructor, the new result is immediately freed instead of saved.
+// This design lets us deal with ambiguity where it's not 100% certain whether a handoff occurred.
+// For example: if we call from C->Java and an exception is thrown,
+// it's not clear whether Java got the handoff. In this case, we can safely
+// call set_error(), completing the future if necessary,
+// or being ignored if the future was already done.
+
 */
 
 #include <aws/io/io.h>
@@ -272,7 +272,7 @@ AWS_IO_API
 void aws_future_impl_set_error(struct aws_future_impl *promise, int error_code);
 
 AWS_IO_API
-void aws_future_impl_give_result(struct aws_future_impl *promise, void *src_address);
+void aws_future_impl_set_result_by_move(struct aws_future_impl *promise, void *src_address);
 
 AWS_IO_API
 bool aws_future_impl_is_done(const struct aws_future_impl *future);
@@ -313,7 +313,7 @@ AWS_IO_API
 void *aws_future_impl_get_result_address(const struct aws_future_impl *future);
 
 AWS_IO_API
-void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_address);
+void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *dst_address);
 
 /* Common beginning to all aws_future<T> declarations */
 #define AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE) struct FUTURE;
@@ -384,7 +384,7 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T result) {                                        \
-        aws_future_impl_give_result((struct aws_future_impl *)future, &result);                                        \
+        aws_future_impl_set_result_by_move((struct aws_future_impl *)future, &result);                                 \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T FUTURE##_get_result(struct FUTURE *future) {                                                     \
@@ -406,17 +406,17 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
             alloc, sizeof(T), (aws_future_impl_result_clean_up_fn)clean_up_fn);                                        \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T *value_address) {                               \
-        aws_future_impl_give_result((struct aws_future_impl *)future, value_address);                                  \
+    AWS_STATIC_IMPL void FUTURE##_set_result_by_move(struct FUTURE *future, T *value_address) {                        \
+        aws_future_impl_set_result_by_move((struct aws_future_impl *)future, value_address);                           \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
         return aws_future_impl_get_result_address((const struct aws_future_impl *)future);                             \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL T FUTURE##_take_result(struct FUTURE *future) {                                                    \
+    AWS_STATIC_IMPL T FUTURE##_get_result_by_move(struct FUTURE *future) {                                             \
         T value;                                                                                                       \
-        aws_future_impl_take_result((struct aws_future_impl *)future, &value);                                         \
+        aws_future_impl_get_result_by_move((struct aws_future_impl *)future, &value);                                  \
         return value;                                                                                                  \
     }                                                                                                                  \
                                                                                                                        \
@@ -432,7 +432,7 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL void FUTURE##_set_result(struct FUTURE *future, T *result) {                                       \
-        aws_future_impl_give_result((struct aws_future_impl *)future, &result);                                        \
+        aws_future_impl_set_result_by_move((struct aws_future_impl *)future, &result);                                 \
     }                                                                                                                  \
                                                                                                                        \
     AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
@@ -454,18 +454,18 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
             alloc, (aws_future_impl_result_destroy_fn *)destroy_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T **pointer_address) {                            \
-        aws_future_impl_give_result((struct aws_future_impl *)future, pointer_address);                                \
+    AWS_STATIC_IMPL void FUTURE##_set_result_by_move(struct FUTURE *future, T **pointer_address) {                     \
+        aws_future_impl_set_result_by_move((struct aws_future_impl *)future, pointer_address);                         \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
-        return *(T **)aws_future_impl_get_result_address((const struct aws_future_impl *)future);                      \
-    }                                                                                                                  \
-                                                                                                                       \
-    AWS_STATIC_IMPL T *FUTURE##_take_result(struct FUTURE *future) {                                                   \
+    AWS_STATIC_IMPL T *FUTURE##_get_result_by_move(struct FUTURE *future) {                                            \
         T *pointer;                                                                                                    \
-        aws_future_impl_take_result((struct aws_future_impl *)future, &pointer);                                       \
+        aws_future_impl_get_result_by_move((struct aws_future_impl *)future, &pointer);                                \
         return pointer;                                                                                                \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL T *FUTURE##_peek_result(const struct FUTURE *future) {                                             \
+        return *(T **)aws_future_impl_get_result_address((const struct aws_future_impl *)future);                      \
     }                                                                                                                  \
                                                                                                                        \
     AWS_FUTURE_T_DECLARATION_END(FUTURE)
@@ -483,18 +483,18 @@ void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_addre
             alloc, (aws_future_impl_result_release_fn *)release_fn);                                                   \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL void FUTURE##_give_result(struct FUTURE *future, T **pointer_address) {                            \
-        aws_future_impl_give_result((struct aws_future_impl *)future, pointer_address);                                \
+    AWS_STATIC_IMPL void FUTURE##_set_result_by_move(struct FUTURE *future, T **pointer_address) {                     \
+        aws_future_impl_set_result_by_move((struct aws_future_impl *)future, pointer_address);                         \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
-        return *(T **)aws_future_impl_get_result_address((const struct aws_future_impl *)future);                      \
-    }                                                                                                                  \
-                                                                                                                       \
-    AWS_STATIC_IMPL T *FUTURE##_take_result(struct FUTURE *future) {                                                   \
+    AWS_STATIC_IMPL T *FUTURE##_get_result_by_move(struct FUTURE *future) {                                            \
         T *pointer;                                                                                                    \
-        aws_future_impl_take_result((struct aws_future_impl *)future, &pointer);                                       \
+        aws_future_impl_get_result_by_move((struct aws_future_impl *)future, &pointer);                                \
         return pointer;                                                                                                \
+    }                                                                                                                  \
+                                                                                                                       \
+    AWS_STATIC_IMPL T *FUTURE##_peek_result(const struct FUTURE *future) {                                             \
+        return *(T **)aws_future_impl_get_result_address((const struct aws_future_impl *)future);                      \
     }                                                                                                                  \
                                                                                                                        \
     AWS_FUTURE_T_DECLARATION_END(FUTURE)

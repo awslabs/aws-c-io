@@ -193,14 +193,14 @@ void *aws_future_impl_get_result_address(const struct aws_future_impl *future) {
     /* not bothering with lock, none of this can change after future is done */
     AWS_FATAL_ASSERT(future->is_done && "Cannot get result before future is done");
     AWS_FATAL_ASSERT(!future->error_code && "Cannot get result from future that failed with an error");
-    AWS_FATAL_ASSERT(future->owns_result && "Result was already taken from future");
+    AWS_FATAL_ASSERT(future->owns_result && "Result was already moved from future");
 
     const struct aws_future_impl *address_of_memory_after_this_struct = future + 1;
     void *result_addr = (void *)address_of_memory_after_this_struct;
     return result_addr;
 }
 
-void aws_future_impl_take_result(struct aws_future_impl *future, void *dst_address) {
+void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *dst_address) {
     void *result_addr = aws_future_impl_get_result_address(future);
     memcpy(dst_address, result_addr, future->sizeof_result);
     memset(result_addr, 0, future->sizeof_result);
@@ -323,12 +323,12 @@ void aws_future_impl_set_error(struct aws_future_impl *future, int error_code) {
     s_future_impl_set_done(future, NULL /*src_address*/, error_code);
 }
 
-void aws_future_impl_give_result(struct aws_future_impl *future, void *src_address) {
+void aws_future_impl_set_result_by_move(struct aws_future_impl *future, void *src_address) {
     AWS_ASSERT(future);
     AWS_ASSERT(src_address);
     s_future_impl_set_done(future, src_address, 0 /*error_code*/);
 
-    /* the future "takes ownership" of the result.
+    /* the future takes ownership of the result.
      * zero out memory at the src_address to reinforce this transfer of ownership. */
     memset(src_address, 0, future->sizeof_result);
 }
