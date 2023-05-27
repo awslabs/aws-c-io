@@ -9,8 +9,6 @@
 /*
 
 // THIS IS AN EXPERIMENTAL AND UNSTABLE API
-// TODO: API for callback to invoke on event-loop
-// TODO: API for cancelling
 //
 // An aws_future is used to deliver the result of an asynchronous function.
 //
@@ -166,16 +164,28 @@ bool aws_future_T_register_callback_if_not_done(
 // Register completion callback to run async on an event-loop thread.
 //
 // When the future completes, the callback is scheduled to run as an event-loop task.
-// The callback is guaranteed not to run synchronously from the thread
-// registering the callback or from the thread completing the future.
 //
-// Use this when you want the callback to run on a particular event-loop thread,
-// or you want to ensure the callback is never run synchronously.
+// Use this when you want the callback to run on the event-loop's thread,
+// or to ensure the callback runs async even if the future completed synchronously.
 //
 // WARNING: You MUST NOT register more than one callback.
-void aws_future_impl_register_event_loop_callback(
-    struct aws_future_impl *future,
+void aws_future_T_register_event_loop_callback(
+    struct aws_future_T *future,
     struct aws_event_loop *event_loop,
+    aws_future_callback_fn *on_done,
+    void *user_data);
+
+// Register completion callback to run async on an aws_channel's thread.
+//
+// When the future completes, the callback is scheduled to run as a channel task.
+//
+// Use this when you want the callback to run on the channel's thread,
+// or to ensure the callback runs async even if the future completed synchronously.
+//
+// WARNING: You MUST NOT register more than one callback.
+void aws_future_T_register_channel_callback(
+    struct aws_future_T *future,
+    struct aws_channel *channel,
     aws_future_callback_fn *on_done,
     void *user_data);
 
