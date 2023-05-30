@@ -185,9 +185,6 @@ bool aws_future_T_wait(struct aws_future_T *future, uint64_t timeout_ns);
 #include <aws/io/io.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
-#if defined(_MSC_VER)
-#    pragma warning(disable : 5039) // reference to potentially throwing function passed to extern C function
-#endif
 
 struct aws_channel;
 struct aws_event_loop;
