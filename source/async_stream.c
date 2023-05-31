@@ -154,17 +154,17 @@ static struct aws_future_bool *s_async_wrapping_synchronous_stream_read(
     struct aws_future_bool *future = aws_future_bool_new(async_stream->alloc);
 
     /* Keep calling read() until we get some data, or hit EOF.
-     * This is inefficient, but the synchronous aws_input_stream API allows
-     * 0 byte reads and the aws_async_input_stream API does not.
+     * We do this because the synchronous aws_input_stream API allows
+     * 0 byte reads, but the aws_async_input_stream API does not.
      *
      * The synchronous aws_input_stream API allows 0 bytes reads because we
      * didn't used to have an async API, and 0 byte reads were the way to report
      * "data not available yet".
      *
-     * TODO: Sleep between reads? Spawn a thread for subsequent attempts?
-     * Not sure if this problem is worth solving, since any synchronous
-     * aws_input_stream doing 0 byte reads should be replaced with an
-     * actual aws_async_input_stream. */
+     * Continually calling read() is a waste of CPU, but I'm not sure tricks to
+     * work around this (sleeping between retries, retrying from a thread, etc)
+     * are worth the complexity. The real solution to an aws_input_stream
+     * doing 0 byte reads is to replace it with an actual async stream */
     size_t prev_len = dest->len;
     struct aws_stream_status status = {.is_end_of_stream = false, .is_valid = true};
     while (!status.is_end_of_stream && (dest->len == prev_len)) {
