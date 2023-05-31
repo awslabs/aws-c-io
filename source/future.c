@@ -211,6 +211,7 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
 struct aws_future_event_loop_callback_job {
     struct aws_allocator *alloc;
     struct aws_task task;
+    struct aws_event_loop *event_loop;
     aws_future_callback_fn *callback;
     void *user_data;
 };
@@ -220,6 +221,7 @@ static void s_future_impl_event_loop_callback_task(struct aws_task *task, void *
     (void)status;
     struct aws_future_event_loop_callback_job *job = arg;
     job->callback(job->user_data);
+    // TODO: aws_event_loop_release(job->event_loop);
     aws_mem_release(job->alloc, job);
 }
 
@@ -227,6 +229,7 @@ static void s_future_impl_event_loop_callback_task(struct aws_task *task, void *
 struct aws_future_channel_callback_job {
     struct aws_allocator *alloc;
     struct aws_channel_task task;
+    struct aws_channel *channel;
     aws_future_callback_fn *callback;
     void *user_data;
 };
@@ -236,6 +239,7 @@ static void s_future_impl_channel_callback_task(struct aws_channel_task *task, v
     (void)status;
     struct aws_future_channel_callback_job *job = arg;
     job->callback(job->user_data);
+    aws_channel_release_hold(job->channel);
     aws_mem_release(job->alloc, job);
 }
 
@@ -253,11 +257,11 @@ static void s_future_impl_invoke_callback(struct aws_future_callback_data *callb
                 aws_mem_calloc(alloc, 1, sizeof(struct aws_future_event_loop_callback_job));
             job->alloc = alloc;
             aws_task_init(&job->task, s_future_impl_event_loop_callback_task, job, "aws_future_event_loop_callback");
+            job->event_loop = callback->u.event_loop;
             job->callback = callback->fn;
             job->user_data = callback->user_data;
 
             aws_event_loop_schedule_task_now(callback->u.event_loop, &job->task);
-            // TODO: aws_event_loop_release(event_loop);
         } break;
 
         case AWS_FUTURE_CHANNEL_CALLBACK: {
@@ -266,11 +270,11 @@ static void s_future_impl_invoke_callback(struct aws_future_callback_data *callb
                 aws_mem_calloc(alloc, 1, sizeof(struct aws_future_channel_callback_job));
             job->alloc = alloc;
             aws_channel_task_init(&job->task, s_future_impl_channel_callback_task, job, "aws_future_channel_callback");
+            job->channel = callback->u.channel;
             job->callback = callback->fn;
             job->user_data = callback->user_data;
 
             aws_channel_schedule_task_now(callback->u.channel, &job->task);
-            aws_channel_release_hold(callback->u.channel);
         } break;
     }
 }
