@@ -90,7 +90,8 @@ struct aws_async_input_stream *aws_async_input_stream_release(struct aws_async_i
  * Returns a future, which will contain an error code if something went wrong,
  * or a result bool indicating whether EOF has been reached.
  *
- * WARNING: Do not call read() again until the previous read() is done.
+ * WARNING: The buffer must have space available.
+ * WARNING: Do not read again until the previous read is complete.
  */
 AWS_IO_API
 struct aws_future_bool *aws_async_input_stream_read(struct aws_async_input_stream *stream, struct aws_byte_buf *dest);
@@ -101,6 +102,9 @@ struct aws_future_bool *aws_async_input_stream_read(struct aws_async_input_strea
  * It may complete synchronously. It may complete on another thread.
  * Returns a future, which will contain an error code if something went wrong,
  * or a result bool indicating whether EOF has been reached.
+ *
+ * WARNING: The buffer must have space available.
+ * WARNING: Do not read again until the previous read is complete.
  */
 AWS_IO_API
 struct aws_future_bool *aws_async_input_stream_read_to_fill(

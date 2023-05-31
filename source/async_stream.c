@@ -15,6 +15,12 @@ void aws_async_input_stream_init_base(
     const struct aws_async_input_stream_vtable *vtable,
     void *impl) {
 
+    AWS_PRECONDITION(stream);
+    AWS_PRECONDITION(alloc);
+    AWS_PRECONDITION(vtable);
+    AWS_PRECONDITION(vtable->read);
+    AWS_PRECONDITION(vtable->destroy);
+
     AWS_ZERO_STRUCT(*stream);
     stream->alloc = alloc;
     stream->vtable = vtable;
@@ -37,14 +43,19 @@ struct aws_async_input_stream *aws_async_input_stream_release(struct aws_async_i
 }
 
 struct aws_future_bool *aws_async_input_stream_read(struct aws_async_input_stream *stream, struct aws_byte_buf *dest) {
-    /* Deal with this edge case here, instead of relying on every implementation to do it right. */
+    AWS_PRECONDITION(stream);
+    AWS_PRECONDITION(dest);
+
+    /* Ensure the buffer has space available */
     if (dest->len == dest->capacity) {
         struct aws_future_bool *future = aws_future_bool_new(stream->alloc);
         aws_future_bool_set_error(future, AWS_ERROR_SHORT_BUFFER);
         return future;
     }
 
-    return stream->vtable->read(stream, dest);
+    struct aws_future_bool *future = stream->vtable->read(stream, dest);
+    AWS_POSTCONDITION(future != NULL);
+    return future;
 }
 
 /* Data to perform the aws_async_input_stream_read_to_fill() job */
@@ -53,20 +64,24 @@ struct aws_async_input_stream_fill_job {
     struct aws_async_input_stream *stream;
     struct aws_byte_buf *dest;
     /* Future for each read() step */
-    struct aws_future_bool *read_future;
-    /* Future to set when this job completes */
-    struct aws_future_bool *my_future;
+    struct aws_future_bool *read_step_future;
+    /* Future to set when this fill job completes */
+    struct aws_future_bool *on_complete_future;
 };
 
-static void s_async_stream_fill_job_complete(struct aws_async_input_stream_fill_job *job, bool eof, int error_code) {
+static void s_async_stream_fill_job_complete(
+    struct aws_async_input_stream_fill_job *fill_job,
+    bool eof,
+    int error_code) {
+
     if (error_code) {
-        aws_future_bool_set_error(job->my_future, error_code);
+        aws_future_bool_set_error(fill_job->on_complete_future, error_code);
     } else {
-        aws_future_bool_set_result(job->my_future, eof);
+        aws_future_bool_set_result(fill_job->on_complete_future, eof);
     }
-    aws_future_bool_release(job->my_future);
-    aws_async_input_stream_release(job->stream);
-    aws_mem_release(job->alloc, job);
+    aws_future_bool_release(fill_job->on_complete_future);
+    aws_async_input_stream_release(fill_job->stream);
+    aws_mem_release(fill_job->alloc, fill_job);
 }
 
 /* Call read() in a loop.
@@ -75,33 +90,36 @@ static void s_async_stream_fill_job_complete(struct aws_async_input_stream_fill_
  * So be complicated and loop until a read() ) call is actually async,
  * and only then set the completion callback (which is this same function, where we resume looping). */
 static void s_async_stream_fill_job_loop(void *user_data) {
-    struct aws_async_input_stream_fill_job *job = user_data;
+    struct aws_async_input_stream_fill_job *fill_job = user_data;
 
     while (true) {
-        /* Process read_future from previous iteration of loop.
+        /* Process read_step_future from previous iteration of loop.
          * It's NULL the first time the job ever enters the loop.
-         * But it's set in subsequent runs of the loop, and when this is a read_future completion callback. */
-        if (job->read_future) {
-            if (aws_future_bool_register_callback_if_not_done(job->read_future, s_async_stream_fill_job_loop, job)) {
+         * But it's set in subsequent runs of the loop,
+         * and when this is a read_step_future completion callback. */
+        if (fill_job->read_step_future) {
+            if (aws_future_bool_register_callback_if_not_done(
+                    fill_job->read_step_future, s_async_stream_fill_job_loop, fill_job)) {
+
                 /* not done, we'll resume this loop when callback fires */
                 return;
             }
 
-            /* read_future is done */
-            int error_code = aws_future_bool_get_error(job->read_future);
-            bool eof = error_code ? false : aws_future_bool_get_result(job->read_future);
-            bool reached_capacity = job->dest->len == job->dest->capacity;
-            job->read_future = aws_future_bool_release(job->read_future); /* release and NULL */
+            /* read_step_future is done */
+            int error_code = aws_future_bool_get_error(fill_job->read_step_future);
+            bool eof = error_code ? false : aws_future_bool_get_result(fill_job->read_step_future);
+            bool reached_capacity = fill_job->dest->len == fill_job->dest->capacity;
+            fill_job->read_step_future = aws_future_bool_release(fill_job->read_step_future); /* release and NULL */
 
             if (error_code || eof || reached_capacity) {
                 /* job complete! */
-                s_async_stream_fill_job_complete(job, eof, error_code);
+                s_async_stream_fill_job_complete(fill_job, eof, error_code);
                 return;
             }
         }
 
         /* Kick off a read, which may or may not complete async */
-        job->read_future = aws_async_input_stream_read(job->stream, job->dest);
+        fill_job->read_step_future = aws_async_input_stream_read(fill_job->stream, fill_job->dest);
     }
 }
 
@@ -109,23 +127,27 @@ struct aws_future_bool *aws_async_input_stream_read_to_fill(
     struct aws_async_input_stream *stream,
     struct aws_byte_buf *dest) {
 
+    AWS_PRECONDITION(stream);
+    AWS_PRECONDITION(dest);
+
     struct aws_future_bool *future = aws_future_bool_new(stream->alloc);
 
-    /* Deal with this edge case here, instead of relying on every implementation to do it right. */
+    /* Ensure the buffer has space available */
     if (dest->len == dest->capacity) {
         aws_future_bool_set_error(future, AWS_ERROR_SHORT_BUFFER);
         return future;
     }
 
-    struct aws_async_input_stream_fill_job *job =
+    /* Prepare for async job */
+    struct aws_async_input_stream_fill_job *fill_job =
         aws_mem_calloc(stream->alloc, 1, sizeof(struct aws_async_input_stream_fill_job));
-    job->alloc = stream->alloc;
-    job->stream = aws_async_input_stream_acquire(stream);
-    job->dest = dest;
-    job->my_future = aws_future_bool_acquire(future);
+    fill_job->alloc = stream->alloc;
+    fill_job->stream = aws_async_input_stream_acquire(stream);
+    fill_job->dest = dest;
+    fill_job->on_complete_future = aws_future_bool_acquire(future);
 
-    /* Kick off work  */
-    s_async_stream_fill_job_loop(job);
+    /* Kick off work */
+    s_async_stream_fill_job_loop(fill_job);
 
     return future;
 }
@@ -195,6 +217,7 @@ struct aws_async_input_stream *aws_async_input_stream_new_from_synchronous(
     struct aws_allocator *alloc,
     struct aws_input_stream *source) {
 
+    AWS_PRECONDITION(alloc);
     AWS_PRECONDITION(source);
 
     struct aws_async_stream_wrapping_synchronous *async_impl =
