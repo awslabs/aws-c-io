@@ -12,6 +12,8 @@
  *       this would avoid a copy in the use-cases we know of, but it's more complex
  * TODO: vtable acquire()/release()?
  * TODO: protect against simultaneous reads?
+ * TODO: check results of vtable->read() (i.e. 0 byte reads not allowed)?
+ *       this would require 1 or 2 additional allocations per read
  */
 
 #include <aws/io/io.h>
@@ -33,7 +35,21 @@ struct aws_async_input_stream {
 };
 
 struct aws_async_input_stream_vtable {
+    /**
+     * Destroy the stream, its refcount has reached 0.
+     */
     void (*destroy)(struct aws_async_input_stream *stream);
+
+    /**
+     * Read once into the buffer.
+     * Complete the read when at least 1 byte is read, the buffer is full, or EOF is reached.
+     * Do not resize the buffer (do not use "aws_byte_buf_xyz_dynamic()" functions)
+     * Do not assume that buffer len starts at 0.
+     * You may assume that read() won't be called again until the current one completes.
+     * You may assume that the buffer has some space available.
+     * Return a future, which will contain an error code if something went wrong,
+     * or a result bool indicating whether EOF has been reached.
+     */
     struct aws_future_bool *(*read)(struct aws_async_input_stream *stream, struct aws_byte_buf *dest);
 };
 
@@ -72,6 +88,8 @@ struct aws_async_input_stream *aws_async_input_stream_release(struct aws_async_i
  * It may complete synchronously. It may complete on another thread.
  * Returns a future, which will contain an error code if something went wrong,
  * or a result bool indicating whether EOF has been reached.
+ *
+ * WARNING: Do not call read() again until the previous read() is done.
  */
 AWS_IO_API
 struct aws_future_bool *aws_async_input_stream_read(struct aws_async_input_stream *stream, struct aws_byte_buf *dest);
@@ -90,8 +108,6 @@ struct aws_future_bool *aws_async_input_stream_read_to_fill(
 
 /**
  * Create a new async stream, which wraps a synchronous aws_input_stream.
- * Async read calls will always complete synchronously, since the
- * underlying source is synchronous.
  * The new stream acquires a reference to the `source` stream.
  * This function cannot fail.
  */
