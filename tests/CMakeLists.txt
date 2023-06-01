@@ -254,6 +254,10 @@ add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
 add_test_case(test_input_stream_binary)
 
+add_test_case(async_input_stream_wrapping_sync_simple)
+add_test_case(async_input_stream_wrapping_sync_reports_error)
+add_test_case(async_input_stream_wrapping_sync_retries_zero_byte_reads)
+
 add_test_case(open_channel_statistics_test)
 
 add_test_case(shared_library_open_failure)
