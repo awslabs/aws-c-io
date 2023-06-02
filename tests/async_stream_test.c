@@ -181,7 +181,7 @@ AWS_TEST_CASE(async_input_stream_fill_completes_on_thread, s_test_async_input_st
 static int s_test_async_input_stream_fill_completes_on_thread(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
-        .completion_strategy = AWS_AIST_READ_COMPLETES_ON_ANOTHER_THREAD,
+        .completion_strategy = AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD,
         .max_bytes_per_read = 1,
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
@@ -193,7 +193,7 @@ AWS_TEST_CASE(async_input_stream_fill_completes_immediately, s_test_async_input_
 static int s_test_async_input_stream_fill_completes_immediately(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
-        .completion_strategy = AWS_AIST_READ_COMPLETES_IMMEDIATELY,
+        .completion_strategy = AWS_ASYNC_READ_COMPLETES_IMMEDIATELY,
         .max_bytes_per_read = 1,
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
@@ -205,7 +205,7 @@ AWS_TEST_CASE(async_input_stream_fill_completes_randomly, s_test_async_input_str
 static int s_test_async_input_stream_fill_completes_randomly(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
-        .completion_strategy = AWS_AIST_READ_COMPLETES_ON_RANDOM_THREAD,
+        .completion_strategy = AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD,
         .max_bytes_per_read = 1,
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);

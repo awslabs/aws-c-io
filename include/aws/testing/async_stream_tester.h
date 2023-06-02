@@ -12,6 +12,13 @@
 #include <aws/common/mutex.h>
 #include <aws/common/thread.h>
 #include <aws/io/future.h>
+#include <aws/testing/stream_tester.h>
+
+#ifndef AWS_UNSTABLE_TESTING_API
+#    error This code is designed for use by AWS owned libraries for the AWS C99 SDK. \
+You are welcome to use it, but we make no promises on the stability of this API. \
+To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
+#endif
 
 /**
  * Use aws_async_input_stream_tester to test edge cases in systems that take async streams.
@@ -23,13 +30,19 @@ struct aws_async_input_stream_tester_options {
      * the stream copies these to its own internal buffer */
     struct aws_byte_cursor source_bytes;
 
-    enum aws_async_input_stream_tester_completion_strategy {
+    /* if non-zero, autogen contents of stream N bytes in length */
+    size_t autogen_length;
+
+    /* if non-zero, autogen streaming content N bytes in length */
+    enum aws_autogen_style autogen_style;
+
+    enum aws_async_read_completion_strategy {
         /* the tester has its own thread, and reads always complete from there */
-        AWS_AIST_READ_COMPLETES_ON_ANOTHER_THREAD,
+        AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD,
         /* reads complete before read() even returns */
-        AWS_AIST_READ_COMPLETES_IMMEDIATELY,
+        AWS_ASYNC_READ_COMPLETES_IMMEDIATELY,
         /* sometimes reads complete immediately, sometimes they complete on another thread */
-        AWS_AIST_READ_COMPLETES_ON_RANDOM_THREAD,
+        AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD,
     } completion_strategy;
 
     /* if non-zero, a read will take at least this long to complete */
@@ -74,6 +87,7 @@ struct aws_async_input_stream_tester {
     struct aws_atomic_var num_outstanding_reads;
 };
 
+AWS_STATIC_IMPL
 void s_async_input_stream_tester_do_actual_read(
     struct aws_async_input_stream_tester *impl,
     struct aws_byte_buf *dest,
@@ -141,13 +155,13 @@ struct aws_future_bool *s_async_input_stream_tester_read(
 
     bool do_on_thread = false;
     switch (impl->options.completion_strategy) {
-        case AWS_AIST_READ_COMPLETES_ON_ANOTHER_THREAD:
+        case AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD:
             do_on_thread = true;
             break;
-        case AWS_AIST_READ_COMPLETES_ON_RANDOM_THREAD:
+        case AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD:
             do_on_thread = (rand() % 2 == 0);
             break;
-        case AWS_AIST_READ_COMPLETES_IMMEDIATELY:
+        case AWS_ASYNC_READ_COMPLETES_IMMEDIATELY:
             do_on_thread = false;
             break;
     }
@@ -171,7 +185,7 @@ struct aws_future_bool *s_async_input_stream_tester_read(
 
 AWS_STATIC_IMPL
 void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream_tester *impl) {
-    if (impl->options.completion_strategy != AWS_AIST_READ_COMPLETES_IMMEDIATELY) {
+    if (impl->options.completion_strategy != AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         aws_condition_variable_clean_up(&impl->synced_data.cvar);
         aws_mutex_clean_up(&impl->synced_data.lock);
     }
@@ -185,7 +199,7 @@ AWS_STATIC_IMPL
 void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_stream) {
     struct aws_async_input_stream_tester *impl = async_stream->impl;
 
-    if (impl->options.completion_strategy == AWS_AIST_READ_COMPLETES_IMMEDIATELY) {
+    if (impl->options.completion_strategy == AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         s_async_input_stream_tester_do_actual_destroy(impl);
     } else {
         /* signal thread to finish cleaning things up */
@@ -250,14 +264,19 @@ struct aws_async_input_stream *aws_async_input_stream_new_tester(
 
     struct aws_async_input_stream_tester *impl = aws_mem_calloc(alloc, 1, sizeof(struct aws_async_input_stream_tester));
     aws_async_input_stream_init_base(&impl->base, alloc, &s_async_input_stream_tester_vtable, impl);
-
     impl->options = *options;
-    aws_byte_buf_init_copy_from_cursor(&impl->source_buf, alloc, options->source_bytes);
-    impl->current_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
-
     aws_atomic_init_int(&impl->num_outstanding_reads, 0);
 
-    if (options->completion_strategy != AWS_AIST_READ_COMPLETES_IMMEDIATELY) {
+    if (options->autogen_length > 0) {
+        AWS_FATAL_ASSERT(impl->source_buf.len == 0); /* set autogen_length or source_bytes but not both */
+        s_byte_buf_init_autogenned(&impl->source_buf, alloc, options->autogen_length, options->autogen_style);
+    } else {
+        aws_byte_buf_init_copy_from_cursor(&impl->source_buf, alloc, options->source_bytes);
+    }
+
+    impl->current_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
+
+    if (options->completion_strategy != AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         aws_mutex_init(&impl->synced_data.lock);
         aws_condition_variable_init(&impl->synced_data.cvar);
 
