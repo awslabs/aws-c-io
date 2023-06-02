@@ -254,6 +254,12 @@ add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
 add_test_case(test_input_stream_binary)
 
+add_test_case(async_input_stream_fill_completes_on_thread)
+add_test_case(async_input_stream_fill_completes_immediately)
+add_test_case(async_input_stream_fill_completes_randomly)
+add_test_case(async_input_stream_fill_eof_requires_extra_read)
+add_test_case(async_input_stream_fill_reports_error)
+
 add_test_case(open_channel_statistics_test)
 
 add_test_case(shared_library_open_failure)

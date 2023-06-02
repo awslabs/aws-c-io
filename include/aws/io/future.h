@@ -361,7 +361,7 @@ T aws_future_T_get_result(const struct aws_future_T *future);
         aws_future_impl_set_result_by_move((struct aws_future_impl *)future, &result);                                 \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL T FUTURE##_get_result(struct FUTURE *future) {                                                     \
+    AWS_STATIC_IMPL T FUTURE##_get_result(const struct FUTURE *future) {                                               \
         return *(T *)aws_future_impl_get_result_address((const struct aws_future_impl *)future);                       \
     }                                                                                                                  \
                                                                                                                        \
@@ -410,7 +410,7 @@ T* aws_future_T_peek_result(const struct aws_future_T *future);
         aws_future_impl_set_result_by_move((struct aws_future_impl *)future, value_address);                           \
     }                                                                                                                  \
                                                                                                                        \
-    AWS_STATIC_IMPL T *FUTURE##_get_result(const struct FUTURE *future) {                                              \
+    AWS_STATIC_IMPL T *FUTURE##_peek_result(const struct FUTURE *future) {                                             \
         return aws_future_impl_get_result_address((const struct aws_future_impl *)future);                             \
     }                                                                                                                  \
                                                                                                                        \

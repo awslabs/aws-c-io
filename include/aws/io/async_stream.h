@@ -111,16 +111,6 @@ struct aws_future_bool *aws_async_input_stream_read_to_fill(
     struct aws_async_input_stream *stream,
     struct aws_byte_buf *dest);
 
-/**
- * Create a new async stream, which wraps a synchronous aws_input_stream.
- * The new stream acquires a reference to the `source` stream.
- * This function cannot fail.
- */
-AWS_IO_API
-struct aws_async_input_stream *aws_async_input_stream_new_from_synchronous(
-    struct aws_allocator *alloc,
-    struct aws_input_stream *source);
-
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 
