@@ -170,7 +170,7 @@ void s_byte_buf_init_autogenned(
     enum aws_autogen_style style) {
 
     aws_byte_buf_init(buf, alloc, length);
-    struct aws_byte_cursor pattern;
+    struct aws_byte_cursor pattern = {0};
     switch (style) {
         case AWS_AUTOGEN_LOREM_IPSUM:
             pattern = aws_byte_cursor_from_c_str(
