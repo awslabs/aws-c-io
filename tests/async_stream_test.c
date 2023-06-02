@@ -26,6 +26,7 @@ static struct aws_async_input_stream *s_new_async_stream_wrapping_synchronous_te
 
 /* Test aws_async_input_stream_new_from_synchronous()
  * Ensure it can do basic reads */
+AWS_TEST_CASE(async_input_stream_wrapping_sync_simple, s_test_async_input_stream_wrapping_sync_simple)
 static int s_test_async_input_stream_wrapping_sync_simple(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
@@ -64,10 +65,10 @@ static int s_test_async_input_stream_wrapping_sync_simple(struct aws_allocator *
     aws_io_library_clean_up();
     return 0;
 }
-AWS_TEST_CASE(async_input_stream_wrapping_sync_simple, s_test_async_input_stream_wrapping_sync_simple)
 
 /* Test aws_async_input_stream_new_from_synchronous()
  * Ensure it reports a read error */
+AWS_TEST_CASE(async_input_stream_wrapping_sync_reports_error, s_test_async_input_stream_wrapping_sync_reports_error)
 static int s_test_async_input_stream_wrapping_sync_reports_error(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
@@ -97,11 +98,12 @@ static int s_test_async_input_stream_wrapping_sync_reports_error(struct aws_allo
     aws_io_library_clean_up();
     return 0;
 }
-AWS_TEST_CASE(async_input_stream_wrapping_sync_reports_error, s_test_async_input_stream_wrapping_sync_reports_error)
 
 /* Test aws_async_input_stream_new_from_synchronous().
- * Ensure it retries after a zero-byte read until something is read */
-static int s_test_async_input_stream_wrapping_sync_retries_zero_byte_reads(struct aws_allocator *alloc, void *ctx) {
+ * Ensure that the async API doesn't do 0 byte reads, except at EOF.
+ * The synchronous API can do 0 byte reads, but the async wrapper should retry until it gets data */
+AWS_TEST_CASE(async_input_stream_wrapping_sync_no_0byte_reads, s_test_async_input_stream_wrapping_sync_no_0byte_reads)
+static int s_test_async_input_stream_wrapping_sync_no_0byte_reads(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
 
@@ -133,11 +135,8 @@ static int s_test_async_input_stream_wrapping_sync_retries_zero_byte_reads(struc
     aws_io_library_clean_up();
     return 0;
 }
-AWS_TEST_CASE(
-    async_input_stream_wrapping_sync_retries_zero_byte_reads,
-    s_test_async_input_stream_wrapping_sync_retries_zero_byte_reads)
 
-/* Common implementation for async_input_stream_read_to_fill_completes_on_XYZ() tests */
+/* Common implementation for async_input_stream_fill_completes_on_XYZ() tests */
 static int s_test_async_input_stream_read_to_fill(
     struct aws_allocator *alloc,
     struct aws_async_input_stream_tester_options *options) {
@@ -178,7 +177,8 @@ static int s_test_async_input_stream_read_to_fill(
 
 /* Test aws_async_input_stream_read_to_fill()
  * Ensure it works when reads always complete on another thread. */
-static int s_test_async_input_stream_read_to_fill_completes_on_another_thread(struct aws_allocator *alloc, void *ctx) {
+AWS_TEST_CASE(async_input_stream_fill_completes_on_thread, s_test_async_input_stream_fill_completes_on_thread)
+static int s_test_async_input_stream_fill_completes_on_thread(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_AIST_READ_COMPLETES_ON_ANOTHER_THREAD,
@@ -186,13 +186,11 @@ static int s_test_async_input_stream_read_to_fill_completes_on_another_thread(st
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
-AWS_TEST_CASE(
-    async_input_stream_read_to_fill_completes_on_another_thread,
-    s_test_async_input_stream_read_to_fill_completes_on_another_thread)
 
 /* Test aws_async_input_stream_read_to_fill()
  * Ensure it works when reads always complete immediately */
-static int s_test_async_input_stream_read_to_fill_completes_immediately(struct aws_allocator *alloc, void *ctx) {
+AWS_TEST_CASE(async_input_stream_fill_completes_immediately, s_test_async_input_stream_fill_completes_immediately)
+static int s_test_async_input_stream_fill_completes_immediately(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_AIST_READ_COMPLETES_IMMEDIATELY,
@@ -200,13 +198,11 @@ static int s_test_async_input_stream_read_to_fill_completes_immediately(struct a
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
-AWS_TEST_CASE(
-    async_input_stream_read_to_fill_completes_immediately,
-    s_test_async_input_stream_read_to_fill_completes_immediately)
 
 /* Test aws_async_input_stream_read_to_fill()
  * Ensure it works when it's kinda random which thread completes the read */
-static int s_test_async_input_stream_read_to_fill_completes_on_random_thread(struct aws_allocator *alloc, void *ctx) {
+AWS_TEST_CASE(async_input_stream_fill_completes_randomly, s_test_async_input_stream_fill_completes_randomly)
+static int s_test_async_input_stream_fill_completes_randomly(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_AIST_READ_COMPLETES_ON_RANDOM_THREAD,
@@ -214,13 +210,11 @@ static int s_test_async_input_stream_read_to_fill_completes_on_random_thread(str
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
-AWS_TEST_CASE(
-    async_input_stream_read_to_fill_completes_on_random_thread,
-    s_test_async_input_stream_read_to_fill_completes_on_random_thread)
 
 /* Test aws_async_input_stream_read_to_fill()
  * Ensure that it works when it takes one more read to realize we're at EOF */
-static int s_test_async_input_stream_read_to_fill_when_eof_requires_extra_read(struct aws_allocator *alloc, void *ctx) {
+AWS_TEST_CASE(async_input_stream_fill_eof_requires_extra_read, s_test_async_input_stream_fill_eof_requires_extra_read)
+static int s_test_async_input_stream_fill_eof_requires_extra_read(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
 
@@ -258,13 +252,11 @@ static int s_test_async_input_stream_read_to_fill_when_eof_requires_extra_read(s
     aws_io_library_clean_up();
     return 0;
 }
-AWS_TEST_CASE(
-    async_input_stream_read_to_fill_when_eof_requires_extra_read,
-    s_test_async_input_stream_read_to_fill_when_eof_requires_extra_read)
 
 /* Test aws_async_input_stream_read_to_fill()
  * Ensure that it reports errors from an underlying read() call */
-static int s_test_async_input_stream_read_to_fill_reports_error(struct aws_allocator *alloc, void *ctx) {
+AWS_TEST_CASE(async_input_stream_fill_reports_error, s_test_async_input_stream_fill_reports_error)
+static int s_test_async_input_stream_fill_reports_error(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
     aws_io_library_init(alloc);
 
@@ -291,4 +283,3 @@ static int s_test_async_input_stream_read_to_fill_reports_error(struct aws_alloc
     aws_io_library_clean_up();
     return 0;
 }
-AWS_TEST_CASE(async_input_stream_read_to_fill_reports_error, s_test_async_input_stream_read_to_fill_reports_error)
