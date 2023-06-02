@@ -16,6 +16,11 @@ To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
 /**
  * Use aws_input_stream tester to test edge cases in systems that take input streams.
  * You can make it behave in specific weird ways (e.g. fail on 3rd read).
+ *
+ * There are a few ways to set what gets streamed.
+ * - source_bytes: if set, stream these bytes.
+ * - source_stream: if set, wrap this stream (but insert weird behavior like failing on 3rd read).
+ * - autogen_length: autogen streaming content N bytes in length.
  */
 
 struct aws_input_stream_tester_options {
@@ -23,6 +28,9 @@ struct aws_input_stream_tester_options {
      * the stream copies these to its own internal buffer.
      * or you can set the autogen_length  */
     struct aws_byte_cursor source_bytes;
+
+    /* wrap another stream */
+    struct aws_input_stream *source_stream;
 
     /* if non-zero, autogen streaming content N bytes in length */
     size_t autogen_length;
@@ -40,6 +48,11 @@ struct aws_input_stream_tester_options {
     /* if non-zero, read 0 bytes the Nth time read() is called */
     size_t read_zero_bytes_on_nth_read;
 
+    /* If false, EOF is reported by the read() which produces the last few bytes.
+     * If true, EOF isn't reported until there's one more read(), producing zero bytes.
+     * This emulates an underlying stream that reports EOF by reading 0 bytes */
+    bool eof_requires_extra_read;
+
     /* if non-zero, fail the Nth time read() is called, raising `fail_with_error_code` */
     size_t fail_on_nth_read;
 
@@ -50,91 +63,52 @@ struct aws_input_stream_tester_options {
 struct aws_input_stream_tester {
     struct aws_input_stream base;
     struct aws_allocator *alloc;
-    struct aws_byte_buf source_buf;
     struct aws_input_stream_tester_options options;
-
-    /* mutable state */
-    struct aws_byte_cursor current_cursor;
+    struct aws_byte_buf source_buf;
+    struct aws_input_stream *source_stream;
     size_t read_count;
+    bool num_bytes_last_read; /* number of bytes read in the most recent successful read() */
 };
 
-/* This is 100% copied from s_aws_input_stream_byte_cursor_seek() */
 AWS_STATIC_IMPL
 int s_input_stream_tester_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
     struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
-
-    uint64_t final_offset = 0;
-
-    switch (basis) {
-        case AWS_SSB_BEGIN:
-            /*
-             * (uint64_t)offset -- safe by virtue of the earlier is-negative check
-             * (uint64_t)impl->source_buf.len -- safe via assumption 1
-             */
-            if (offset < 0 || (uint64_t)offset > (uint64_t)impl->source_buf.len) {
-                return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
-            }
-
-            /* safe because negative offsets were turned into an error */
-            final_offset = (uint64_t)offset;
-            break;
-
-        case AWS_SSB_END:
-            /*
-             * -offset -- safe as long offset is not INT64_MIN which was previously checked
-             * (uint64_t)(-offset) -- safe because (-offset) is positive (and < INT64_MAX < UINT64_MAX)
-             */
-            if (offset > 0 || offset == INT64_MIN || (uint64_t)(-offset) > (uint64_t)impl->source_buf.len) {
-                return aws_raise_error(AWS_IO_STREAM_INVALID_SEEK_POSITION);
-            }
-
-            /* cases that would make this unsafe became errors with previous conditional */
-            final_offset = (uint64_t)impl->source_buf.len - (uint64_t)(-offset);
-            break;
-
-        default:
-            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-    }
-
-    /* true because we already validated against (impl->source_buf.len) which is <= SIZE_MAX */
-    AWS_ASSERT(final_offset <= SIZE_MAX);
-
-    /* safe via previous assert */
-    size_t final_offset_sz = (size_t)final_offset;
-
-    /* sanity */
-    AWS_ASSERT(final_offset_sz <= impl->source_buf.len);
-
-    /* reset current_cursor to new position */
-    impl->current_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
-    impl->current_cursor.ptr += final_offset_sz;
-    impl->current_cursor.len -= final_offset_sz;
-
-    return AWS_OP_SUCCESS;
+    return aws_input_stream_seek(impl->source_stream, offset, basis);
 }
 
 AWS_STATIC_IMPL
-int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
+int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_buf *original_dest) {
     struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
 
     impl->read_count++;
+
+    /* if we're configured to fail, then do it */
     if (impl->read_count == impl->options.fail_on_nth_read) {
         AWS_FATAL_ASSERT(impl->options.fail_with_error_code != 0);
         return aws_raise_error(impl->options.fail_with_error_code);
     }
 
-    if (impl->read_count == impl->options.read_zero_bytes_on_nth_read) {
-        return AWS_OP_SUCCESS;
-    }
-
-    size_t actually_read = dest->capacity - dest->len;
-    actually_read = aws_min_size(actually_read, impl->current_cursor.len);
+    /* cap how much is read, if that's how we're configured */
+    size_t bytes_to_read = original_dest->capacity - original_dest->len;
     if (impl->options.max_bytes_per_read != 0) {
-        actually_read = aws_min_size(actually_read, impl->options.max_bytes_per_read);
+        bytes_to_read = aws_min_size(bytes_to_read, impl->options.max_bytes_per_read);
     }
 
-    aws_byte_buf_write(dest, impl->current_cursor.ptr, actually_read);
-    aws_byte_cursor_advance(&impl->current_cursor, actually_read);
+    if (impl->read_count == impl->options.read_zero_bytes_on_nth_read) {
+        bytes_to_read = 0;
+    }
+
+    /* pass artificially capped buffer to actual stream */
+    struct aws_byte_buf capped_buf =
+        aws_byte_buf_from_empty_array(original_dest->buffer + original_dest->len, bytes_to_read);
+
+    if (aws_input_stream_read(impl->source_stream, &capped_buf)) {
+        return AWS_OP_ERR;
+    }
+
+    size_t bytes_actually_read = capped_buf.len;
+    original_dest->len += bytes_actually_read;
+    impl->num_bytes_last_read = bytes_actually_read;
 
     return AWS_OP_SUCCESS;
 }
@@ -142,16 +116,24 @@ int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_
 AWS_STATIC_IMPL
 int s_input_stream_tester_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
     struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
-    status->is_valid = true;
-    status->is_end_of_stream = impl->current_cursor.len == 0;
+    if (aws_input_stream_get_status(impl->source_stream, status)) {
+        return AWS_OP_ERR;
+    }
+
+    /* if we're emulating a stream that requires an additional 0 byte read to realize it's EOF */
+    if (impl->options.eof_requires_extra_read) {
+        if (impl->num_bytes_last_read > 0) {
+            status->is_end_of_stream = false;
+        }
+    }
+
     return AWS_OP_SUCCESS;
 }
 
 AWS_STATIC_IMPL
 int s_input_stream_tester_get_length(struct aws_input_stream *stream, int64_t *out_length) {
     struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
-    *out_length = (int64_t)impl->source_buf.len;
-    return AWS_OP_SUCCESS;
+    return aws_input_stream_get_length(impl->source_stream, out_length);
 }
 
 static struct aws_input_stream_vtable s_input_stream_tester_vtable = {
@@ -200,6 +182,7 @@ void s_byte_buf_init_autogenned(
 AWS_STATIC_IMPL
 void s_input_stream_tester_destroy(void *user_data) {
     struct aws_input_stream_tester *impl = user_data;
+    aws_input_stream_release(impl->source_stream);
     aws_byte_buf_clean_up(&impl->source_buf);
     aws_mem_release(impl->alloc, impl);
 }
@@ -216,14 +199,20 @@ struct aws_input_stream *aws_input_stream_new_tester(
     impl->alloc = alloc;
     impl->options = *options;
 
-    if (options->autogen_length > 0) {
-        AWS_FATAL_ASSERT(impl->source_buf.len == 0); /* set autogen_length or source_bytes but not both */
-        s_byte_buf_init_autogenned(&impl->source_buf, alloc, options->autogen_length, options->autogen_style);
+    if (options->source_stream != NULL) {
+        AWS_FATAL_ASSERT((options->autogen_length == 0) && (options->source_bytes.len == 0));
+        impl->source_stream = aws_input_stream_acquire(options->source_stream);
     } else {
-        aws_byte_buf_init_copy_from_cursor(&impl->source_buf, alloc, options->source_bytes);
+        if (options->autogen_length > 0) {
+            AWS_FATAL_ASSERT(options->source_bytes.len == 0);
+            s_byte_buf_init_autogenned(&impl->source_buf, alloc, options->autogen_length, options->autogen_style);
+        } else {
+            aws_byte_buf_init_copy_from_cursor(&impl->source_buf, alloc, options->source_bytes);
+        }
+        struct aws_byte_cursor source_buf_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
+        impl->source_stream = aws_input_stream_new_from_cursor(alloc, &source_buf_cursor);
+        AWS_FATAL_ASSERT(impl->source_stream);
     }
-
-    impl->current_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
 
     return &impl->base;
 }

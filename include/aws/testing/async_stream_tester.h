@@ -26,15 +26,9 @@ To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
  */
 
 struct aws_async_input_stream_tester_options {
-    /* bytes to be streamed
-     * the stream copies these to its own internal buffer */
-    struct aws_byte_cursor source_bytes;
-
-    /* if non-zero, autogen contents of stream N bytes in length */
-    size_t autogen_length;
-
-    /* if non-zero, autogen streaming content N bytes in length */
-    enum aws_autogen_style autogen_style;
+    /* the async tester uses the synchronous tester under the hood,
+     * so here are those options */
+    struct aws_input_stream_tester_options base;
 
     enum aws_async_read_completion_strategy {
         /* the tester has its own thread, and reads always complete from there */
@@ -47,27 +41,13 @@ struct aws_async_input_stream_tester_options {
 
     /* if non-zero, a read will take at least this long to complete */
     uint64_t read_duration_ns;
-
-    /* if non-zero, read at most N bytes per read() */
-    size_t max_bytes_per_read;
-
-    /* If false, EOF is reported by the read() which produces the last few bytes.
-     * If true, EOF isn't reported until there's one more read(), producing zero bytes.
-     * This emulates an underlying stream that reports EOF by reading 0 bytes */
-    bool eof_requires_extra_read;
-
-    /* if non-zero, fail the Nth time read() is called, raising `fail_with_error_code` */
-    size_t fail_on_nth_read;
-
-    /* error-code to raise if failing on purpose */
-    int fail_with_error_code;
 };
 
 struct aws_async_input_stream_tester {
     struct aws_async_input_stream base;
     struct aws_allocator *alloc;
-    struct aws_byte_buf source_buf;
     struct aws_async_input_stream_tester_options options;
+    struct aws_input_stream *source_stream;
 
     struct aws_thread thread;
     struct {
@@ -82,8 +62,6 @@ struct aws_async_input_stream_tester {
         bool do_shutdown;
     } synced_data;
 
-    struct aws_byte_cursor current_cursor;
-    size_t read_count;
     struct aws_atomic_var num_outstanding_reads;
 };
 
@@ -94,39 +72,29 @@ void s_async_input_stream_tester_do_actual_read(
     struct aws_future_bool *read_future) {
 
     int error_code = 0;
-    bool eof = false;
-
-    impl->read_count++;
 
     /* delay, if that's how we're configured */
     if (impl->options.read_duration_ns != 0) {
         aws_thread_current_sleep(impl->options.read_duration_ns);
     }
 
-    /* raise error, if that's how we're configured */
-    if (impl->read_count == impl->options.fail_on_nth_read) {
-        AWS_FATAL_ASSERT(impl->options.fail_with_error_code != 0);
-        error_code = impl->options.fail_with_error_code;
-        goto done;
-    }
+    /* Keep calling read() until we get some data, or hit EOF.
+     * We do this because the synchronous aws_input_stream API allows
+     * 0 byte reads, but the aws_async_input_stream API does not. */
+    size_t prev_len = dest->len;
+    struct aws_stream_status status = {.is_end_of_stream = false, .is_valid = true};
+    while ((dest->len == prev_len) && !status.is_end_of_stream) {
+        /* read from stream */
+        if (aws_input_stream_read(impl->source_stream, dest) != AWS_OP_SUCCESS) {
+            error_code = aws_last_error();
+            goto done;
+        }
 
-    /* figure out how much to read */
-    size_t actually_read = dest->capacity - dest->len;
-    actually_read = aws_min_size(actually_read, impl->current_cursor.len);
-    if (impl->options.max_bytes_per_read != 0) {
-        actually_read = aws_min_size(actually_read, impl->options.max_bytes_per_read);
-    }
-
-    /* copy bytes */
-    aws_byte_buf_write(dest, impl->current_cursor.ptr, actually_read);
-    aws_byte_cursor_advance(&impl->current_cursor, actually_read);
-
-    /* set EOF. If configured with eof_requires_extra_read,
-     * don't set it until there's a final read() that gets zero bytes */
-    if (impl->options.eof_requires_extra_read) {
-        eof = (actually_read == 0);
-    } else {
-        eof = (impl->current_cursor.len == 0);
+        /* check if stream is done */
+        if (aws_input_stream_get_status(impl->source_stream, &status) != AWS_OP_SUCCESS) {
+            error_code = aws_last_error();
+            goto done;
+        }
     }
 
 done:
@@ -135,7 +103,7 @@ done:
     if (error_code != 0) {
         aws_future_bool_set_error(read_future, error_code);
     } else {
-        aws_future_bool_set_result(read_future, eof);
+        aws_future_bool_set_result(read_future, status.is_end_of_stream);
     }
 
     aws_future_bool_release(read_future);
@@ -158,11 +126,11 @@ struct aws_future_bool *s_async_input_stream_tester_read(
         case AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD:
             do_on_thread = true;
             break;
-        case AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD:
-            do_on_thread = (rand() % 2 == 0);
-            break;
         case AWS_ASYNC_READ_COMPLETES_IMMEDIATELY:
             do_on_thread = false;
+            break;
+        case AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD:
+            do_on_thread = (rand() % 2 == 0);
             break;
     }
 
@@ -190,7 +158,7 @@ void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream
         aws_mutex_clean_up(&impl->synced_data.lock);
     }
 
-    aws_byte_buf_clean_up(&impl->source_buf);
+    aws_input_stream_release(impl->source_stream);
     aws_mem_release(impl->base.alloc, impl);
 }
 
@@ -267,14 +235,8 @@ struct aws_async_input_stream *aws_async_input_stream_new_tester(
     impl->options = *options;
     aws_atomic_init_int(&impl->num_outstanding_reads, 0);
 
-    if (options->autogen_length > 0) {
-        AWS_FATAL_ASSERT(impl->source_buf.len == 0); /* set autogen_length or source_bytes but not both */
-        s_byte_buf_init_autogenned(&impl->source_buf, alloc, options->autogen_length, options->autogen_style);
-    } else {
-        aws_byte_buf_init_copy_from_cursor(&impl->source_buf, alloc, options->source_bytes);
-    }
-
-    impl->current_cursor = aws_byte_cursor_from_buf(&impl->source_buf);
+    impl->source_stream = aws_input_stream_new_tester(alloc, &options->base);
+    AWS_FATAL_ASSERT(impl->source_stream);
 
     if (options->completion_strategy != AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         aws_mutex_init(&impl->synced_data.lock);

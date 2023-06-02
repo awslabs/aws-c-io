@@ -20,7 +20,7 @@ static int s_test_async_input_stream_read_to_fill(
 
     aws_io_library_init(alloc);
 
-    options->source_bytes = aws_byte_cursor_from_c_str("123456789");
+    options->base.source_bytes = aws_byte_cursor_from_c_str("123456789");
     struct aws_async_input_stream *async_stream = aws_async_input_stream_new_tester(alloc, options);
 
     /* read into slightly short buffer */
@@ -59,7 +59,7 @@ static int s_test_async_input_stream_fill_completes_on_thread(struct aws_allocat
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD,
-        .max_bytes_per_read = 1,
+        .base = {.max_bytes_per_read = 1},
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
@@ -71,7 +71,7 @@ static int s_test_async_input_stream_fill_completes_immediately(struct aws_alloc
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_ASYNC_READ_COMPLETES_IMMEDIATELY,
-        .max_bytes_per_read = 1,
+        .base = {.max_bytes_per_read = 1},
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
@@ -83,7 +83,7 @@ static int s_test_async_input_stream_fill_completes_randomly(struct aws_allocato
     (void)ctx;
     struct aws_async_input_stream_tester_options options = {
         .completion_strategy = AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD,
-        .max_bytes_per_read = 1,
+        .base = {.max_bytes_per_read = 1},
     };
     return s_test_async_input_stream_read_to_fill(alloc, &options);
 }
@@ -96,8 +96,11 @@ static int s_test_async_input_stream_fill_eof_requires_extra_read(struct aws_all
     aws_io_library_init(alloc);
 
     struct aws_async_input_stream_tester_options options = {
-        .source_bytes = aws_byte_cursor_from_c_str("123456789"),
-        .eof_requires_extra_read = true,
+        .base =
+            {
+                .source_bytes = aws_byte_cursor_from_c_str("123456789"),
+                .eof_requires_extra_read = true,
+            },
     };
     struct aws_async_input_stream *async_stream = aws_async_input_stream_new_tester(alloc, &options);
 
@@ -138,10 +141,13 @@ static int s_test_async_input_stream_fill_reports_error(struct aws_allocator *al
     aws_io_library_init(alloc);
 
     struct aws_async_input_stream_tester_options options = {
-        .source_bytes = aws_byte_cursor_from_c_str("123456789"),
-        .max_bytes_per_read = 1,
-        .fail_on_nth_read = 2,
-        .fail_with_error_code = 999,
+        .base =
+            {
+                .source_bytes = aws_byte_cursor_from_c_str("123456789"),
+                .max_bytes_per_read = 1,
+                .fail_on_nth_read = 2,
+                .fail_with_error_code = 999,
+            },
     };
     struct aws_async_input_stream *async_stream = aws_async_input_stream_new_tester(alloc, &options);
 
