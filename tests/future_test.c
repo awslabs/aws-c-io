@@ -17,6 +17,9 @@
 #define ONE_SEC_IN_NS ((uint64_t)AWS_TIMESTAMP_NANOS)
 #define MAX_TIMEOUT_NS (10 * ONE_SEC_IN_NS)
 
+AWS_FUTURE_T_POINTER_WITH_DESTROY_IMPLEMENTATION(aws_future_destroyme, struct aws_destroyme, aws_destroyme_destroy);
+AWS_FUTURE_T_POINTER_WITH_RELEASE_IMPLEMENTATION(aws_future_refcountme, struct aws_refcountme, aws_refcountme_release);
+
 /* Run through the basics of an AWS_FUTURE_T_BY_VALUE */
 static int s_test_future_by_value(struct aws_allocator *alloc, void *ctx) {
     (void)ctx;
