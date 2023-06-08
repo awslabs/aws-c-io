@@ -23,6 +23,12 @@ To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
  * - autogen_length: autogen streaming content N bytes in length.
  */
 
+enum aws_autogen_style {
+    AWS_AUTOGEN_LOREM_IPSUM,
+    AWS_AUTOGEN_ALPHABET,
+    AWS_AUTOGEN_NUMBERS,
+};
+
 struct aws_input_stream_tester_options {
     /* bytes to be streamed.
      * the stream copies these to its own internal buffer.
@@ -36,11 +42,7 @@ struct aws_input_stream_tester_options {
     size_t autogen_length;
 
     /* style of contents (if using autogen) */
-    enum aws_autogen_style {
-        AWS_AUTOGEN_LOREM_IPSUM,
-        AWS_AUTOGEN_ALPHABET,
-        AWS_AUTOGEN_NUMBERS,
-    } autogen_style;
+    enum aws_autogen_style autogen_style;
 
     /* if non-zero, read at most N bytes per read() */
     size_t max_bytes_per_read;
@@ -181,7 +183,7 @@ void s_byte_buf_init_autogenned(
 
 AWS_STATIC_IMPL
 void s_input_stream_tester_destroy(void *user_data) {
-    struct aws_input_stream_tester *impl = user_data;
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)user_data;
     aws_input_stream_release(impl->source_stream);
     aws_byte_buf_clean_up(&impl->source_buf);
     aws_mem_release(impl->alloc, impl);
@@ -192,7 +194,8 @@ struct aws_input_stream *aws_input_stream_new_tester(
     struct aws_allocator *alloc,
     const struct aws_input_stream_tester_options *options) {
 
-    struct aws_input_stream_tester *impl = aws_mem_calloc(alloc, 1, sizeof(struct aws_input_stream_tester));
+    struct aws_input_stream_tester *impl =
+        (struct aws_input_stream_tester *)aws_mem_calloc(alloc, 1, sizeof(struct aws_input_stream_tester));
     impl->base.impl = impl;
     impl->base.vtable = &s_input_stream_tester_vtable;
     aws_ref_count_init(&impl->base.ref_count, impl, s_input_stream_tester_destroy);

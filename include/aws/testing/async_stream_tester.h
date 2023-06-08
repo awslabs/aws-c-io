@@ -25,19 +25,21 @@ To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
  * You can customize its behavior (e.g. fail on 3rd read, always complete async, always complete synchronously, etc)
  */
 
+enum aws_async_read_completion_strategy {
+    /* the tester has its own thread, and reads always complete from there */
+    AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD,
+    /* reads complete before read() even returns */
+    AWS_ASYNC_READ_COMPLETES_IMMEDIATELY,
+    /* sometimes reads complete immediately, sometimes they complete on another thread */
+    AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD,
+};
+
 struct aws_async_input_stream_tester_options {
     /* the async tester uses the synchronous tester under the hood,
      * so here are those options */
     struct aws_input_stream_tester_options base;
 
-    enum aws_async_read_completion_strategy {
-        /* the tester has its own thread, and reads always complete from there */
-        AWS_ASYNC_READ_COMPLETES_ON_ANOTHER_THREAD,
-        /* reads complete before read() even returns */
-        AWS_ASYNC_READ_COMPLETES_IMMEDIATELY,
-        /* sometimes reads complete immediately, sometimes they complete on another thread */
-        AWS_ASYNC_READ_COMPLETES_ON_RANDOM_THREAD,
-    } completion_strategy;
+    enum aws_async_read_completion_strategy completion_strategy;
 
     /* if non-zero, a read will take at least this long to complete */
     uint64_t read_duration_ns;
@@ -114,7 +116,7 @@ struct aws_future_bool *s_async_input_stream_tester_read(
     struct aws_async_input_stream *stream,
     struct aws_byte_buf *dest) {
 
-    struct aws_async_input_stream_tester *impl = stream->impl;
+    struct aws_async_input_stream_tester *impl = (struct aws_async_input_stream_tester *)stream->impl;
 
     size_t prev_outstanding_reads = aws_atomic_fetch_add(&impl->num_outstanding_reads, 1);
     AWS_FATAL_ASSERT(prev_outstanding_reads == 0 && "Overlapping read() calls are forbidden");
@@ -165,7 +167,7 @@ void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream
 /* refcount has reached zero */
 AWS_STATIC_IMPL
 void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_stream) {
-    struct aws_async_input_stream_tester *impl = async_stream->impl;
+    struct aws_async_input_stream_tester *impl = (struct aws_async_input_stream_tester *)async_stream->impl;
 
     if (impl->options.completion_strategy == AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         s_async_input_stream_tester_do_actual_destroy(impl);
@@ -183,13 +185,13 @@ void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_st
 
 AWS_STATIC_IMPL
 bool s_async_input_stream_tester_thread_pred(void *arg) {
-    struct aws_async_input_stream_tester *impl = arg;
+    struct aws_async_input_stream_tester *impl = (struct aws_async_input_stream_tester *)arg;
     return impl->synced_data.do_shutdown || (impl->synced_data.read_dest != NULL);
 }
 
 AWS_STATIC_IMPL
 void s_async_input_stream_tester_thread(void *arg) {
-    struct aws_async_input_stream_tester *impl = arg;
+    struct aws_async_input_stream_tester *impl = (struct aws_async_input_stream_tester *)arg;
     bool do_shutdown = false;
     struct aws_byte_buf *read_dest = NULL;
     struct aws_future_bool *read_future = NULL;
@@ -230,7 +232,8 @@ struct aws_async_input_stream *aws_async_input_stream_new_tester(
     struct aws_allocator *alloc,
     const struct aws_async_input_stream_tester_options *options) {
 
-    struct aws_async_input_stream_tester *impl = aws_mem_calloc(alloc, 1, sizeof(struct aws_async_input_stream_tester));
+    struct aws_async_input_stream_tester *impl =
+        (struct aws_async_input_stream_tester *)aws_mem_calloc(alloc, 1, sizeof(struct aws_async_input_stream_tester));
     aws_async_input_stream_init_base(&impl->base, alloc, &s_async_input_stream_tester_vtable, impl);
     impl->options = *options;
     aws_atomic_init_int(&impl->num_outstanding_reads, 0);
