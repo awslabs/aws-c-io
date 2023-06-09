@@ -295,6 +295,7 @@ static void s_future_impl_set_done(struct aws_future_impl *future, void *src_add
             future->error_code = error_code;
         } else {
             future->owns_result = true;
+            AWS_FATAL_ASSERT(src_address != NULL);
             memcpy(aws_future_impl_get_result_address(future), src_address, future->sizeof_result);
         }
 
