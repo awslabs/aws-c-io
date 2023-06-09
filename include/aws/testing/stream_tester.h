@@ -23,6 +23,12 @@ To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
  * - autogen_length: autogen streaming content N bytes in length.
  */
 
+enum aws_autogen_style {
+    AWS_AUTOGEN_LOREM_IPSUM,
+    AWS_AUTOGEN_ALPHABET,
+    AWS_AUTOGEN_NUMBERS,
+};
+
 struct aws_input_stream_tester_options {
     /* bytes to be streamed.
      * the stream copies these to its own internal buffer.
@@ -36,11 +42,7 @@ struct aws_input_stream_tester_options {
     size_t autogen_length;
 
     /* style of contents (if using autogen) */
-    enum aws_autogen_style {
-        AWS_AUTOGEN_LOREM_IPSUM,
-        AWS_AUTOGEN_ALPHABET,
-        AWS_AUTOGEN_NUMBERS,
-    } autogen_style;
+    enum aws_autogen_style autogen_style;
 
     /* if non-zero, read at most N bytes per read() */
     size_t max_bytes_per_read;
@@ -68,17 +70,20 @@ struct aws_input_stream_tester {
     struct aws_input_stream *source_stream;
     size_t read_count;
     bool num_bytes_last_read; /* number of bytes read in the most recent successful read() */
+    uint64_t total_bytes_read;
 };
 
-AWS_STATIC_IMPL
-int s_input_stream_tester_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
-    struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
+static inline int s_input_stream_tester_seek(
+    struct aws_input_stream *stream,
+    int64_t offset,
+    enum aws_stream_seek_basis basis) {
+
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)stream->impl;
     return aws_input_stream_seek(impl->source_stream, offset, basis);
 }
 
-AWS_STATIC_IMPL
-int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_buf *original_dest) {
-    struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
+static inline int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_buf *original_dest) {
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)stream->impl;
 
     impl->read_count++;
 
@@ -109,13 +114,13 @@ int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_
     size_t bytes_actually_read = capped_buf.len;
     original_dest->len += bytes_actually_read;
     impl->num_bytes_last_read = bytes_actually_read;
+    impl->total_bytes_read += bytes_actually_read;
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL
-int s_input_stream_tester_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
-    struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
+static inline int s_input_stream_tester_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)stream->impl;
     if (aws_input_stream_get_status(impl->source_stream, status)) {
         return AWS_OP_ERR;
     }
@@ -130,9 +135,8 @@ int s_input_stream_tester_get_status(struct aws_input_stream *stream, struct aws
     return AWS_OP_SUCCESS;
 }
 
-AWS_STATIC_IMPL
-int s_input_stream_tester_get_length(struct aws_input_stream *stream, int64_t *out_length) {
-    struct aws_input_stream_tester *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_tester, base);
+static inline int s_input_stream_tester_get_length(struct aws_input_stream *stream, int64_t *out_length) {
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)stream->impl;
     return aws_input_stream_get_length(impl->source_stream, out_length);
 }
 
@@ -144,8 +148,7 @@ static struct aws_input_stream_vtable s_input_stream_tester_vtable = {
 };
 
 /* init byte-buf and fill it autogenned content */
-AWS_STATIC_IMPL
-void s_byte_buf_init_autogenned(
+static inline void s_byte_buf_init_autogenned(
     struct aws_byte_buf *buf,
     struct aws_allocator *alloc,
     size_t length,
@@ -179,20 +182,24 @@ void s_byte_buf_init_autogenned(
     }
 }
 
-AWS_STATIC_IMPL
-void s_input_stream_tester_destroy(void *user_data) {
-    struct aws_input_stream_tester *impl = user_data;
+static inline uint64_t aws_input_stream_tester_total_bytes_read(const struct aws_input_stream *stream) {
+    const struct aws_input_stream_tester *impl = (const struct aws_input_stream_tester *)stream->impl;
+    return impl->total_bytes_read;
+}
+
+static inline void s_input_stream_tester_destroy(void *user_data) {
+    struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)user_data;
     aws_input_stream_release(impl->source_stream);
     aws_byte_buf_clean_up(&impl->source_buf);
     aws_mem_release(impl->alloc, impl);
 }
 
-AWS_STATIC_IMPL
-struct aws_input_stream *aws_input_stream_new_tester(
+static inline struct aws_input_stream *aws_input_stream_new_tester(
     struct aws_allocator *alloc,
     const struct aws_input_stream_tester_options *options) {
 
-    struct aws_input_stream_tester *impl = aws_mem_calloc(alloc, 1, sizeof(struct aws_input_stream_tester));
+    struct aws_input_stream_tester *impl =
+        (struct aws_input_stream_tester *)aws_mem_calloc(alloc, 1, sizeof(struct aws_input_stream_tester));
     impl->base.impl = impl;
     impl->base.vtable = &s_input_stream_tester_vtable;
     aws_ref_count_init(&impl->base.ref_count, impl, s_input_stream_tester_destroy);
