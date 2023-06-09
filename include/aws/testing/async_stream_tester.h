@@ -220,6 +220,13 @@ void s_async_input_stream_tester_thread(void *arg) {
     s_async_input_stream_tester_do_actual_destroy(impl);
 }
 
+AWS_STATIC_IMPL
+uint64_t aws_async_input_stream_tester_total_bytes_read(const struct aws_async_input_stream *async_stream) {
+    const struct aws_async_input_stream_tester *async_impl = async_stream->impl;
+    const struct aws_input_stream_tester *synchronous_impl = async_impl->source_stream->impl;
+    return synchronous_impl->total_bytes_read;
+}
+
 static struct aws_async_input_stream_vtable s_async_input_stream_tester_vtable = {
     .destroy = s_async_input_stream_tester_destroy,
     .read = s_async_input_stream_tester_read,

@@ -68,6 +68,7 @@ struct aws_input_stream_tester {
     struct aws_input_stream *source_stream;
     size_t read_count;
     bool num_bytes_last_read; /* number of bytes read in the most recent successful read() */
+    uint64_t total_bytes_read;
 };
 
 AWS_STATIC_IMPL
@@ -109,6 +110,7 @@ int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_
     size_t bytes_actually_read = capped_buf.len;
     original_dest->len += bytes_actually_read;
     impl->num_bytes_last_read = bytes_actually_read;
+    impl->total_bytes_read += bytes_actually_read;
 
     return AWS_OP_SUCCESS;
 }
@@ -177,6 +179,12 @@ void s_byte_buf_init_autogenned(
         }
         aws_byte_buf_write_to_capacity(buf, &pattern_cursor);
     }
+}
+
+AWS_STATIC_IMPL
+uint64_t aws_input_stream_tester_total_bytes_read(const struct aws_input_stream *stream) {
+    struct aws_input_stream_tester *impl = stream->impl;
+    return impl->total_bytes_read;
 }
 
 AWS_STATIC_IMPL
