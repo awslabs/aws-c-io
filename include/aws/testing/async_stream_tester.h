@@ -65,8 +65,7 @@ struct aws_async_input_stream_tester {
     struct aws_atomic_var num_outstanding_reads;
 };
 
-AWS_STATIC_IMPL
-void s_async_input_stream_tester_do_actual_read(
+static inline void s_async_input_stream_tester_do_actual_read(
     struct aws_async_input_stream_tester *impl,
     struct aws_byte_buf *dest,
     struct aws_future_bool *read_future) {
@@ -109,8 +108,7 @@ done:
     aws_future_bool_release(read_future);
 }
 
-AWS_STATIC_IMPL
-struct aws_future_bool *s_async_input_stream_tester_read(
+static inline struct aws_future_bool *s_async_input_stream_tester_read(
     struct aws_async_input_stream *stream,
     struct aws_byte_buf *dest) {
 
@@ -151,8 +149,7 @@ struct aws_future_bool *s_async_input_stream_tester_read(
     return read_future;
 }
 
-AWS_STATIC_IMPL
-void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream_tester *impl) {
+static inline void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream_tester *impl) {
     if (impl->options.completion_strategy != AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
         aws_condition_variable_clean_up(&impl->synced_data.cvar);
         aws_mutex_clean_up(&impl->synced_data.lock);
@@ -163,8 +160,7 @@ void s_async_input_stream_tester_do_actual_destroy(struct aws_async_input_stream
 }
 
 /* refcount has reached zero */
-AWS_STATIC_IMPL
-void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_stream) {
+static inline void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_stream) {
     struct aws_async_input_stream_tester *impl = async_stream->impl;
 
     if (impl->options.completion_strategy == AWS_ASYNC_READ_COMPLETES_IMMEDIATELY) {
@@ -181,14 +177,12 @@ void s_async_input_stream_tester_destroy(struct aws_async_input_stream *async_st
     }
 }
 
-AWS_STATIC_IMPL
-bool s_async_input_stream_tester_thread_pred(void *arg) {
+static inline bool s_async_input_stream_tester_thread_pred(void *arg) {
     struct aws_async_input_stream_tester *impl = arg;
     return impl->synced_data.do_shutdown || (impl->synced_data.read_dest != NULL);
 }
 
-AWS_STATIC_IMPL
-void s_async_input_stream_tester_thread(void *arg) {
+static inline void s_async_input_stream_tester_thread(void *arg) {
     struct aws_async_input_stream_tester *impl = arg;
     bool do_shutdown = false;
     struct aws_byte_buf *read_dest = NULL;
@@ -220,8 +214,8 @@ void s_async_input_stream_tester_thread(void *arg) {
     s_async_input_stream_tester_do_actual_destroy(impl);
 }
 
-AWS_STATIC_IMPL
-uint64_t aws_async_input_stream_tester_total_bytes_read(const struct aws_async_input_stream *async_stream) {
+static inline uint64_t aws_async_input_stream_tester_total_bytes_read(
+    const struct aws_async_input_stream *async_stream) {
     const struct aws_async_input_stream_tester *async_impl = async_stream->impl;
     const struct aws_input_stream_tester *synchronous_impl = async_impl->source_stream->impl;
     return synchronous_impl->total_bytes_read;
@@ -232,8 +226,7 @@ static struct aws_async_input_stream_vtable s_async_input_stream_tester_vtable =
     .read = s_async_input_stream_tester_read,
 };
 
-AWS_STATIC_IMPL
-struct aws_async_input_stream *aws_async_input_stream_new_tester(
+static inline struct aws_async_input_stream *aws_async_input_stream_new_tester(
     struct aws_allocator *alloc,
     const struct aws_async_input_stream_tester_options *options) {
 
