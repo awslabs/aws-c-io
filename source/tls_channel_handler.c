@@ -808,6 +808,8 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
     switch (signature) {
         case (AWS_TLS_SIGNATURE_RSA): return "RSA";
         case (AWS_TLS_SIGNATURE_ECDSA): return "ECDSA";
+        case (AWS_TLS_SIGNATURE_RSA_PSS_RSAE): return "RSA PSS RSAE";
+        case (AWS_TLS_SIGNATURE_RSA_PSS_PSS): return "RSA PSS PSS";
         default: return "<UNKNOWN SIGNATURE ALGORITHM>";
     }
     /* clang-format on */

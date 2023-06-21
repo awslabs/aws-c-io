@@ -67,6 +67,8 @@ enum aws_tls_signature_algorithm {
     AWS_TLS_SIGNATURE_UNKNOWN,
     AWS_TLS_SIGNATURE_RSA,
     AWS_TLS_SIGNATURE_ECDSA,
+    AWS_TLS_SIGNATURE_RSA_PSS_RSAE, /* TODO: should PSS_RSAE and PSS_PSS be separate enums? */
+    AWS_TLS_SIGNATURE_RSA_PSS_PSS,
 };
 
 /**

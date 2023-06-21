@@ -640,6 +640,10 @@ static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls
             return AWS_TLS_SIGNATURE_RSA;
         case S2N_TLS_SIGNATURE_ECDSA:
             return AWS_TLS_SIGNATURE_ECDSA;
+        case S2N_TLS_SIGNATURE_RSA_PSS_RSAE:
+            return AWS_TLS_SIGNATURE_RSA_PSS_RSAE;
+        case S2N_TLS_SIGNATURE_RSA_PSS_PSS:
+            return AWS_TLS_SIGNATURE_RSA_PSS_PSS;
         default:
             return AWS_TLS_SIGNATURE_UNKNOWN;
     }
@@ -1372,50 +1376,25 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         goto cleanup_s2n_config;
     }
 
-    if (options->custom_key_op_handler != NULL) {
-        /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
-                break;
-            case AWS_IO_TLSv1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-TLS-1-0-2014");
-                break;
-            case AWS_IO_TLSv1_1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
-                break;
-            case AWS_IO_TLSv1_2:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-2-Ext-2018-06");
-                break;
-            case AWS_IO_TLSv1_3:
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 with PKCS#11 is not supported yet.");
-                aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-                goto cleanup_s2n_config;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            default:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
-        }
-    } else {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
-                break;
-            case AWS_IO_TLSv1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
-                break;
-            case AWS_IO_TLSv1_1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1");
-                break;
-            case AWS_IO_TLSv1_2:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2");
-                break;
-            case AWS_IO_TLSv1_3:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3");
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            default:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
-        }
+    switch (options->minimum_tls_version) {
+        case AWS_IO_SSLv3:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
+            break;
+        case AWS_IO_TLSv1:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+            break;
+        case AWS_IO_TLSv1_1:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1");
+            break;
+        case AWS_IO_TLSv1_2:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2");
+            break;
+        case AWS_IO_TLSv1_3:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3");
+            break;
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+        default:
+            s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
     }
 
     switch (options->cipher_pref) {
