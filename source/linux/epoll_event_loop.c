@@ -562,6 +562,14 @@ static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event 
     return epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
 }
 
+static void s_aws_cleanup_aws_lc_thread_local_state(void *user_data) {
+    (void)user_data;
+
+#if defined(OPENSSL_IS_AWSLC)
+    AWSLC_thread_local_clear();
+#endif
+}
+
 static void aws_event_loop_thread(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
@@ -575,6 +583,8 @@ static void aws_event_loop_thread(void *args) {
     if (err) {
         return;
     }
+
+    aws_thread_current_at_exit(s_aws_cleanup_aws_lc_thread_local_state, NULL);
 
     int timeout = DEFAULT_TIMEOUT;
 
