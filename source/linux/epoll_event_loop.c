@@ -16,8 +16,6 @@
 
 #include <sys/epoll.h>
 
-#include <openssl/thread.h>
-
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
