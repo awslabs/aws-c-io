@@ -15,6 +15,8 @@
 
 #include <sys/epoll.h>
 
+#include <openssl/thread.h>
+
 #include <errno.h>
 #include <limits.h>
 #include <unistd.h>
@@ -562,7 +564,7 @@ static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event 
     return epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
 }
 
-static void s_aws_cleanup_aws_lc_thread_local_state(void *user_data) {
+static void s_aws_epoll_cleanup_aws_lc_thread_local_state(void *user_data) {
     (void)user_data;
 
 #if defined(OPENSSL_IS_AWSLC)
@@ -584,7 +586,7 @@ static void aws_event_loop_thread(void *args) {
         return;
     }
 
-    aws_thread_current_at_exit(s_aws_cleanup_aws_lc_thread_local_state, NULL);
+    aws_thread_current_at_exit(s_aws_epoll_cleanup_aws_lc_thread_local_state, NULL);
 
     int timeout = DEFAULT_TIMEOUT;
 

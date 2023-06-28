@@ -15,6 +15,7 @@
 
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #    define __BSD_VISIBLE 1
+#    include <openssl/thread.h>
 #    include <sys/types.h>
 #endif
 
@@ -821,6 +822,14 @@ static int aws_event_loop_listen_for_io_events(int kq_fd, struct kevent kevents[
     return kevent(kq_fd, NULL /*changelist*/, 0 /*nchanges*/, kevents /*eventlist*/, MAX_EVENTS /*nevents*/, timeout);
 }
 
+static void s_aws_kqueue_cleanup_aws_lc_thread_local_state(void *user_data) {
+    (void)user_data;
+
+#if defined(OPENSSL_IS_AWSLC)
+    AWSLC_thread_local_clear();
+#endif
+}
+
 static void aws_event_loop_thread(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
@@ -851,6 +860,8 @@ static void aws_event_loop_thread(void *user_data) {
         (void *)event_loop,
         DEFAULT_TIMEOUT_SEC,
         MAX_EVENTS);
+
+    aws_thread_current_at_exit(s_aws_kqueue_cleanup_aws_lc_thread_local_state, NULL);
 
     while (impl->thread_data.state == EVENT_THREAD_STATE_RUNNING) {
         int num_io_handle_events = 0;
