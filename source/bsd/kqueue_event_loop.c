@@ -7,6 +7,7 @@
 
 #include <aws/io/logging.h>
 
+#include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
@@ -15,7 +16,6 @@
 
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #    define __BSD_VISIBLE 1
-#    include <openssl/thread.h>
 #    include <sys/types.h>
 #endif
 
@@ -825,9 +825,7 @@ static int aws_event_loop_listen_for_io_events(int kq_fd, struct kevent kevents[
 static void s_aws_kqueue_cleanup_aws_lc_thread_local_state(void *user_data) {
     (void)user_data;
 
-#if defined(OPENSSL_IS_AWSLC)
-    AWSLC_thread_local_clear();
-#endif
+    aws_cal_thread_clean_up();
 }
 
 static void aws_event_loop_thread(void *user_data) {

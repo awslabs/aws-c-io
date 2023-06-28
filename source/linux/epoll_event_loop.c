@@ -5,6 +5,7 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
@@ -567,9 +568,7 @@ static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event 
 static void s_aws_epoll_cleanup_aws_lc_thread_local_state(void *user_data) {
     (void)user_data;
 
-#if defined(OPENSSL_IS_AWSLC)
-    AWSLC_thread_local_clear();
-#endif
+    aws_cal_thread_clean_up();
 }
 
 static void aws_event_loop_thread(void *args) {
