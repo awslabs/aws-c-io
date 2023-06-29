@@ -566,9 +566,7 @@ static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event 
 static void s_aws_epoll_cleanup_aws_lc_thread_local_state(void *user_data) {
     (void)user_data;
 
-#ifndef BYO_CRYPTO
     aws_cal_thread_clean_up();
-#endif
 }
 
 static void aws_event_loop_thread(void *args) {
