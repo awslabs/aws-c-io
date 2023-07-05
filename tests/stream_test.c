@@ -54,9 +54,15 @@ static struct aws_input_stream *s_create_read_only_file_stream(struct aws_alloca
     FILE *file = aws_fopen(s_test_file_name, "w+b");
     fwrite(s_simple_binary_test, sizeof(uint8_t), sizeof(s_simple_binary_test), file);
     fclose(file);
+#ifdef _WIN32
+    if (_chmod(s_test_file_name, 0444)) {
+        return NULL;
+    }
+#else
     if (chmod(s_test_file_name, 0444)) {
         return NULL;
     }
+#endif
     return aws_input_stream_new_from_file(allocator, s_test_file_name);
 }
 
