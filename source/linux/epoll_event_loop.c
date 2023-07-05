@@ -5,6 +5,7 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
@@ -562,6 +563,12 @@ static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event 
     return epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
 }
 
+static void s_aws_epoll_cleanup_aws_lc_thread_local_state(void *user_data) {
+    (void)user_data;
+
+    aws_cal_thread_clean_up();
+}
+
 static void aws_event_loop_thread(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
@@ -575,6 +582,8 @@ static void aws_event_loop_thread(void *args) {
     if (err) {
         return;
     }
+
+    aws_thread_current_at_exit(s_aws_epoll_cleanup_aws_lc_thread_local_state, NULL);
 
     int timeout = DEFAULT_TIMEOUT;
 

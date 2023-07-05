@@ -16,7 +16,7 @@ jobs:
     - name: Check
       run: |
         TMPFILE=$(mktemp)
-        echo "8391c38acd85cca2a2892d02ebfd4ceb  source/linux/epoll_event_loop.c" > $TMPFILE
+        echo "59be2f2fbbd5ff4a374589cfe408609f  source/linux/epoll_event_loop.c" > $TMPFILE
         md5sum --check $TMPFILE
 
     # No further steps if successful
