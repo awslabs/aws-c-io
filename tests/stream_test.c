@@ -72,12 +72,10 @@ static struct aws_input_stream *s_create_read_only_file_stream(struct aws_alloca
     return aws_input_stream_new_from_file(allocator, s_test_read_only_file_name);
 }
 
-static void s_destroy_file_stream(struct aws_input_stream *stream) {
+static void s_destroy_file_stream(struct aws_input_stream *stream, const char *file_path) {
     aws_input_stream_destroy(stream);
 
-    remove(s_test_file_name);
-    remove(s_test_binary_file_name);
-    remove(s_test_read_only_file_name);
+    remove(file_path);
 }
 
 static int s_do_simple_input_stream_test(
@@ -158,7 +156,7 @@ static int s_test_input_stream_file_simple(struct aws_allocator *allocator, void
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_file_name);
 
     return AWS_OP_SUCCESS;
 }
@@ -173,7 +171,7 @@ static int s_test_input_stream_file_iterate(struct aws_allocator *allocator, voi
     struct aws_byte_cursor test_cursor = aws_byte_cursor_from_string(s_simple_test);
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 2, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_file_name);
 
     return AWS_OP_SUCCESS;
 }
@@ -232,7 +230,7 @@ static int s_test_input_stream_file_seek_beginning(struct aws_allocator *allocat
         s_do_input_stream_seek_test(stream, allocator, SEEK_BEGINNING_OFFSET, AWS_SSB_BEGIN, &test_cursor) ==
         AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_file_name);
 
     return AWS_OP_SUCCESS;
 }
@@ -314,7 +312,7 @@ static int s_test_input_stream_file_seek_end(struct aws_allocator *allocator, vo
     ASSERT_TRUE(
         s_do_input_stream_seek_test(stream, allocator, SEEK_END_OFFSET, AWS_SSB_END, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_file_name);
 
     return AWS_OP_SUCCESS;
 }
@@ -400,7 +398,7 @@ static int s_test_input_stream_file_length(struct aws_allocator *allocator, void
     ASSERT_TRUE(aws_input_stream_get_length(stream, &length) == AWS_OP_SUCCESS);
     ASSERT_TRUE(length == (int64_t)s_simple_test->len);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_file_name);
 
     return AWS_OP_SUCCESS;
 }
@@ -419,7 +417,7 @@ static int s_test_input_stream_binary(struct aws_allocator *allocator, void *ctx
 
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_simple_binary_test);
 
     return AWS_OP_SUCCESS;
 }
@@ -439,7 +437,7 @@ static int s_test_input_stream_read_only(struct aws_allocator *allocator, void *
 
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream);
+    s_destroy_file_stream(stream, s_test_read_only_file_name);
 
     return AWS_OP_SUCCESS;
 }
