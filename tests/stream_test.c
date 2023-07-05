@@ -417,7 +417,7 @@ static int s_test_input_stream_binary(struct aws_allocator *allocator, void *ctx
 
     ASSERT_TRUE(s_do_simple_input_stream_test(stream, allocator, 100, &test_cursor) == AWS_OP_SUCCESS);
 
-    s_destroy_file_stream(stream, s_simple_binary_test);
+    s_destroy_file_stream(stream, s_test_binary_file_name);
 
     return AWS_OP_SUCCESS;
 }
