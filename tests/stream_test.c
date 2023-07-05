@@ -65,7 +65,7 @@ static struct aws_input_stream *s_create_read_only_file_stream(struct aws_alloca
         return NULL;
     }
 #else
-    if (chmod(s_test_read_only_file_name, 0x0444)) {
+    if (chmod(s_test_read_only_file_name, S_IRUSR | S_IRGRP | S_IROTH)) {
         return NULL;
     }
 #endif
