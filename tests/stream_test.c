@@ -11,6 +11,10 @@
 
 #include <sys/stat.h>
 
+#ifdef _WIN32
+#    include <io.h>
+#endif
+
 AWS_STATIC_STRING_FROM_LITERAL(s_simple_test, "SimpleTest");
 
 /* 0x1A represents the Windows end-of-file character. Having this in the test data set allows us to verify that file
