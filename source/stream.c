@@ -287,7 +287,7 @@ struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *al
 
     struct aws_input_stream_file_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_file_impl));
 
-    impl->file = aws_fopen(file_name, "r+b");
+    impl->file = aws_fopen(file_name, "rb");
     if (impl->file == NULL) {
         goto on_error;
     }
