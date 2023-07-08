@@ -26,6 +26,7 @@ struct exponential_backoff_retry_token {
     struct aws_atomic_var last_backoff;
     size_t max_retries;
     uint64_t backoff_scale_factor_ns;
+    uint64_t maximum_delay_ns;
     enum aws_exponential_backoff_jitter_mode jitter_mode;
     /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
@@ -139,6 +140,8 @@ static int s_exponential_retry_acquire_token(
     backoff_retry_token->max_retries = exponential_backoff_strategy->config.max_retries;
     backoff_retry_token->backoff_scale_factor_ns = aws_timestamp_convert(
         exponential_backoff_strategy->config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    backoff_retry_token->maximum_delay_ns = aws_timestamp_convert(
+        exponential_backoff_strategy->config.maximum_delay_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->jitter_mode = exponential_backoff_strategy->config.jitter_mode;
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
     backoff_retry_token->generate_random_impl = exponential_backoff_strategy->config.generate_random_impl;
@@ -182,8 +185,28 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
 
 typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *token);
 
+// Return the base-2 logarithm of @val rounded up to the next-higher power of 2.
+static uint64_t log2rounded_up(uint64_t val) {
+    uint64_t rounded_up;
+    // Abort on overflow. Since rounded_up > 0, aws_clz_u64(rounded_up) < 64.
+    AWS_FATAL_ASSERT(!aws_round_up_to_power_of_two(val, &rounded_up));
+    return sizeof(val) * 8 - 1 - aws_clz_u64(rounded_up);
+}
+
 static uint64_t s_compute_no_jitter(struct exponential_backoff_retry_token *token) {
-    uint64_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
+    uint64_t retry_count = aws_atomic_load_int(&token->current_retry_count);
+    AWS_PRECONDITION(token->backoff_scale_factor_ns);
+
+    // Use the maximum retry count rather than the maximum delay value for truncation, to avoid overflow.
+    if (token->maximum_delay_ns > 0) {
+        uint64_t max_retry_count = log2rounded_up(token->maximum_delay_ns/token->backoff_scale_factor_ns);
+
+        if (retry_count >= max_retry_count) {
+            return token->maximum_delay_ns;
+        }
+    } else if (retry_count > 63) { // Would overflow the left-shift operation.
+        retry_count = 63;
+    }
     return aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns);
 }
 
@@ -329,7 +352,8 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     AWS_PRECONDITION(config->jitter_mode <= AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED);
     AWS_PRECONDITION(config->max_retries);
 
-    if (config->max_retries > 63 || !config->el_group ||
+    if ((!config->maximum_delay_ms && config->max_retries > 63) ||
+        !config->el_group ||
         config->jitter_mode > AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
@@ -345,9 +369,10 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     AWS_LOGF_INFO(
         AWS_LS_IO_EXPONENTIAL_BACKOFF_RETRY_STRATEGY,
         "id=%p: Initializing exponential backoff retry strategy with scale factor: %" PRIu32
-        " jitter mode: %d and max retries %zu",
+        ", max delay: %" PRIu32 ", jitter mode: %d, and max retries %zu",
         (void *)&exponential_backoff_strategy->base,
         config->backoff_scale_factor_ms,
+        config->maximum_delay_ms,
         config->jitter_mode,
         config->max_retries);
 
