@@ -1373,7 +1373,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->custom_key_op_handler != NULL) {
-        /* PKCS#11 integration hasn't been tested with TLS 1.3, so don't use cipher preferences that allow 1.3 */
+        /* When custom_key_op_handler is set, don't use cipher preferences that allow TLS 1.3.
+         * This hack is necessary until our PKCS#11 custom_key_op_handler supports RSA PSS */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
                 s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "CloudFront-SSL-v-3");
@@ -1396,25 +1397,26 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "ELBSecurityPolicy-TLS-1-1-2017-01");
         }
     } else {
+        /* No custom_key_op_handler is set, use normal cipher preferences */
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-SSLv3.0-2023");
                 break;
             case AWS_IO_TLSv1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0-2023");
                 break;
             case AWS_IO_TLSv1_1:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.1-2023");
                 break;
             case AWS_IO_TLSv1_2:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.2-2023");
                 break;
             case AWS_IO_TLSv1_3:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.3-2023");
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
             default:
-                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0");
+                s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, "AWS-CRT-SDK-TLSv1.0-2023");
         }
     }
 
