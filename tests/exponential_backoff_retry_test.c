@@ -247,6 +247,63 @@ AWS_TEST_CASE(
     test_exponential_backoff_retry_no_jitter_time_taken,
     s_test_exponential_backoff_retry_no_jitter_time_taken_fn)
 
+/* Test that in no jitter mode, max exponential backoff is actually applied as documented. */
+static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_exponential_backoff_retry_options config = {
+        .max_retries = 3,
+        .jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
+        .el_group = el_group,
+        .backoff_scale_factor_ms = 1000,
+        .maximum_backoff_s = 3,
+    };
+
+    struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
+    ASSERT_NOT_NULL(retry_strategy);
+
+    struct exponential_backoff_test_data test_data = {
+        .retry_count = 0,
+        .failure_error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .cvar = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    uint64_t before_time = 0;
+    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&before_time));
+    ASSERT_SUCCESS(aws_mutex_lock(&test_data.mutex));
+    ASSERT_SUCCESS(aws_retry_strategy_acquire_retry_token(
+        retry_strategy, NULL, s_too_many_retries_test_token_acquired, &test_data, 0));
+
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_data.cvar, &test_data.mutex, s_retry_has_failed, &test_data));
+    aws_mutex_unlock(&test_data.mutex);
+    uint64_t after_time = 0;
+    ASSERT_SUCCESS(aws_high_res_clock_get_ticks(&after_time));
+    uint64_t backoff_scale_factor =
+        aws_timestamp_convert(config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t max_backoff_scale_factor =
+        aws_timestamp_convert(config.maximum_backoff_s, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+
+    uint64_t expected_interval = aws_min_u64(max_backoff_scale_factor, 1 * backoff_scale_factor) +
+                                 aws_min_u64(max_backoff_scale_factor, 2 * backoff_scale_factor) +
+                                 aws_min_u64(max_backoff_scale_factor, 4 * backoff_scale_factor);
+    ASSERT_TRUE(expected_interval <= after_time - before_time);
+
+    ASSERT_UINT_EQUALS(config.max_retries, test_data.retry_count);
+    ASSERT_UINT_EQUALS(AWS_IO_MAX_RETRIES_EXCEEDED, test_data.failure_error_code);
+
+    aws_retry_strategy_release(retry_strategy);
+    aws_event_loop_group_release(el_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_exponential_max_backoff_retry_no_jitter, s_test_exponential_max_backoff_retry_no_jitter_fn)
+
 /* verify that invalid options cause a failure at creation time. */
 static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
