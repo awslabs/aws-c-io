@@ -259,7 +259,7 @@ static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocato
         .jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
         .el_group = el_group,
         .backoff_scale_factor_ms = 1000,
-        .maximum_backoff_s = 3,
+        .maximum_backoff_secs = 3,
     };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
@@ -285,7 +285,7 @@ static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocato
     uint64_t backoff_scale_factor =
         aws_timestamp_convert(config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     uint64_t max_backoff_scale_factor =
-        aws_timestamp_convert(config.maximum_backoff_s, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        aws_timestamp_convert(config.maximum_backoff_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
 
     uint64_t expected_interval = aws_min_u64(max_backoff_scale_factor, 1 * backoff_scale_factor) +
                                  aws_min_u64(max_backoff_scale_factor, 2 * backoff_scale_factor) +

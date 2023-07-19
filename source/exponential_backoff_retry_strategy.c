@@ -141,7 +141,7 @@ static int s_exponential_retry_acquire_token(
     backoff_retry_token->backoff_scale_factor_ns = aws_timestamp_convert(
         exponential_backoff_strategy->config.backoff_scale_factor_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->maximum_backoff_ns = aws_timestamp_convert(
-        exponential_backoff_strategy->config.maximum_backoff_s, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+        exponential_backoff_strategy->config.maximum_backoff_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     backoff_retry_token->jitter_mode = exponential_backoff_strategy->config.jitter_mode;
     backoff_retry_token->generate_random = exponential_backoff_strategy->config.generate_random;
     backoff_retry_token->generate_random_impl = exponential_backoff_strategy->config.generate_random_impl;
@@ -378,8 +378,8 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
         exponential_backoff_strategy->config.backoff_scale_factor_ms = 25;
     }
 
-    if (!exponential_backoff_strategy->config.maximum_backoff_s) {
-        exponential_backoff_strategy->config.maximum_backoff_s = 20;
+    if (!exponential_backoff_strategy->config.maximum_backoff_secs) {
+        exponential_backoff_strategy->config.maximum_backoff_secs = 20;
     }
 
     if (config->shutdown_options) {
