@@ -188,7 +188,7 @@ typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *tok
 static uint64_t s_compute_no_jitter(struct exponential_backoff_retry_token *token) {
     uint64_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
     return aws_min_u64(
-        aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns), token->maximum_backoff_ns);
+        token->maximum_backoff_ns, aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns));
 }
 
 static uint64_t s_compute_full_jitter(struct exponential_backoff_retry_token *token) {
