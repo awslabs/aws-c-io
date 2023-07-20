@@ -202,10 +202,8 @@ static uint64_t s_compute_deccorelated_jitter(struct exponential_backoff_retry_t
     if (!last_backoff_val) {
         return s_compute_full_jitter(token);
     }
-
-    return aws_min_u64(
-        token->maximum_backoff_ns,
-        s_random_in_range(token->backoff_scale_factor_ns, aws_mul_u64_saturating(last_backoff_val, 3), token));
+    uint64_t backoff_ns = aws_min_u64(token->maximum_backoff_ns, aws_mul_u64_saturating(last_backoff_val, 3));
+    return s_random_in_range(token->backoff_scale_factor_ns, backoff_ns, token);
 }
 
 static compute_backoff_fn *s_backoff_compute_table[] = {
