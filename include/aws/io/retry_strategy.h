@@ -112,8 +112,8 @@ struct aws_exponential_backoff_retry_options {
     size_t max_retries;
     /** Scaling factor to add for the backoff. Default is 25ms */
     uint32_t backoff_scale_factor_ms;
-    /** Maximum retry backoff in seconds. Default is 20 seconds */
-    uint32_t maximum_backoff_secs;
+    /** Max retry backoff in seconds. Default is 20 seconds */
+    uint32_t max_backoff_secs;
     /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode.
      * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
     enum aws_exponential_backoff_jitter_mode jitter_mode;
