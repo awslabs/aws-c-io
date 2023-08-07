@@ -557,6 +557,8 @@ static int s_s2n_handler_process_read_message(
         }
 
         if (read < 0) {
+            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+
             /* the socket blocked so exit from the loop */
             if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_BLOCKED) {
                 break;
