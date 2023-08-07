@@ -562,6 +562,7 @@ static int s_s2n_handler_process_read_message(
                 break;
             }
 
+            /* the socket returned a fatal error so shut down */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
                 "id=%p: S2N failed to read with error: %s (%s)",
