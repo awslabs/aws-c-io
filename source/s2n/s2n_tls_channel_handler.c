@@ -523,7 +523,7 @@ static int s_s2n_handler_process_read_message(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: Downstream window %llu", (void *)handler, (unsigned long long)downstream_window);
 
-    while (processed < downstream_window && blocked == S2N_NOT_BLOCKED) {
+    while (processed < downstream_window) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
@@ -557,8 +557,19 @@ static int s_s2n_handler_process_read_message(
         }
 
         if (read < 0) {
-            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-            continue;
+            /* the socket blocked so exit from the loop */
+            if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_BLOCKED) {
+                break;
+            }
+
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS,
+                "id=%p: S2N failed to read with error: %s (%s)",
+                (void *)handler,
+                s2n_strerror(s2n_errno, "EN"),
+                s2n_strerror_debug(s2n_errno, "EN"));
+            aws_channel_shutdown(slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
+            return aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         };
 
         processed += read;
