@@ -302,7 +302,7 @@ static struct aws_error_info s_errors[] = {
         "Get length is not supported in the underlying I/O source."),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_ERROR_READ_FAILURE,
-        "Failed to read during TLS"),
+        "Failure during TLS read."),
 
 };
 /* clang-format on */
