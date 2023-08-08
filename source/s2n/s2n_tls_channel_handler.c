@@ -590,7 +590,7 @@ static int s_s2n_handler_process_read_message(
         }
 
         if (blocked == S2N_NOT_BLOCKED) {
-            /* read is complete so shutdown with success */
+            /* read is complete */
             break;
         }
     }
