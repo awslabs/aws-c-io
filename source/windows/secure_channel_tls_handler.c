@@ -1144,8 +1144,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            int aws_error = s_determine_sspi_error(status);
-            aws_raise_error(aws_error);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
