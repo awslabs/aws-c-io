@@ -575,6 +575,7 @@ static int s_s2n_handler_process_read_message(
             return aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         };
 
+        // if read > 0
         processed += read;
         outgoing_read_message->message_data.len = (size_t)read;
 
@@ -586,6 +587,12 @@ static int s_s2n_handler_process_read_message(
             aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ);
         } else {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+        }
+
+        if (blocked == S2N_NOT_BLOCKED) {
+            /* read is complete so shutdown with success */
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            return AWS_OP_SUCCESS;
         }
     }
 
