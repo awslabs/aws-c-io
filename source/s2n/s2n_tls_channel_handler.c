@@ -591,8 +591,7 @@ static int s_s2n_handler_process_read_message(
 
         if (blocked == S2N_NOT_BLOCKED) {
             /* read is complete so shutdown with success */
-            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
-            return AWS_OP_SUCCESS;
+            break;
         }
     }
 
