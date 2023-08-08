@@ -1111,6 +1111,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
                         (void *)handler);
                 }
+            } else {
+                aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
             }
         }
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
