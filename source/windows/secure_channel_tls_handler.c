@@ -1114,9 +1114,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             } else {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
-                    "id=%p: Error decrypting message. Unexpected type of output buffer. SECURITY_STATUS is %d.",
-                    (void *)handler,
-                    (int)status);
+                    "id=%p: Error decrypting message. Unexpected type of output buffer.",
+                    (void *)handler);
                 aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
             }
         }
