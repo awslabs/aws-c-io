@@ -1079,6 +1079,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
         if (status == SEC_E_OK) {
+            error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
@@ -1111,12 +1112,6 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
                         (void *)handler);
                 }
-            } else {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "id=%p: Error decrypting message. Unexpected type of output buffer.",
-                    (void *)handler);
-                aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
             }
         }
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
