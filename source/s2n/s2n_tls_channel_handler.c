@@ -588,11 +588,6 @@ static int s_s2n_handler_process_read_message(
         } else {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
         }
-
-        if (blocked == S2N_NOT_BLOCKED) {
-            /* read is complete */
-            break;
-        }
     }
 
     AWS_LOGF_TRACE(
