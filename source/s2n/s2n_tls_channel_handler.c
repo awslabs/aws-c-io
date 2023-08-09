@@ -575,7 +575,7 @@ static int s_s2n_handler_process_read_message(
             return aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         };
 
-        // if read > 0
+        /* if read > 0 */
         processed += read;
         outgoing_read_message->message_data.len = (size_t)read;
 
