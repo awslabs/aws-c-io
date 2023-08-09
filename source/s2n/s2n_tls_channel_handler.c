@@ -572,7 +572,7 @@ static int s_s2n_handler_process_read_message(
                 s2n_strerror(s2n_errno, "EN"),
                 s2n_strerror_debug(s2n_errno, "EN"));
             aws_channel_shutdown(slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
-            return aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
+            return AWS_OP_SUCCESS;
         };
 
         /* if read > 0 */
