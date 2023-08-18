@@ -988,7 +988,7 @@ static inline int s_tcp_connect(
     if (!connect_res) {
         int error_code = WSAGetLastError();
         if (error_code != ERROR_IO_PENDING) {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_WARN(
                 AWS_LS_IO_TLS,
                 "id=%p handle=%p: connection error %d",
                 (void *)socket,
@@ -1220,7 +1220,7 @@ static int s_local_connect(
 
 error:;
     int win_error = GetLastError(); /* logging may reset error, so cache it */
-    AWS_LOGF_ERROR(
+    AWS_LOGF_WARN(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
         (void *)socket,
@@ -1267,7 +1267,7 @@ static inline int s_dgram_connect(
 
     if (connect_err) {
         int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Failed to connect to %s:%d with error %d.",
             (void *)socket,

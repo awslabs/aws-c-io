@@ -674,7 +674,7 @@ int aws_socket_connect(
 
     if (pton_err != 1) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to parse address %s:%d.",
             (void *)socket,
@@ -770,7 +770,7 @@ int aws_socket_connect(
                 (unsigned long long)timeout);
             aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
         } else {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_WARN(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: connect failed with error code %d.",
                 (void *)socket,
