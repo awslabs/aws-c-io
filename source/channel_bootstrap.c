@@ -595,11 +595,18 @@ task_cancelled:
     if (task_data->args->failed_count == task_data->args->addresses_count) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: failed to create socket with error %d",
+            "id=%p: Last attempt failed to create socket with error %d",
             (void *)task_data->args->bootstrap,
             err_code);
         s_connection_args_setup_callback(task_data->args, err_code, NULL);
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: failed to create socket with error %d. More attempts ongoing.",
+            (void *)task_data->args->bootstrap,
+            err_code);
     }
+
     s_client_connection_args_release(task_data->args);
 
 cleanup_task:

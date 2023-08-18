@@ -384,7 +384,7 @@ static int s_on_connection_success(struct aws_socket *socket) {
 
     if (getsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to determine connection error %d",
             (void *)socket,
@@ -397,7 +397,7 @@ static int s_on_connection_success(struct aws_socket *socket) {
     }
 
     if (connect_result) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: connection error %d",
             (void *)socket,
@@ -437,7 +437,7 @@ static int s_on_connection_success(struct aws_socket *socket) {
 
 static void s_on_connection_error(struct aws_socket *socket, int error) {
     socket->state = ERROR;
-    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p fd=%d: connection failure", (void *)socket, socket->io_handle.data.fd);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: connection failure", (void *)socket, socket->io_handle.data.fd);
     if (socket->connection_result_fn) {
         socket->connection_result_fn(socket, error, socket->connect_accept_user_data);
     } else if (socket->accept_result_fn) {
@@ -674,7 +674,7 @@ int aws_socket_connect(
 
     if (pton_err != 1) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
-        AWS_LOGF_WARN(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: failed to parse address %s:%d.",
             (void *)socket,
@@ -770,7 +770,7 @@ int aws_socket_connect(
                 (unsigned long long)timeout);
             aws_event_loop_schedule_task_future(event_loop, timeout_task, timeout);
         } else {
-            AWS_LOGF_WARN(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: connect failed with error code %d.",
                 (void *)socket,
