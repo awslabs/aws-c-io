@@ -8,6 +8,7 @@
 #include <aws/common/file.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/private/tracing.h>
+
 #include <errno.h>
 
 int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
