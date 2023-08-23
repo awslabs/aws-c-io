@@ -7,7 +7,7 @@
 
 #include <aws/common/file.h>
 #include <aws/io/file_utils.h>
-
+#include <aws/io/private/tracing.h>
 #include <errno.h>
 
 int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis) {
@@ -32,7 +32,9 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     const size_t safe_buf_capacity = dest->capacity - dest->len;
     struct aws_byte_buf safe_buf = aws_byte_buf_from_empty_array(safe_buf_start, safe_buf_capacity);
 
+    __itt_task_begin(tracing_domain, __itt_null, __itt_null, tracing_stream_read_handle);
     int read_result = stream->vtable->read(stream, &safe_buf);
+    __itt_task_end(tracing_domain);
 
     /* Ensure the implementation did not commit forbidden acts upon the buffer */
     AWS_FATAL_ASSERT(
