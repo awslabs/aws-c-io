@@ -11,8 +11,8 @@
 extern __itt_domain *io_tracing_domain;
 extern __itt_string_handle *tracing_input_stream_read;
 extern __itt_string_handle *tracing_event_loop_run_tasks;
-extern __itt_string_handle *tracing_event_loop_event_callback;
-extern __itt_string_handle *tracing_event_loop_event_callbacks;
+extern __itt_string_handle *tracing_event_loop_event;
+extern __itt_string_handle *tracing_event_loop_events;
 
 AWS_EXTERN_C_BEGIN
 

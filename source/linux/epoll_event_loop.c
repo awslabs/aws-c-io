@@ -617,7 +617,7 @@ static void aws_event_loop_thread(void *args) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
 
-        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callbacks);
+        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_events);
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
@@ -648,7 +648,7 @@ static void aws_event_loop_thread(void *args) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     event_data->handle->data.fd);
-                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callback);
+                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
                 event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
                 __itt_task_end(io_tracing_domain);
             }
