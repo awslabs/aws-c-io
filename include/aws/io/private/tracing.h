@@ -8,7 +8,7 @@
 #include <aws/common/external/ittnotify.h>
 #include <aws/io/io.h>
 
-extern __itt_domain *tracing_domain;
+extern __itt_domain *io_tracing_domain;
 extern __itt_string_handle *tracing_stream_read_handle;
 extern __itt_string_handle *tracing_event_loop_run_tasks;
 extern __itt_string_handle *tracing_event_loop_event_callback;

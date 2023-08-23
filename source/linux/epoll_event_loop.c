@@ -617,7 +617,7 @@ static void aws_event_loop_thread(void *args) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
 
-        __itt_task_begin(tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callbacks);
+        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callbacks);
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
@@ -648,12 +648,12 @@ static void aws_event_loop_thread(void *args) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     event_data->handle->data.fd);
-                __itt_task_begin(tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callback);
+                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event_callback);
                 event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
-                __itt_task_end(tracing_domain);
+                __itt_task_end(io_tracing_domain);
             }
         }
-        __itt_task_end(tracing_domain);
+        __itt_task_end(io_tracing_domain);
 
         /* run scheduled tasks */
         s_process_task_pre_queue(event_loop);
@@ -662,9 +662,9 @@ static void aws_event_loop_thread(void *args) {
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
-        __itt_task_begin(tracing_domain, __itt_null, __itt_null, tracing_event_loop_run_tasks);
+        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_run_tasks);
         aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
-        __itt_task_end(tracing_domain);
+        __itt_task_end(io_tracing_domain);
 
         /* set timeout for next epoll_wait() call.
          * if clock fails, or scheduler has no tasks, use default timeout */
