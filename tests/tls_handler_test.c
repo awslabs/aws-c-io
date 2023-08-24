@@ -1114,6 +1114,7 @@ static int s_verify_good_host(
     }
 
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
+    ASSERT_NOT_NULL(client_ctx);
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);

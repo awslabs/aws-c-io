@@ -1053,7 +1053,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     int error = AWS_OP_ERR;
     /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
-       always say BLOCKED_ON_READ or SUCCESS. There will never be left over reads.*/
+       always say BLOCKED_ON_READ, AWS_IO_TLS_ERROR_READ_FAILURE or SUCCESS. There will never be left over reads.*/
     do {
         error = AWS_OP_ERR;
         /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
@@ -1079,6 +1079,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
         if (status == SEC_E_OK) {
+            error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
@@ -1144,8 +1145,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            int aws_error = s_determine_sspi_error(status);
-            aws_raise_error(aws_error);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
