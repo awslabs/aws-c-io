@@ -602,8 +602,10 @@ task_cancelled:
     } else {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: failed to create socket with error %d. More attempts ongoing.",
+            "id=%p: Socket connect attempt %d/%d failed with error %d. More attempts ongoing...",
             (void *)task_data->args->bootstrap,
+            task_data->args->failed_count,
+            task_data->args->addresses_count,
             err_code);
     }
 
