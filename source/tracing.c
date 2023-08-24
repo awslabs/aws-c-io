@@ -14,7 +14,7 @@ __itt_string_handle *tracing_event_loop_events;
 void aws_io_tracing_init() {
     io_tracing_domain = __itt_domain_create("aws.c.io");
     tracing_input_stream_read = __itt_string_handle_create("Read:InputStream");
-    tracing_event_loop_run_tasks = __itt_string_handle_create("Read:HTTP");
-    tracing_event_loop_event = __itt_string_handle_create("IOEvent-EventLoop");
-    tracing_event_loop_events = __itt_string_handle_create("IOEvents-EventLoop");
+    tracing_event_loop_run_tasks = __itt_string_handle_create("RunTasks:EventLoop");
+    tracing_event_loop_event = __itt_string_handle_create("IOEvent:EventLoop");
+    tracing_event_loop_events = __itt_string_handle_create("IOEvents:EventLoop");
 }

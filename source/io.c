@@ -6,8 +6,8 @@
 
 #include <aws/io/logging.h>
 
-#include "aws/io/private/tracing.h"
 #include <aws/cal/cal.h>
+#include <aws/io/private/tracing.h>
 
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
