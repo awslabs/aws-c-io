@@ -567,10 +567,6 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     }
 
     struct aws_socket *outgoing_socket = aws_mem_acquire(allocator, sizeof(struct aws_socket));
-    if (!outgoing_socket) {
-        goto socket_alloc_failed;
-    }
-
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
         goto socket_init_failed;
     }
@@ -592,19 +588,27 @@ socket_connect_failed:
     aws_socket_clean_up(outgoing_socket);
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);
-socket_alloc_failed:
-    err_code = aws_last_error();
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: failed to create socket with error %d",
-        (void *)task_data->args->bootstrap,
-        err_code);
 task_cancelled:
+    err_code = aws_last_error();
     task_data->args->failed_count++;
     /* if this is the last attempted connection and it failed, notify the user */
     if (task_data->args->failed_count == task_data->args->addresses_count) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: Last attempt failed to create socket with error %d",
+            (void *)task_data->args->bootstrap,
+            err_code);
         s_connection_args_setup_callback(task_data->args, err_code, NULL);
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: Socket connect attempt %d/%d failed with error %d. More attempts ongoing...",
+            (void *)task_data->args->bootstrap,
+            task_data->args->failed_count,
+            task_data->args->addresses_count,
+            err_code);
     }
+
     s_client_connection_args_release(task_data->args);
 
 cleanup_task:

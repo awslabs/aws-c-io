@@ -679,7 +679,7 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
         int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
@@ -690,7 +690,7 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     }
 
     if (connect_result) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connection error %d",
             (void *)socket,
@@ -740,7 +740,7 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     if (getsockopt(
             (SOCKET)socket->io_handle.data.handle, SOL_SOCKET, SO_ERROR, (char *)&connect_result, &result_length) < 0) {
         int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to determine connection error %d",
             (void *)socket,
@@ -751,7 +751,7 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
     }
 
     if (connect_result) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connection error %d",
             (void *)socket,
@@ -806,7 +806,7 @@ static int s_local_and_udp_connection_success(struct aws_socket *socket) {
 static void s_connection_error(struct aws_socket *socket, int error) {
     socket->state = ERRORED;
 
-    AWS_LOGF_ERROR(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connection error with code %d",
         (void *)socket,
@@ -988,7 +988,7 @@ static inline int s_tcp_connect(
     if (!connect_res) {
         int error_code = WSAGetLastError();
         if (error_code != ERROR_IO_PENDING) {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p handle=%p: connection error %d",
                 (void *)socket,
@@ -1220,7 +1220,7 @@ static int s_local_connect(
 
 error:;
     int win_error = GetLastError(); /* logging may reset error, so cache it */
-    AWS_LOGF_ERROR(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: failed to connect to named pipe %s.",
         (void *)socket,
@@ -1267,7 +1267,7 @@ static inline int s_dgram_connect(
 
     if (connect_err) {
         int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Failed to connect to %s:%d with error %d.",
             (void *)socket,
