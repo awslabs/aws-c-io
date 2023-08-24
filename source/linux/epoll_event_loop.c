@@ -615,6 +615,11 @@ static void aws_event_loop_thread(void *args) {
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
+
+        /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
+         * the IO, do not immediately get executed in the scheduler run. */
+        aws_task_scheduler_enter_deferment_boundary(&epoll_loop->scheduler);
+
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
@@ -657,6 +662,9 @@ static void aws_event_loop_thread(void *args) {
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
         aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
+
+        /* exit the deferment so that all deferred tasks will be executed in the next scheduler run. */
+        aws_task_scheduler_exit_deferment_boundary(&epoll_loop->scheduler);
 
         /* set timeout for next epoll_wait() call.
          * if clock fails, or scheduler has no tasks, use default timeout */

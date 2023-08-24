@@ -919,6 +919,10 @@ static void aws_event_loop_thread(void *user_data) {
             handle_data->events_this_loop |= event_flags;
         }
 
+        /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
+         * the IO, do not immediately get executed in the scheduler run. */
+        aws_task_scheduler_enter_deferment_boundary(&impl->thread_data.scheduler);
+
         /* Invoke each handle's event callback (unless the handle has been unsubscribed) */
         for (int i = 0; i < num_io_handle_events; ++i) {
             struct handle_data *handle_data = io_handle_events[i];
@@ -947,6 +951,8 @@ static void aws_event_loop_thread(void *user_data) {
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
+        /* exit the deferment so that all deferred tasks will be executed in the next scheduler run. */
+        aws_task_scheduler_exit_deferment_boundary(&impl->thread_data.scheduler);
 
         /* Set timeout for next kevent() call.
          * If clock fails, or scheduler has no tasks, use default timeout */

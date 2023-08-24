@@ -699,6 +699,10 @@ static void aws_event_loop_thread(void *user_data) {
 
         aws_event_loop_register_tick_start(event_loop);
 
+        /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
+         * the IO, do not immediately get executed in the scheduler run. */
+        aws_task_scheduler_enter_deferment_boundary(&impl->thread_data.scheduler);
+
         if (has_completion_entries) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
@@ -745,6 +749,9 @@ static void aws_event_loop_thread(void *user_data) {
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
         aws_task_scheduler_run_all(&impl->thread_data.scheduler, now_ns);
+
+        /* exit the deferment so that all deferred tasks will be executed in the next scheduler run. */
+        aws_task_scheduler_exit_deferment_boundary(&impl->thread_data.scheduler);
 
         /* Set timeout for next GetQueuedCompletionStatus() call.
          * If clock fails, or scheduler has no tasks, use default timeout */
