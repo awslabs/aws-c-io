@@ -627,6 +627,7 @@ static void aws_event_loop_thread(void *args) {
 
             /* only do this once per event, this handles the case where the same fd has multiple events on it. */
             if (event_data->node.next == NULL) {
+                event_data->event_type_mask = 0;
                 aws_linked_list_push_back(&deduped_events, &event_data->node);
             }
 
