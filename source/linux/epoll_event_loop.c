@@ -100,6 +100,8 @@ struct epoll_event_data {
     aws_event_loop_on_event_fn *on_event;
     void *user_data;
     struct aws_task cleanup_task;
+    int event_type_mask;
+    struct aws_linked_list_node node;
     bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't been cleaned up yet */
 };
 
@@ -407,6 +409,7 @@ static int s_subscribe_to_io_events(
     epoll_event_data->handle = handle;
     epoll_event_data->on_event = on_event;
     epoll_event_data->is_subscribed = true;
+    aws_linked_list_node_reset(&epoll_event_data->node);
 
     /*everyone is always registered for edge-triggered, hang up, remote hang up, errors. */
     uint32_t event_mask = EPOLLET | EPOLLHUP | EPOLLRDHUP | EPOLLERR;
@@ -616,33 +619,47 @@ static void aws_event_loop_thread(void *args) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
 
-        /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
-         * the IO, do not immediately get executed in the scheduler run. */
-        aws_task_scheduler_enter_deferment_boundary(&epoll_loop->scheduler);
+        struct aws_linked_list deduped_events;
+        aws_linked_list_init(&deduped_events);
 
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
-            int event_mask = 0;
+            /* only do this once per event, this handles the case where the same fd has multiple events on it. */
+            if (event_data->node.next == NULL) {
+                aws_linked_list_push_back(&deduped_events, &event_data->node);
+            }
+
             if (events[i].events & EPOLLIN) {
-                event_mask |= AWS_IO_EVENT_TYPE_READABLE;
+                event_data->event_type_mask |= AWS_IO_EVENT_TYPE_READABLE;
             }
 
             if (events[i].events & EPOLLOUT) {
-                event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
+                event_data->event_type_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
             }
 
             if (events[i].events & EPOLLRDHUP) {
-                event_mask |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+                event_data->event_type_mask |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
             }
 
             if (events[i].events & EPOLLHUP) {
-                event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
+                event_data->event_type_mask |= AWS_IO_EVENT_TYPE_CLOSED;
             }
 
             if (events[i].events & EPOLLERR) {
-                event_mask |= AWS_IO_EVENT_TYPE_ERROR;
+                event_data->event_type_mask |= AWS_IO_EVENT_TYPE_ERROR;
             }
+        }
+
+        /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
+         * the IO, do not immediately get executed in the scheduler run. */
+        aws_task_scheduler_enter_deferment_boundary(&epoll_loop->scheduler);
+        
+        /* this should now be unique per fd */
+        while (!aws_linked_list_empty(&deduped_events)) {
+            struct aws_linked_list_node *deduped_node = aws_linked_list_pop_front(&deduped_events);
+            struct epoll_event_data *event_data = AWS_CONTAINER_OF(deduped_node, struct epoll_event_data, node);
+            aws_linked_list_node_reset(&event_data->node);
 
             if (event_data->is_subscribed) {
                 AWS_LOGF_TRACE(
@@ -650,7 +667,8 @@ static void aws_event_loop_thread(void *args) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     event_data->handle->data.fd);
-                event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
+                event_data->on_event(
+                    event_loop, event_data->handle, event_data->event_type_mask, event_data->user_data);
             }
         }
 
