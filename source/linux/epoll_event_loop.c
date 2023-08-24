@@ -654,7 +654,7 @@ static void aws_event_loop_thread(void *args) {
         /* enter the deferment boundary before handling IO events so that the scheduled events resulting from handling
          * the IO, do not immediately get executed in the scheduler run. */
         aws_task_scheduler_enter_deferment_boundary(&epoll_loop->scheduler);
-        
+
         /* this should now be unique per fd */
         while (!aws_linked_list_empty(&deduped_events)) {
             struct aws_linked_list_node *deduped_node = aws_linked_list_pop_front(&deduped_events);
@@ -669,6 +669,7 @@ static void aws_event_loop_thread(void *args) {
                     event_data->handle->data.fd);
                 event_data->on_event(
                     event_loop, event_data->handle, event_data->event_type_mask, event_data->user_data);
+                event_data->event_type_mask = 0;
             }
         }
 
