@@ -27,4 +27,4 @@ jobs:
           echo "The VCC proofs are based on a snapshot of epoll_event_loop.c.
                 This push updates this file so the proofs must be rechecked to ensure they remain valid.
                 Please contact Nathan Chong.
-                You can also update md5sum value by running md5sum source/linux/epoll_event_loop.c if the changes are trivial."
+                You can also update md5sum value by running `md5sum source/linux/epoll_event_loop.c` if the changes are trivial."
