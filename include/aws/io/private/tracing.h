@@ -16,7 +16,6 @@ extern __itt_string_handle *tracing_event_loop_events;
 
 AWS_EXTERN_C_BEGIN
 
-AWS_IO_API
 void aws_io_tracing_init(void);
 
 AWS_EXTERN_C_END
