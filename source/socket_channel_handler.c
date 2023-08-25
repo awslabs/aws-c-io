@@ -120,7 +120,7 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
  * or schedule a task to enforce fairness for other sockets in the event loop if we read up to the max
  * read per event loop tick.
  */
-static void s_do_read(struct socket_handler *socket_handler) {
+static void s_do_read(struct socket_handler *socket_handler, bool from_task) {
 
     size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
@@ -134,6 +134,16 @@ static void s_do_read(struct socket_handler *socket_handler) {
         (unsigned long long)max_to_read);
 
     if (max_to_read == 0) {
+        if (from_task) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_SOCKET_HANDLER,
+                "id=%p: do_read call was called from a task, but we've exceeded the available channel window."
+                "Scheduling another read task to avoid missing edge-triggers",
+                (void *)socket_handler->slot->handler);
+            aws_channel_task_init(
+                &socket_handler->read_task_storage, s_read_task, socket_handler, "socket_handler_re_read");
+            aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
+        }
         return;
     }
 
@@ -218,7 +228,7 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
      * then immediately closes the socket. On some platforms, we'll never see the readable flag. So we want to make
      * sure we read the ALERT, otherwise, we'll end up telling the user that the channel shutdown because of a socket
      * closure, when in reality it was a TLS error */
-    s_do_read(socket_handler);
+    s_do_read(socket_handler, false);
 
     if (error_code && !socket_handler->shutdown_in_progress) {
         aws_channel_shutdown(socket_handler->slot->channel, error_code);
@@ -232,7 +242,7 @@ static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_statu
 
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_handler *socket_handler = arg;
-        s_do_read(socket_handler);
+        s_do_read(socket_handler, true);
     }
 }
 
@@ -358,7 +368,7 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 static void s_trigger_read(struct aws_channel_handler *handler) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    s_do_read(socket_handler);
+    s_do_read(socket_handler, false);
 }
 
 static struct aws_channel_handler_vtable s_vtable = {
