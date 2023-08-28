@@ -7,6 +7,7 @@
 #include <aws/io/logging.h>
 
 #include <aws/cal/cal.h>
+#include <aws/io/private/tracing.h>
 
 #define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
@@ -360,6 +361,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
         aws_tls_init_static_state(allocator);
+        aws_io_tracing_init();
     }
 }
 
