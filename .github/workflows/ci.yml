@@ -140,7 +140,7 @@ jobs:
         python .\aws-c-io\build\deps\aws-c-common\scripts\appverifier_ctest.py --build_directory .\aws-c-io\build\aws-c-io
 
   osx:
-    runs-on: macos-12 # latest
+    runs-on: macos-13 # latest
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
