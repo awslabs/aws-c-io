@@ -577,24 +577,10 @@ static int s_test_pkcs11_session_tests(struct aws_allocator *allocator, void *ct
     /* Reset PKCS#11 tokens and load library */
     ASSERT_SUCCESS(s_pkcs11_tester_init(allocator));
 
-    /* Assert that creating a session for an invalid slot fails.
-     *
-     * NOTE: We omit this part of the test when AddressSanitizer is being used,
-     * because SoftHSM v2.2 triggers it in this scenario. I've tried using a
-     * suppression file to ignore the issue, but the suppression isn't
-     * working and I still don't understand why after 1+ hours of effort.
-     * But this ifdef does the trick so that's what I'm doing. */
-#if defined(__has_feature)
-#    if __has_feature(address_sanitizer)
-#        define ADDRESS_SANITIZER_ENABLED 1
-#    endif
-#endif
-#if !ADDRESS_SANITIZER_ENABLED
     CK_SESSION_HANDLE session = CK_INVALID_HANDLE;
     /* we haven't created any slots and we are starting from a clean softhsm, so any slot value is invalid. */
     CK_SLOT_ID slot = 1;
     ASSERT_FAILS(aws_pkcs11_lib_open_session(s_pkcs11_tester.lib, slot, &session /*out*/));
-#endif
 
     /* Create a new slot, this reloads the softhsm library but the labels/slots remain intact */
     CK_SLOT_ID created_slot = 0;
