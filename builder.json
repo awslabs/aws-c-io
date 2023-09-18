@@ -22,5 +22,14 @@
     "env": {
         "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-lsan.txt:allow_addr2line=1",
         "ASAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-asan.txt"
+    },
+    "compilers": {
+        "clang": {
+            "+post_build_steps": ["setup-asan"],
+            "cmake_args": [
+                "-DCMAKE_C_FLAGS=-shared-libasan",
+                "-DCMAKE_CXX_FLAGS=-shared-libasan"
+            ]
+        }
     }
 }
