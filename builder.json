@@ -16,19 +16,23 @@
     "targets": {
         "linux": {
             "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
-            "+pre_build_steps": ["pkcs11-test-setup"]
+            "+pre_build_steps": ["pkcs11-test-setup"],
+            "architectures": {
+                "x64": {
+                    "compilers": {
+                        "clang": {
+                            "+post_build_steps": ["setup-clang-libasan-path"],
+                            "cmake_args": [
+                                "-DCMAKE_C_FLAGS=-shared-libasan",
+                                "-DCMAKE_CXX_FLAGS=-shared-libasan"
+                            ]
+                        }
+                    }
+                }
+            }
         }
     },
     "env": {
         "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-lsan.txt:allow_addr2line=1"
-    },
-    "compilers": {
-        "clang": {
-            "+post_build_steps": ["setup-asan"],
-            "cmake_args": [
-                "-DCMAKE_C_FLAGS=-shared-libasan",
-                "-DCMAKE_CXX_FLAGS=-shared-libasan"
-            ]
-        }
     }
 }
