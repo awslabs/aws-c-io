@@ -20,8 +20,7 @@
         }
     },
     "env": {
-        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-lsan.txt:allow_addr2line=1",
-        "ASAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-asan.txt"
+        "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-lsan.txt:allow_addr2line=1"
     },
     "compilers": {
         "clang": {
