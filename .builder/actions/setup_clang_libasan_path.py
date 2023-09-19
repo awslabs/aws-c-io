@@ -8,7 +8,7 @@ import os
 import subprocess
 
 
-class SetupClangSharedLibasan(Builder.Action):
+class SetupClangLibasanPath(Builder.Action):
     """
     The path to the shared asan library is not added to runpath.
     This action sets LD_LIBRARY_PATH to help find it.
