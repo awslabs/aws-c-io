@@ -28,7 +28,8 @@
                             ],
                             "versions": {
                                 "3": {
-                                    "!cmake_args": []
+                                    "!cmake_args": [],
+                                    "!post_build_steps": []
                                 }
                             }
                         }
