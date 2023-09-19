@@ -27,7 +27,9 @@
                                 "-DCMAKE_CXX_FLAGS=-shared-libasan"
                             ],
                             "versions": {
-                                "3": {}
+                                "3": {
+                                    "cmake_args": []
+                                }
                             }
                         }
                     }
