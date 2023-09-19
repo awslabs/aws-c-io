@@ -28,7 +28,7 @@
                             ],
                             "versions": {
                                 "3": {
-                                    "cmake_args": []
+                                    "!cmake_args": []
                                 }
                             }
                         }
