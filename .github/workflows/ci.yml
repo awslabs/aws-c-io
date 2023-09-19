@@ -51,6 +51,7 @@ jobs:
     strategy:
       matrix:
         compiler:
+          # FIXME CI uses gcc instead of clang-3
           # - clang-3
           - clang-6
           - clang-8

@@ -13,6 +13,7 @@ class SetupAsan(Builder.Action):
         proc = subprocess.run([compiler, '-print-file-name=libclang_rt.asan-x86_64.so'], stdout=subprocess.PIPE)
         proc.check_returncode()
         path = proc.stdout.decode().strip()
+        # TODO Use LD_LIBRARY_PATH
         self._setenv('LD_PRELOAD', path)
 
     def _setenv(self, var, value):
