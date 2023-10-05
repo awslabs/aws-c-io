@@ -4,6 +4,7 @@
  */
 
 #include <aws/io/private/pki_utils.h>
+#include <aws/io/pem.h>
 
 #include <aws/common/uuid.h>
 

@@ -258,7 +258,8 @@ static int s_convert_pem_to_raw_base64(
     struct aws_byte_buf current_obj_buf;
     AWS_ZERO_STRUCT(current_obj_buf);
     struct aws_byte_cursor current_obj_type_cur;
-    enum aws_pem_object_type current_obj_type;
+    AWS_ZERO_STRUCT(current_obj_type_cur);
+    enum aws_pem_object_type current_obj_type = AWS_PEM_TYPE_UNKNOWN;
 
     size_t split_count = aws_array_list_length(&split_buffers);
     size_t i = 0;
@@ -318,6 +319,8 @@ static int s_convert_pem_to_raw_base64(
                         current_obj_len = 0;
                         ++i;
                         AWS_ZERO_STRUCT(current_obj_buf);
+                        AWS_ZERO_STRUCT(current_obj_type_cur);
+                        current_obj_type = AWS_PEM_TYPE_UNKNOWN;
                     }
                     /* actually on a line with data in it. */
                 } else {
