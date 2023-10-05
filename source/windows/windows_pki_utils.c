@@ -730,9 +730,9 @@ int aws_import_key_pair_to_cert_context(
     }
 
 clean_up:
-    aws_cert_chain_clean_up(&certificates);
+    aws_pem_objects_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
-    aws_cert_chain_clean_up(&private_keys);
+    aws_pem_objects_clean_up(&private_keys);
     aws_array_list_clean_up(&private_keys);
 
     LocalFree(key);
