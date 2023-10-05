@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 #include <aws/common/string.h>
-#include <aws/io/private/pem_utils.h>
 #include <aws/io/pem.h>
+#include <aws/io/private/pem_utils.h>
 
 #include <aws/testing/aws_test_harness.h>
 
@@ -210,12 +210,14 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "testparse.crt", &output_list));
+    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_object_list(allocator, "testparse.crt", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -300,12 +302,14 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "unittests.key", &output_list));
+    ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_object_list(allocator, "unittests.key", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "RSA PRIVATE KEY");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_PRIVATE_RSA_PKCS1, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -376,12 +380,14 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -588,18 +594,24 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(
         s_expected_intermediate_1, sizeof(s_expected_intermediate_1), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 1);
     ASSERT_BIN_ARRAYS_EQUALS(
         s_expected_intermediate_2, sizeof(s_expected_intermediate_2), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 2);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected_leaf, sizeof(s_expected_leaf), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -712,12 +724,14 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected, sizeof(s_expected), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "RSA PRIVATE KEY");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_PRIVATE_RSA_PKCS1, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -940,18 +954,24 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_SUCCESS(aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
     ASSERT_BIN_ARRAYS_EQUALS(
         s_expected_intermediate_1, sizeof(s_expected_intermediate_1), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 1);
     ASSERT_BIN_ARRAYS_EQUALS(
         s_expected_intermediate_2, sizeof(s_expected_intermediate_2), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
     aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 2);
     ASSERT_BIN_ARRAYS_EQUALS(s_expected_leaf, sizeof(s_expected_leaf), pem_object->data.buffer, pem_object->data.len);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_buf(&pem_object->type_buf), "CERTIFICATE");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
     aws_pem_objects_clean_up(&output_list);
     aws_array_list_clean_up(&output_list);
@@ -984,7 +1004,7 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1017,7 +1037,7 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1089,7 +1109,7 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_buffer_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);

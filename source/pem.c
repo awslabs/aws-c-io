@@ -2,10 +2,10 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#include <aws/common/string.h>
 #include <aws/common/encoding.h>
-#include <aws/io/private/pem_utils.h>
+#include <aws/common/string.h>
 #include <aws/io/pem.h>
+#include <aws/io/private/pem_utils.h>
 
 #include <aws/io/logging.h>
 
@@ -102,28 +102,36 @@ error:
 }
 
 /*
-* Possible PEM object types. openssl/pem.h used as a source of truth for
-* possible types.
-*/
+ * Possible PEM object types. openssl/pem.h used as a source of truth for
+ * possible types.
+ */
 static struct aws_byte_cursor s_pem_type_x509_old_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("X509 CERTIFICATE");
 static struct aws_byte_cursor s_pem_type_x509_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("CERTIFICATE");
-static struct aws_byte_cursor s_pem_type_x509_trusted_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TRUSTED CERTIFICATE");
-static struct aws_byte_cursor s_pem_type_x509_req_old_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("NEW CERTIFICATE REQUEST");
+static struct aws_byte_cursor s_pem_type_x509_trusted_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("TRUSTED CERTIFICATE");
+static struct aws_byte_cursor s_pem_type_x509_req_old_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("NEW CERTIFICATE REQUEST");
 static struct aws_byte_cursor s_pem_type_x509_req_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("CERTIFICATE REQUEST");
 static struct aws_byte_cursor s_pem_type_x509_crl_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("X509 CRL");
 static struct aws_byte_cursor s_pem_type_evp_pkey_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("ANY PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_public_pkcs8_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PUBLIC KEY");
-static struct aws_byte_cursor s_pem_type_private_rsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
+static struct aws_byte_cursor s_pem_type_private_rsa_pkcs1_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_public_rsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PUBLIC KEY");
-static struct aws_byte_cursor s_pem_type_private_dsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
+static struct aws_byte_cursor s_pem_type_private_dsa_pkcs1_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_public_dsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PUBLIC KEY");
 static struct aws_byte_cursor s_pem_type_pkcs7_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PKCS7");
-static struct aws_byte_cursor s_pem_type_pkcs7_signed_data_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PKCS #7 SIGNED DATA");
-static struct aws_byte_cursor s_pem_type_private_pkcs8_encrypted_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("ENCRYPTED PRIVATE KEY");
+static struct aws_byte_cursor s_pem_type_pkcs7_signed_data_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PKCS #7 SIGNED DATA");
+static struct aws_byte_cursor s_pem_type_private_pkcs8_encrypted_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("ENCRYPTED PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_private_pkcs8_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_dh_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("DH PARAMETERS");
-static struct aws_byte_cursor s_pem_type_dh_parameters_x942_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("X9.42 DH PARAMETERS");
-static struct aws_byte_cursor s_pem_type_ssl_session_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("SSL SESSION PARAMETERS");
+static struct aws_byte_cursor s_pem_type_dh_parameters_x942_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("X9.42 DH PARAMETERS");
+static struct aws_byte_cursor s_pem_type_ssl_session_parameters_cur =
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("SSL SESSION PARAMETERS");
 static struct aws_byte_cursor s_pem_type_dsa_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("DSA PARAMETERS");
 static struct aws_byte_cursor s_pem_type_ecdsa_public_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("ECDSA PUBLIC KEY");
 static struct aws_byte_cursor s_pem_type_ec_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("EC PARAMETERS");
@@ -149,13 +157,13 @@ void aws_pem_objects_clean_up(struct aws_array_list *cert_chain) {
 
 enum aws_pem_object_type s_map_type_cur_to_type(struct aws_byte_cursor type_cur) {
     /*
-    * Putting all those in a hash table might be a bit faster depending on
-    * hashing function cost, but it complicates code considerably for a
-    * potential small gain. PEM parsing is already slow due to multiple
-    * allocations and should not be used in perf critical places. 
-    * So choosing dumb and easy approach over something more complicated and we
-    * can reevaluate decision in the future.
-    */
+     * Putting all those in a hash table might be a bit faster depending on
+     * hashing function cost, but it complicates code considerably for a
+     * potential small gain. PEM parsing is already slow due to multiple
+     * allocations and should not be used in perf critical places.
+     * So choosing dumb and easy approach over something more complicated and we
+     * can reevaluate decision in the future.
+     */
     if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_old_cur)) {
         return AWS_PEM_TYPE_X509_OLD;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_cur)) {
@@ -224,8 +232,9 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     }
 
     aws_byte_cursor_advance(&cur, s_begin_header_cur.len);
+    aws_byte_cursor_advance(&cur, 1); // space after begin
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
-    
+
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token");
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
@@ -268,7 +277,7 @@ static int s_convert_pem_to_raw_base64(
         struct aws_byte_cursor *line_cur_ptr = NULL;
         int error = aws_array_list_get_at_ptr(&split_buffers, (void **)&line_cur_ptr, i);
         /* should never fail as we control array size and how we index into list */
-        AWS_FATAL_ASSERT(error == AWS_OP_SUCCESS); 
+        AWS_FATAL_ASSERT(error == AWS_OP_SUCCESS);
 
         /* Burn off the padding in the buffer first.
          * Worst case we'll only have to do this once per line in the buffer. */
@@ -306,10 +315,7 @@ static int s_convert_pem_to_raw_base64(
                         struct aws_byte_buf type_buf;
                         aws_byte_buf_init_copy_from_cursor(&type_buf, allocator, current_obj_type_cur);
                         struct aws_pem_object pem_object = {
-                            .data = current_obj_buf,
-                            .type_buf = type_buf,
-                            .type = current_obj_type
-                        };
+                            .data = current_obj_buf, .type_buf = type_buf, .type = current_obj_type};
 
                         if (aws_array_list_push_back(pem_objects, &pem_object)) {
                             goto on_end_of_loop;
@@ -325,7 +331,7 @@ static int s_convert_pem_to_raw_base64(
                     /* actually on a line with data in it. */
                 } else {
                     if (on_length_calc) {
-                        current_obj_len += line_cur_ptr->len; 
+                        current_obj_len += line_cur_ptr->len;
                     } else {
                         if (aws_byte_buf_append(&current_obj_buf, line_cur_ptr)) {
                             goto on_end_of_loop;
@@ -341,7 +347,7 @@ static int s_convert_pem_to_raw_base64(
 
 /*
  * Note: this function only hard error if nothing can be parsed out of file.
- * Otherwise it succeeds and returns whatever was parsed successfully. 
+ * Otherwise it succeeds and returns whatever was parsed successfully.
  */
 on_end_of_loop:
     aws_array_list_clean_up(&split_buffers);
@@ -356,7 +362,7 @@ on_end_of_loop:
     return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
 }
 
-int aws_decode_pem_to_buffer_list(
+int aws_decode_pem_to_object_list(
     struct aws_allocator *allocator,
     struct aws_byte_cursor pem_cursor,
     struct aws_array_list *pem_objects) {
@@ -394,14 +400,14 @@ int aws_decode_pem_to_buffer_list(
         pem_obj_ptr->data = decoded_buffer;
     }
 
-   return AWS_OP_SUCCESS;
+    return AWS_OP_SUCCESS;
 
 on_error:
     aws_pem_objects_clean_up(pem_objects);
     return AWS_OP_ERR;
 }
 
-int aws_read_and_decode_pem_file_to_buffer_list(
+int aws_read_and_decode_pem_file_to_object_list(
     struct aws_allocator *alloc,
     const char *filename,
     struct aws_array_list *pem_objects) {
@@ -414,7 +420,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     AWS_ASSERT(raw_file_buffer.buffer);
 
     struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
-    if (aws_decode_pem_to_buffer_list(alloc, file_cursor, pem_objects)) {
+    if (aws_decode_pem_to_object_list(alloc, file_cursor, pem_objects)) {
         aws_byte_buf_clean_up_secure(&raw_file_buffer);
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to decode PEM file %s.", filename);
         return AWS_OP_ERR;

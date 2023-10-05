@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/private/pki_utils.h>
 #include <aws/io/pem.h>
+#include <aws/io/private/pki_utils.h>
 
 #include <aws/common/uuid.h>
 
@@ -188,7 +188,7 @@ int aws_import_trusted_certificates(
         return AWS_OP_ERR;
     }
 
-    if (aws_decode_pem_to_buffer_list(alloc, *certificates_blob, &certificates)) {
+    if (aws_decode_pem_to_object_list(alloc, *certificates_blob, &certificates)) {
         goto clean_up;
     }
 
@@ -569,7 +569,7 @@ int aws_import_key_pair_to_cert_context(
         return AWS_OP_ERR;
     }
 
-    if (aws_decode_pem_to_buffer_list(alloc, *public_cert_chain, &certificates)) {
+    if (aws_decode_pem_to_object_list(alloc, *public_cert_chain, &certificates)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
@@ -579,7 +579,7 @@ int aws_import_key_pair_to_cert_context(
         goto clean_up;
     }
 
-    if (aws_decode_pem_to_buffer_list(alloc, *private_key, &private_keys)) {
+    if (aws_decode_pem_to_object_list(alloc, *private_key, &private_keys)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
