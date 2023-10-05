@@ -134,11 +134,12 @@ static struct aws_byte_cursor s_pem_type_sm2_parameters_cur = AWS_BYTE_CUR_INIT_
 
 void aws_pem_objects_clean_up(struct aws_array_list *cert_chain) {
     for (size_t i = 0; i < aws_array_list_length(cert_chain); ++i) {
-        struct aws_byte_buf *buf_ptr = NULL;
-        aws_array_list_get_at_ptr(cert_chain, (void **)&buf_ptr, i);
+        struct aws_pem_object *pem_obj_ptr = NULL;
+        aws_array_list_get_at_ptr(cert_chain, (void **)&pem_obj_ptr, i);
 
-        if (buf_ptr != NULL) {
-            aws_byte_buf_clean_up_secure(buf_ptr);
+        if (pem_obj_ptr != NULL) {
+            aws_byte_buf_clean_up_secure(&pem_obj_ptr->data);
+            aws_byte_buf_clean_up_secure(&pem_obj_ptr->type_buf);
         }
     }
 
@@ -159,8 +160,6 @@ enum aws_pem_object_type s_map_type_cur_to_type(struct aws_byte_cursor type_cur)
         return AWS_PEM_TYPE_X509_OLD;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_cur)) {
         return AWS_PEM_TYPE_X509;
-    } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_trusted_cur)) {
-        return AWS_PEM_TYPE_X509_TRUSTED;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_trusted_cur)) {
         return AWS_PEM_TYPE_X509_TRUSTED;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_x509_req_old_cur)) {
@@ -220,6 +219,7 @@ static struct aws_byte_cursor s_delim_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERA
 
 int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor *out) {
     if (!aws_byte_cursor_starts_with(&cur, &s_begin_header_cur)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid begin token");
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
     }
 
@@ -227,6 +227,7 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
     
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token");
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
     }
 
@@ -246,7 +247,7 @@ static int s_convert_pem_to_raw_base64(
 
     if (aws_byte_cursor_split_on_char(&pem, '\n', &split_buffers)) {
         aws_array_list_clean_up(&split_buffers);
-        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "static: Invalid PEM buffer: failed to split on newline");
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: failed to split on newline");
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
     }
 
@@ -316,12 +317,12 @@ static int s_convert_pem_to_raw_base64(
                         on_length_calc = true;
                         current_obj_len = 0;
                         ++i;
+                        AWS_ZERO_STRUCT(current_obj_buf);
                     }
                     /* actually on a line with data in it. */
                 } else {
-                    if (!on_length_calc) {
-                        current_obj_len += line_cur_ptr->len;
-                        
+                    if (on_length_calc) {
+                        current_obj_len += line_cur_ptr->len; 
                     } else {
                         if (aws_byte_buf_append(&current_obj_buf, line_cur_ptr)) {
                             goto on_end_of_loop;
@@ -347,9 +348,9 @@ on_end_of_loop:
         return AWS_OP_SUCCESS;
     }
 
-    AWS_LOGF_ERROR(AWS_LS_IO_PEM, "static: Invalid PEM buffer.");
+    AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer.");
     aws_pem_objects_clean_up(pem_objects);
-    return aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+    return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
 }
 
 int aws_decode_pem_to_buffer_list(
@@ -371,6 +372,7 @@ int aws_decode_pem_to_buffer_list(
 
         size_t decoded_len = 0;
         if (aws_base64_compute_decoded_len(&byte_cur, &decoded_len)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to get length for decoded base64 pem object.");
             aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
             goto on_error;
         }
@@ -379,6 +381,7 @@ int aws_decode_pem_to_buffer_list(
         aws_byte_buf_init(&decoded_buffer, allocator, decoded_len);
 
         if (aws_base64_decode(&byte_cur, &decoded_buffer)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to base 64 decode pem object.");
             aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
             aws_byte_buf_clean_up_secure(&decoded_buffer);
             goto on_error;
@@ -391,9 +394,7 @@ int aws_decode_pem_to_buffer_list(
    return AWS_OP_SUCCESS;
 
 on_error:
-    AWS_LOGF_ERROR(AWS_LS_IO_PEM, "static: Invalid PEM buffer.");
     aws_pem_objects_clean_up(pem_objects);
-
     return AWS_OP_ERR;
 }
 
@@ -404,7 +405,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
 
     struct aws_byte_buf raw_file_buffer;
     if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "static: Failed to read file %s.", filename);
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to read file %s.", filename);
         return AWS_OP_ERR;
     }
     AWS_ASSERT(raw_file_buffer.buffer);
@@ -412,7 +413,7 @@ int aws_read_and_decode_pem_file_to_buffer_list(
     struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
     if (aws_decode_pem_to_buffer_list(alloc, file_cursor, pem_objects)) {
         aws_byte_buf_clean_up_secure(&raw_file_buffer);
-        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "static: Failed to decode PEM file %s.", filename);
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to decode PEM file %s.", filename);
         return AWS_OP_ERR;
     }
 
