@@ -209,7 +209,7 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
 
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_byte_buf)));
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
     ASSERT_SUCCESS(aws_read_and_decode_pem_file_to_buffer_list(allocator, "testparse.crt", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
