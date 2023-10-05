@@ -7,6 +7,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/io/logging.h>
+#include <aws/io/pem.h>
 
 #include <Security/SecCertificate.h>
 #include <Security/SecKey.h>
@@ -33,16 +34,17 @@ int aws_import_ecc_key_into_keychain(
     SecKeychainRef import_keychain) {
     // Ensure imported_keychain is not NULL
     AWS_PRECONDITION(import_keychain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
 
     int result = AWS_OP_ERR;
     struct aws_array_list decoded_key_buffer_list;
     /* Init empty array list, ideally, the PEM should only has one key included. */
-    if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 1, sizeof(struct aws_byte_buf))) {
+    if (aws_array_list_init_dynamic(&decoded_key_buffer_list, alloc, 1, sizeof(struct aws_pem_object))) {
         return result;
     }
 
     /* Decode PEM format file to DER format */
-    if (aws_decode_pem_to_buffer_list(alloc, private_key, &decoded_key_buffer_list)) {
+    if (aws_decode_pem_to_buffer_list(alloc, *private_key, &decoded_key_buffer_list)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto ecc_import_cleanup;
     }
@@ -51,11 +53,11 @@ int aws_import_ecc_key_into_keychain(
     // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
     // succeed key.
     for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
-        struct aws_byte_buf *decoded_key_buffer = NULL;
+        struct aws_pem_object *pem_object_ptr = NULL;
         /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
-        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&decoded_key_buffer, index);
+        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_object_ptr, index);
         AWS_ASSERT(decoded_key_buffer);
-        CFDataRef key_data = CFDataCreate(cf_alloc, decoded_key_buffer->buffer, decoded_key_buffer->len);
+        CFDataRef key_data = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
         if (!key_data) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
             continue;
@@ -68,6 +70,7 @@ int aws_import_ecc_key_into_keychain(
         AWS_ZERO_STRUCT(import_params);
         import_params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
         import_params.passphrase = CFSTR("");
+        format = kSecFormatUnknown;
 
         OSStatus key_status =
             SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, NULL);
@@ -87,7 +90,7 @@ int aws_import_ecc_key_into_keychain(
 
 ecc_import_cleanup:
     // Zero out the array list and release it
-    aws_cert_chain_clean_up(&decoded_key_buffer_list);
+    aws_pem_objects_clean_up(&decoded_key_buffer_list);
     aws_array_list_clean_up(&decoded_key_buffer_list);
     return result;
 }
@@ -99,6 +102,8 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
     const struct aws_string *keychain_path) {
+    AWS_PRECONDITION(public_cert_chain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
 
     int result = AWS_OP_ERR;
 
@@ -179,7 +184,7 @@ int aws_import_public_and_private_keys_to_identity(
 
     /*
      * If the key format is unknown, we tried to decode the key into DER format import it.
-     * The PEM file might contians multiple key sections, we will only add the first succeed key into the keychain.
+     * The PEM file might contains multiple key sections, we will only add the first succeed key into the keychain.
      */
     if (key_status == errSecUnknownFormat) {
         AWS_LOGF_TRACE(AWS_LS_IO_PKI, "static: error reading private key format, try ECC key format.");
@@ -203,29 +208,29 @@ int aws_import_public_and_private_keys_to_identity(
             "Using key from Keychain instead of the one provided.");
         struct aws_array_list cert_chain_list;
 
-        if (aws_array_list_init_dynamic(&cert_chain_list, alloc, 2, sizeof(struct aws_byte_buf))) {
+        if (aws_array_list_init_dynamic(&cert_chain_list, alloc, 2, sizeof(struct aws_pem_object))) {
             result = AWS_OP_ERR;
             goto done;
         }
 
-        if (aws_decode_pem_to_buffer_list(alloc, public_cert_chain, &cert_chain_list)) {
+        if (aws_decode_pem_to_buffer_list(alloc, *public_cert_chain, &cert_chain_list)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding certificate PEM failed.");
             aws_array_list_clean_up(&cert_chain_list);
             result = AWS_OP_ERR;
             goto done;
         }
 
-        struct aws_byte_buf *root_cert_ptr = NULL;
+        struct aws_pem_object *root_cert_ptr = NULL;
         aws_array_list_get_at_ptr(&cert_chain_list, (void **)&root_cert_ptr, 0);
         AWS_ASSERT(root_cert_ptr);
-        CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->buffer, root_cert_ptr->len);
+        CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->data.buffer, root_cert_ptr->data.len);
 
         if (root_cert_data) {
             certificate_ref = SecCertificateCreateWithData(cf_alloc, root_cert_data);
             CFRelease(root_cert_data);
         }
 
-        aws_cert_chain_clean_up(&cert_chain_list);
+        aws_pem_objects_clean_up(&cert_chain_list);
         aws_array_list_clean_up(&cert_chain_list);
     } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(cert_import_output, 0);
@@ -316,13 +321,15 @@ int aws_import_trusted_certificates(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *certificates_blob,
     CFArrayRef *certs) {
+    AWS_PRECONDITION(certificates_blob != NULL);
+
     struct aws_array_list certificates;
 
-    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
+    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_pem_object))) {
         return AWS_OP_ERR;
     }
 
-    if (aws_decode_pem_to_buffer_list(alloc, certificates_blob, &certificates)) {
+    if (aws_decode_pem_to_buffer_list(alloc, *certificates_blob, &certificates)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding CA PEM failed.");
         aws_array_list_clean_up(&certificates);
         return AWS_OP_ERR;
@@ -334,10 +341,10 @@ int aws_import_trusted_certificates(
     int err = AWS_OP_SUCCESS;
     aws_mutex_lock(&s_sec_mutex);
     for (size_t i = 0; i < cert_count; ++i) {
-        struct aws_byte_buf *byte_buf_ptr = NULL;
-        aws_array_list_get_at_ptr(&certificates, (void **)&byte_buf_ptr, i);
+        struct aws_pem_object *pem_object_ptr = NULL;
+        aws_array_list_get_at_ptr(&certificates, (void **)&pem_object_ptr, i);
 
-        CFDataRef cert_blob = CFDataCreate(cf_alloc, byte_buf_ptr->buffer, byte_buf_ptr->len);
+        CFDataRef cert_blob = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
 
         if (cert_blob) {
             SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
@@ -351,7 +358,7 @@ int aws_import_trusted_certificates(
     aws_mutex_unlock(&s_sec_mutex);
 
     *certs = temp_cert_array;
-    aws_cert_chain_clean_up(&certificates);
+    aws_pem_objects_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
     return err;
 }

@@ -183,7 +183,7 @@ int aws_import_trusted_certificates(
     *cert_store = NULL;
     int result = AWS_OP_ERR;
 
-    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
+    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_pem_object))) {
         return AWS_OP_ERR;
     }
 
@@ -210,14 +210,14 @@ int aws_import_trusted_certificates(
 
     AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: loading %d certificates in cert chain for use as a CA", (int)cert_count);
     for (size_t i = 0; i < cert_count; ++i) {
-        struct aws_byte_buf *byte_buf_ptr = NULL;
-        aws_array_list_get_at_ptr(&certificates, (void **)&byte_buf_ptr, i);
+        struct aws_pem_object *pem_object_ptr = NULL;
+        aws_array_list_get_at_ptr(&certificates, (void **)&pem_object_ptr, i);
 
         CERT_BLOB cert_blob;
         CERT_CONTEXT *cert_context = NULL;
 
-        cert_blob.pbData = byte_buf_ptr->buffer;
-        cert_blob.cbData = (DWORD)byte_buf_ptr->len;
+        cert_blob.pbData = pem_object_ptr->data.buffer;
+        cert_blob.cbData = (DWORD)pem_object_ptr->data.len;
 
         DWORD content_type = 0;
         BOOL query_res = CryptQueryObject(
@@ -564,7 +564,7 @@ int aws_import_key_pair_to_cert_context(
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
 
-    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_byte_buf))) {
+    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_pem_object))) {
         return AWS_OP_ERR;
     }
 
@@ -574,7 +574,7 @@ int aws_import_key_pair_to_cert_context(
         goto clean_up;
     }
 
-    if (aws_array_list_init_dynamic(&private_keys, alloc, 1, sizeof(struct aws_byte_buf))) {
+    if (aws_array_list_init_dynamic(&private_keys, alloc, 1, sizeof(struct aws_pem_object))) {
         goto clean_up;
     }
 
@@ -598,13 +598,13 @@ int aws_import_key_pair_to_cert_context(
     }
 
     for (size_t i = 0; i < cert_count; ++i) {
-        struct aws_byte_buf *byte_buf_ptr = NULL;
-        aws_array_list_get_at_ptr(&certificates, (void **)&byte_buf_ptr, i);
+        struct aws_pem_object *pem_object_ptr = NULL;
+        aws_array_list_get_at_ptr(&certificates, (void **)&pem_object_ptr, i);
 
         CERT_BLOB cert_blob;
 
-        cert_blob.pbData = byte_buf_ptr->buffer;
-        cert_blob.cbData = (DWORD)byte_buf_ptr->len;
+        cert_blob.pbData = pem_object_ptr->data.buffer;
+        cert_blob.cbData = (DWORD)pem_object_ptr->data.len;
 
         DWORD content_type = 0;
         PCERT_CONTEXT cert_context = NULL;
@@ -650,7 +650,7 @@ int aws_import_key_pair_to_cert_context(
         goto clean_up;
     }
 
-    struct aws_byte_buf *private_key_ptr = NULL;
+    struct aws_pem_object *private_key_ptr = NULL;
     DWORD decoded_len = 0;
     enum aws_certificate_type cert_type = AWS_CT_X509_UNKNOWN;
     size_t private_key_count = aws_array_list_length(&private_keys);
@@ -660,8 +660,8 @@ int aws_import_key_pair_to_cert_context(
         if (CryptDecodeObjectEx(
                 X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                 PKCS_RSA_PRIVATE_KEY,
-                private_key_ptr->buffer,
-                (DWORD)private_key_ptr->len,
+                private_key_ptr->data.buffer,
+                (DWORD)private_key_ptr->data.len,
                 CRYPT_DECODE_ALLOC_FLAG,
                 0,
                 &key,
@@ -672,8 +672,8 @@ int aws_import_key_pair_to_cert_context(
         else if (CryptDecodeObjectEx(
                      X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                      X509_ECC_PRIVATE_KEY,
-                     private_key_ptr->buffer,
-                     (DWORD)private_key_ptr->len,
+                     private_key_ptr->data.buffer,
+                     (DWORD)private_key_ptr->data.len,
                      CRYPT_DECODE_ALLOC_FLAG,
                      NULL,
                      &key,

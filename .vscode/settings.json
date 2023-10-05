@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "iosfwd": "c"
+    }
+}

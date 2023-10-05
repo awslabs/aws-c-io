@@ -304,6 +304,7 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_ERROR_READ_FAILURE,
         "Failure during TLS read."),
+    AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED_OBJECT, "Malformed PEM object encountered."),
 
 };
 /* clang-format on */
@@ -341,6 +342,7 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "standard-retry-strategy",
         "Subject for standard retry strategy"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations")
 };
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
