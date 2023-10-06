@@ -49,11 +49,11 @@ enum aws_pem_object_type {
  * decoding for each object).
  * type will be set to object type or to AWS_PEM_TYPE_UNKNOWN if it could not
  * figure out type.
- * type_buf are the types bytes, i.e. the string between -----BEGIN and -----
+ * type_string is the string between -----BEGIN and -----
  */
 struct aws_pem_object {
     enum aws_pem_object_type type;
-    struct aws_byte_buf type_buf;
+    struct aws_string *type_string;
     struct aws_byte_buf data;
 };
 

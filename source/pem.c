@@ -147,7 +147,7 @@ void aws_pem_objects_clean_up(struct aws_array_list *cert_chain) {
 
         if (pem_obj_ptr != NULL) {
             aws_byte_buf_clean_up_secure(&pem_obj_ptr->data);
-            aws_byte_buf_clean_up_secure(&pem_obj_ptr->type_buf);
+            aws_string_destroy(&pem_obj_ptr->type_string);
         }
     }
 
@@ -312,10 +312,10 @@ static int s_convert_pem_to_raw_base64(
                         aws_byte_buf_init(&current_obj_buf, allocator, current_obj_len);
 
                     } else {
-                        struct aws_byte_buf type_buf;
-                        aws_byte_buf_init_copy_from_cursor(&type_buf, allocator, current_obj_type_cur);
                         struct aws_pem_object pem_object = {
-                            .data = current_obj_buf, .type_buf = type_buf, .type = current_obj_type};
+                            .data = current_obj_buf, 
+                            .type_string = aws_string_new_from_cursor(allocator, &current_obj_type_cur), 
+                            .type = current_obj_type,};
 
                         if (aws_array_list_push_back(pem_objects, &pem_object)) {
                             goto on_end_of_loop;
