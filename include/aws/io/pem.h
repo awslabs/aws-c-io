@@ -92,4 +92,4 @@ AWS_IO_API int aws_read_and_decode_pem_file_to_object_list(
     struct aws_array_list *out_pem_objects);
 
 AWS_EXTERN_C_END
-#endif /* AWS_IO_PEM_READER_H */
+#endif /* AWS_IO_PEM_H */
