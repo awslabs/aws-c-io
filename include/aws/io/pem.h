@@ -1,5 +1,5 @@
-#ifndef AWS_IO_PEM_READER_H
-#define AWS_IO_PEM_READER_H
+#ifndef AWS_IO_PEM_H
+#define AWS_IO_PEM_H
 
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
