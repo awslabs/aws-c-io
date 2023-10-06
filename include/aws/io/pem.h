@@ -67,7 +67,7 @@ AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
  * Decodes PEM data and reads objects sequentially adding them to pem_objects.
  * If it comes across an object it cannot read, list of all object read until
  * that point is returned.
- * If no objects can be read PEM or objects could not be base 64 decoded,
+ * If no objects can be read from PEM or objects could not be base 64 decoded,
  * AWS_ERROR_PEM_MALFORMED is raised.
  * out_pem_objects stores aws_pem_object struct by value.
  * Function will initialize pem_objects list.
@@ -83,7 +83,7 @@ AWS_IO_API int aws_pem_objects_init_from_file_contents(
  * Decodes PEM data from file and reads objects sequentially adding them to pem_objects.
  * If it comes across an object it cannot read, list of all object read until
  * that point is returned.
- * If no objects can be read PEM or objects could not be base 64 decoded,
+ * If no objects can be read from PEM or objects could not be base 64 decoded,
  * AWS_ERROR_PEM_MALFORMED is raised.
  * out_pem_objects stores aws_pem_object struct by value.
  * Function will initialize pem_objects list.
