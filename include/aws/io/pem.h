@@ -60,7 +60,6 @@ struct aws_pem_object {
 /**
  * Cleans up elements of pem_objects list 'aws_pem_objects_init_from_file_contents()'
  * and 'aws_pem_objects_init_from_file_path()'.
- * Does not clean_up list itself.
  */
 AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
 
