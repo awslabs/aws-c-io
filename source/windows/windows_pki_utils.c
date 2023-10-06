@@ -184,11 +184,7 @@ int aws_import_trusted_certificates(
     *cert_store = NULL;
     int result = AWS_OP_ERR;
 
-    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_pem_object))) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_decode_pem_to_object_list(alloc, *certificates_blob, &certificates)) {
+    if (aws_pem_objects_init_from_file_contents(alloc, *certificates_blob, &certificates)) {
         goto clean_up;
     }
 
@@ -259,7 +255,7 @@ int aws_import_trusted_certificates(
 
 clean_up:
 
-    aws_pem_objects_clean_up(&certificates);
+    aws_pem_objects_clear(&certificates);
     aws_array_list_clean_up(&certificates);
 
     if (result == AWS_OP_ERR && *cert_store) {
@@ -565,21 +561,13 @@ int aws_import_key_pair_to_cert_context(
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
 
-    if (aws_array_list_init_dynamic(&certificates, alloc, 2, sizeof(struct aws_pem_object))) {
-        return AWS_OP_ERR;
-    }
-
-    if (aws_decode_pem_to_object_list(alloc, *public_cert_chain, &certificates)) {
+    if (aws_pem_objects_init_from_file_contents(alloc, *public_cert_chain, &certificates)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
     }
 
-    if (aws_array_list_init_dynamic(&private_keys, alloc, 1, sizeof(struct aws_pem_object))) {
-        goto clean_up;
-    }
-
-    if (aws_decode_pem_to_object_list(alloc, *private_key, &private_keys)) {
+    if (aws_pem_objects_init_from_file_contents(alloc, *private_key, &private_keys)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
@@ -730,9 +718,9 @@ int aws_import_key_pair_to_cert_context(
     }
 
 clean_up:
-    aws_pem_objects_clean_up(&certificates);
+    aws_pem_objects_clear(&certificates);
     aws_array_list_clean_up(&certificates);
-    aws_pem_objects_clean_up(&private_keys);
+    aws_pem_objects_clear(&private_keys);
     aws_array_list_clean_up(&private_keys);
 
     LocalFree(key);

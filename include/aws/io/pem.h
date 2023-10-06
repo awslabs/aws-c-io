@@ -58,10 +58,11 @@ struct aws_pem_object {
 };
 
 /**
- * Cleans up and securely zeroes out the outputs of 'aws_decode_pem_to_object_list()'
- * and 'aws_read_and_decode_pem_file_to_object_list()'
+ * Cleans up elements of pem_objects list 'aws_pem_objects_init_from_file_contents()'
+ * and 'aws_pem_objects_init_from_file_path()'.
+ * Does not clean_up list itself.
  */
-AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
+AWS_IO_API void aws_pem_objects_clear(struct aws_array_list *pem_objects);
 
 /**
  * Decodes PEM data and reads objects sequentially adding them to pem_objects.
@@ -70,11 +71,11 @@ AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
  * If no objects can be read PEM or objects could not be base 64 decoded,
  * AWS_ERROR_PEM_MALFORMED is raised.
  * out_pem_objects stores aws_pem_object struct by value.
- * Caller must initialize out_pem_objects before calling the function.
+ * Function will initialize pem_objects list.
  * This code is slow, and it allocates, so please try
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
-AWS_IO_API int aws_decode_pem_to_object_list(
+AWS_IO_API int aws_pem_objects_init_from_file_contents(
     struct aws_allocator *alloc,
     struct aws_byte_cursor pem_cursor,
     struct aws_array_list *out_pem_objects);
@@ -86,11 +87,11 @@ AWS_IO_API int aws_decode_pem_to_object_list(
  * If no objects can be read PEM or objects could not be base 64 decoded,
  * AWS_ERROR_PEM_MALFORMED is raised.
  * out_pem_objects stores aws_pem_object struct by value.
- * Caller must initialize out_pem_objects before calling the function.
+ * Function will initialize pem_objects list.
  * This code is slow, and it allocates, so please try
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
-AWS_IO_API int aws_read_and_decode_pem_file_to_object_list(
+AWS_IO_API int aws_pem_objects_init_from_file_path(
     struct aws_allocator *allocator,
     const char *filename,
     struct aws_array_list *out_pem_objects);

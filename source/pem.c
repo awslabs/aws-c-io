@@ -140,7 +140,7 @@ static struct aws_byte_cursor s_pem_type_parameters_cur = AWS_BYTE_CUR_INIT_FROM
 static struct aws_byte_cursor s_pem_type_cms_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("CMS");
 static struct aws_byte_cursor s_pem_type_sm2_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("SM2 PARAMETERS");
 
-void aws_pem_objects_clean_up(struct aws_array_list *cert_chain) {
+void aws_pem_objects_clear(struct aws_array_list *cert_chain) {
     for (size_t i = 0; i < aws_array_list_length(cert_chain); ++i) {
         struct aws_pem_object *pem_obj_ptr = NULL;
         aws_array_list_get_at_ptr(cert_chain, (void **)&pem_obj_ptr, i);
@@ -313,9 +313,10 @@ static int s_convert_pem_to_raw_base64(
 
                     } else {
                         struct aws_pem_object pem_object = {
-                            .data = current_obj_buf, 
-                            .type_string = aws_string_new_from_cursor(allocator, &current_obj_type_cur), 
-                            .type = current_obj_type,};
+                            .data = current_obj_buf,
+                            .type_string = aws_string_new_from_cursor(allocator, &current_obj_type_cur),
+                            .type = current_obj_type,
+                        };
 
                         if (aws_array_list_push_back(pem_objects, &pem_object)) {
                             goto on_end_of_loop;
@@ -358,17 +359,21 @@ on_end_of_loop:
     }
 
     AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer.");
-    aws_pem_objects_clean_up(pem_objects);
+    aws_pem_objects_clear(pem_objects);
     return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
 }
 
-int aws_decode_pem_to_object_list(
+int aws_pem_objects_init_from_file_contents(
     struct aws_allocator *allocator,
     struct aws_byte_cursor pem_cursor,
     struct aws_array_list *pem_objects) {
     AWS_PRECONDITION(allocator);
     AWS_PRECONDITION(pem_objects != NULL);
-    AWS_PRECONDITION(aws_array_list_length(pem_objects) == 0);
+
+    /* Init empty array list, ideally, the PEM should only has one key included. */
+    if (aws_array_list_init_dynamic(&pem_objects, allocator, 1, sizeof(struct aws_pem_object))) {
+        return AWS_OP_ERR;
+    }
 
     if (s_convert_pem_to_raw_base64(allocator, pem_cursor, pem_objects)) {
         goto on_error;
@@ -403,11 +408,11 @@ int aws_decode_pem_to_object_list(
     return AWS_OP_SUCCESS;
 
 on_error:
-    aws_pem_objects_clean_up(pem_objects);
+    aws_pem_objects_clear(pem_objects);
     return AWS_OP_ERR;
 }
 
-int aws_read_and_decode_pem_file_to_object_list(
+int aws_pem_objects_init_from_file_path(
     struct aws_allocator *alloc,
     const char *filename,
     struct aws_array_list *pem_objects) {
@@ -420,7 +425,7 @@ int aws_read_and_decode_pem_file_to_object_list(
     AWS_ASSERT(raw_file_buffer.buffer);
 
     struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
-    if (aws_decode_pem_to_object_list(alloc, file_cursor, pem_objects)) {
+    if (aws_pem_objects_init_from_file_contents(alloc, file_cursor, pem_objects)) {
         aws_byte_buf_clean_up_secure(&raw_file_buffer);
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to decode PEM file %s.", filename);
         return AWS_OP_ERR;
