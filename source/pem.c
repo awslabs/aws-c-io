@@ -140,10 +140,10 @@ static struct aws_byte_cursor s_pem_type_parameters_cur = AWS_BYTE_CUR_INIT_FROM
 static struct aws_byte_cursor s_pem_type_cms_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("CMS");
 static struct aws_byte_cursor s_pem_type_sm2_parameters_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("SM2 PARAMETERS");
 
-void aws_pem_objects_clear(struct aws_array_list *cert_chain) {
-    for (size_t i = 0; i < aws_array_list_length(cert_chain); ++i) {
+void aws_pem_objects_clean_up(struct aws_array_list *pem_objects) {
+    for (size_t i = 0; i < aws_array_list_length(pem_objects); ++i) {
         struct aws_pem_object *pem_obj_ptr = NULL;
-        aws_array_list_get_at_ptr(cert_chain, (void **)&pem_obj_ptr, i);
+        aws_array_list_get_at_ptr(pem_objects, (void **)&pem_obj_ptr, i);
 
         if (pem_obj_ptr != NULL) {
             aws_byte_buf_clean_up_secure(&pem_obj_ptr->data);
@@ -151,8 +151,8 @@ void aws_pem_objects_clear(struct aws_array_list *cert_chain) {
         }
     }
 
-    /* remember, we don't own it so we don't free it, just undo whatever mutations we've done at this point. */
-    aws_array_list_clear(cert_chain);
+    aws_array_list_clear(pem_objects);
+    aws_array_list_clean_up(pem_objects);
 }
 
 enum aws_pem_object_type s_map_type_cur_to_type(struct aws_byte_cursor type_cur) {
@@ -359,7 +359,7 @@ on_end_of_loop:
     }
 
     AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer.");
-    aws_pem_objects_clear(pem_objects);
+    aws_pem_objects_clean_up(pem_objects);
     return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
 }
 
@@ -408,7 +408,7 @@ int aws_pem_objects_init_from_file_contents(
     return AWS_OP_SUCCESS;
 
 on_error:
-    aws_pem_objects_clear(pem_objects);
+    aws_pem_objects_clean_up(pem_objects);
     return AWS_OP_ERR;
 }
 

@@ -62,7 +62,7 @@ struct aws_pem_object {
  * and 'aws_pem_objects_init_from_file_path()'.
  * Does not clean_up list itself.
  */
-AWS_IO_API void aws_pem_objects_clear(struct aws_array_list *pem_objects);
+AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
 
 /**
  * Decodes PEM data and reads objects sequentially adding them to pem_objects.

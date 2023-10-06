@@ -208,8 +208,6 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     };
 
     struct aws_array_list output_list;
-
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
     ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(allocator, "testparse.crt", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
@@ -219,8 +217,7 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "CERTIFICATE");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
@@ -301,7 +298,6 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
 
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
     ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(allocator, "unittests.key", &output_list));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
@@ -311,8 +307,7 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "RSA PRIVATE KEY");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_PRIVATE_RSA_PKCS1, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
@@ -388,8 +383,7 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "CERTIFICATE");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
@@ -611,8 +605,7 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "CERTIFICATE");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
@@ -730,8 +723,7 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "RSA PRIVATE KEY");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_PRIVATE_RSA_PKCS1, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }
@@ -969,8 +961,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
     ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "CERTIFICATE");
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
-    aws_pem_objects_clear(&output_list);
-    aws_array_list_clean_up(&output_list);
+    aws_pem_objects_clean_up(&output_list);
 
     return AWS_OP_SUCCESS;
 }

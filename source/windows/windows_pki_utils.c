@@ -255,8 +255,7 @@ int aws_import_trusted_certificates(
 
 clean_up:
 
-    aws_pem_objects_clear(&certificates);
-    aws_array_list_clean_up(&certificates);
+    aws_pem_objects_clean_up(&certificates);
 
     if (result == AWS_OP_ERR && *cert_store) {
         aws_close_cert_store(*cert_store);
@@ -718,10 +717,8 @@ int aws_import_key_pair_to_cert_context(
     }
 
 clean_up:
-    aws_pem_objects_clear(&certificates);
-    aws_array_list_clean_up(&certificates);
-    aws_pem_objects_clear(&private_keys);
-    aws_array_list_clean_up(&private_keys);
+    aws_pem_objects_clean_up(&certificates);
+    aws_pem_objects_clean_up(&private_keys);
 
     LocalFree(key);
 

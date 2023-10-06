@@ -86,8 +86,7 @@ int aws_import_ecc_key_into_keychain(
 
 ecc_import_cleanup:
     // Zero out the array list and release it
-    aws_pem_objects_clear(&decoded_key_buffer_list);
-    aws_array_list_clean_up(&decoded_key_buffer_list);
+    aws_pem_objects_clean_up(&decoded_key_buffer_list);
     return result;
 }
 
@@ -206,7 +205,7 @@ int aws_import_public_and_private_keys_to_identity(
 
         if (aws_pem_objects_init_from_file_contents(alloc, *public_cert_chain, &cert_chain_list)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding certificate PEM failed.");
-            aws_array_list_clean_up(&cert_chain_list);
+            aws_pem_objects_clean_up(&cert_chain_list);
             result = AWS_OP_ERR;
             goto done;
         }
@@ -221,8 +220,7 @@ int aws_import_public_and_private_keys_to_identity(
             CFRelease(root_cert_data);
         }
 
-        aws_pem_objects_clear(&cert_chain_list);
-        aws_array_list_clean_up(&cert_chain_list);
+        aws_pem_objects_clean_up(&cert_chain_list);
     } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(cert_import_output, 0);
         /* SecCertificateCreateWithData returns an object with +1 retain, so we need to match that behavior here */
@@ -345,7 +343,7 @@ int aws_import_trusted_certificates(
     aws_mutex_unlock(&s_sec_mutex);
 
     *certs = temp_cert_array;
-    aws_pem_objects_clear(&certificates);
+    aws_pem_objects_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
     return err;
 }
