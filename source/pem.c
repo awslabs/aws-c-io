@@ -147,7 +147,7 @@ void aws_pem_objects_clear(struct aws_array_list *cert_chain) {
 
         if (pem_obj_ptr != NULL) {
             aws_byte_buf_clean_up_secure(&pem_obj_ptr->data);
-            aws_string_destroy(&pem_obj_ptr->type_string);
+            aws_string_destroy(pem_obj_ptr->type_string);
         }
     }
 
