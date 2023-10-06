@@ -1004,7 +1004,7 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1037,7 +1037,7 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1109,7 +1109,7 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
     struct aws_array_list output_list;
 
     ASSERT_SUCCESS(aws_array_list_init_dynamic(&output_list, allocator, 1, sizeof(struct aws_pem_object)));
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED_OBJECT, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_decode_pem_to_object_list(allocator, pem_data, &output_list));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);

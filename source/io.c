@@ -304,7 +304,7 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_ERROR_READ_FAILURE,
         "Failure during TLS read."),
-    AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED_OBJECT, "Malformed PEM object encountered."),
+    AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED, "Malformed PEM object encountered."),
 
 };
 /* clang-format on */

@@ -228,7 +228,7 @@ static struct aws_byte_cursor s_delim_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERA
 int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor *out) {
     if (!aws_byte_cursor_starts_with(&cur, &s_begin_header_cur)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid begin token");
-        return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+        return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
     }
 
     aws_byte_cursor_advance(&cur, s_begin_header_cur.len);
@@ -237,7 +237,7 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
 
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token");
-        return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+        return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
     }
 
     *out = type_cur;
@@ -257,7 +257,7 @@ static int s_convert_pem_to_raw_base64(
     if (aws_byte_cursor_split_on_char(&pem, '\n', &split_buffers)) {
         aws_array_list_clean_up(&split_buffers);
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: failed to split on newline");
-        return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+        return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
     }
 
     enum aws_pem_parse_state state = BEGIN;
@@ -359,7 +359,7 @@ on_end_of_loop:
 
     AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer.");
     aws_pem_objects_clean_up(pem_objects);
-    return aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+    return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
 }
 
 int aws_decode_pem_to_object_list(
@@ -382,7 +382,7 @@ int aws_decode_pem_to_object_list(
         size_t decoded_len = 0;
         if (aws_base64_compute_decoded_len(&byte_cur, &decoded_len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to get length for decoded base64 pem object.");
-            aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+            aws_raise_error(AWS_ERROR_PEM_MALFORMED);
             goto on_error;
         }
 
@@ -391,7 +391,7 @@ int aws_decode_pem_to_object_list(
 
         if (aws_base64_decode(&byte_cur, &decoded_buffer)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to base 64 decode pem object.");
-            aws_raise_error(AWS_ERROR_PEM_MALFORMED_OBJECT);
+            aws_raise_error(AWS_ERROR_PEM_MALFORMED);
             aws_byte_buf_clean_up_secure(&decoded_buffer);
             goto on_error;
         }
