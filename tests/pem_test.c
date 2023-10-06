@@ -208,7 +208,7 @@ static int s_test_pem_cert_parse_from_file(struct aws_allocator *allocator, void
     };
 
     struct aws_array_list output_list;
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(allocator, "testparse.crt", &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(&output_list, allocator, "testparse.crt"));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -298,7 +298,7 @@ static int s_test_pem_private_key_parse_from_file(struct aws_allocator *allocato
 
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(allocator, "unittests.key", &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_path(&output_list, allocator, "unittests.key"));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -374,7 +374,7 @@ static int s_test_pem_single_cert_parse(struct aws_allocator *allocator, void *c
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_rsa_1024_sha224_client_crt_pem);
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -586,7 +586,7 @@ static int s_test_pem_cert_chain_parse(struct aws_allocator *allocator, void *ct
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_rsa_2048_pkcs1_crt_pem);
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -714,7 +714,7 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_private_key_pem);
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -942,7 +942,7 @@ static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *a
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_pem_data_str);
     struct aws_array_list output_list;
 
-    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(3, aws_array_list_length(&output_list));
 
     struct aws_pem_object *pem_object = NULL;
@@ -990,7 +990,7 @@ static int s_test_pem_invalid_parse(struct aws_allocator *allocator, void *ctx) 
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_pem);
     struct aws_array_list output_list;
 
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1022,7 +1022,7 @@ static int s_test_pem_valid_data_invalid_parse(struct aws_allocator *allocator, 
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);
@@ -1093,7 +1093,7 @@ static int s_test_pem_invalid_in_chain_parse(struct aws_allocator *allocator, vo
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_invalid_data);
     struct aws_array_list output_list;
 
-    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(allocator, pem_data, &output_list));
+    ASSERT_ERROR(AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
     ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
 
     aws_array_list_clean_up(&output_list);

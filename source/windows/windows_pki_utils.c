@@ -184,7 +184,7 @@ int aws_import_trusted_certificates(
     *cert_store = NULL;
     int result = AWS_OP_ERR;
 
-    if (aws_pem_objects_init_from_file_contents(alloc, *certificates_blob, &certificates)) {
+    if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *certificates_blob)) {
         goto clean_up;
     }
 
@@ -560,13 +560,13 @@ int aws_import_key_pair_to_cert_context(
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
 
-    if (aws_pem_objects_init_from_file_contents(alloc, *public_cert_chain, &certificates)) {
+    if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *public_cert_chain)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode cert pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;
     }
 
-    if (aws_pem_objects_init_from_file_contents(alloc, *private_key, &private_keys)) {
+    if (aws_pem_objects_init_from_file_contents(&private_keys, alloc, *private_key)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: failed to decode key pem to buffer list with error %d", (int)aws_last_error());
         goto clean_up;

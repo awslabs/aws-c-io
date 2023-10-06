@@ -40,7 +40,7 @@ int aws_import_ecc_key_into_keychain(
     struct aws_array_list decoded_key_buffer_list;
 
     /* Decode PEM format file to DER format */
-    if (aws_pem_objects_init_from_file_contents(alloc, *private_key, &decoded_key_buffer_list)) {
+    if (aws_pem_objects_init_from_file_contents(&decoded_key_buffer_list, alloc, *private_key)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto ecc_import_cleanup;
     }
@@ -203,7 +203,7 @@ int aws_import_public_and_private_keys_to_identity(
             "Using key from Keychain instead of the one provided.");
         struct aws_array_list cert_chain_list;
 
-        if (aws_pem_objects_init_from_file_contents(alloc, *public_cert_chain, &cert_chain_list)) {
+        if (aws_pem_objects_init_from_file_contents(&cert_chain_list, alloc, *public_cert_chain)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding certificate PEM failed.");
             aws_pem_objects_clean_up(&cert_chain_list);
             result = AWS_OP_ERR;
@@ -314,7 +314,7 @@ int aws_import_trusted_certificates(
 
     struct aws_array_list certificates;
 
-    if (aws_pem_objects_init_from_file_contents(alloc, *certificates_blob, &certificates)) {
+    if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *certificates_blob)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding CA PEM failed.");
         aws_array_list_clean_up(&certificates);
         return AWS_OP_ERR;

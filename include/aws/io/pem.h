@@ -75,9 +75,9 @@ AWS_IO_API void aws_pem_objects_clean_up(struct aws_array_list *pem_objects);
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
 AWS_IO_API int aws_pem_objects_init_from_file_contents(
+    struct aws_array_list *pem_objects,
     struct aws_allocator *alloc,
-    struct aws_byte_cursor pem_cursor,
-    struct aws_array_list *out_pem_objects);
+    struct aws_byte_cursor pem_cursor);
 
 /**
  * Decodes PEM data from file and reads objects sequentially adding them to pem_objects.
@@ -91,9 +91,9 @@ AWS_IO_API int aws_pem_objects_init_from_file_contents(
  * not to call this in the middle of something that needs to be fast or resource sensitive.
  */
 AWS_IO_API int aws_pem_objects_init_from_file_path(
+    struct aws_array_list *pem_objects,
     struct aws_allocator *allocator,
-    const char *filename,
-    struct aws_array_list *out_pem_objects);
+    const char *filename);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PEM_H */

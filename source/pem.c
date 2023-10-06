@@ -364,9 +364,9 @@ on_end_of_loop:
 }
 
 int aws_pem_objects_init_from_file_contents(
+    struct aws_array_list *pem_objects,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor pem_cursor,
-    struct aws_array_list *pem_objects) {
+    struct aws_byte_cursor pem_cursor) {
     AWS_PRECONDITION(allocator);
     AWS_PRECONDITION(pem_objects != NULL);
 
@@ -413,19 +413,19 @@ on_error:
 }
 
 int aws_pem_objects_init_from_file_path(
-    struct aws_allocator *alloc,
-    const char *filename,
-    struct aws_array_list *pem_objects) {
+    struct aws_array_list *pem_objects,
+    struct aws_allocator *allocator,
+    const char *filename) {
 
     struct aws_byte_buf raw_file_buffer;
-    if (aws_byte_buf_init_from_file(&raw_file_buffer, alloc, filename)) {
+    if (aws_byte_buf_init_from_file(&raw_file_buffer, allocator, filename)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to read file %s.", filename);
         return AWS_OP_ERR;
     }
     AWS_ASSERT(raw_file_buffer.buffer);
 
     struct aws_byte_cursor file_cursor = aws_byte_cursor_from_buf(&raw_file_buffer);
-    if (aws_pem_objects_init_from_file_contents(alloc, file_cursor, pem_objects)) {
+    if (aws_pem_objects_init_from_file_contents(pem_objects, allocator, file_cursor)) {
         aws_byte_buf_clean_up_secure(&raw_file_buffer);
         AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to decode PEM file %s.", filename);
         return AWS_OP_ERR;
