@@ -66,7 +66,6 @@ int aws_import_ecc_key_into_keychain(
         AWS_ZERO_STRUCT(import_params);
         import_params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
         import_params.passphrase = CFSTR("");
-        format = kSecFormatUnknown;
 
         OSStatus key_status =
             SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, NULL);
@@ -164,6 +163,7 @@ int aws_import_public_and_private_keys_to_identity(
         SecItemImport(cert_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &cert_import_output);
 
     /* import private key */
+    format = kSecFormatUnknown;
     item_type = kSecItemTypePrivateKey;
     OSStatus key_status =
         SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
