@@ -52,7 +52,7 @@ int aws_import_ecc_key_into_keychain(
         struct aws_pem_object *pem_object_ptr = NULL;
         /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
         aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_object_ptr, index);
-        AWS_ASSERT(decoded_key_buffer);
+        AWS_ASSERT(pem_object_ptr);
         CFDataRef key_data = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
         if (!key_data) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
