@@ -233,6 +233,12 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
 
     aws_byte_cursor_advance(&cur, s_begin_header_cur.len);
     aws_byte_cursor_advance(&cur, 1); // space after begin
+
+    /* handle CRLF on Windows by burning '\r' off the end of the buffer */
+    if (cur.len && (cur.ptr[cur.len- 1] == '\r')) {
+        cur.len--;
+    }
+
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
 
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
