@@ -235,10 +235,10 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     aws_byte_cursor_advance(&cur, 1); // space after begin
 
     
-    /* handle CRLF on Windows by burning '\r' off the end of the buffer */
-    if (cur.len && (cur.ptr[cur.len- 1] == '\r')) {
-        cur.len--;
-    }
+    // /* handle CRLF on Windows by burning '\r' off the end of the buffer */
+    // if (cur.len && (cur.ptr[cur.len- 1] == '\r')) {
+    //     cur.len--;
+    // }
 
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
 
@@ -291,9 +291,18 @@ static int s_convert_pem_to_raw_base64(
          * Worst case we'll only have to do this once per line in the buffer. */
         *line_cur_ptr = aws_byte_cursor_left_trim_pred(line_cur_ptr, aws_isspace);
 
+        int i = line_cur_ptr->len;
+        while (line_cur_ptr->ptr[i] != '-' && i >= 0)
+        {
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "update windows end line %u", line_cur_ptr->ptr[i]);
+            --i;
+        }
+
+
         /* handle CRLF on Windows by burning '\r' off the end of the buffer */
         if (line_cur_ptr->len > 0 && (line_cur_ptr->ptr[line_cur_ptr->len - 1] == '\r')) {
             --line_cur_ptr->len;
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "update windows end line %d:"PRInSTR, line_cur_ptr->len, AWS_BYTE_CURSOR_PRI(*line_cur_ptr));
         }
 
         switch (state) {
