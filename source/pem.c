@@ -232,11 +232,13 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     }
 
     aws_byte_cursor_advance(&cur, s_begin_header_cur.len);
+    AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token %d:"PRInSTR, cur.len, AWS_BYTE_CURSOR_PRI(cur));
     aws_byte_cursor_advance(&cur, 1); // space after begin
+    AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token %d:"PRInSTR, cur.len, AWS_BYTE_CURSOR_PRI(cur));
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
 
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token :"PRInSTR, AWS_BYTE_CURSOR_PRI(cur));
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token %d:"PRInSTR, cur.len, AWS_BYTE_CURSOR_PRI(cur));
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
     }
 
