@@ -244,7 +244,7 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
 
 
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token %d:"PRInSTR, cur.len, AWS_BYTE_CURSOR_PRI(cur));
+        AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Invalid PEM buffer: invalid end token %u:"PRInSTR, cur.len, AWS_BYTE_CURSOR_PRI(cur));
         return aws_raise_error(AWS_ERROR_PEM_MALFORMED);
     }
 
@@ -302,7 +302,7 @@ static int s_convert_pem_to_raw_base64(
         /* handle CRLF on Windows by burning '\r' off the end of the buffer */
         if (line_cur_ptr->len > 0 && (line_cur_ptr->ptr[line_cur_ptr->len - 1] == '\r')) {
             --line_cur_ptr->len;
-            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "update windows end line %d:"PRInSTR, line_cur_ptr->len, AWS_BYTE_CURSOR_PRI(*line_cur_ptr));
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "update windows end line %u:"PRInSTR, line_cur_ptr->len, AWS_BYTE_CURSOR_PRI(*line_cur_ptr));
         }
 
         switch (state) {
