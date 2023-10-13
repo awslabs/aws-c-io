@@ -234,11 +234,6 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     aws_byte_cursor_advance(&cur, s_begin_header_cur.len);
     aws_byte_cursor_advance(&cur, 1); // space after begin
 
-    /* handle CRLF on Windows by burning '\r' off the end of the buffer */
-    if (cur.len && (cur.ptr[cur.len - 1] == '\r')) {
-        cur.len--;
-    }
-
     struct aws_byte_cursor type_cur = aws_byte_cursor_advance(&cur, cur.len - s_delim_cur.len);
 
     if (!aws_byte_cursor_eq(&cur, &s_delim_cur)) {
@@ -289,10 +284,8 @@ static int s_convert_pem_to_raw_base64(
          * Worst case we'll only have to do this once per line in the buffer. */
         *line_cur_ptr = aws_byte_cursor_left_trim_pred(line_cur_ptr, aws_isspace);
 
-        /* handle CRLF on Windows by burning '\r' off the end of the buffer */
-        if (line_cur_ptr->len > 0 && (line_cur_ptr->ptr[line_cur_ptr->len - 1] == '\r')) {
-            --line_cur_ptr->len;
-        }
+        /* And make sure remove any space from right side */
+        *line_cur_ptr = aws_byte_cursor_right_trim_pred(line_cur_ptr, aws_isspace);
 
         switch (state) {
             case BEGIN:
