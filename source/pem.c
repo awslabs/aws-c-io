@@ -235,7 +235,7 @@ int s_extract_header_type_cur(struct aws_byte_cursor cur, struct aws_byte_cursor
     aws_byte_cursor_advance(&cur, 1); // space after begin
 
     /* handle CRLF on Windows by burning '\r' off the end of the buffer */
-    if (cur.len && (cur.ptr[cur.len- 1] == '\r')) {
+    if (cur.len && (cur.ptr[cur.len - 1] == '\r')) {
         cur.len--;
     }
 
