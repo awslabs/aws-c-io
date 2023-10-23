@@ -72,6 +72,43 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
     aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
 }
 
+struct aws_event_loop_group *aws_event_loop_group_new_from_merge(struct aws_allocator *allocator, struct aws_event_loop_group *group1, struct aws_event_loop_group *group2, struct aws_shutdown_callback_options *shutdown_options) {
+    AWS_FATAL_ASSERT(group1 != group2);
+
+    struct aws_event_loop_group *new_group = aws_mem_calloc(allocator, 1, sizeof(struct aws_event_loop_group));
+    new_group->allocator = allocator;
+    aws_ref_count_init(
+        &new_group->ref_count, new_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
+
+    size_t group_size = aws_array_list_length(&group1->event_loops) + aws_array_list_length(&group2->event_loops);
+    if (aws_array_list_init_dynamic(&new_group->event_loops, allocator, group_size, sizeof(struct aws_event_loop *))) {
+        aws_mem_release(allocator, new_group);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < aws_array_list_length(&group1->event_loops); ++i) {
+        struct aws_event_loop *event_loop = NULL;
+        aws_array_list_get_at(&group1->event_loops, &event_loop, i);
+        /* this only fails due to allocations and we sized the new loop's array correctly and there are no allocations. */
+        aws_array_list_push_back(&new_group->event_loops, &event_loop);
+    }
+    aws_array_list_clear(&group1->event_loops);
+
+    for (size_t i = 0; i < aws_array_list_length(&group2->event_loops); ++i) {
+        struct aws_event_loop *event_loop = NULL;
+        aws_array_list_get_at(&group2->event_loops, &event_loop, i);
+        /* this only fails due to allocations and we sized the new loop's array correctly and there are no allocations. */
+        aws_array_list_push_back(&new_group->event_loops, &event_loop);
+    }
+    aws_array_list_clear(&group2->event_loops);
+
+    if (shutdown_options) {
+        new_group->shutdown_options = *shutdown_options;
+    }
+
+    return new_group;
+}
+
 static struct aws_event_loop_group *s_event_loop_group_new(
     struct aws_allocator *alloc,
     aws_io_clock_fn *clock,

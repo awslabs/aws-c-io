@@ -400,6 +400,17 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     void *new_loop_user_data,
     const struct aws_shutdown_callback_options *shutdown_options);
 
+/**
+ * Merges group1 and group2 into a new loop and returns it. Group1 and Group2 will no longer contain any loops after this
+ * operation completes. It is the caller's responsibility to release group1 and group2 and their shutdown callbacks will still
+ * be triggered.
+ */
+struct aws_event_loop_group *aws_event_loop_group_new_from_merge(
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *group1,
+    struct aws_event_loop_group *group2,
+    struct aws_shutdown_callback_options *shutdown_options);
+
 /** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
  * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
  * If el_count exceeds the number of hw threads in the cpu_group it will be ignored on the assumption that if you
