@@ -98,7 +98,7 @@ typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_cod
 #endif
 struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
-    uint16_t port;
+    uint32_t port;
 };
 
 struct aws_socket {
