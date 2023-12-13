@@ -131,13 +131,20 @@ static struct aws_event_loop_group *s_event_loop_group_new(
             return NULL;
         }
 
-        usable_cpus = aws_mem_calloc(alloc, group_cpu_count, sizeof(struct aws_cpu_info));
+        struct aws_cpu_info *cpu_info = aws_mem_calloc(alloc, group_cpu_count, sizeof(struct aws_cpu_info));
+        aws_get_cpu_ids_for_group(cpu_group, cpu_info, group_cpu_count);
 
-        if (usable_cpus == NULL) {
-            return NULL;
+        size_t hw_threads = 0;
+        for (size_t i = 0; i < group_cpu_count; ++i) {
+            if (!cpu_info[i].suspected_hyper_thread) {
+                hw_threads += 1;
+            }
         }
+        aws_mem_release(alloc, cpu_info);
 
-        aws_get_cpu_ids_for_group(cpu_group, usable_cpus, group_cpu_count);
+        if (el_count > hw_threads) {
+            el_count = hw_threads;
+        }
     }
 
     struct aws_event_loop_group *el_group = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop_group));
@@ -154,43 +161,46 @@ static struct aws_event_loop_group *s_event_loop_group_new(
     }
 
     for (uint16_t i = 0; i < el_count; ++i) {
-        /* Don't pin to hyper-threads if a user cared enough to specify a NUMA node */
-        if (!pin_threads || (i < group_cpu_count && !usable_cpus[i].suspected_hyper_thread)) {
-            struct aws_thread_options thread_options = *aws_default_thread_options();
+        struct aws_thread_options thread_options = *aws_default_thread_options();
 
-            struct aws_event_loop_options options = {
-                .clock = clock,
-                .thread_options = &thread_options,
-            };
+        struct aws_event_loop_options options = {
+            .clock = clock,
+            .thread_options = &thread_options,
+        };
 
-            if (pin_threads) {
-                thread_options.cpu_id = usable_cpus[i].cpu_id;
-            }
-
-            /* Thread name should be <= 15 characters */
-            char thread_name[32] = {0};
-            int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop %d", (int)i + 1);
-            if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_STRLEN) {
-                snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
-            }
-            thread_options.name = aws_byte_cursor_from_c_str(thread_name);
-
-            struct aws_event_loop *loop = new_loop_fn(alloc, &options, new_loop_user_data);
-
-            if (!loop) {
-                goto on_error;
-            }
-
-            if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
-                aws_event_loop_destroy(loop);
-                goto on_error;
-            }
-
-            if (aws_event_loop_run(loop)) {
-                goto on_error;
-            }
+        if (pin_threads) {
+            thread_options.cpu_group = (int16_t)cpu_group;
+            /* don't use hyper threads if we're paying attention to NUMA. */
+            thread_options.exclude_hyper_threads = true;
         }
-    }
+
+        /* Thread name should be <= 15 characters */
+        char thread_name[32] = {0};
+        int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop %d", (int)i + 1);
+        if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_STRLEN) {
+            snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
+        }
+        thread_options.name = aws_byte_cursor_from_c_str(thread_name);
+
+        struct aws_event_loop *loop = new_loop_fn(alloc, &options, new_loop_user_data);
+
+        if (!loop) {
+            goto on_error;
+        }
+
+        if (pin_threads) {
+            loop->cpu_group = cpu_group;
+        }
+
+        if (aws_array_list_push_back(&el_group->event_loops, (const void *)&loop)) {
+            aws_event_loop_destroy(loop);
+            goto on_error;
+        }
+
+        if (aws_event_loop_run(loop)) {
+            goto on_error;
+        }
+        }
 
     if (shutdown_options != NULL) {
         el_group->shutdown_options = *shutdown_options;
@@ -561,3 +571,8 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
 }
+
+uint16_t aws_event_loop_get_running_cpu_group(struct aws_event_loop *event_loop) {
+    return event_loop->cpu_group;
+}
+

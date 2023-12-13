@@ -111,6 +111,7 @@ struct aws_event_loop {
     struct aws_atomic_var current_load_factor;
     uint64_t latest_tick_start;
     size_t current_tick_latency_sum;
+    uint16_t cpu_group;
     struct aws_atomic_var next_flush_time;
     void *impl_data;
 };
@@ -386,6 +387,14 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
+
+/**
+ * Gets the cpu group (NUMA node) this loop is running on (and thus all the connections it serves as well).
+ * If it's zero you can either assume not NUMA or to use the first node. It doesn't really matter in the case that you
+ * aren't using numa.
+ */
+AWS_IO_API
+uint16_t aws_event_loop_get_running_cpu_group(struct aws_event_loop *event_loop);
 
 /**
  * Creates an event loop group, with clock, number of loops to manage, and the function to call for creating a new
