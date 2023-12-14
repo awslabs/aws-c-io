@@ -449,6 +449,11 @@ int aws_socket_connect(
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
     }
+
+    if (aws_socket_validate_port_for_connect(remote_endpoint->port, socket->option.domain)) {
+        return AWS_OP_ERR;
+    }
+
     return socket_impl->vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
@@ -457,6 +462,11 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         socket->state = ERRORED;
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
+
+    if (aws_socket_validate_port_for_bind(local_endpoint->port, socket->options.domain)) {
+        return AWS_OP_ERR;
+    }
+
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->vtable->bind(socket, local_endpoint);
 }
@@ -1058,17 +1068,6 @@ static int s_ipv4_stream_connect(
         return aws_raise_error(aws_err);
     }
 
-    if (remote_endpoint->port > UINT16_MAX) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: illegal port value, too high for IPV4. %s:%u",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            remote_endpoint->address,
-            remote_endpoint->port);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-    }
-
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: connecting to endpoint %s:%u.",
@@ -1134,17 +1133,6 @@ static int s_ipv6_stream_connect(
             remote_endpoint->address,
             remote_endpoint->port);
         return aws_raise_error(aws_err);
-    }
-
-    if (remote_endpoint->port > UINT16_MAX) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: illegal port value, too high for IPV6. %s:%u",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            remote_endpoint->address,
-            remote_endpoint->port);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     AWS_LOGF_DEBUG(
@@ -1356,10 +1344,6 @@ static int s_ipv4_dgram_connect(
         return aws_raise_error(aws_err);
     }
 
-    if (remote_endpoint->port > UINT16_MAX) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-    }
     addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
     addr_in.sin_family = AF_INET;
 
@@ -1385,17 +1369,6 @@ static int s_ipv6_dgram_connect(
         int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
         return aws_raise_error(aws_err);
-    }
-
-    if (remote_endpoint->port > UINT16_MAX) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: illegal port value, too high for IPV6. %s:%u",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle,
-            remote_endpoint->address,
-            remote_endpoint->port);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
@@ -1468,11 +1441,6 @@ static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket
         return aws_raise_error(aws_err);
     }
 
-    if (local_endpoint->port > UINT16_MAX) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-    }
-
     addr_in.sin_port = htons((uint16_t)local_endpoint->port);
     addr_in.sin_family = AF_INET;
 
@@ -1488,11 +1456,6 @@ static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket
         int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
         return aws_raise_error(aws_err);
-    }
-
-    if (local_endpoint->port > UINT16_MAX) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
@@ -1546,11 +1509,6 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_
         return aws_raise_error(aws_err);
     }
 
-    if (local_endpoint->port > UINT16_MAX) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-    }
-
     addr_in.sin_port = htons((uint16_t)local_endpoint->port);
     addr_in.sin_family = AF_INET;
 
@@ -1566,11 +1524,6 @@ static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_
         int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
         socket->state = ERRORED;
         return aws_raise_error(aws_err);
-    }
-
-    if (local_endpoint->port > UINT16_MAX) {
-        socket->state = ERRORED;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);

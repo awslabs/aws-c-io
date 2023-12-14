@@ -631,20 +631,21 @@ int aws_socket_connect(
         return AWS_OP_ERR;
     }
 
+    if (aws_socket_validate_port_for_connect(remote_endpoint->port, socket->options.domain)) {
+        return AWS_OP_ERR;
+    }
+
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
     socklen_t sock_size = 0;
     int pton_err = 1;
-    bool port_is_bad = false;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
         pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-        port_is_bad = remote_endpoint->port > UINT16_MAX;
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-        port_is_bad = remote_endpoint->port > UINT16_MAX;
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         sock_size = sizeof(address.sock_addr_types.addr_in6);
@@ -674,17 +675,6 @@ int aws_socket_connect(
             remote_endpoint->address,
             remote_endpoint->port);
         return aws_raise_error(s_convert_pton_error(pton_err, errno_value));
-    }
-
-    if (port_is_bad) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: illegal port value, too high for this socket type. %s:%u",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            remote_endpoint->address,
-            remote_endpoint->port);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     AWS_LOGF_DEBUG(
@@ -809,6 +799,10 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         return AWS_OP_ERR;
     }
 
+    if (aws_socket_validate_port_for_bind(local_endpoint->port, socket->options.domain)) {
+        return AWS_OP_ERR;
+    }
+
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
         "id=%p fd=%d: binding to %s:%u.",
@@ -821,16 +815,13 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
     AWS_ZERO_STRUCT(address);
     socklen_t sock_size = 0;
     int pton_err = 1;
-    bool port_is_bad = false;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
         pton_err = inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-        port_is_bad = local_endpoint->port > UINT16_MAX;
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-        port_is_bad = local_endpoint->port > UINT16_MAX;
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         sock_size = sizeof(address.sock_addr_types.addr_in6);
@@ -860,17 +851,6 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
             local_endpoint->address,
             local_endpoint->port);
         return aws_raise_error(s_convert_pton_error(pton_err, errno_value));
-    }
-
-    if (port_is_bad) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: illegal port value, too high for this socket type. %s:%u",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            local_endpoint->address,
-            local_endpoint->port);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     if (bind(socket->io_handle.data.fd, (struct sockaddr *)&address.sock_addr_types, sock_size) != 0) {
