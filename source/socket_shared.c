@@ -56,7 +56,7 @@ int aws_socket_validate_port_for_connect(uint32_t port, enum aws_socket_domain d
             break;
 
         case AWS_SOCKET_VSOCK:
-            if (port == -1U) {
+            if (port == (uint32_t)-1) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET, "Invalid port for VSOCK connections. Cannot use VMADDR_PORT_ANY (-1U).");
                 return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);

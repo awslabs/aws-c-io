@@ -450,7 +450,7 @@ int aws_socket_connect(
         }
     }
 
-    if (aws_socket_validate_port_for_connect(remote_endpoint->port, socket->option.domain)) {
+    if (aws_socket_validate_port_for_connect(remote_endpoint->port, socket->options.domain)) {
         return AWS_OP_ERR;
     }
 
