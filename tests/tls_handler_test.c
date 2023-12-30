@@ -672,7 +672,7 @@ struct default_host_callback_data {
 static int s_verify_negotiation_fails_helper(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
-    uint16_t port,
+    uint32_t port,
     struct aws_tls_ctx_options *client_ctx_options) {
     struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, client_ctx_options);
 
@@ -755,7 +755,7 @@ static int s_verify_negotiation_fails_helper(
 static int s_verify_negotiation_fails(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
-    uint16_t port,
+    uint32_t port,
     void (*context_options_override_fn)(struct aws_tls_ctx_options *)) {
 
     aws_io_library_init(allocator);
@@ -1019,7 +1019,7 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
     (void)ctx;
 
     const char *host_name = "aws-crt-test-stuff.s3.amazonaws.com";
-    uint16_t port = 80; /* Note: intentionally wrong and not 443 */
+    uint32_t port = 80; /* Note: intentionally wrong and not 443 */
 
     aws_io_library_init(allocator);
 
@@ -1084,7 +1084,7 @@ AWS_TEST_CASE(
 static int s_verify_good_host(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
-    uint16_t port,
+    uint32_t port,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
     aws_io_library_init(allocator);

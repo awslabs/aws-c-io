@@ -118,7 +118,7 @@ struct client_connection_args {
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
     struct client_channel_data channel_data;
     struct aws_socket_options outgoing_options;
-    uint16_t outgoing_port;
+    uint32_t outgoing_port;
     struct aws_string *host_name;
     void *user_data;
     uint8_t addresses_count;
@@ -764,14 +764,14 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     }
 
     const char *host_name = options->host_name;
-    uint16_t port = options->port;
+    uint32_t port = options->port;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: attempting to initialize a new client channel to %s:%d",
+        "id=%p: attempting to initialize a new client channel to %s:%u",
         (void *)bootstrap,
         host_name,
-        (int)port);
+        port);
 
     aws_ref_count_init(
         &client_connection_args->ref_count,
@@ -1363,10 +1363,10 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     AWS_LOGF_INFO(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: attempting to initialize a new "
-        "server socket listener for %s:%d",
+        "server socket listener for %s:%u",
         (void *)bootstrap_options->bootstrap,
         bootstrap_options->host_name,
-        (int)bootstrap_options->port);
+        bootstrap_options->port);
 
     aws_ref_count_init(
         &server_connection_args->ref_count,

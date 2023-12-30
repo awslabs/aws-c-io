@@ -76,6 +76,7 @@ add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 add_test_case(cleanup_in_accept_doesnt_explode)
 add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
+add_test_case(socket_validate_port)
 
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)
