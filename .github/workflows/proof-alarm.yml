@@ -16,7 +16,7 @@ jobs:
     - name: Check
       run: |
         TMPFILE=$(mktemp)
-        echo "c624a28de5af7f851a240a1e65a26c01  source/linux/epoll_event_loop.c" > $TMPFILE
+        echo "59be2f2fbbd5ff4a374589cfe408609f  source/linux/epoll_event_loop.c" > $TMPFILE
         md5sum --check $TMPFILE
 
     # No further steps if successful
@@ -26,5 +26,4 @@ jobs:
       run: |
           echo "The VCC proofs are based on a snapshot of epoll_event_loop.c.
                 This push updates this file so the proofs must be rechecked to ensure they remain valid.
-                Please contact Nathan Chong.
-                You can also update md5sum value by running `md5sum source/linux/epoll_event_loop.c` if the changes are trivial."
+                Please contact Nathan Chong."
