@@ -199,7 +199,6 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     int custom_key_result = AWS_OP_ERR;
 
     if (pkcs11_handler == NULL) {
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto finish;
     }
 
