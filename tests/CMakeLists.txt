@@ -123,6 +123,7 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 add_test_case(socket_pinned_event_loop)
+add_net_test_case(socket_pinned_event_loop_dns_failure)
 
 if(NOT BYO_CRYPTO)
     if(USE_S2N)
