@@ -8,6 +8,10 @@
 #include <aws/common/ref_count.h>
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
+#define AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE 0x01
+
 struct aws_channel_slot;
 struct aws_channel_handler;
 struct aws_pkcs11_session;
@@ -253,8 +257,6 @@ struct aws_tls_ctx_options {
 struct aws_tls_negotiated_protocol_message {
     struct aws_byte_buf protocol;
 };
-
-static const int AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE = 0x01;
 
 typedef struct aws_channel_handler *(
     *aws_tls_on_protocol_negotiated)(struct aws_channel_slot *new_slot, struct aws_byte_buf *protocol, void *user_data);
@@ -568,7 +570,7 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *pkcs12_path,
-    struct aws_byte_cursor *pkcs_pwd);
+    const struct aws_byte_cursor *pkcs_pwd);
 
 /**
  * Initializes options for use with mutual tls in client mode.
@@ -620,6 +622,13 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
  * set verify_peer to true.
  */
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
+
+/**
+ * Sets preferred TLS Cipher List
+ */
+AWS_IO_API void aws_tls_ctx_options_set_tls_cipher_preference(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_cipher_pref cipher_pref);
 
 /**
  * Sets the minimum TLS version to allow.
@@ -689,7 +698,7 @@ AWS_IO_API void aws_tls_connection_options_set_callbacks(
 AWS_IO_API int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *server_name);
+    const struct aws_byte_cursor *server_name);
 
 /**
  * Sets alpn list in the form <protocol1;protocol2;...>. A maximum of 4 protocols are supported.
@@ -907,5 +916,6 @@ AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_TLS_CHANNEL_HANDLER_H */

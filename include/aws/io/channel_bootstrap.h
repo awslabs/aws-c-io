@@ -9,6 +9,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/host_resolver.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 struct aws_client_bootstrap;
 struct aws_socket;
 struct aws_socket_options;
@@ -82,7 +84,7 @@ struct aws_client_bootstrap_options {
     /* Optional. If none is provided then default settings are used.
      * This object is deep-copied by bootstrap.
      * */
-    struct aws_host_resolution_config *host_resolution_config;
+    const struct aws_host_resolution_config *host_resolution_config;
 
     /* Optional. If provided, callback is invoked when client bootstrap has completely shut down. */
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete;
@@ -176,7 +178,7 @@ struct aws_server_bootstrap {
 struct aws_socket_channel_bootstrap_options {
     struct aws_client_bootstrap *bootstrap;
     const char *host_name;
-    uint16_t port;
+    uint32_t port;
     const struct aws_socket_options *socket_options;
     const struct aws_tls_connection_options *tls_options;
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
@@ -185,6 +187,7 @@ struct aws_socket_channel_bootstrap_options {
     bool enable_read_back_pressure;
     void *user_data;
     struct aws_event_loop *requested_event_loop;
+    const struct aws_host_resolution_config *host_resolution_override_config;
 };
 
 /**
@@ -205,7 +208,7 @@ struct aws_socket_channel_bootstrap_options {
 struct aws_server_socket_channel_bootstrap_options {
     struct aws_server_bootstrap *bootstrap;
     const char *host_name;
-    uint16_t port;
+    uint32_t port;
     const struct aws_socket_options *socket_options;
     const struct aws_tls_connection_options *tls_options;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
@@ -304,5 +307,6 @@ AWS_IO_API void aws_server_bootstrap_destroy_socket_listener(
     struct aws_socket *listener);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_CHANNEL_BOOTSTRAP_H */

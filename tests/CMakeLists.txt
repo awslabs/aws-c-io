@@ -32,9 +32,10 @@ add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
 
 add_test_case(event_loop_xthread_scheduled_tasks_execute)
 add_test_case(event_loop_canceled_tasks_run_in_el_thread)
-if (USE_IO_COMPLETION_PORTS)
+
+if(USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
-else ()
+else()
     add_test_case(event_loop_subscribe_unsubscribe)
     add_test_case(event_loop_writable_event_on_subscribe)
     add_test_case(event_loop_no_readable_event_before_write)
@@ -42,7 +43,7 @@ else ()
     add_test_case(event_loop_readable_event_on_subscribe_if_data_present)
     add_test_case(event_loop_readable_event_on_2nd_time_readable)
     add_test_case(event_loop_no_events_after_unsubscribe)
-endif ()
+endif()
 
 add_test_case(event_loop_stop_then_restart)
 add_test_case(event_loop_multiple_stops)
@@ -58,9 +59,10 @@ add_net_test_case(udp_socket_communication)
 add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
-if (USE_VSOCK)
-	add_test_case(vsock_loopback_socket_communication)
-endif ()
+
+if(USE_VSOCK)
+    add_test_case(vsock_loopback_socket_communication)
+endif()
 
 add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
@@ -74,8 +76,9 @@ add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 add_test_case(cleanup_in_accept_doesnt_explode)
 add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
+add_test_case(socket_validate_port)
 
-if (WIN32)
+if(WIN32)
     add_test_case(local_socket_pipe_connected_race)
 endif()
 
@@ -94,26 +97,19 @@ add_net_test_case(test_default_with_ipv6_lookup)
 add_test_case(test_resolver_ipv6_address_lookup)
 add_net_test_case(test_default_with_multiple_lookups)
 add_test_case(test_resolver_ipv4_address_lookup)
+add_test_case(test_resolver_purge_host_cache)
+add_test_case(test_resolver_purge_cache)
 add_net_test_case(test_default_with_ipv4_only_lookup)
 add_test_case(test_resolver_ttls)
 add_test_case(test_resolver_connect_failure_recording)
 add_test_case(test_resolver_ttl_refreshes_on_resolve)
-
-add_net_test_case(test_resolver_listener_create_destroy)
-add_net_test_case(test_resolver_add_listener_before_host)
-add_net_test_case(test_resolver_add_listener_after_host)
-add_net_test_case(test_resolver_add_multiple_listeners_fn)
-add_net_test_case(test_resolver_listener_host_re_add_fn)
-add_net_test_case(test_resolver_listener_multiple_results)
-add_net_test_case(test_resolver_listener_address_expired_fn)
-add_net_test_case(test_resolver_pinned_host_entry)
-add_net_test_case(test_resolver_unpinned_host_entry)
-add_net_test_case(test_resolver_address_promote_demote_listener_callbacks)
+add_test_case(test_resolver_low_frequency_starvation)
 
 add_test_case(test_pem_single_cert_parse)
 add_test_case(test_pem_private_key_parse)
 add_test_case(test_pem_cert_chain_parse)
 add_test_case(test_pem_cert_parse_from_file)
+add_test_case(test_pem_cert_parse_from_file_crlf)
 add_test_case(test_pem_private_key_parse_from_file)
 add_test_case(test_pem_cert_chain_comments_and_whitespace)
 add_test_case(test_pem_invalid_parse)
@@ -127,19 +123,24 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 add_test_case(socket_pinned_event_loop)
+add_net_test_case(socket_pinned_event_loop_dns_failure)
 
-if (NOT BYO_CRYPTO)
+if(NOT BYO_CRYPTO)
+    if(USE_S2N)
+        add_net_test_case(default_pki_path_exists)
+    endif()
+
     # Badssl-based tests (https://badssl.com/dashboard/) - use remote endpoints for now, later transition to
     # internal hosting using the bad ssl container/server setup and dns redirects per
     # https://github.com/chromium/badssl.com
     #
     # We don't use the interception suite since that's a host configuration issue
     # We also don't check the domain security policy suite:
-    #  1. s2n does not support revocation checks and we do not currently enable any revocation checks
-    #    in windows or osx, although we may add configurable support to those platforms(off-by-default) at a
-    #    later date
-    #  2. s2n does not support public key pinning and, given its deprecated and http-centric position, there are no
-    #    plans to add support nor investigate osx/windows support as well.
+    # 1. s2n does not support revocation checks and we do not currently enable any revocation checks
+    # in windows or osx, although we may add configurable support to those platforms(off-by-default) at a
+    # later date
+    # 2. s2n does not support public key pinning and, given its deprecated and http-centric position, there are no
+    # plans to add support nor investigate osx/windows support as well.
 
     # Badssl - Certificate Validation endpoint suite
     # For each failure case, we also include a positive test that verifies success when peer verification is disabled
@@ -165,13 +166,13 @@ if (NOT BYO_CRYPTO)
 
     # Badssl - Legacy crypto suite, includes both negative and positive tests, with override checks where appropriate
     # Our current baseline/default is platform-specific, whereas badssl expects a baseline of 1.2
-    #   Linux - tls1.1
-    #   Windows - system default (1.0 is the only thing we could reasonable fixate to given win7 support)
-    #   Mac - system default
+    # Linux - tls1.1
+    # Windows - system default (1.0 is the only thing we could reasonable fixate to given win7 support)
+    # Mac - system default
     # We skip the cbc and 3des checks, as a positive connection result there does not yet represent a security risk
     # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
-    if(NOT (WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
+    if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
         add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
@@ -201,6 +202,7 @@ if (NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_rsa2048)
     add_net_test_case(tls_client_channel_negotiation_success_ecc256)
     add_net_test_case(tls_client_channel_negotiation_success_ecc384)
+
     # add_net_test_case(tls_client_channel_negotiation_success_extended_validation) test disabled until badssl updates cert (expired 2022.08.10)
     add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
 
@@ -225,26 +227,23 @@ else()
     add_test_case(byo_tls_handler_test)
 endif()
 
-
-add_test_case(uri_full_parse)
-add_test_case(uri_no_scheme_parse)
-add_test_case(uri_no_port_parse)
-add_test_case(uri_no_path_parse)
-add_test_case(uri_no_query_parse)
-add_test_case(uri_minimal_parse)
-add_test_case(uri_root_only_parse)
-add_test_case(uri_path_and_query_only_parse)
-add_test_case(uri_userinfo_no_password_parse)
-add_test_case(uri_empty_user_parse)
-add_test_case(uri_query_params)
-add_test_case(uri_invalid_scheme_parse)
-add_test_case(uri_invalid_port_parse)
-add_test_case(uri_port_too_large_parse)
-add_test_case(uri_builder)
-add_test_case(uri_builder_from_string)
-add_test_case(test_uri_encode_path_rfc3986)
-add_test_case(test_uri_encode_query)
-add_test_case(test_uri_decode)
+add_test_case(future_by_value)
+add_test_case(future_void)
+add_test_case(future_callback_fires_immediately)
+add_test_case(future_callback_fires_on_another_thread)
+add_test_case(future_register_callback_if_not_done)
+add_test_case(future_register_event_loop_callback_after_done)
+add_test_case(future_register_event_loop_callback_before_done)
+add_test_case(future_register_event_loop_callback_always_scheduled)
+add_test_case(future_register_channel_callback)
+add_test_case(future_wait_timeout)
+add_test_case(future_pointer_with_destroy)
+add_test_case(future_pointer_with_release)
+add_test_case(future_get_result_by_move)
+add_test_case(future_can_die_incomplete)
+add_test_case(future_by_pointer_accepts_null_result)
+add_test_case(future_set_multiple_times)
+add_test_case(future_set_error)
 
 add_test_case(test_input_stream_memory_simple)
 add_test_case(test_input_stream_memory_iterate)
@@ -260,12 +259,19 @@ add_test_case(test_input_stream_file_seek_end)
 add_test_case(test_input_stream_memory_length)
 add_test_case(test_input_stream_file_length)
 add_test_case(test_input_stream_binary)
+add_test_case(test_input_stream_read_only)
+
+add_test_case(async_input_stream_fill_completes_on_thread)
+add_test_case(async_input_stream_fill_completes_immediately)
+add_test_case(async_input_stream_fill_completes_randomly)
+add_test_case(async_input_stream_fill_eof_requires_extra_read)
+add_test_case(async_input_stream_fill_reports_error)
 
 add_test_case(open_channel_statistics_test)
 
 add_test_case(shared_library_open_failure)
 
-if (BUILD_SHARED_LIBS)
+if(BUILD_SHARED_LIBS)
     add_test_case(shared_library_open_success)
     add_test_case(shared_library_find_function_failure)
     add_test_case(shared_library_find_function_success)
@@ -277,6 +283,7 @@ add_test_case(test_exponential_backoff_retry_too_many_retries_decorrelated_jitte
 add_test_case(test_exponential_backoff_retry_too_many_retries_default_jitter)
 add_test_case(test_exponential_backoff_retry_client_errors_do_not_count)
 add_test_case(test_exponential_backoff_retry_no_jitter_time_taken)
+add_test_case(test_exponential_max_backoff_retry_no_jitter)
 add_test_case(test_exponential_backoff_retry_invalid_options)
 
 add_test_case(test_standard_retry_strategy_setup_shutdown)
@@ -284,7 +291,7 @@ add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
 
 # See PKCS11.md for instructions on running these tests
-if (ENABLE_PKCS11_TESTS)
+if(ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_lib_sanity_check)
     add_test_case(pkcs11_lib_behavior_default)
     add_test_case(pkcs11_lib_behavior_omit_initialize)
@@ -307,7 +314,7 @@ if (ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_login_tests)
 
     # TLS with PKCS#11 not currently supported on every platform
-    if (USE_S2N)
+    if(USE_S2N)
         add_test_case(pkcs11_tls_rsa_negotiation_succeeds)
         add_test_case(pkcs11_tls_ec_negotiation_succeeds)
     endif()
@@ -316,7 +323,11 @@ endif()
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
-#SSL certificates to use for testing.
+if(USE_S2N)
+    target_compile_definitions(${PROJECT_NAME}-tests PRIVATE "-DUSE_S2N")
+endif()
+
+# SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/resources $<TARGET_FILE_DIR:${TEST_BINARY_NAME}>)
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_CURRENT_SOURCE_DIR}/resources $<TARGET_FILE_DIR:${TEST_BINARY_NAME}>)

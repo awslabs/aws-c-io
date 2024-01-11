@@ -12,7 +12,7 @@
 #endif
 
 /* TODO: move this detection to CMAKE and a config header */
-#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 9
+#if !defined(COMPAT_MODE) && defined(__GLIBC__) && ((__GLIBC__ == 2 && __GLIBC_MINOR__ >= 9) || __GLIBC__ > 2)
 #    define HAVE_PIPE2 1
 #else
 #    define HAVE_PIPE2 0
@@ -46,7 +46,7 @@ struct read_end_impl {
     bool is_subscribed;
 };
 
-struct write_request {
+struct pipe_write_request {
     struct aws_byte_cursor original_cursor;
     struct aws_byte_cursor cursor; /* tracks progress of write */
     size_t num_bytes_written;
@@ -65,11 +65,11 @@ struct write_end_impl {
     struct aws_linked_list write_list;
 
     /* Valid while invoking user callback on a completed write request. */
-    struct write_request *currently_invoking_write_callback;
+    struct pipe_write_request *currently_invoking_write_callback;
 
     bool is_writable;
 
-    /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated write_request around
+    /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated pipe_write_request around
      * and re-using it whenever possible */
 };
 
@@ -276,10 +276,11 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
     ssize_t read_val = read(read_impl->handle.data.fd, dst_buffer->buffer + dst_buffer->len, num_bytes_to_read);
 
     if (read_val < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        int errno_value = errno; /* Always cache errno before potential side-effect */
+        if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
-        return s_raise_posix_error(errno);
+        return s_raise_posix_error(errno_value);
     }
 
     /* Success */
@@ -410,14 +411,14 @@ static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *
 
     AWS_ASSERT(!aws_linked_list_empty(&write_impl->write_list));
     struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
-    struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
+    struct pipe_write_request *request = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
 
     struct aws_allocator *alloc = write_impl->alloc;
 
     /* Let the write-end know that a callback is in process, so the write-end can inform the callback
      * whether it resulted in clean_up() being called. */
     bool write_end_cleaned_up_during_callback = false;
-    struct write_request *prev_invoking_request = write_impl->currently_invoking_write_callback;
+    struct pipe_write_request *prev_invoking_request = write_impl->currently_invoking_write_callback;
     write_impl->currently_invoking_write_callback = request;
 
     if (request->user_callback) {
@@ -441,7 +442,7 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
 
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&write_impl->write_list);
-        struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
+        struct pipe_write_request *request = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
 
         int completed_error_code = AWS_ERROR_SUCCESS;
 
@@ -449,14 +450,15 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
             ssize_t write_val = write(write_impl->handle.data.fd, request->cursor.ptr, request->cursor.len);
 
             if (write_val < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
                     /* The pipe is no longer writable. Bail out */
                     write_impl->is_writable = false;
                     return;
                 }
 
                 /* A non-recoverable error occurred during this write */
-                completed_error_code = s_translate_posix_error(errno);
+                completed_error_code = s_translate_posix_error(errno_value);
 
             } else {
                 aws_byte_cursor_advance(&request->cursor, write_val);
@@ -522,7 +524,7 @@ int aws_pipe_write(
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    struct write_request *request = aws_mem_calloc(write_impl->alloc, 1, sizeof(struct write_request));
+    struct pipe_write_request *request = aws_mem_calloc(write_impl->alloc, 1, sizeof(struct pipe_write_request));
     if (!request) {
         return AWS_OP_ERR;
     }
@@ -571,7 +573,7 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
     /* Force any outstanding write requests to complete with an error status. */
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
-        struct write_request *request = AWS_CONTAINER_OF(node, struct write_request, list_node);
+        struct pipe_write_request *request = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
         if (request->user_callback) {
             request->user_callback(NULL, AWS_IO_BROKEN_PIPE, request->original_cursor, request->user_data);
         }

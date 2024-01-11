@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #    pragma warning(disable : 4306) /* Identifier is type cast to a larger pointer. */
@@ -437,7 +437,7 @@ static int s_fillin_alpn_data(
     size_t *written) {
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "")
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "");
 
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
@@ -1062,7 +1062,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     int error = AWS_OP_ERR;
     /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
-       always say BLOCKED_ON_READ or SUCCESS. There will never be left over reads.*/
+       always say BLOCKED_ON_READ, AWS_IO_TLS_ERROR_READ_FAILURE or SUCCESS. There will never be left over reads.*/
     do {
         error = AWS_OP_ERR;
         /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
@@ -1088,6 +1088,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
         if (status == SEC_E_OK) {
+            error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
@@ -1153,8 +1154,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            int aws_error = s_determine_sspi_error(status);
-            aws_raise_error(aws_error);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
@@ -1527,7 +1527,7 @@ static int s_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler);
 
             /* send a TLS alert. */
             SECURITY_STATUS status;

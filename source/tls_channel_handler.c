@@ -199,7 +199,6 @@ int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
     int custom_key_result = AWS_OP_ERR;
 
     if (pkcs11_handler == NULL) {
-        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto finish;
     }
 
@@ -314,7 +313,7 @@ int aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
     const char *pkcs12_path,
-    struct aws_byte_cursor *pkcs_pwd) {
+    const struct aws_byte_cursor *pkcs_pwd) {
 
 #ifdef __APPLE__
     aws_tls_ctx_options_init_default_client(options, allocator);
@@ -441,6 +440,8 @@ int aws_tls_ctx_options_init_default_server(
 }
 
 int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *options, const char *alpn_list) {
+    aws_string_destroy(options->alpn_list);
+
     options->alpn_list = aws_string_new_from_c_str(options->allocator, alpn_list);
     if (!options->alpn_list) {
         return AWS_OP_ERR;
@@ -457,6 +458,12 @@ void aws_tls_ctx_options_set_minimum_tls_version(
     struct aws_tls_ctx_options *options,
     enum aws_tls_versions minimum_tls_version) {
     options->minimum_tls_version = minimum_tls_version;
+}
+
+void aws_tls_ctx_options_set_tls_cipher_preference(
+    struct aws_tls_ctx_options *options,
+    enum aws_tls_cipher_pref cipher_pref) {
+    options->cipher_pref = cipher_pref;
 }
 
 int aws_tls_ctx_options_override_default_trust_store_from_path(
@@ -615,7 +622,7 @@ void aws_tls_connection_options_set_callbacks(
 int aws_tls_connection_options_set_server_name(
     struct aws_tls_connection_options *conn_options,
     struct aws_allocator *allocator,
-    struct aws_byte_cursor *server_name) {
+    const struct aws_byte_cursor *server_name) {
 
     if (conn_options->server_name != NULL) {
         aws_string_destroy(conn_options->server_name);
@@ -689,7 +696,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_channel_slot *slot) {
     AWS_FATAL_ASSERT(
         s_client_handler_new &&
-        "For BYO_CRYPTO, you must call aws_tls_server_handler_new_set_callback() with a non-null value.")
+        "For BYO_CRYPTO, you must call aws_tls_server_handler_new_set_callback() with a non-null value.");
     return s_server_handler_new(allocator, options, slot, s_server_user_data);
 }
 
@@ -714,7 +721,7 @@ void aws_tls_byo_crypto_set_server_setup_options(const struct aws_tls_byo_crypto
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     AWS_FATAL_ASSERT(
         s_start_negotiation_fn &&
-        "For BYO_CRYPTO, you must call aws_tls_client_handler_set_start_negotiation_callback() with a non-null value.")
+        "For BYO_CRYPTO, you must call aws_tls_client_handler_set_start_negotiation_callback() with a non-null value.");
     return s_start_negotiation_fn(handler, s_client_user_data);
 }
 

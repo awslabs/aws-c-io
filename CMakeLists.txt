@@ -133,7 +133,7 @@ elseif (APPLE)
     list(APPEND PLATFORM_LIBS "-framework Security")
     set(EVENT_LOOP_DEFINE "KQUEUE")
 
-elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
             )
 
@@ -177,7 +177,7 @@ file(GLOB IO_SRC
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_IO")
-aws_check_headers(${PROJECT_NAME} ${IO_HEADERS})
+aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 

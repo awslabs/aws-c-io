@@ -5,13 +5,13 @@
         { "name": "aws-c-cal" },
         {
             "name": "s2n",
-            "revision": "v1.3.11",
             "targets": ["linux", "android"]
         }
     ],
     "downstream": [
+        { "name": "aws-c-http" },
         { "name": "aws-c-mqtt" },
-        { "name": "aws-c-http" }
+        { "name": "aws-c-event-stream" }
     ],
     "targets": {
         "linux": {

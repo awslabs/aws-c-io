@@ -470,7 +470,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
                 (void *)handler,
                 (int)status,
-                (int)trust_eval)
+                (int)trust_eval);
             return AWS_OP_ERR;
         }
         return s_drive_negotiation(handler);
@@ -639,9 +639,8 @@ static int s_process_read_message(
                     (int)status);
 
                 if (status != errSSLClosedGraceful) {
-                    aws_raise_error(AWS_IO_TLS_ERROR_ALERT_RECEIVED);
-                    aws_channel_shutdown(
-                        secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_ALERT_RECEIVED);
+                    aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
+                    aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
                 } else {
                     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
                     aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_ERROR_SUCCESS);
