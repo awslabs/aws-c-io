@@ -166,7 +166,7 @@ static struct aws_event_loop_group *s_event_loop_group_new(
     return el_group;
 
 on_error:;
-    /* cache the error code before potential side effects */
+    /* cache the error code to prevent any potential side effects */
     int cached_error_code = aws_last_error();
 
     aws_mem_release(alloc, usable_cpus);
