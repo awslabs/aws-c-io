@@ -1312,8 +1312,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
-        s2n_config_free(s2n_ctx->s2n_config);
-
+        if (s2n_ctx->s2n_config) {
+            s2n_config_free(s2n_ctx->s2n_config);
+        }
         if (s2n_ctx->custom_cert_chain_and_key) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }
