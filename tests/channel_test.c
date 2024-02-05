@@ -313,7 +313,10 @@ static void s_channel_post_shutdown_task(struct aws_channel_task *task, void *ar
     (void)task;
 
     struct channel_setup_test_args *test_args = arg;
+    aws_mutex_lock(&test_args->mutex);
     test_args->task_status = status;
+    aws_mutex_unlock(&test_args->mutex);
+    aws_condition_variable_notify_all(&test_args->condition_variable);
 }
 
 static void s_channel_test_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -475,6 +478,12 @@ static int s_channel_tasks_serialized_run(struct aws_allocator *allocator, void 
 
 AWS_TEST_CASE(channel_tasks_serialized_run, s_channel_tasks_serialized_run);
 
+static bool s_late_task_was_run_as_cancelled_predicate(void *arg) {
+    struct channel_setup_test_args *test_args = (struct channel_setup_test_args *)arg;
+
+    return test_args->task_status == AWS_TASK_STATUS_CANCELED;
+}
+
 static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
@@ -512,6 +521,16 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
     struct aws_channel_task task;
     aws_channel_task_init(&task, s_channel_post_shutdown_task, &test_args, "channel_post_shutdown");
     aws_channel_schedule_task_now(channel, &task);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_args.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &test_args.condition_variable,
+        &test_args.mutex,
+        aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL),
+        s_late_task_was_run_as_cancelled_predicate,
+        &test_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&test_args.mutex));
+
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, test_args.task_status);
 
     aws_channel_destroy(channel);

@@ -58,7 +58,10 @@ static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loo
 
 static void s_testing_loop_destroy(struct aws_event_loop *event_loop) {
     struct testing_loop *testing_loop = event_loop->impl_data;
+    testing_loop->mock_on_callers_thread = true;
     aws_task_scheduler_clean_up(&testing_loop->scheduler);
+    testing_loop->mock_on_callers_thread = false;
+
     aws_mem_release(event_loop->alloc, testing_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);

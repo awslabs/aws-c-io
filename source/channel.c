@@ -322,12 +322,8 @@ void aws_channel_release_hold(struct aws_channel *channel) {
 
     if (prev_refcount == 1) {
         /* Refcount is now 0, finish cleaning up channel memory. */
-        if (aws_channel_thread_is_callers_thread(channel)) {
-            s_final_channel_deletion_task(NULL, channel, AWS_TASK_STATUS_RUN_READY);
-        } else {
-            aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel, "final_channel_deletion");
-            aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
-        }
+        aws_task_init(&channel->deletion_task, s_final_channel_deletion_task, channel, "final_channel_deletion");
+        aws_event_loop_schedule_task_now(channel->loop, &channel->deletion_task);
     }
 }
 
@@ -492,8 +488,17 @@ static void s_channel_task_run(struct aws_task *task, void *arg, enum aws_task_s
         status = AWS_TASK_STATUS_CANCELED;
     }
 
-    aws_linked_list_remove(&channel_task->node);
+    /*
+     * Channel tasks that are triggered by time and the scheduler will still be in the list.  Now-tasks that are being
+     * run by the cross thread task processing logic have already been removed from the cross thread list.
+     */
+    if (aws_linked_list_node_is_in_list(&channel_task->node)) {
+        aws_linked_list_remove(&channel_task->node);
+    }
+
     channel_task->task_fn(channel_task, channel_task->arg, status);
+
+    aws_channel_release_hold(channel);
 }
 
 static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -519,7 +524,7 @@ static void s_schedule_cross_thread_tasks(struct aws_task *task, void *arg, enum
 
         if ((channel_task->wrapper_task.timestamp == 0) || (status == AWS_TASK_STATUS_CANCELED)) {
             /* Run "now" tasks, and canceled tasks, immediately */
-            channel_task->task_fn(channel_task, channel_task->arg, status);
+            s_channel_task_run(&channel_task->wrapper_task, channel_task->wrapper_task.arg, status);
         } else {
             /* "Future" tasks are scheduled with the event-loop. */
             aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
@@ -551,17 +556,6 @@ static void s_register_pending_task_in_event_loop(
         (void *)channel,
         (void *)&channel_task->wrapper_task);
 
-    /* If channel is shut down, run task immediately as canceled */
-    if (channel->channel_state == AWS_CHANNEL_SHUT_DOWN) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_CHANNEL,
-            "id=%p: Running %s channel task immediately as canceled due to shut down channel",
-            (void *)channel,
-            channel_task->type_tag);
-        channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
-        return;
-    }
-
     aws_linked_list_push_back(&channel->channel_thread_tasks.list, &channel_task->node);
     if (run_at_nanos == 0) {
         aws_event_loop_schedule_task_now(channel->loop, &channel_task->wrapper_task);
@@ -579,27 +573,19 @@ static void s_register_pending_task_cross_thread(struct aws_channel *channel, st
         "outside the event-loop thread.",
         (void *)channel,
         (void *)&channel_task->wrapper_task);
-    /* Outside event-loop thread... */
-    bool should_cancel_task = false;
 
     /* Begin Critical Section */
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
-    if (channel->cross_thread_tasks.is_channel_shut_down) {
-        should_cancel_task = true; /* run task outside critical section to avoid deadlock */
-    } else {
-        bool list_was_empty = aws_linked_list_empty(&channel->cross_thread_tasks.list);
-        aws_linked_list_push_back(&channel->cross_thread_tasks.list, &channel_task->node);
 
-        if (list_was_empty) {
-            aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
-        }
+    bool list_was_empty = aws_linked_list_empty(&channel->cross_thread_tasks.list);
+    aws_linked_list_push_back(&channel->cross_thread_tasks.list, &channel_task->node);
+
+    if (list_was_empty) {
+        aws_event_loop_schedule_task_now(channel->loop, &channel->cross_thread_tasks.scheduling_task);
     }
+
     aws_mutex_unlock(&channel->cross_thread_tasks.lock);
     /* End Critical Section */
-
-    if (should_cancel_task) {
-        channel_task->task_fn(channel_task, channel_task->arg, AWS_TASK_STATUS_CANCELED);
-    }
 }
 
 static void s_reset_pending_channel_task(
@@ -607,8 +593,12 @@ static void s_reset_pending_channel_task(
     struct aws_channel_task *channel_task,
     uint64_t run_at_nanos) {
 
+    /* Acquire at submission time, release on run (cancelled or otherwise) */
+    aws_channel_acquire_hold(channel);
+
     /* Reset every property on channel task other than user's fn & arg.*/
     aws_task_init(&channel_task->wrapper_task, s_channel_task_run, channel, channel_task->type_tag);
+
     channel_task->wrapper_task.timestamp = run_at_nanos;
     aws_linked_list_node_reset(&channel_task->node);
 }
