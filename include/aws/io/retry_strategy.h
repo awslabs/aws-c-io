@@ -110,7 +110,7 @@ struct aws_exponential_backoff_retry_options {
     struct aws_event_loop_group *el_group;
     /** Max retries to allow. The default value is 10 */
     size_t max_retries;
-    /** Scaling factor to add for the backoff. Default is 25ms */
+    /** Scaling factor to add for the backoff. Default is 500ms */
     uint32_t backoff_scale_factor_ms;
     /** Max retry backoff in seconds. Default is 20 seconds */
     uint32_t max_backoff_secs;

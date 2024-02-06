@@ -373,7 +373,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     }
 
     if (!exponential_backoff_strategy->config.backoff_scale_factor_ms) {
-        exponential_backoff_strategy->config.backoff_scale_factor_ms = 25;
+        exponential_backoff_strategy->config.backoff_scale_factor_ms = 500;
     }
 
     if (!exponential_backoff_strategy->config.max_backoff_secs) {

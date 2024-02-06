@@ -178,7 +178,7 @@ struct aws_server_bootstrap {
 struct aws_socket_channel_bootstrap_options {
     struct aws_client_bootstrap *bootstrap;
     const char *host_name;
-    uint16_t port;
+    uint32_t port;
     const struct aws_socket_options *socket_options;
     const struct aws_tls_connection_options *tls_options;
     aws_client_bootstrap_on_channel_event_fn *creation_callback;
@@ -208,7 +208,7 @@ struct aws_socket_channel_bootstrap_options {
 struct aws_server_socket_channel_bootstrap_options {
     struct aws_server_bootstrap *bootstrap;
     const char *host_name;
-    uint16_t port;
+    uint32_t port;
     const struct aws_socket_options *socket_options;
     const struct aws_tls_connection_options *tls_options;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
