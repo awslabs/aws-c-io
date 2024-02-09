@@ -402,7 +402,7 @@ int aws_event_loop_fetch_local_object(
         return AWS_OP_SUCCESS;
     }
 
-    return AWS_OP_ERR;
+    return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
 }
 
 int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj) {
