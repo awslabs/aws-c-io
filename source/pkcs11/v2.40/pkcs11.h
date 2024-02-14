@@ -1,5 +1,9 @@
 /* This file is in the Public Domain. */
-/* This file is from: https://github.com/latchset/pkcs11-headers */
+/* This file is based on: https://github.com/latchset/pkcs11-headers/blob/main/public-domain/2.40/pkcs11.h */
+/* This file has been modified from its original version by Amazon:
+ * - removed final semicolon from #define ULONGDEF, to avoid "extra-semi" warning
+ * - removed final semicolon from #define STRUCTDEF, to avoid "extra-semi" warning
+ */
 
 #ifndef _PD_PKCS11_
 #define _PD_PKCS11_
