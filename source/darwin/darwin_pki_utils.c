@@ -101,12 +101,8 @@ int aws_import_public_and_private_keys_to_identity(
 
     int result = AWS_OP_ERR;
 
-    CFDataRef cert_data = CFDataCreate(cf_alloc, public_cert_chain->ptr, public_cert_chain->len);
-    CFDataRef key_data = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
-
-    if (!cert_data || !key_data) {
-        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-    }
+    CFDataRef cert_data = NULL;
+    CFDataRef key_data = NULL;
 
     CFArrayRef cert_import_output = NULL;
     CFArrayRef key_import_output = NULL;
@@ -118,8 +114,25 @@ int aws_import_public_and_private_keys_to_identity(
     import_params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
     import_params.passphrase = CFSTR("");
 
+    struct aws_array_list cert_chain_list;
+    AWS_ZERO_STRUCT(cert_chain_list);
+    CFDataRef root_cert_data = NULL;
     SecCertificateRef certificate_ref = NULL;
     SecKeychainRef import_keychain = NULL;
+
+    cert_data = CFDataCreate(cf_alloc, public_cert_chain->ptr, public_cert_chain->len);
+    if (!cert_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating public cert chain data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    key_data = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
+    if (!key_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating private key data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
 
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -134,7 +147,8 @@ int aws_import_public_and_private_keys_to_identity(
                 "static: error opening keychain \"%s\" with OSStatus %d",
                 aws_string_c_str(keychain_path),
                 keychain_status);
-            return AWS_OP_ERR;
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
         }
         keychain_status = SecKeychainUnlock(import_keychain, 0, "", true);
         if (keychain_status != errSecSuccess) {
@@ -143,14 +157,16 @@ int aws_import_public_and_private_keys_to_identity(
                 "static: error unlocking keychain \"%s\" with OSStatus %d",
                 aws_string_c_str(keychain_path),
                 keychain_status);
-            return AWS_OP_ERR;
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
         }
     } else {
         OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
         if (keychain_status != errSecSuccess) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_PKI, "static: error opening the default keychain with OSStatus %d", keychain_status);
-            return AWS_OP_ERR;
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
         }
     }
 
@@ -167,9 +183,6 @@ int aws_import_public_and_private_keys_to_identity(
     item_type = kSecItemTypePrivateKey;
     OSStatus key_status =
         SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &key_import_output);
-
-    CFRelease(cert_data);
-    CFRelease(key_data);
 
     if (cert_status != errSecSuccess && cert_status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing certificate with OSStatus %d", (int)cert_status);
@@ -201,11 +214,8 @@ int aws_import_public_and_private_keys_to_identity(
             AWS_LS_IO_PKI,
             "static: certificate has an existing certificate-key pair that was previously imported into the Keychain.  "
             "Using key from Keychain instead of the one provided.");
-        struct aws_array_list cert_chain_list;
-
         if (aws_pem_objects_init_from_file_contents(&cert_chain_list, alloc, *public_cert_chain)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding certificate PEM failed.");
-            aws_pem_objects_clean_up(&cert_chain_list);
             result = AWS_OP_ERR;
             goto done;
         }
@@ -214,35 +224,45 @@ int aws_import_public_and_private_keys_to_identity(
         aws_array_list_get_at_ptr(&cert_chain_list, (void **)&root_cert_ptr, 0);
         AWS_ASSERT(root_cert_ptr);
         CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->data.buffer, root_cert_ptr->data.len);
-
-        if (root_cert_data) {
-            certificate_ref = SecCertificateCreateWithData(cf_alloc, root_cert_data);
-            CFRelease(root_cert_data);
+        if (!root_cert_data) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating root cert data.");
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
         }
 
-        aws_pem_objects_clean_up(&cert_chain_list);
+        certificate_ref = SecCertificateCreateWithData(cf_alloc, root_cert_data);
+        if (!certificate_ref) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed to create certificate.");
+            result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+            goto done;
+        }
     } else {
         certificate_ref = (SecCertificateRef)CFArrayGetValueAtIndex(cert_import_output, 0);
         /* SecCertificateCreateWithData returns an object with +1 retain, so we need to match that behavior here */
         CFRetain(certificate_ref);
     }
 
-    /* if we got a cert one way or the other, create the identity and return it */
-    if (certificate_ref) {
-        SecIdentityRef identity_output;
-        OSStatus status = SecIdentityCreateWithCertificate(import_keychain, certificate_ref, &identity_output);
-        if (status == errSecSuccess) {
-            CFTypeRef certs[] = {identity_output};
-            *identity = CFArrayCreate(cf_alloc, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
-            result = AWS_OP_SUCCESS;
-            goto done;
-        }
+    /* we got a cert one way or the other, create the identity and return it */
+    AWS_ASSERT(certificate_ref);
+    SecIdentityRef identity_output;
+    OSStatus status = SecIdentityCreateWithCertificate(import_keychain, certificate_ref, &identity_output);
+    if (status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error creating identity with OSStatus %d", key_status);
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
     }
+
+    CFTypeRef certs[] = {identity_output};
+    *identity = CFArrayCreate(cf_alloc, (const void **)certs, 1L, &kCFTypeArrayCallBacks);
+    result = AWS_OP_SUCCESS;
 
 done:
     aws_mutex_unlock(&s_sec_mutex);
     if (certificate_ref) {
         CFRelease(certificate_ref);
+    }
+    if (root_cert_data) {
+        CFRelease(root_cert_data);
     }
     if (cert_import_output) {
         CFRelease(cert_import_output);
@@ -253,6 +273,13 @@ done:
     if (import_keychain) {
         CFRelease(import_keychain);
     }
+    if (cert_data) {
+        CFRelease(cert_data);
+    }
+    if (key_data) {
+        CFRelease(key_data);
+    }
+    aws_pem_objects_clean_up(&cert_chain_list);
 
     return result;
 }
