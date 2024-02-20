@@ -243,7 +243,10 @@ int aws_import_public_and_private_keys_to_identity(
     }
 
     /* we got a cert one way or the other, create the identity and return it */
-    AWS_ASSERT(certificate_ref);
+    if(!certificate_ref)
+    {
+        goto done;
+    }
     SecIdentityRef identity_output;
     OSStatus status = SecIdentityCreateWithCertificate(import_keychain, certificate_ref, &identity_output);
     if (status != errSecSuccess) {
