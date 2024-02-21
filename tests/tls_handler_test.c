@@ -2193,15 +2193,16 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     /* import happens in here */
     struct aws_tls_ctx *tls = aws_tls_client_ctx_new(allocator, &tls_options);
     AWS_FATAL_ASSERT(tls);
+    aws_tls_ctx_release(tls);
     /* import the same certs twice */
     tls = aws_tls_client_ctx_new(allocator, &tls_options);
     AWS_FATAL_ASSERT(tls);
+    aws_tls_ctx_release(tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
 #    endif /* !AWS_OS_IOS */
 
     /* clean up */
-    aws_tls_ctx_release(tls);
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf);
     aws_io_library_clean_up();
