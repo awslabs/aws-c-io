@@ -2179,7 +2179,6 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_io_library_init(allocator);
 
 #    if !defined(AWS_OS_IOS)
-    struct import_info *import = ctx;
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_c_str("testcert_dup.pem");
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_c_str("testkey.pem");
     struct aws_tls_ctx_options tls_options = {0};
