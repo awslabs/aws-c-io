@@ -179,7 +179,6 @@ int aws_import_public_and_private_keys_to_identity(
         SecItemImport(cert_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &cert_import_output);
 
     printf("########## cert_status %d\n", cert_status);
-    AWS_FATAL_ASSERT(false);
 
     /* import private key */
     format = kSecFormatUnknown;
