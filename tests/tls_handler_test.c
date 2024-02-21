@@ -2127,11 +2127,6 @@ static void s_import_cert(void *ctx) {
 #    define NUM_PAIRS 2
 static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    /* temporarily disable this on apple until we can fix importing to be more robust */
-    /* temporarily disable this on linux until we can make CRYPTO_zalloc behave and stop angering ASan */
-    // #    if defined(__APPLE__) || defined(__linux__)
-    //     return AWS_OP_SUCCESS;
-    // #    endif
 
     aws_io_library_init(allocator);
 
@@ -2173,10 +2168,42 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
 
     aws_io_library_clean_up();
 
-    return AWS_OP_ERR;
+    return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(test_concurrent_cert_import, s_test_concurrent_cert_import)
+
+static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+#    if !defined(AWS_OS_IOS)
+    struct import_info *import = ctx;
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_c_str("testcert_dup.pem");
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_c_str("testkey.pem");
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls = aws_tls_client_ctx_new(allocator, &tls_options);
+    AWS_FATAL_ASSERT(tls);
+    /* import the same certs twice */
+    tls = aws_tls_client_ctx_new(allocator, &tls_options);
+    AWS_FATAL_ASSERT(tls);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+#    endif /* !AWS_OS_IOS */
+
+    /* clean up */
+    aws_tls_ctx_release(tls);
+    aws_io_library_clean_up();
+
+    return AWS_OP_ERR;
+}
+
+AWS_TEST_CASE(test_duplicate_cert_import, s_test_duplicate_cert_import)
 
 static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
