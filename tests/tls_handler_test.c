@@ -2168,7 +2168,7 @@ static int s_test_concurrent_cert_import(struct aws_allocator *allocator, void *
         ASSERT_SUCCESS(aws_thread_join(thread));
         aws_tls_ctx_release(import->tls);
         aws_byte_buf_clean_up(&import->cert_buf);
-        // aws_byte_buf_clean_up(&import->key_buf);
+        aws_byte_buf_clean_up(&import->key_buf);
     }
 
     aws_io_library_clean_up();
