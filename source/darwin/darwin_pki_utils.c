@@ -223,7 +223,7 @@ int aws_import_public_and_private_keys_to_identity(
         struct aws_pem_object *root_cert_ptr = NULL;
         aws_array_list_get_at_ptr(&cert_chain_list, (void **)&root_cert_ptr, 0);
         AWS_ASSERT(root_cert_ptr);
-        CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->data.buffer, root_cert_ptr->data.len);
+        root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->data.buffer, root_cert_ptr->data.len);
         if (!root_cert_data) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating root cert data.");
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
