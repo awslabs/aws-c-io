@@ -2206,7 +2206,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_byte_buf_clean_up(&key_buf);
     aws_io_library_clean_up();
 
-    return AWS_OP_ERR;
+    return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(test_duplicate_cert_import, s_test_duplicate_cert_import)

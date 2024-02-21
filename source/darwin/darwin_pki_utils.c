@@ -178,8 +178,6 @@ int aws_import_public_and_private_keys_to_identity(
     OSStatus cert_status =
         SecItemImport(cert_data, NULL, &format, &item_type, 0, &import_params, import_keychain, &cert_import_output);
 
-    printf("########## cert_status %d\n", cert_status);
-
     /* import private key */
     format = kSecFormatUnknown;
     item_type = kSecItemTypePrivateKey;
@@ -226,7 +224,6 @@ int aws_import_public_and_private_keys_to_identity(
         aws_array_list_get_at_ptr(&cert_chain_list, (void **)&root_cert_ptr, 0);
         AWS_ASSERT(root_cert_ptr);
         CFDataRef root_cert_data = CFDataCreate(cf_alloc, root_cert_ptr->data.buffer, root_cert_ptr->data.len);
-        AWS_FATAL_ASSERT(false);
         if (!root_cert_data) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating root cert data.");
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
