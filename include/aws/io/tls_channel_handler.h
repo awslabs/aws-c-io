@@ -804,18 +804,6 @@ AWS_IO_API struct aws_tls_ctx *aws_tls_ctx_acquire(struct aws_tls_ctx *ctx);
 AWS_IO_API void aws_tls_ctx_release(struct aws_tls_ctx *ctx);
 
 /**
- * Not necessary if you are installing more handlers into the channel, but if you just want to have TLS for arbitrary
- * data and use the channel handler directly, this function allows you to write data to the channel and have it
- * encrypted.
- */
-AWS_IO_API int aws_tls_handler_write(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    struct aws_byte_buf *buf,
-    aws_channel_on_message_write_completed_fn *on_write_completed,
-    void *completion_user_data);
-
-/**
  * Returns a byte buffer by copy of the negotiated protocols. If there is no agreed upon protocol, len will be 0 and
  * buffer will be NULL.
  */
