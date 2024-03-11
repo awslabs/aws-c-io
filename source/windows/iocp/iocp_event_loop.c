@@ -635,7 +635,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: failed to un-subscribe from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-    return AWS_OP_ERR;
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 static void s_free_io_event_resources(void *user_data) {
