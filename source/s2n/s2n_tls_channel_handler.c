@@ -174,6 +174,39 @@ AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+static struct aws_allocator *s_library_allocator = NULL; 
+
+static int s_s2n_mem_init(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_cleanup(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_malloc(void **ptr, uint32_t requested, uint32_t *allocated) {
+    *ptr = aws_mem_acquire(s_library_allocator, requested);
+    *allocated = requested;
+
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_free(void *ptr, uint32_t size) {
+    (void)size;
+    aws_mem_release(s_library_allocator, ptr);
+    return S2N_SUCCESS;
+}
+
+static void s_override_s2n_mem_functions(struct aws_allocator *alloc) {
+    if (alloc) {
+        s_library_allocator = alloc;
+    } else {
+        s_library_allocator = aws_default_allocator();
+    }
+
+    s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free);
+}
+
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
 static bool s_s2n_initialized_externally = false;
 
@@ -196,7 +229,8 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 
     if (!s_s2n_initialized_externally) {
-        setenv("S2N_DONT_MLOCK", "1", 1);
+        //setenv("S2N_DONT_MLOCK", "1", 1);
+        s_override_s2n_mem_functions(alloc);
 
         if (s2n_init() != S2N_SUCCESS) {
             fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
