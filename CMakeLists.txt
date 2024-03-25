@@ -95,7 +95,7 @@ if (WIN32)
     #platform libs come from aws-c-common transitively, so we don't specify them here, but for documentation purposes,
     #Kernel32 and wsock2 are pulled in automatically. Here we add the lib containing the schannel API.
     #Also note, you don't get a choice on TLS implementation for Windows.
-    set(PLATFORM_LIBS Secur32 Crypt32)
+    set(PLATFORM_LIBS secur32 crypt32)
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
     option(USE_VSOCK
 	    "Build in support for VSOCK sockets"
@@ -177,7 +177,7 @@ file(GLOB IO_SRC
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_IO")
-aws_check_headers(${PROJECT_NAME} ${IO_HEADERS})
+aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 

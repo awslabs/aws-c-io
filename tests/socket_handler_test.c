@@ -17,12 +17,6 @@
 #include "statistics_handler_test.h"
 #include <read_write_test_handler.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
 struct socket_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -45,6 +39,10 @@ struct socket_common_tester {
     struct aws_event_loop_group *el_group;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
+
+    bool setup_called;
+    struct aws_event_loop *requested_callback_event_loop;
+    int setup_error_code;
 };
 
 static struct socket_common_tester c_tester;
@@ -80,7 +78,6 @@ struct local_server_tester {
     struct aws_socket_endpoint endpoint;
     struct aws_server_bootstrap *server_bootstrap;
     struct aws_socket *listener;
-    uint64_t timestamp;
 };
 
 static bool s_pinned_channel_setup_predicate(void *user_data) {
@@ -300,12 +297,8 @@ static int s_local_server_tester_init(
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = AWS_SOCKET_LOCAL;
 
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&tester->timestamp));
-    snprintf(
-        tester->endpoint.address,
-        sizeof(tester->endpoint.address),
-        LOCAL_SOCK_TEST_PATTERN,
-        (long long unsigned)tester->timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
+
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
 
@@ -409,6 +402,107 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(socket_pinned_event_loop, s_socket_pinned_event_loop_test)
+
+static void s_dns_failure_test_client_setup_callback(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)channel;
+
+    struct socket_common_tester *socket_tester = (struct socket_common_tester *)user_data;
+
+    aws_mutex_lock(&socket_tester->mutex);
+
+    socket_tester->setup_error_code = error_code;
+    socket_tester->setup_called = true;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(socket_tester->requested_callback_event_loop));
+    AWS_FATAL_ASSERT(channel == NULL);
+
+    aws_mutex_unlock(&socket_tester->mutex);
+    aws_condition_variable_notify_one(&socket_tester->condition_variable);
+}
+
+static void s_dns_failure_handler_test_client_shutdown_callback(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)error_code;
+    (void)bootstrap;
+    (void)channel;
+    (void)user_data;
+
+    // Should never be called
+    AWS_FATAL_ASSERT(false);
+}
+
+static bool s_dns_failure_channel_setup_predicate(void *user_data) {
+    struct socket_common_tester *socket_tester = (struct socket_common_tester *)user_data;
+    return socket_tester->setup_called;
+}
+
+static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    s_socket_common_tester_init(allocator, &c_tester);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = c_tester.el_group,
+        .max_entries = 8,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    struct aws_client_bootstrap_options client_bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    struct aws_event_loop *pinned_event_loop = aws_event_loop_group_get_next_loop(c_tester.el_group);
+    c_tester.requested_callback_event_loop = pinned_event_loop;
+
+    struct aws_socket_options socket_options = {
+        .domain = AWS_SOCKET_IPV4,
+        .type = AWS_SOCKET_STREAM,
+        .connect_timeout_ms = 10000,
+    };
+
+    struct aws_socket_channel_bootstrap_options client_channel_options;
+    AWS_ZERO_STRUCT(client_channel_options);
+    client_channel_options.bootstrap = client_bootstrap;
+    client_channel_options.host_name = "notavalid.domain-seriously.uffda";
+    client_channel_options.port = 443;
+    client_channel_options.socket_options = &socket_options;
+    client_channel_options.setup_callback = s_dns_failure_test_client_setup_callback;
+    client_channel_options.shutdown_callback = s_dns_failure_handler_test_client_shutdown_callback;
+    client_channel_options.enable_read_back_pressure = false;
+    client_channel_options.requested_event_loop = pinned_event_loop;
+    client_channel_options.user_data = &c_tester;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_channel_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_dns_failure_channel_setup_predicate, &c_tester));
+
+    /* Verify the setup callback failure was on the requested event loop */
+    ASSERT_TRUE(c_tester.setup_error_code != 0);
+
+    aws_mutex_unlock(&c_tester.mutex);
+
+    aws_client_bootstrap_release(client_bootstrap);
+    aws_host_resolver_release(resolver);
+    ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socket_pinned_event_loop_dns_failure, s_socket_pinned_event_loop_dns_failure_test)
 
 static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
