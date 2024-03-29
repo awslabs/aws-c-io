@@ -204,7 +204,10 @@ static void s_override_s2n_mem_functions(struct aws_allocator *alloc) {
         s_library_allocator = aws_default_allocator();
     }
 
-    s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free);
+    if (S2N_SUCCESS != s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free)) {
+        fprintf(stderr, "s2n_mem_set_callbacks() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+        AWS_FATAL_ASSERT(0 && "s2n_mem_set_callbacks() failed");
+    }
 }
 
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
