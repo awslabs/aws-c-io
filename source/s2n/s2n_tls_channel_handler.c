@@ -174,7 +174,7 @@ AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
-static struct aws_allocator *s_library_allocator = NULL; 
+static struct aws_allocator *s_library_allocator = NULL;
 
 static int s_s2n_mem_init(void) {
     return S2N_SUCCESS;
@@ -232,7 +232,6 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 
     if (!s_s2n_initialized_externally) {
-        //setenv("S2N_DONT_MLOCK", "1", 1);
         s_override_s2n_mem_functions(alloc);
 
         if (s2n_init() != S2N_SUCCESS) {
