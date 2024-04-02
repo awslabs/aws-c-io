@@ -1309,11 +1309,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_rsa8192_host_name, "rsa8192.badssl.com
 
 static int s_tls_client_channel_negotiation_success_rsa8192_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    (void)s_uncommon_rsa8192_host_name;
-    (void)allocator;
-    // The certificate for rsa8192.badssl.com is expired. Disable this test until they renew the certificate or we find
-    // a better alternative. s_verify_good_host(allocator, s_uncommon_rsa8192_host_name, 443, NULL)
-    return AWS_OP_SUCCESS;
+    return s_verify_good_host(allocator, s_uncommon_rsa8192_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_rsa8192, s_tls_client_channel_negotiation_success_rsa8192_fn)
