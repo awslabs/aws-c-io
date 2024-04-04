@@ -790,7 +790,7 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket_endpoint endpoint = {
         .address = "127.0.0.1",
-        .port = 8569,
+        .port = 1234,
     };
 
     struct error_test_args args = {
