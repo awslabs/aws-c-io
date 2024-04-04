@@ -197,24 +197,11 @@ static int s_s2n_mem_free(void *ptr, uint32_t size) {
     return S2N_SUCCESS;
 }
 
-static void s_override_s2n_mem_functions(struct aws_allocator *alloc) {
-    if (alloc) {
-        s_library_allocator = alloc;
-    } else {
-        s_library_allocator = aws_default_allocator();
-    }
-
-    if (S2N_SUCCESS != s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free)) {
-        fprintf(stderr, "s2n_mem_set_callbacks() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
-        AWS_FATAL_ASSERT(0 && "s2n_mem_set_callbacks() failed");
-    }
-}
-
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
 static bool s_s2n_initialized_externally = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
-    (void)alloc;
+    AWS_FATAL_ASSERT(alloc);
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
@@ -232,7 +219,11 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 
     if (!s_s2n_initialized_externally) {
-        s_override_s2n_mem_functions(alloc);
+        s_library_allocator = alloc;
+        if (S2N_SUCCESS != s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free)) {
+            fprintf(stderr, "s2n_mem_set_callbacks() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+            AWS_FATAL_ASSERT(0 && "s2n_mem_set_callbacks() failed");
+        }
 
         if (s2n_init() != S2N_SUCCESS) {
             fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
