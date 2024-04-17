@@ -1200,6 +1200,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     s2n_handler->s2n_ctx = options->ctx->impl;
 
     s2n_handler->connection = s2n_connection_new(mode);
+    s2n_connection_set_recv_buffering(s2n_handler->connection, true);
 
     if (!s2n_handler->connection) {
         goto cleanup_conn;
