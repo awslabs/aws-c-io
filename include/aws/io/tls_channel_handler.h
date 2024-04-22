@@ -675,7 +675,8 @@ AWS_IO_API void aws_tls_connection_options_init_from_ctx(
 AWS_IO_API void aws_tls_connection_options_clean_up(struct aws_tls_connection_options *connection_options);
 
 /**
- * Copies 'from' to 'to'
+ * Cleans up 'to' and copies 'from' to 'to'.
+ * 'to' must be initialized.
  */
 AWS_IO_API int aws_tls_connection_options_copy(
     struct aws_tls_connection_options *to,
