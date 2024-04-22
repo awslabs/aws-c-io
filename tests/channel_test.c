@@ -379,8 +379,10 @@ static bool s_tasks_run_done_pred(void *user_data) {
     return true;
 }
 
-static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+static int s_test_channel_tasks_run_aux(
+    struct aws_allocator *allocator,
+    aws_task_fn *on_thread_invoker_fn,
+    void (*submit_now_fn)(struct aws_channel *, struct aws_channel_task *)) {
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop);
@@ -417,12 +419,12 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
 
     /* Schedule channel-tasks from outside the channel's thread */
     ASSERT_SUCCESS(aws_mutex_lock(&s_tasks_run_data.mutex));
-    aws_channel_schedule_task_now(channel, &s_tasks_run_data.tasks[TASK_NOW_OFF_THREAD]);
+    submit_now_fn(channel, &s_tasks_run_data.tasks[TASK_NOW_OFF_THREAD]);
     aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_OFF_THREAD], 1);
 
     /* Schedule task that schedules channel-tasks from on then channel's thread */
     struct aws_task scheduler_task;
-    aws_task_init(&scheduler_task, s_schedule_on_thread_tasks_fn, channel, "schedule_on_thread_tasks");
+    aws_task_init(&scheduler_task, on_thread_invoker_fn, channel, "schedule_on_thread_tasks");
     aws_event_loop_schedule_task_now(event_loop, &scheduler_task);
 
     /* Wait for all the tasks to finish */
@@ -445,7 +447,33 @@ static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) 
     return AWS_OP_SUCCESS;
 }
 
+static int s_test_channel_tasks_run(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(
+        s_test_channel_tasks_run_aux(allocator, s_schedule_on_thread_tasks_fn, aws_channel_schedule_task_now));
+
+    return AWS_OP_SUCCESS;
+}
+
 AWS_TEST_CASE(channel_tasks_run, s_test_channel_tasks_run);
+
+static void s_serialized_tasks_run_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_channel *channel = arg;
+    aws_channel_schedule_task_now_serialized(channel, &s_tasks_run_data.tasks[TASK_NOW_ON_THREAD]);
+    aws_channel_schedule_task_future(channel, &s_tasks_run_data.tasks[TASK_FUTURE_ON_THREAD], 1);
+}
+
+static int s_channel_tasks_serialized_run(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(
+        s_test_channel_tasks_run_aux(allocator, s_serialized_tasks_run_fn, aws_channel_schedule_task_now_serialized));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(channel_tasks_serialized_run, s_channel_tasks_serialized_run);
 
 static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

@@ -10,6 +10,8 @@
 #include <aws/common/statistics.h>
 #include <aws/common/task_scheduler.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 enum aws_channel_direction {
     AWS_CHANNEL_DIR_READ,
     AWS_CHANNEL_DIR_WRITE,
@@ -52,6 +54,8 @@ struct aws_channel_handler_vtable {
     /**
      * Called by the channel when a message is available for processing in the read direction. It is your
      * responsibility to call aws_mem_release(message->allocator, message); on message when you are finished with it.
+     * You must only call `aws_mem_release(message->allocator, message);` if the `process_read_message`
+     * returns AWS_OP_SUCCESS. In case of an error, you must not clean up the message and should just raise the error.
      *
      * Also keep in mind that your slot's internal window has been decremented. You'll want to call
      * aws_channel_slot_increment_read_window() at some point in the future if you want to keep receiving data.
@@ -63,6 +67,8 @@ struct aws_channel_handler_vtable {
     /**
      * Called by the channel when a message is available for processing in the write direction. It is your
      * responsibility to call aws_mem_release(message->allocator, message); on message when you are finished with it.
+     * You must only call `aws_mem_release(message->allocator, message);` if the `process_read_message`
+     * returns AWS_OP_SUCCESS. In case of an error, you must not clean up the message and should just raise the error.
      */
     int (*process_write_message)(
         struct aws_channel_handler *handler,
@@ -279,10 +285,31 @@ struct aws_io_message *aws_channel_acquire_message_from_pool(
  * This is the ideal way to move a task into the correct thread. It's also handy for context switches.
  * This function is safe to call from any thread.
  *
+ * If called from the channel's event loop, the task will get directly added to the run-now list.
+ * If called from outside the channel's event loop, the task will go into a cross-thread task queue.
+ *
+ * If tasks must be serialized relative to some source synchronization, you may not want to use this API
+ * because tasks submitted from the event loop thread can "jump ahead" of tasks submitted from external threads
+ * due to this optimization.  If this is a problem, you can either refactor your submission logic or use
+ * the aws_channel_schedule_task_now_serialized variant which does not perform this optimization.
+ *
  * The task should not be cleaned up or modified until its function is executed.
  */
 AWS_IO_API
 void aws_channel_schedule_task_now(struct aws_channel *channel, struct aws_channel_task *task);
+
+/**
+ * Schedules a task to run on the event loop as soon as possible.
+ *
+ * This variant always uses the cross thread queue rather than conditionally skipping it when already in
+ * the destination event loop.  While not "optimal", this allows us to serialize task execution no matter where
+ * the task was submitted from: if you are submitting tasks from a critical section, the serialized order that you
+ * submit is guaranteed to be the order that they execute on the event loop.
+ *
+ * The task should not be cleaned up or modified until its function is executed.
+ */
+AWS_IO_API
+void aws_channel_schedule_task_now_serialized(struct aws_channel *channel, struct aws_channel_task *task);
 
 /**
  * Schedules a task to run on the event loop at the specified time.
@@ -483,5 +510,6 @@ AWS_IO_API
 int aws_channel_trigger_read(struct aws_channel *channel);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_CHANNEL_H */

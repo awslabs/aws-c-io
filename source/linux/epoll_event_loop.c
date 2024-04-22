@@ -5,11 +5,13 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+#include <aws/io/private/tracing.h>
 
 #include <aws/io/logging.h>
 
@@ -19,7 +21,7 @@
 #include <limits.h>
 #include <unistd.h>
 
-#if !defined(COMPAT_MODE) && defined(__GLIBC__) && __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 8
+#if !defined(COMPAT_MODE) && defined(__GLIBC__) && ((__GLIBC__ == 2 && __GLIBC_MINOR__ >= 8) || __GLIBC__ > 2)
 #    define USE_EFD 1
 #else
 #    define USE_EFD 0
@@ -60,7 +62,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static void s_free_io_event_resources(void *user_data);
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
-static void s_main_loop(void *args);
+static void aws_event_loop_thread(void *args);
 
 static struct aws_event_loop_vtable s_vtable = {
     .destroy = s_destroy,
@@ -272,7 +274,9 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     epoll_loop->should_continue = true;
     aws_thread_increment_unjoined_count();
-    if (aws_thread_launch(&epoll_loop->thread_created_on, &s_main_loop, event_loop, &epoll_loop->thread_options)) {
+    if (aws_thread_launch(
+            &epoll_loop->thread_created_on, &aws_event_loop_thread, event_loop, &epoll_loop->thread_options)) {
+
         aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
         epoll_loop->should_continue = false;
@@ -547,7 +551,26 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     }
 }
 
-static void s_main_loop(void *args) {
+/**
+ * This just calls epoll_wait()
+ *
+ * We broke this out into its own function so that the stacktrace clearly shows
+ * what this thread is doing. We've had a lot of cases where users think this
+ * thread is deadlocked because it's stuck here. We want it to be clear
+ * that it's doing nothing on purpose. It's waiting for events to happen...
+ */
+AWS_NO_INLINE
+static int aws_event_loop_listen_for_io_events(int epoll_fd, struct epoll_event events[MAX_EVENTS], int timeout) {
+    return epoll_wait(epoll_fd, events, MAX_EVENTS, timeout);
+}
+
+static void s_aws_epoll_cleanup_aws_lc_thread_local_state(void *user_data) {
+    (void)user_data;
+
+    aws_cal_thread_clean_up();
+}
+
+static void aws_event_loop_thread(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
@@ -560,6 +583,8 @@ static void s_main_loop(void *args) {
     if (err) {
         return;
     }
+
+    aws_thread_current_at_exit(s_aws_epoll_cleanup_aws_lc_thread_local_state, NULL);
 
     int timeout = DEFAULT_TIMEOUT;
 
@@ -586,11 +611,13 @@ static void s_main_loop(void *args) {
     while (epoll_loop->should_continue) {
 
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout);
-        int event_count = epoll_wait(epoll_loop->epoll_fd, events, MAX_EVENTS, timeout);
+        int event_count = aws_event_loop_listen_for_io_events(epoll_loop->epoll_fd, events, timeout);
         aws_event_loop_register_tick_start(event_loop);
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
+
+        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_events);
         for (int i = 0; i < event_count; ++i) {
             struct epoll_event_data *event_data = (struct epoll_event_data *)events[i].data.ptr;
 
@@ -621,9 +648,12 @@ static void s_main_loop(void *args) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     event_data->handle->data.fd);
+                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
                 event_data->on_event(event_loop, event_data->handle, event_mask, event_data->user_data);
+                __itt_task_end(io_tracing_domain);
             }
         }
+        __itt_task_end(io_tracing_domain);
 
         /* run scheduled tasks */
         s_process_task_pre_queue(event_loop);
@@ -632,7 +662,9 @@ static void s_main_loop(void *args) {
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)event_loop);
+        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_run_tasks);
         aws_task_scheduler_run_all(&epoll_loop->scheduler, now_ns);
+        __itt_task_end(io_tracing_domain);
 
         /* set timeout for next epoll_wait() call.
          * if clock fails, or scheduler has no tasks, use default timeout */

@@ -11,7 +11,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/io/channel.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #    pragma warning(disable : 4267) /* size_t to int conversion */
 #endif

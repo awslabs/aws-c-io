@@ -14,14 +14,8 @@
 #include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
-#if _MSC_VER
-#    pragma warning(disable : 4996) /* sprintf */
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* strncpy */
 #endif
 
 #if USE_VSOCK
@@ -237,6 +231,11 @@ static int s_test_socket_ex(
 
     ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
+    struct aws_socket_endpoint bound_endpoint;
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
+    ASSERT_INT_EQUALS(endpoint->port, bound_endpoint.port);
+    ASSERT_STR_EQUALS(endpoint->address, bound_endpoint.address);
+
     if (options->type == AWS_SOCKET_STREAM) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
@@ -405,12 +404,9 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
-
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
-
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    AWS_ZERO_STRUCT(endpoint);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -507,6 +503,16 @@ static bool s_test_host_resolved_predicate(void *arg) {
     return callback_data->invoked;
 }
 
+static void s_test_host_resolver_shutdown_callback(void *user_data) {
+    struct test_host_callback_data *callback_data = user_data;
+
+    aws_mutex_lock(callback_data->mutex);
+    callback_data->invoked = true;
+    aws_mutex_unlock(callback_data->mutex);
+
+    aws_condition_variable_notify_one(&callback_data->condition_variable);
+}
+
 static void s_test_host_resolved_test_callback(
     struct aws_host_resolver *resolver,
     const struct aws_string *host_name,
@@ -584,7 +590,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
@@ -633,21 +639,28 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
-    struct aws_host_resolver_default_options resolver_options = {
-        .el_group = el_group,
-        .max_entries = 2,
-    };
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
-
-    struct aws_host_resolution_config resolution_config = {
-        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
-
     struct test_host_callback_data host_callback_data = {
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .invoked = false,
         .has_a_address = false,
         .mutex = &mutex,
     };
+
+    struct aws_shutdown_callback_options shutdown_options = {
+        .shutdown_callback_fn = s_test_host_resolver_shutdown_callback,
+        .shutdown_callback_user_data = &host_callback_data,
+    };
+    shutdown_options.shutdown_callback_fn = s_test_host_resolver_shutdown_callback;
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 2,
+        .shutdown_options = &shutdown_options,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    struct aws_host_resolution_config resolution_config = {
+        .impl = aws_default_dns_resolve, .impl_data = NULL, .max_ttl = 1};
 
     /* This ec2 instance sits in a VPC that makes sure port 81 is black-holed (no TCP SYN should be received). */
     struct aws_string *host_name = aws_string_new_from_c_str(allocator, "ec2-54-158-231-48.compute-1.amazonaws.com");
@@ -657,14 +670,20 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
     aws_mutex_lock(&mutex);
     aws_condition_variable_wait_pred(
         &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+    host_callback_data.invoked = false;
     aws_mutex_unlock(&mutex);
 
     aws_host_resolver_release(resolver);
+    /* wait for shutdown callback */
+    aws_mutex_lock(&mutex);
+    aws_condition_variable_wait_pred(
+        &host_callback_data.condition_variable, &mutex, s_test_host_resolved_predicate, &host_callback_data);
+    aws_mutex_unlock(&mutex);
 
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
@@ -771,7 +790,9 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket_endpoint endpoint = {
         .address = "127.0.0.1",
-        .port = 8567,
+        /* note: the port is completely random from testing perspective, but
+         * freebsd seems to firewall higher numbered ports so keeping it low */
+        .port = 1567,
     };
 
     struct error_test_args args = {
@@ -864,6 +885,71 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
 }
 
 AWS_TEST_CASE(incoming_duplicate_tcp_bind_errors, s_test_incoming_duplicate_tcp_bind_errors)
+
+/* Ensure that binding to port 0 results in OS assigning a port */
+static int s_test_bind_on_zero_port(
+    struct aws_allocator *allocator,
+    enum aws_socket_type sock_type,
+    enum aws_socket_domain sock_domain,
+    const char *address) {
+
+    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+
+    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 1000;
+    options.type = sock_type;
+    options.domain = sock_domain;
+
+    struct aws_socket_endpoint endpoint = {
+        .port = 0 /* important: must be 0 for this test */,
+    };
+    strncpy(endpoint.address, address, sizeof(endpoint.address));
+
+    struct aws_socket incoming;
+    ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
+
+    /* ensure address query fails if socket isn't bound yet */
+    struct aws_socket_endpoint local_address1;
+    ASSERT_FAILS(aws_socket_get_bound_address(&incoming, &local_address1));
+
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
+
+    if (sock_type != AWS_SOCKET_DGRAM) {
+        ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
+    }
+
+    ASSERT_TRUE(local_address1.port > 0);
+    ASSERT_STR_EQUALS(address, local_address1.address);
+
+    /* ensure that querying again gets the same results */
+    struct aws_socket_endpoint local_address2;
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address2));
+    ASSERT_INT_EQUALS(local_address1.port, local_address2.port);
+    ASSERT_STR_EQUALS(local_address1.address, local_address2.address);
+
+    aws_socket_close(&incoming);
+    aws_socket_clean_up(&incoming);
+    aws_event_loop_destroy(event_loop);
+    return 0;
+}
+
+static int s_bind_on_zero_port_tcp_ipv4(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_bind_on_zero_port(allocator, AWS_SOCKET_STREAM, AWS_SOCKET_IPV4, "127.0.0.1");
+}
+AWS_TEST_CASE(bind_on_zero_port_tcp_ipv4, s_bind_on_zero_port_tcp_ipv4)
+
+static int s_bind_on_zero_port_udp_ipv4(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_bind_on_zero_port(allocator, AWS_SOCKET_DGRAM, AWS_SOCKET_IPV4, "127.0.0.1");
+}
+AWS_TEST_CASE(bind_on_zero_port_udp_ipv4, s_bind_on_zero_port_udp_ipv4)
 
 static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1017,7 +1103,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     ASSERT_TRUE(host_callback_data.has_a_address);
 
     struct aws_socket_endpoint endpoint = {.port = 81};
-    sprintf(endpoint.address, "%s", aws_string_bytes(host_callback_data.a_address.address));
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
     aws_string_destroy((void *)host_name);
     aws_host_address_clean_up(&host_callback_data.a_address);
@@ -1484,12 +1570,9 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
-
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1578,11 +1661,9 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
 
-    uint64_t timestamp = 0;
-    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
-
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    AWS_ZERO_STRUCT(endpoint);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1673,3 +1754,56 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
 AWS_TEST_CASE(local_socket_pipe_connected_race, s_local_socket_pipe_connected_race)
 
 #endif
+
+static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    /* IPv4 - 16bit port, only bind can use 0 */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_IPV4));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_IPV4));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0, AWS_SOCKET_IPV4));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_IPV4));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0xFFFFFFFF, AWS_SOCKET_IPV4));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(0xFFFFFFFF, AWS_SOCKET_IPV4));
+
+    /* IPv6 - 16bit port, only bind can use 0 */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_IPV6));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_IPV6));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0, AWS_SOCKET_IPV6));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_IPV6));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0xFFFFFFFF, AWS_SOCKET_IPV6));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(0xFFFFFFFF, AWS_SOCKET_IPV6));
+
+    /* VSOCK - 32bit port, only bind can use VMADDR_PORT_ANY (-1U) */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_VSOCK));
+
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_VSOCK));
+
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0x7FFFFFFF, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0x7FFFFFFF, AWS_SOCKET_VSOCK));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect((uint32_t)-1, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind((uint32_t)-1, AWS_SOCKET_VSOCK));
+
+    /* LOCAL - ignores port */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect((uint32_t)-1, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind((uint32_t)-1, AWS_SOCKET_LOCAL));
+
+    /* invalid domain should fail */
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(80, (enum aws_socket_domain)(-1)));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(80, (enum aws_socket_domain)(-1)));
+
+    return 0;
+}
+AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)

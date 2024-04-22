@@ -7,6 +7,7 @@
 
 #include <aws/common/file.h>
 #include <aws/io/file_utils.h>
+#include <aws/io/private/tracing.h>
 
 #include <errno.h>
 
@@ -32,7 +33,9 @@ int aws_input_stream_read(struct aws_input_stream *stream, struct aws_byte_buf *
     const size_t safe_buf_capacity = dest->capacity - dest->len;
     struct aws_byte_buf safe_buf = aws_byte_buf_from_empty_array(safe_buf_start, safe_buf_capacity);
 
+    __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_input_stream_read);
     int read_result = stream->vtable->read(stream, &safe_buf);
+    __itt_task_end(io_tracing_domain);
 
     /* Ensure the implementation did not commit forbidden acts upon the buffer */
     AWS_FATAL_ASSERT(
@@ -59,19 +62,13 @@ int aws_input_stream_get_length(struct aws_input_stream *stream, int64_t *out_le
     return stream->vtable->get_length(stream, out_length);
 }
 
-void aws_input_stream_destroy(struct aws_input_stream *stream) {
-    if (stream != NULL) {
-        AWS_ASSERT(stream->vtable && stream->vtable->destroy);
-
-        stream->vtable->destroy(stream);
-    }
-}
-
 /*
  * cursor stream implementation
  */
 
 struct aws_input_stream_byte_cursor_impl {
+    struct aws_input_stream base;
+    struct aws_allocator *allocator;
     struct aws_byte_cursor original_cursor;
     struct aws_byte_cursor current_cursor;
 };
@@ -92,7 +89,8 @@ static int s_aws_input_stream_byte_cursor_seek(
     struct aws_input_stream *stream,
     int64_t offset,
     enum aws_stream_seek_basis basis) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+    struct aws_input_stream_byte_cursor_impl *impl =
+        AWS_CONTAINER_OF(stream, struct aws_input_stream_byte_cursor_impl, base);
 
     uint64_t final_offset = 0;
 
@@ -145,7 +143,8 @@ static int s_aws_input_stream_byte_cursor_seek(
 }
 
 static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+    struct aws_input_stream_byte_cursor_impl *impl =
+        AWS_CONTAINER_OF(stream, struct aws_input_stream_byte_cursor_impl, base);
 
     size_t actually_read = dest->capacity - dest->len;
     if (actually_read > impl->current_cursor.len) {
@@ -164,7 +163,8 @@ static int s_aws_input_stream_byte_cursor_read(struct aws_input_stream *stream, 
 static int s_aws_input_stream_byte_cursor_get_status(
     struct aws_input_stream *stream,
     struct aws_stream_status *status) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+    struct aws_input_stream_byte_cursor_impl *impl =
+        AWS_CONTAINER_OF(stream, struct aws_input_stream_byte_cursor_impl, base);
 
     status->is_end_of_stream = impl->current_cursor.len == 0;
     status->is_valid = true;
@@ -173,7 +173,8 @@ static int s_aws_input_stream_byte_cursor_get_status(
 }
 
 static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *stream, int64_t *out_length) {
-    struct aws_input_stream_byte_cursor_impl *impl = stream->impl;
+    struct aws_input_stream_byte_cursor_impl *impl =
+        AWS_CONTAINER_OF(stream, struct aws_input_stream_byte_cursor_impl, base);
 
 #if SIZE_MAX > INT64_MAX
     size_t length = impl->original_cursor.len;
@@ -187,8 +188,8 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_input_stream_byte_cursor_destroy(struct aws_input_stream *stream) {
-    aws_mem_release(stream->allocator, stream);
+static void s_aws_input_stream_byte_cursor_destroy(struct aws_input_stream_byte_cursor_impl *impl) {
+    aws_mem_release(impl->allocator, impl);
 }
 
 static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
@@ -196,44 +197,31 @@ static struct aws_input_stream_vtable s_aws_input_stream_byte_cursor_vtable = {
     .read = s_aws_input_stream_byte_cursor_read,
     .get_status = s_aws_input_stream_byte_cursor_get_status,
     .get_length = s_aws_input_stream_byte_cursor_get_length,
-    .destroy = s_aws_input_stream_byte_cursor_destroy};
+};
 
 struct aws_input_stream *aws_input_stream_new_from_cursor(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cursor) {
 
-    struct aws_input_stream *input_stream = NULL;
-    struct aws_input_stream_byte_cursor_impl *impl = NULL;
+    struct aws_input_stream_byte_cursor_impl *impl =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_byte_cursor_impl));
 
-    aws_mem_acquire_many(
-        allocator,
-        2,
-        &input_stream,
-        sizeof(struct aws_input_stream),
-        &impl,
-        sizeof(struct aws_input_stream_byte_cursor_impl));
-
-    if (!input_stream) {
-        return NULL;
-    }
-
-    AWS_ZERO_STRUCT(*input_stream);
-    AWS_ZERO_STRUCT(*impl);
-
-    input_stream->allocator = allocator;
-    input_stream->vtable = &s_aws_input_stream_byte_cursor_vtable;
-    input_stream->impl = impl;
-
+    impl->allocator = allocator;
     impl->original_cursor = *cursor;
     impl->current_cursor = *cursor;
+    impl->base.vtable = &s_aws_input_stream_byte_cursor_vtable;
+    aws_ref_count_init(
+        &impl->base.ref_count, impl, (aws_simple_completion_callback *)s_aws_input_stream_byte_cursor_destroy);
 
-    return input_stream;
+    return &impl->base;
 }
 
 /*
  * file-based input stream
  */
 struct aws_input_stream_file_impl {
+    struct aws_input_stream base;
+    struct aws_allocator *allocator;
     FILE *file;
     bool close_on_clean_up;
 };
@@ -242,7 +230,7 @@ static int s_aws_input_stream_file_seek(
     struct aws_input_stream *stream,
     int64_t offset,
     enum aws_stream_seek_basis basis) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
+    struct aws_input_stream_file_impl *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_file_impl, base);
 
     int whence = (basis == AWS_SSB_BEGIN) ? SEEK_SET : SEEK_END;
     if (aws_fseek(impl->file, offset, whence)) {
@@ -253,7 +241,7 @@ static int s_aws_input_stream_file_seek(
 }
 
 static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct aws_byte_buf *dest) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
+    struct aws_input_stream_file_impl *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_file_impl, base);
 
     size_t max_read = dest->capacity - dest->len;
     size_t actually_read = fread(dest->buffer + dest->len, 1, max_read, impl->file);
@@ -269,7 +257,7 @@ static int s_aws_input_stream_file_read(struct aws_input_stream *stream, struct 
 }
 
 static int s_aws_input_stream_file_get_status(struct aws_input_stream *stream, struct aws_stream_status *status) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
+    struct aws_input_stream_file_impl *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_file_impl, base);
 
     status->is_end_of_stream = feof(impl->file) != 0;
     status->is_valid = ferror(impl->file) == 0;
@@ -278,19 +266,17 @@ static int s_aws_input_stream_file_get_status(struct aws_input_stream *stream, s
 }
 
 static int s_aws_input_stream_file_get_length(struct aws_input_stream *stream, int64_t *length) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
+    struct aws_input_stream_file_impl *impl = AWS_CONTAINER_OF(stream, struct aws_input_stream_file_impl, base);
 
     return aws_file_get_length(impl->file, length);
 }
 
-static void s_aws_input_stream_file_destroy(struct aws_input_stream *stream) {
-    struct aws_input_stream_file_impl *impl = stream->impl;
+static void s_aws_input_stream_file_destroy(struct aws_input_stream_file_impl *impl) {
 
     if (impl->close_on_clean_up && impl->file) {
         fclose(impl->file);
     }
-
-    aws_mem_release(stream->allocator, stream);
+    aws_mem_release(impl->allocator, impl);
 }
 
 static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
@@ -298,64 +284,63 @@ static struct aws_input_stream_vtable s_aws_input_stream_file_vtable = {
     .read = s_aws_input_stream_file_read,
     .get_status = s_aws_input_stream_file_get_status,
     .get_length = s_aws_input_stream_file_get_length,
-    .destroy = s_aws_input_stream_file_destroy};
+};
 
 struct aws_input_stream *aws_input_stream_new_from_file(struct aws_allocator *allocator, const char *file_name) {
 
-    struct aws_input_stream *input_stream = NULL;
-    struct aws_input_stream_file_impl *impl = NULL;
+    struct aws_input_stream_file_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_file_impl));
 
-    aws_mem_acquire_many(
-        allocator, 2, &input_stream, sizeof(struct aws_input_stream), &impl, sizeof(struct aws_input_stream_file_impl));
-
-    if (!input_stream) {
-        return NULL;
-    }
-
-    AWS_ZERO_STRUCT(*input_stream);
-    AWS_ZERO_STRUCT(*impl);
-
-    input_stream->allocator = allocator;
-    input_stream->vtable = &s_aws_input_stream_file_vtable;
-    input_stream->impl = impl;
-
-    impl->file = aws_fopen(file_name, "r+b");
+    impl->file = aws_fopen(file_name, "rb");
     if (impl->file == NULL) {
-        aws_translate_and_raise_io_error(errno);
         goto on_error;
     }
 
     impl->close_on_clean_up = true;
+    impl->allocator = allocator;
+    impl->base.vtable = &s_aws_input_stream_file_vtable;
+    aws_ref_count_init(&impl->base.ref_count, impl, (aws_simple_completion_callback *)s_aws_input_stream_file_destroy);
 
-    return input_stream;
+    return &impl->base;
 
 on_error:
-
-    aws_input_stream_destroy(input_stream);
-
+    aws_mem_release(allocator, impl);
     return NULL;
 }
 
 struct aws_input_stream *aws_input_stream_new_from_open_file(struct aws_allocator *allocator, FILE *file) {
-    struct aws_input_stream *input_stream = NULL;
-    struct aws_input_stream_file_impl *impl = NULL;
-
-    aws_mem_acquire_many(
-        allocator, 2, &input_stream, sizeof(struct aws_input_stream), &impl, sizeof(struct aws_input_stream_file_impl));
-
-    if (!input_stream) {
-        return NULL;
-    }
-
-    AWS_ZERO_STRUCT(*input_stream);
-    AWS_ZERO_STRUCT(*impl);
-
-    input_stream->allocator = allocator;
-    input_stream->vtable = &s_aws_input_stream_file_vtable;
-    input_stream->impl = impl;
+    struct aws_input_stream_file_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_input_stream_file_impl));
 
     impl->file = file;
     impl->close_on_clean_up = false;
+    impl->allocator = allocator;
 
-    return input_stream;
+    impl->base.vtable = &s_aws_input_stream_file_vtable;
+    aws_ref_count_init(&impl->base.ref_count, impl, (aws_simple_completion_callback *)s_aws_input_stream_file_destroy);
+    return &impl->base;
+}
+
+struct aws_input_stream *aws_input_stream_acquire(struct aws_input_stream *stream) {
+    if (stream != NULL) {
+        if (stream->vtable->acquire) {
+            stream->vtable->acquire(stream);
+        } else {
+            aws_ref_count_acquire(&stream->ref_count);
+        }
+    }
+    return stream;
+}
+
+struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *stream) {
+    if (stream != NULL) {
+        if (stream->vtable->release) {
+            stream->vtable->release(stream);
+        } else {
+            aws_ref_count_release(&stream->ref_count);
+        }
+    }
+    return NULL;
+}
+
+void aws_input_stream_destroy(struct aws_input_stream *stream) {
+    aws_input_stream_release(stream);
 }
