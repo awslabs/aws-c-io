@@ -440,6 +440,29 @@ static int s_test_future_wait_timeout(struct aws_allocator *alloc, void *ctx) {
 }
 AWS_TEST_CASE(future_wait_timeout, s_test_future_wait_timeout)
 
+/* This is a regression test */
+static int s_test_future_wait_timeout_max(struct aws_allocator *alloc, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(alloc);
+
+    /* Thread will complete the future in 1sec */
+    struct aws_future_size *future = s_start_thread_job(alloc, ONE_SEC_IN_NS);
+
+    /* Wait for future to complete, with timeout of UINT64_MAX.
+     * Once upon a time, there was a bug where this became a negative number and immediately timed out. */
+    bool completed_before_timeout = aws_future_size_wait(future, UINT64_MAX);
+    ASSERT_TRUE(completed_before_timeout);
+
+    /* Wait until other thread joins, at which point the future is complete and the callback has fired */
+    aws_thread_set_managed_join_timeout_ns(MAX_TIMEOUT_NS);
+    ASSERT_SUCCESS(aws_thread_join_all_managed());
+
+    aws_future_size_release(future);
+    aws_io_library_clean_up();
+    return 0;
+}
+AWS_TEST_CASE(future_wait_timeout_max, s_test_future_wait_timeout_max)
+
 struct aws_destroyme {
     struct aws_allocator *alloc;
     bool *set_true_on_death;
