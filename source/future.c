@@ -453,13 +453,16 @@ bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout
     /* this function is conceptually const, but we need to use synchronization primitives */
     struct aws_future_impl *mutable_future = (struct aws_future_impl *)future;
 
+    /* condition-variable takes signed timeout, so clamp to INT64_MAX (292+ years) */
+    int64_t timeout_i64 = aws_min_u64(timeout_ns, INT64_MAX);
+
     /* BEGIN CRITICAL SECTION */
     aws_mutex_lock(&mutable_future->lock);
 
     bool is_done = aws_condition_variable_wait_for_pred(
                        &mutable_future->wait_cvar,
                        &mutable_future->lock,
-                       (int64_t)timeout_ns,
+                       timeout_i64,
                        s_future_impl_is_done_pred,
                        mutable_future) == AWS_OP_SUCCESS;
 
