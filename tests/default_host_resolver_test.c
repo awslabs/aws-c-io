@@ -182,6 +182,11 @@ static int s_test_default_host_resolver_ipv6_address_variations_fn(struct aws_al
             .ip_address = "0:0:0:0:0:0:0:1",
             .expected_resolved_ip_address = "::1",
         },
+        {
+            .ip_address = "fd00:ec2:0:0:0:0:0:23",
+            .expected_resolved_ip_address = "fd00:ec2::23",
+        },
+
     };
 
     struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);

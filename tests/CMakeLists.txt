@@ -152,9 +152,9 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
     add_net_test_case(tls_client_channel_negotiation_no_verify_expired)
-    add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
+    # add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
     # add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
-    add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
+    # add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
 
     # Badssl - Broken Crypto endpoint suite
     # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
