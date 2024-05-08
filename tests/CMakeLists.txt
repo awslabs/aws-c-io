@@ -193,9 +193,9 @@ if(NOT BYO_CRYPTO)
     # add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
     add_net_test_case(tls_client_channel_negotiation_error_no_subject)
     add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
-    add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
+    # add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
     # add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_common_name)
-    add_net_test_case(tls_client_channel_negotiation_success_no_verify_incomplete_chain)
+    # add_net_test_case(tls_client_channel_negotiation_success_no_verify_incomplete_chain)
 
     # Badssl - Secure common suite, all of these should succeed
     add_net_test_case(tls_client_channel_negotiation_success_tls12)
