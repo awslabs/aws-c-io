@@ -152,16 +152,16 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root)
     add_net_test_case(tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override)
     add_net_test_case(tls_client_channel_negotiation_no_verify_expired)
-    # add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
-    # add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
-    # add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
+    add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
 
     # Badssl - Broken Crypto endpoint suite
     # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_rc4_md5)
-    # add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh480)
+    add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh480)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh512)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
 
@@ -193,9 +193,9 @@ if(NOT BYO_CRYPTO)
     # add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
     add_net_test_case(tls_client_channel_negotiation_error_no_subject)
     add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
-    # add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
-    # add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_common_name)
-    # add_net_test_case(tls_client_channel_negotiation_success_no_verify_incomplete_chain)
+    add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
+    add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_common_name)
+    add_net_test_case(tls_client_channel_negotiation_success_no_verify_incomplete_chain)
 
     # Badssl - Secure common suite, all of these should succeed
     add_net_test_case(tls_client_channel_negotiation_success_tls12)
@@ -205,7 +205,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_ecc384)
 
     # add_net_test_case(tls_client_channel_negotiation_success_extended_validation) test disabled until badssl updates cert (expired 2022.08.10)
-    # add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
+    add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
 
     # Misc non-badssl tls tests
     add_net_test_case(test_concurrent_cert_import)
