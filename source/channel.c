@@ -385,6 +385,7 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
 
 static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately) {
     bool need_to_schedule = true;
+    printf("s_channel_shutdown called\n");
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
     if (channel->cross_thread_tasks.shutdown_task.task.task_fn) {
         need_to_schedule = false;
@@ -809,6 +810,7 @@ int aws_channel_slot_send_message(
         (void *)slot,
         (void *)slot->adj_left,
         (void *)slot->adj_left->handler);
+    printf("%s handler %p\n",__FUNCTION__, slot->adj_left->handler);
     return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
 }
 
@@ -942,6 +944,7 @@ static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enu
     task->fn = NULL;
     task->arg = NULL;
     struct aws_channel_slot *slot = shutdown_notify->slot;
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "s_run_shutdown_write_direction");
     aws_channel_handler_shutdown(
         slot->handler, slot, AWS_CHANNEL_DIR_WRITE, shutdown_notify->error_code, shutdown_notify->shutdown_immediately);
 }
@@ -965,6 +968,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (slot->adj_right && slot->adj_right->handler) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown in dir completed. error_code %d", err_code);
             return aws_channel_handler_shutdown(
                 slot->adj_right->handler, slot->adj_right, dir, err_code, free_scarce_resources_immediately);
         }
@@ -982,6 +986,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
     }
 
     if (slot->adj_left && slot->adj_left->handler) {
+		AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown2 in dir completed. error_code %d", err_code);
         return aws_channel_handler_shutdown(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
@@ -1030,7 +1035,6 @@ int aws_channel_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
-
     AWS_ASSERT(handler->vtable && handler->vtable->process_write_message);
     return handler->vtable->process_write_message(handler, slot, message);
 }

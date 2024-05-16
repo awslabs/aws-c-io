@@ -103,7 +103,7 @@ struct aws_channel_handler *aws_tls_alpn_handler_new(
     alpn_handler->user_data = user_data;
     channel_handler->impl = alpn_handler;
     channel_handler->alloc = allocator;
-
+    printf("============================= seting write handler to null\n");
     channel_handler->vtable = &s_alpn_handler_vtable;
 
     return channel_handler;
