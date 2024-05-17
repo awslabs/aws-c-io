@@ -94,6 +94,7 @@ add_test_case(channel_duplicate_shutdown)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
 add_net_test_case(test_default_with_ipv6_lookup)
+add_net_test_case(test_default_host_resolver_ipv6_address_variations)
 add_test_case(test_resolver_ipv6_address_lookup)
 add_net_test_case(test_default_with_multiple_lookups)
 add_test_case(test_resolver_ipv4_address_lookup)
