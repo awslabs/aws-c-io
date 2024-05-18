@@ -2332,6 +2332,9 @@ struct aws_tls_ctx *s_ctx_new(
     const struct aws_tls_ctx_options *options,
     bool is_client_mode) {
 
+    bool is_above_win_10;
+    is_above_win_10 = is_windows_equal_or_above_10();
+    printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
