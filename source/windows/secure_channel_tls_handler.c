@@ -140,11 +140,13 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
 
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
+//#include "Ntddk.h"
 
 bool is_windows_equal_or_above_10(void) {
 
-//Windows 10 1809
-//Windows Server 1809
+// Windows 10 1809
+// Windows Server 1809
+// current 11 22631
 
     DWORDLONG dwlConditionMask = 0;
     int op = VER_GREATER_EQUAL;
@@ -154,36 +156,25 @@ bool is_windows_equal_or_above_10(void) {
 
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-   // osvi.dwMajorVersion = 5;
-   // osvi.dwMinorVersion = 0;
-    //osvi.wServicePackMajor = 0;
-   // osvi.wServicePackMinor = 0;
-    osvi.dwBuildNumber = 1809;
-/*
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_MAJORVERSION, op);
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_MINORVERSION, op);
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_SERVICEPACKMAJOR, op);
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_SERVICEPACKMINOR, op);
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-		                              VER_PRODUCT_TYPE, VER_EQUAL);
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_PRODUCT_TYPE, VER_EQUAL);
-*/
-    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
-                                              VER_BUILDNUMBER, op);
+    osvi.dwBuildNumber = 22632;
 
-    pRtlVerifyVersionInfo = (RTLVERIFYVERSIONINFO_FN)
-	    (GetProcAddress(GetModuleHandleA("ntdll"), "RtlVerifyVersionInfo"));
+    dwlConditionMask = VerSetConditionMask(dwlConditionMask,
+                                           VER_BUILDNUMBER, op);
+    typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
+				PRTL_OSVERSIONINFOW lpVersionInformation,
+	 		    ULONG TypeMask,
+                ULONGLONG ConditionMask);
 
-    if (pRtlVerifyVersionInfo) {
-        status = !pRtlVerifyVersionInfo(&osvi,
-					 dwTypeMask,
-					 VerSetConditionMask);
-    } /*else {
+    pRtlGetVersionInfo f;
+    f = GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
+
+    if (f) {
+        status = f(&osvi, VER_BUILDNUMBER,
+                   dwlConditionMask);
+    } else {
+        printf(" \\\\\\\\\\\\\\\\ could not load module\n"); 
+    }
+   /*else {
         status = !!VerifyVersionInfoW((OSVERSIONINFOEXW *)&osvi,
                                        dwTypeMask,
                                        VerSetConditionMask);
