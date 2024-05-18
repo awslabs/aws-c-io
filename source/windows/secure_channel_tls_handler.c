@@ -141,6 +141,61 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
+bool is_windows_equal_or_above_10(void) {
+
+//Windows 10 1809
+//Windows Server 1809
+
+    DWORDLONG dwlConditionMask = 0;
+    int op = VER_GREATER_EQUAL;
+    OSVERSIONINFOEX osvi;
+
+    NTSTATUS status;
+
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+   // osvi.dwMajorVersion = 5;
+   // osvi.dwMinorVersion = 0;
+    //osvi.wServicePackMajor = 0;
+   // osvi.wServicePackMinor = 0;
+    osvi.dwBuildNumber = 1809;
+/*
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_MAJORVERSION, op);
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_MINORVERSION, op);
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_SERVICEPACKMAJOR, op);
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_SERVICEPACKMINOR, op);
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+		                              VER_PRODUCT_TYPE, VER_EQUAL);
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_PRODUCT_TYPE, VER_EQUAL);
+*/
+    VerSetConditionMask = VerSetConditionMask(dwlConditionMask,
+                                              VER_BUILDNUMBER, op);
+
+    pRtlVerifyVersionInfo = (RTLVERIFYVERSIONINFO_FN)
+	    (GetProcAddress(GetModuleHandleA("ntdll"), "RtlVerifyVersionInfo"));
+
+    if (pRtlVerifyVersionInfo) {
+        status = !pRtlVerifyVersionInfo(&osvi,
+					 dwTypeMask,
+					 VerSetConditionMask);
+    } /*else {
+        status = !!VerifyVersionInfoW((OSVERSIONINFOEXW *)&osvi,
+                                       dwTypeMask,
+                                       VerSetConditionMask);
+    }*/
+    if (status == STATUS_SUCCESS) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
