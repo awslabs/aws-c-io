@@ -1436,7 +1436,6 @@ label1:
                             input_buffers2[1].cbBuffer,
                         input_buffers2[1].cbBuffer);
                     sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
-                
                 }
                 goto label1;
                 //continue;
