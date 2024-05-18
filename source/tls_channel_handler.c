@@ -733,6 +733,7 @@ void aws_tls_clean_up_static_state(void) {}
 
 #endif /* BYO_CRYPTO */
 
+// XXX: not used function
 int aws_channel_setup_client_tls(
     struct aws_channel_slot *right_of_slot,
     struct aws_tls_connection_options *tls_options) {

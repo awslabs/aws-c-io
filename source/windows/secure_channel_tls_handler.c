@@ -73,7 +73,6 @@ struct secure_channel_ctx {
     struct aws_string *alpn_list;
     SCHANNEL_CRED credentials;
     SCH_CREDENTIALS credentials_new;
-    //TLS_PARAMETERS tls_parameters;
     PCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
     HCERTSTORE custom_trust_store;
@@ -142,7 +141,7 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
 }
 //#include "Ntddk.h"
 
-bool is_windows_equal_or_above_10(void) {
+bool s_is_windows_equal_or_above_10(void) {
 
 // Windows 10 1809
 // Windows Server 1809
@@ -2130,82 +2129,12 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .gather_statistics = s_gather_statistics,
 };
 
-static struct aws_channel_handler *s_tls_handler_new(
+static struct aws_channel_handler *s_tls_handler_new_common(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
-    bool is_client_mode) {
-    AWS_ASSERT(options->ctx);
-    printf("======================================== creating new handler\n");
-
-    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
-    if (!sc_handler) {
-        return NULL;
-    }
-    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
-
-    DWORD enabled_protocols = 0;
-    enabled_protocols |= SP_PROT_TLS1_3_CLIENT;
-//    enabled_protocols |= SP_PROT_TLS1_2_CLIENT;
- //   enabled_protocols |= SP_PROT_TLS1_1_CLIENT;
-  //  enabled_protocols |= SP_PROT_TLS1_0_CLIENT;
-
-    //TLS_PARAMETERS tls_parameters = {0};
-    //sc_ctx->tls_parameters.cAlpnIds = 0;
-    //sc_ctx->tls_parameters.rgstrAlpnIds = NULL;
-    //sc_ctx->tls_parameters.grbitDisabledProtocols = 0;// = (DWORD)~enabled_protocols; // force TLS_1.3 protocol
-   // sc_ctx->tls_parameters.cDisabledCrypto = 0;
-   // sc_ctx->tls_parameters.pDisabledCrypto = NULL;
-    // tls_parameters.pDisabledCrypto = &crypto_settings;
-    //sc_ctx->tls_parameters.dwFlags = 0; // only set on server;
-
-    //sc_ctx->credentials_new.pTlsParameters = &sc_ctx->tls_parameters;
-    //sc_ctx->credentials_new.pTlsParameters->grbitDisabledProtocols = (DWORD)~enabled_protocols;
-    sc_ctx->credentials_new.cTlsParameters = 0;
-    sc_ctx->credentials_new.dwSessionLifespan = 0; // default 10 hours
-    //secure_channel_ctx->credentials_new.pTlsParameters->grbitDisabledProtocols
-
-
-    sc_handler->handler.alloc = alloc;
-    sc_handler->handler.impl = sc_handler;
-    sc_handler->handler.vtable = &s_handler_vtable;
-    sc_handler->handler.slot = slot;
-
-    sc_ctx->credentials_new.dwFlags =
-        SCH_CRED_NO_DEFAULT_CREDS |
-        SCH_CRED_NO_SERVERNAME_CHECK |
-        SCH_SEND_AUX_RECORD |
-	    SCH_USE_STRONG_CRYPTO |
-       // SCH_CRED_MANUAL_CRED_VALIDATION |
-	    SCH_CRED_AUTO_CRED_VALIDATION;
-    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
-
-
-    unsigned long credential_use = SECPKG_CRED_INBOUND;
-    if (is_client_mode) {
-        credential_use = SECPKG_CRED_OUTBOUND;
-    }
-
-    SECURITY_STATUS status = AcquireCredentialsHandleA(
-        NULL,
-        UNISP_NAME,
-        credential_use,
-        NULL,
-      //  &sc_ctx->credentials,
-        &sc_ctx->credentials_new,
-        NULL,
-        NULL,
-        &sc_handler->creds,
-        &sc_handler->sspi_timestamp);
-
-    if (status != SEC_E_OK) {
-        printf(" AcquireCredentialsHandle failed status = %X\n", status);
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (int)status);
-        int aws_error = s_determine_sspi_error(status);
-        aws_raise_error(aws_error);
-        goto on_error;
-    }
-
+    bool is_client_mode,
+    struct secure_channel_handler *sc_handler) {
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
@@ -2261,12 +2190,136 @@ on_error:
 
     return NULL;
 }
+
+static struct aws_channel_handler *s_tls_handler_new_win10_plus(
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+    AWS_ASSERT(options->ctx);
+
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
+    if (!sc_handler) {
+        return NULL;
+    }
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
+
+    sc_ctx->credentials_new.cTlsParameters = 0;
+    sc_ctx->credentials_new.dwSessionLifespan = 0; // default 10 hours
+
+    // TODO: try to copy to the common section above
+    sc_handler->handler.alloc = alloc;
+    sc_handler->handler.impl = sc_handler;
+    sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
+
+    sc_ctx->credentials_new.dwFlags =
+            SCH_CRED_NO_DEFAULT_CREDS |
+            SCH_CRED_NO_SERVERNAME_CHECK |
+            SCH_SEND_AUX_RECORD |
+	    SCH_USE_STRONG_CRYPTO |
+	    SCH_CRED_AUTO_CRED_VALIDATION;
+
+    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
+
+    unsigned long credential_use = SECPKG_CRED_INBOUND;
+    if (is_client_mode) {
+        credential_use = SECPKG_CRED_OUTBOUND;
+    }
+
+    SECURITY_STATUS status = AcquireCredentialsHandleA(
+        NULL,
+        UNISP_NAME,
+        credential_use,
+        NULL,
+        &sc_ctx->credentials_new,
+        NULL,
+        NULL,
+        &sc_handler->creds,
+        &sc_handler->sspi_timestamp);
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
+    return s_tls_handler_new_common(alloc, options, slot, is_client_mode, sc_handler);
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
+}
+
+
+static struct aws_channel_handler *s_tls_handler_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+    AWS_ASSERT(options->ctx);
+
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
+    if (!sc_handler) {
+        return NULL;
+    }
+
+    // TODO: try to copy to the common section above
+    sc_handler->handler.alloc = alloc;
+    sc_handler->handler.impl = sc_handler;
+    sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
+
+    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
+
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
+
+    unsigned long credential_use = SECPKG_CRED_INBOUND;
+    if (is_client_mode) {
+        credential_use = SECPKG_CRED_OUTBOUND;
+    }
+
+    SECURITY_STATUS status = AcquireCredentialsHandleA(
+        NULL,
+        UNISP_NAME,
+        credential_use,
+        NULL,
+        &sc_ctx->credentials,
+        NULL,
+        NULL,
+        &sc_handler->creds,
+        &sc_handler->sspi_timestamp);
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
+    return s_tls_handler_new_common(alloc, options, slot, is_client_mode, sc_handler);
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
+}
+
+
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_tls_handler_new(allocator, options, slot, true);
+    if(s_is_windows_equal_or_above_10()) {
+        return s_tls_handler_new_win10_plus(allocator, options, slot, true);
+    else {
+        return s_tls_handler_new(allocator, options, slot, true);
+    }
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
@@ -2274,7 +2327,11 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    return s_tls_handler_new(allocator, options, slot, false);
+    if(s_is_windows_equal_or_above_10()) {
+        return s_tls_handler_new_win10_plus(allocator, options, slot, false);
+    else {
+        return s_tls_handler_new(allocator, options, slot, false);
+    }
 }
 
 static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_channel_ctx) {
@@ -2323,8 +2380,9 @@ struct aws_tls_ctx *s_ctx_new(
     bool is_client_mode) {
 
     bool is_above_win_10;
-    is_above_win_10 = is_windows_equal_or_above_10();
+    is_above_win_10 = s_is_windows_equal_or_above_10();
     printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
+
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
@@ -2359,7 +2417,7 @@ struct aws_tls_ctx *s_ctx_new(
     //int crypto_settings_num = 0;
 
     //crypto_settings[crypto_settings_num].eAlgorithmUsage = TlsParametersCngAlgUsageCipher;
-    
+
     secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
 
     secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
