@@ -2197,6 +2197,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     struct aws_channel_slot *slot,
     bool is_client_mode) {
     AWS_ASSERT(options->ctx);
+    DWORD dwFlags = 0;
 
     struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
     if (!sc_handler) {
@@ -2213,12 +2214,13 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     sc_handler->handler.vtable = &s_handler_vtable;
     sc_handler->handler.slot = slot;
 
-    sc_ctx->credentials_new.dwFlags =
-            SCH_CRED_NO_DEFAULT_CREDS |
-            SCH_CRED_NO_SERVERNAME_CHECK |
-            SCH_SEND_AUX_RECORD |
-	    SCH_USE_STRONG_CRYPTO |
-	    SCH_CRED_AUTO_CRED_VALIDATION;
+    dwFlags = SCH_CRED_NO_DEFAULT_CREDS |
+              SCH_CRED_NO_SERVERNAME_CHECK |
+              SCH_SEND_AUX_RECORD |
+	      SCH_USE_STRONG_CRYPTO |
+	      SCH_CRED_AUTO_CRED_VALIDATION;
+
+    sc_ctx->credentials_new.dwFlags |= dwFlags;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2374,14 +2376,84 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     aws_mem_release(secure_channel_ctx->ctx.alloc, secure_channel_ctx);
 }
 
+static struct aws_tls_ctx *s_ctx_new_above_win_10(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options,
+    bool is_client_mode,
+    struct secure_channel_ctx *secure_channel_ctx) {
+
+    secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
+    secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
+}
+
+static struct aws_tls_ctx *s_ctx_new_below_win_10(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options,
+    bool is_client_mode,
+    struct secure_channel_ctx *secure_channel_ctx ) {
+
+}
+
+static DWORD getEnabledProtocols(
+        const struct aws_tls_ctx_options *options,
+        bool is_client_mode)
+{
+
+    DWORD grbitEnabledProtocols = 0;
+    if (is_client_mode) {
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_TLSv1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1_1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+                grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+            case AWS_IO_TLSv1_3:
+                    #if defined(SP_PROT_TLS1_3_CLIENT)
+                grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
+#endif
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                grbitEnabledProtocols = 0;
+                break;
+        }
+    } else {
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_TLSv1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1_1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_SERVER)
+                grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_3_SERVER)
+                grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
+#endif
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                grbitEnabledProtocols = 0;
+                break;
+        }
+    }
+    return grbitEnabledProtocols;
+}
+
 struct aws_tls_ctx *s_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
     bool is_client_mode) {
 
-    bool is_above_win_10;
-    is_above_win_10 = s_is_windows_equal_or_above_10();
-    printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
+    DWORD dwFlags = 0;
+    PCCERT_CONTEXT *paCred = NULL;
+    DWORD cCreds = 1;
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -2410,74 +2482,15 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
 
-    //secure_channel_ctx->credentials_new.dwCredFormat = SCH_CRED_FORMAT_CERT_HASH;
-    //secure_channel_ctx->credentials_new.dwCredFormat = SCH_CRED_FORMAT_CERT_HASH_STORE;
-
-    //CRYPTO_SETTINGS crypto_settings[4] = { { 0 } };
-    //int crypto_settings_num = 0;
-
-    //crypto_settings[crypto_settings_num].eAlgorithmUsage = TlsParametersCngAlgUsageCipher;
-
-    secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
-
-    secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
-    secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default 
 
     secure_channel_ctx->should_free_pcerts = true;
 
-    secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-
-    if (is_client_mode) {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
-            case AWS_IO_TLSv1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
-            case AWS_IO_TLSv1_1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_CLIENT)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
-#endif
-            case AWS_IO_TLSv1_3:
-                printf("tls 1.3 certificate detected\n");
-                    #if defined(SP_PROT_TLS1_3_CLIENT)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                printf("default client...testing\n");
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-                //secure_channel_ctx->credentials.grbitEnabledProtocols = SP_PROT_TLS1_3_CLIENT;
-                break;
-        }
-    } else {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
-            case AWS_IO_TLSv1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
-            case AWS_IO_TLSv1_1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_SERVER)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
-#endif
-            case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_SERVER)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-                break;
-        }
-    }
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
-        secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
+        dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
+        //secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
+        //secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
         struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_buf(&options->ca_file);
         int error = aws_import_trusted_certificates(alloc, &ca_blob_cur, &secure_channel_ctx->custom_trust_store);
@@ -2487,8 +2500,9 @@ struct aws_tls_ctx *s_ctx_new(
             goto clean_up;
         }
     } else if (is_client_mode) {
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
-        secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
+        dwFlags |= SCH_CRED_AUTO_CRED_VALIDATION;
+        //secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
+        //secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
     }
 
     if (is_client_mode && !options->verify_peer) {
@@ -2496,7 +2510,12 @@ struct aws_tls_ctx *s_ctx_new(
             AWS_LS_IO_TLS,
             "static: x.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.");
+        dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
+        dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
+                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
+                   SCH_CRED_MANUAL_CRED_VALIDATION;
 
+        /*
         secure_channel_ctx->credentials.dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
         secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                                                    SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
@@ -2506,17 +2525,21 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                                                    SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
                                                    SCH_CRED_MANUAL_CRED_VALIDATION;
+        */
     } else if (is_client_mode) {
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+        dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
 
-        secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+//        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+
+ //       secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
 
+    dwFlags |= SCH_USE_STRONG_CRYPTO;
     /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
-    secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
+    //secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
 
-    secure_channel_ctx->credentials_new.dwFlags |= SCH_USE_STRONG_CRYPTO;
-    secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+    //secure_channel_ctx->credentials_new.dwFlags |= SCH_USE_STRONG_CRYPTO;
+    //secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
 
     /* if using a system store. */
     if (options->system_certificate_path) {
@@ -2527,14 +2550,14 @@ struct aws_tls_ctx *s_ctx_new(
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->system_certificate_path);
             goto clean_up;
         }
+        paCred = &secure_channel_ctx->pcerts;
+        cCreds = 1;
+        //secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
+        //secure_channel_ctx->credentials.cCreds = 1;
 
-    
-        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials.cCreds = 1;
+        //secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
+        //secure_channel_ctx->credentials_new.cCreds = 1;
 
-        secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials_new.cCreds = 1;
-     
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
     } else if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 
@@ -2570,13 +2593,42 @@ struct aws_tls_ctx *s_ctx_new(
             goto clean_up;
         }
 
-        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials.cCreds = 1;
+        paCred = &secure_channel_ctx->pcerts;
+        cCreds = 1;
+        //secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
+        //secure_channel_ctx->credentials.cCreds = 1;
 
-        secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials_new.cCreds = 1;
+        //secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
+        //secure_channel_ctx->credentials_new.cCreds = 1;
 
         secure_channel_ctx->should_free_pcerts = false;
+    }
+
+    bool is_above_win_10;
+    is_above_win_10 = s_is_windows_equal_or_above_10();
+    printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
+    if (is_above_win_10 == true) {
+        secure_channel_ctx->credentials_new.dwFlags = dwFalgs;
+        secure_channel_ctx->credentials_new.paCred = paCred;
+        secure_channel_ctx->credentials_new.cCreds = cCreds;
+
+        s_ctx_new_above(
+                alloc,
+                options,
+                is_client_mode,
+                secure_channel_ctx );
+    } else {
+        secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
+        secure_channel_ctx->credentials.dwFlags = dwFalgs;
+        secure_channel_ctx->credentials.paCred = paCred;
+        secure_channel_ctx->credentials.cCreds = cCreds;
+        secure_channel_ctx->credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
+
+        s_ctx_new_below_win_10(
+                alloc,
+                options,
+                is_client_mode,
+                secure_channel_ctx);
     }
 
     return &secure_channel_ctx->ctx;
