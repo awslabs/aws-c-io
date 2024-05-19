@@ -2382,8 +2382,6 @@ static struct aws_tls_ctx *s_ctx_new_above_win_10(
     bool is_client_mode,
     struct secure_channel_ctx *secure_channel_ctx) {
 
-    secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
-    secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
 }
 
 static struct aws_tls_ctx *s_ctx_new_below_win_10(
@@ -2608,27 +2606,33 @@ struct aws_tls_ctx *s_ctx_new(
     is_above_win_10 = s_is_windows_equal_or_above_10();
     printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
     if (is_above_win_10 == true) {
+        secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
+        secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
         secure_channel_ctx->credentials_new.dwFlags = dwFalgs;
         secure_channel_ctx->credentials_new.paCred = paCred;
         secure_channel_ctx->credentials_new.cCreds = cCreds;
-
+        /*
         s_ctx_new_above(
                 alloc,
                 options,
                 is_client_mode,
                 secure_channel_ctx );
+            */
     } else {
         secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
+        secure_channel_ctx->credentials.dwCredFormat = 0; // kernel-mode only default
         secure_channel_ctx->credentials.dwFlags = dwFalgs;
         secure_channel_ctx->credentials.paCred = paCred;
         secure_channel_ctx->credentials.cCreds = cCreds;
         secure_channel_ctx->credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
 
+        /*
         s_ctx_new_below_win_10(
                 alloc,
                 options,
                 is_client_mode,
                 secure_channel_ctx);
+        */
     }
 
     return &secure_channel_ctx->ctx;
