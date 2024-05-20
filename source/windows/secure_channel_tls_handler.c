@@ -2222,7 +2222,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
 	      SCH_USE_STRONG_CRYPTO |
 	      SCH_CRED_AUTO_CRED_VALIDATION;
 
-    sc_ctx->credentials_new.dwFlags |= dwFlags;
+    sc_ctx->credentials_new.dwFlags = dwFlags;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
