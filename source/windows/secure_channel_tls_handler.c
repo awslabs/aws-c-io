@@ -77,7 +77,7 @@ struct common_credential_params {
 struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
-    struct common_credential_params;
+    struct common_credential_params schannel_creds;
     SCHANNEL_CRED credentials;
     SCH_CREDENTIALS credentials_new;
     PCERT_CONTEXT pcerts;
@@ -2221,9 +2221,9 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     credentials_new2.dwVersion = SCH_CREDENTIALS_VERSION;
     credentials_new2.dwCredFormat = 0; // kernel-mode only default
                                        //
-    credentials_new2.dwFlags = sc_ctx->credentials_common_params.dwFlags;
-    credentials_new2.paCreds = sc_ctx->credentials_common_params.pacreds;
-    credentials_new2.cCreds = sc_ctx->credentials_common_params.cCreds;
+    credentials_new2.dwFlags = sc_ctx->schannel_creds.dwFlags;
+    credentials_new2.paCred = sc_ctx->schannel_creds.paCred;
+    credentials_new2.cCreds = sc_ctx->schannel_creds.cCreds;
 
     sc_ctx->credentials_new.cTlsParameters = 0;
     sc_ctx->credentials_new.dwSessionLifespan = 0; // default 10 hours
@@ -2477,6 +2477,7 @@ struct aws_tls_ctx *s_ctx_new(
     DWORD dwFlags = 0;
     PCCERT_CONTEXT *paCred = NULL;
     DWORD cCreds = 1;
+    printf("\\\\\\\\\\\\\\\\\\ calling this s_ctx_new\n");
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -2636,9 +2637,9 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->credentials_new.dwFlags = dwFlags;
         secure_channel_ctx->credentials_new.paCred = paCred;
         secure_channel_ctx->credentials_new.cCreds = cCreds;
-        secure_channel_ctx->common_credential_params.dwFlags = dwFlags;
-        secure_channel_ctx->common_credential_params.paCred = paCred;
-        secure_channel_ctx->common_credential_params.cCreds = cCreds;
+        secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
+        secure_channel_ctx->schannel_creds.paCred = paCred;
+        secure_channel_ctx->schannel_creds.cCreds = cCreds;
         /*
         s_ctx_new_above(
                 alloc,
