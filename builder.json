@@ -5,7 +5,7 @@
         { "name": "aws-c-cal" },
         {
             "name": "s2n",
-            "targets": ["linux", "android"]
+            "targets": ["linux", "android", "freebsd", "openbsd"]
         }
     ],
     "downstream": [

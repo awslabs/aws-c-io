@@ -94,6 +94,7 @@ add_test_case(channel_duplicate_shutdown)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
 add_net_test_case(test_default_with_ipv6_lookup)
+add_net_test_case(test_default_host_resolver_ipv6_address_variations)
 add_test_case(test_resolver_ipv6_address_lookup)
 add_net_test_case(test_default_with_multiple_lookups)
 add_test_case(test_resolver_ipv4_address_lookup)
@@ -183,13 +184,13 @@ if(NOT BYO_CRYPTO)
     # Badssl - Secure uncommon suite
     # We skip 10000san for now as its unclear the point or relevance especially with respect to the OS-based
     # TLS implementations
-    # We skip 1000san, sha384 and sha512 because the public badssl certificate is expired and we haven't migrated to
+    # We skip 1000san, sha384, rsa8192 and sha512 because the public badssl certificate is expired and we haven't migrated to
     # internal hosting yet
     # We also defer the incomplete chain test for now until we can do some further study on how to get it to
     # properly fail on windows and osx.
     # add_net_test_case(tls_client_channel_negotiation_success_sha384)
     # add_net_test_case(tls_client_channel_negotiation_success_sha512)
-    add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
+    # add_net_test_case(tls_client_channel_negotiation_success_rsa8192)
     add_net_test_case(tls_client_channel_negotiation_error_no_subject)
     add_net_test_case(tls_client_channel_negotiation_success_no_verify_no_subject)
     add_net_test_case(tls_client_channel_negotiation_error_no_common_name)
@@ -208,7 +209,8 @@ if(NOT BYO_CRYPTO)
 
     # Misc non-badssl tls tests
     add_net_test_case(test_concurrent_cert_import)
-    add_test_case(tls_channel_echo_and_backpressure_test)
+    add_net_test_case(test_duplicate_cert_import)
+    add_net_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
@@ -221,8 +223,8 @@ if(NOT BYO_CRYPTO)
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
-    add_test_case(tls_channel_statistics_test)
-    add_test_case(tls_certificate_chain_test)
+    add_net_test_case(tls_channel_statistics_test)
+    add_net_test_case(tls_certificate_chain_test)
 else()
     add_test_case(byo_tls_handler_test)
 endif()
@@ -237,6 +239,7 @@ add_test_case(future_register_event_loop_callback_before_done)
 add_test_case(future_register_event_loop_callback_always_scheduled)
 add_test_case(future_register_channel_callback)
 add_test_case(future_wait_timeout)
+add_test_case(future_wait_timeout_max)
 add_test_case(future_pointer_with_destroy)
 add_test_case(future_pointer_with_release)
 add_test_case(future_get_result_by_move)

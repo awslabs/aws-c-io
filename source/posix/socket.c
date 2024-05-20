@@ -1892,7 +1892,7 @@ int aws_socket_get_error(struct aws_socket *socket) {
     socklen_t result_length = sizeof(connect_result);
 
     if (getsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_ERROR, &connect_result, &result_length) < 0) {
-        return AWS_OP_ERR;
+        return s_determine_socket_error(errno);
     }
 
     if (connect_result) {

@@ -1376,8 +1376,12 @@ static int s_process_write_message(
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
 
-            if (!outgoing_message || outgoing_message->message_data.capacity <= upstream_overhead) {
+            if (!outgoing_message) {
                 return AWS_OP_ERR;
+            }
+            if (outgoing_message->message_data.capacity <= upstream_overhead) {
+                aws_mem_release(outgoing_message->allocator, outgoing_message);
+                return aws_raise_error(AWS_ERROR_INVALID_STATE);
             }
 
             /* what if message is larger than one record? */
