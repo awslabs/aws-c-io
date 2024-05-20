@@ -2135,6 +2135,8 @@ static struct aws_channel_handler *s_tls_handler_new_common(
     struct aws_channel_slot *slot,
     bool is_client_mode,
     struct secure_channel_handler *sc_handler) {
+
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
