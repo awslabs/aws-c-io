@@ -77,9 +77,9 @@ struct common_credential_params {
 struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
-    struct common_credential_params schannel_creds;
     SCHANNEL_CRED credentials;
     SCH_CREDENTIALS credentials_new;
+    struct common_credential_params schannel_creds;
     PCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
     HCERTSTORE custom_trust_store;
@@ -2216,13 +2216,14 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
     SCH_CREDENTIALS credentials_new2;
+    ZeroMemory(&credentials_new2, 0x00, sizeof(SCH_CREDENTIALS));
     credentials_new2.cTlsParameters = 0;
     credentials_new2.dwSessionLifespan = 0; // default 10 hours
     credentials_new2.dwVersion = SCH_CREDENTIALS_VERSION;
     credentials_new2.dwCredFormat = 0; // kernel-mode only default
-                                       //
     credentials_new2.dwFlags = sc_ctx->schannel_creds.dwFlags;
     credentials_new2.paCred = sc_ctx->schannel_creds.paCred;
+	//credentials_new2.paCred = &sc_ctx->pcerts;
     credentials_new2.cCreds = sc_ctx->schannel_creds.cCreds;
 
     sc_ctx->credentials_new.cTlsParameters = 0;
@@ -2252,6 +2253,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
         credential_use = SECPKG_CRED_OUTBOUND;
     }
 
+    printf("\\\\\\\\\\\\\\ before acquire credentials handle\n");
     SECURITY_STATUS status = AcquireCredentialsHandleA(
         NULL,
         UNISP_NAME,
@@ -2263,7 +2265,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
         NULL,
         &sc_handler->creds,
         &sc_handler->sspi_timestamp);
-
+    printf("\\\\\\\\\\\\\\ out of acquire credentials handle\n");
     if (status != SEC_E_OK) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (int)status);
         int aws_error = s_determine_sspi_error(status);
@@ -2632,14 +2634,18 @@ struct aws_tls_ctx *s_ctx_new(
     is_above_win_10 = s_is_windows_equal_or_above_10();
     printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
     if (is_above_win_10 == true) {
-   //     secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
-        //secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
+        secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
+        secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
         secure_channel_ctx->credentials_new.dwFlags = dwFlags;
         secure_channel_ctx->credentials_new.paCred = paCred;
         secure_channel_ctx->credentials_new.cCreds = cCreds;
+
         secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
+        //secure_channel_ctx->schannel_creds.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->schannel_creds.paCred = paCred;
         secure_channel_ctx->schannel_creds.cCreds = cCreds;
+
+
         /*
         s_ctx_new_above(
                 alloc,
