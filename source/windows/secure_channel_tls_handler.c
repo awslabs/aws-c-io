@@ -70,7 +70,7 @@ void aws_tls_clean_up_static_state(void) {}
 
 struct common_credential_params {
     DWORD dwFlags;
-    PCCERT_CONTEXT paCred;
+    PCCERT_CONTEXT *paCred;
     DWORD cCreds;
 };
 
