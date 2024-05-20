@@ -2319,9 +2319,9 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if(s_is_windows_equal_or_above_10()) {
+    if (s_is_windows_equal_or_above_10()) {
         return s_tls_handler_new_win10_plus(allocator, options, slot, true);
-    else {
+    } else {
         return s_tls_handler_new(allocator, options, slot, true);
     }
 }
@@ -2331,9 +2331,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if(s_is_windows_equal_or_above_10()) {
+    if (s_is_windows_equal_or_above_10()) {
         return s_tls_handler_new_win10_plus(allocator, options, slot, false);
-    else {
+    } else {
         return s_tls_handler_new(allocator, options, slot, false);
     }
 }
@@ -2610,7 +2610,7 @@ struct aws_tls_ctx *s_ctx_new(
     if (is_above_win_10 == true) {
         secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
         secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
-        secure_channel_ctx->credentials_new.dwFlags = dwFalgs;
+        secure_channel_ctx->credentials_new.dwFlags = dwFlags;
         secure_channel_ctx->credentials_new.paCred = paCred;
         secure_channel_ctx->credentials_new.cCreds = cCreds;
         /*
@@ -2623,7 +2623,7 @@ struct aws_tls_ctx *s_ctx_new(
     } else {
         secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
         secure_channel_ctx->credentials.dwCredFormat = 0; // kernel-mode only default
-        secure_channel_ctx->credentials.dwFlags = dwFalgs;
+        secure_channel_ctx->credentials.dwFlags = dwFlags;
         secure_channel_ctx->credentials.paCred = paCred;
         secure_channel_ctx->credentials.cCreds = cCreds;
         secure_channel_ctx->credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
