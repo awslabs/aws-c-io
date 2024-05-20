@@ -174,11 +174,34 @@ AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     return NULL;
 }
 
+static struct aws_allocator *s_library_allocator = NULL;
+
+static int s_s2n_mem_init(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_cleanup(void) {
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_malloc(void **ptr, uint32_t requested, uint32_t *allocated) {
+    *ptr = aws_mem_acquire(s_library_allocator, requested);
+    *allocated = requested;
+
+    return S2N_SUCCESS;
+}
+
+static int s_s2n_mem_free(void *ptr, uint32_t size) {
+    (void)size;
+    aws_mem_release(s_library_allocator, ptr);
+    return S2N_SUCCESS;
+}
+
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
 static bool s_s2n_initialized_externally = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
-    (void)alloc;
+    AWS_FATAL_ASSERT(alloc);
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
@@ -196,7 +219,11 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 
     if (!s_s2n_initialized_externally) {
-        setenv("S2N_DONT_MLOCK", "1", 1);
+        s_library_allocator = alloc;
+        if (S2N_SUCCESS != s2n_mem_set_callbacks(s_s2n_mem_init, s_s2n_mem_cleanup, s_s2n_mem_malloc, s_s2n_mem_free)) {
+            fprintf(stderr, "s2n_mem_set_callbacks() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
+            AWS_FATAL_ASSERT(0 && "s2n_mem_set_callbacks() failed");
+        }
 
         if (s2n_init() != S2N_SUCCESS) {
             fprintf(stderr, "s2n_init() failed: %d (%s)\n", s2n_errno, s2n_strerror(s2n_errno, "EN"));
@@ -1312,8 +1339,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
 
 static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
     if (s2n_ctx != NULL) {
-        s2n_config_free(s2n_ctx->s2n_config);
-
+        if (s2n_ctx->s2n_config) {
+            s2n_config_free(s2n_ctx->s2n_config);
+        }
         if (s2n_ctx->custom_cert_chain_and_key) {
             s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
         }

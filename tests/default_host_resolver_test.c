@@ -160,6 +160,103 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 
 AWS_TEST_CASE(test_default_with_ipv6_lookup, s_test_default_with_ipv6_lookup_fn)
 
+static int s_test_default_host_resolver_ipv6_address_variations_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    const struct test_case {
+        const char *ip_address;
+        const char *expected_resolved_ip_address;
+    } test_cases[] = {
+        /* simple full uri*/
+        {
+            .ip_address = "0:0::1",
+            .expected_resolved_ip_address = "::1",
+        },
+        {
+            .ip_address = "::1",
+            .expected_resolved_ip_address = "::1",
+        },
+        {
+            .ip_address = "0:0:0:0:0:0:0:1",
+            .expected_resolved_ip_address = "::1",
+        },
+        {
+            .ip_address = "fd00:ec2:0:0:0:0:0:23",
+            .expected_resolved_ip_address = "fd00:ec2::23",
+        },
+
+    };
+
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    struct aws_host_resolution_config config = {
+        .max_ttl = 10,
+        .impl = aws_default_dns_resolve,
+        .impl_data = NULL,
+    };
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+        .has_aaaa_address = false,
+        .has_a_address = false,
+        .mutex = &mutex,
+    };
+
+    for (size_t case_idx = 0; case_idx < AWS_ARRAY_SIZE(test_cases); ++case_idx) {
+        struct test_case case_i = test_cases[case_idx];
+        printf(
+            "CASE[%zu]: ip_address=%s expected_resolved_ip_address=%s\n, ",
+            case_idx,
+            case_i.ip_address,
+            case_i.expected_resolved_ip_address);
+        struct aws_string *address = aws_string_new_from_c_str(allocator, case_i.ip_address);
+        struct aws_string *expected_address = aws_string_new_from_c_str(allocator, case_i.expected_resolved_ip_address);
+
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, address, s_default_host_resolved_test_callback, &config, &callback_data));
+
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+        aws_condition_variable_wait_pred(
+            &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+        callback_data.invoked = false;
+        ASSERT_TRUE(callback_data.has_aaaa_address);
+        ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_AAAA, callback_data.aaaa_address.record_type);
+        ASSERT_BIN_ARRAYS_EQUALS(
+            aws_string_bytes(expected_address),
+            expected_address->len,
+            aws_string_bytes(callback_data.aaaa_address.address),
+            callback_data.aaaa_address.address->len);
+
+        aws_host_address_clean_up(&callback_data.aaaa_address);
+        aws_host_address_clean_up(&callback_data.a_address);
+        ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+        aws_string_destroy(address);
+        aws_string_destroy(expected_address);
+    }
+
+    aws_host_resolver_release(resolver);
+    aws_event_loop_group_release(el_group);
+
+    aws_io_library_clean_up();
+
+    return 0;
+}
+
+AWS_TEST_CASE(
+    test_default_host_resolver_ipv6_address_variations,
+    s_test_default_host_resolver_ipv6_address_variations_fn)
+
 /* just FYI, this test assumes that "s3.us-east-1.amazonaws.com" does not return IPv6 addresses. */
 static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
