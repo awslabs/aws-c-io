@@ -2235,6 +2235,15 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     sc_handler->handler.slot = slot;
 
     //sc_ctx->credentials_new.dwFlags = dwFlags;
+    /*
+    dwFlags = SCH_CRED_NO_DEFAULT_CREDS |
+              SCH_CRED_NO_SERVERNAME_CHECK |
+              SCH_SEND_AUX_RECORD |
+	      SCH_USE_STRONG_CRYPTO |
+	      SCH_CRED_AUTO_CRED_VALIDATION;
+    */
+
+//    sc_ctx->credentials_new.dwFlags = dwFlags;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
