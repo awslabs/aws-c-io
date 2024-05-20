@@ -68,9 +68,16 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {}
 
+struct common_credential_params {
+    DWORD dwFlags;
+    PCCERT_CONTEXT paCred;
+    DWORD cCreds;
+};
+
 struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
+    struct common_credential_params;
     SCHANNEL_CRED credentials;
     SCH_CREDENTIALS credentials_new;
     PCERT_CONTEXT pcerts;
@@ -2208,6 +2215,16 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     }
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
+    SCH_CREDENTIALS credentials_new2;
+    credentials_new2.cTlsParameters = 0;
+    credentials_new2.dwSessionLifespan = 0; // default 10 hours
+    credentials_new2.dwVersion = SCH_CREDENTIALS_VERSION;
+    credentials_new2.dwCredFormat = 0; // kernel-mode only default
+                                       //
+    credentials_new2.dwFlags = sc_ctx->credentials_common_params.dwFlags;
+    credentials_new2.paCreds = sc_ctx->credentials_common_params.pacreds;
+    credentials_new2.cCreds = sc_ctx->credentials_common_params.cCreds;
+
     sc_ctx->credentials_new.cTlsParameters = 0;
     sc_ctx->credentials_new.dwSessionLifespan = 0; // default 10 hours
 
@@ -2217,13 +2234,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     sc_handler->handler.vtable = &s_handler_vtable;
     sc_handler->handler.slot = slot;
 
-    dwFlags = SCH_CRED_NO_DEFAULT_CREDS |
-              SCH_CRED_NO_SERVERNAME_CHECK |
-              SCH_SEND_AUX_RECORD |
-	      SCH_USE_STRONG_CRYPTO |
-	      SCH_CRED_AUTO_CRED_VALIDATION;
-
-    sc_ctx->credentials_new.dwFlags = dwFlags;
+    //sc_ctx->credentials_new.dwFlags = dwFlags;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2237,7 +2248,8 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
         UNISP_NAME,
         credential_use,
         NULL,
-        &sc_ctx->credentials_new,
+        //&sc_ctx->credentials_new,
+        &credentials_new2,
         NULL,
         NULL,
         &sc_handler->creds,
@@ -2610,11 +2622,14 @@ struct aws_tls_ctx *s_ctx_new(
     is_above_win_10 = s_is_windows_equal_or_above_10();
     printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
     if (is_above_win_10 == true) {
-        secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
-        secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
+   //     secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
+        //secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
         secure_channel_ctx->credentials_new.dwFlags = dwFlags;
         secure_channel_ctx->credentials_new.paCred = paCred;
         secure_channel_ctx->credentials_new.cCreds = cCreds;
+        secure_channel_ctx->common_credential_params.dwFlags = dwFlags;
+        secure_channel_ctx->common_credential_params.paCred = paCred;
+        secure_channel_ctx->common_credential_params.cCreds = cCreds;
         /*
         s_ctx_new_above(
                 alloc,
