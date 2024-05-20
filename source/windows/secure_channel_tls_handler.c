@@ -151,11 +151,11 @@ bool s_is_windows_equal_or_above_10(void) {
     int op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
 
-    NTSTATUS status;
+    NTSTATUS status = STATUS_DLL_NOT_FOUND;
 
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    osvi.dwBuildNumber = 22632;
+    osvi.dwBuildNumber = 1809;
 
     dwlConditionMask = VerSetConditionMask(dwlConditionMask,
                                            VER_BUILDNUMBER, op);
@@ -171,6 +171,7 @@ bool s_is_windows_equal_or_above_10(void) {
         status = f(&osvi, VER_BUILDNUMBER,
                    dwlConditionMask);
     } else {
+        status = STATUS_DLL_NOT_FOUND;
         printf(" \\\\\\\\\\\\\\\\ could not load module\n"); 
     }
    /*else {
@@ -2320,6 +2321,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_channel_slot *slot) {
 
     if (s_is_windows_equal_or_above_10()) {
+        printf("\\\\\\\\\\\\\\\\\\\doing windows above 10\n");
         return s_tls_handler_new_win10_plus(allocator, options, slot, true);
     } else {
         return s_tls_handler_new(allocator, options, slot, true);
