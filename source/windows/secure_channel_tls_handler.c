@@ -57,6 +57,7 @@ struct common_credential_params {
     DWORD dwFlags;
     PCCERT_CONTEXT *paCred;
     DWORD cCreds;
+    DWORD enabledProtocols;
 };
 
 struct secure_channel_ctx {
@@ -131,8 +132,8 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
 }
 
 bool s_is_windows_equal_or_above_10(void) {
-    DWORDLONG dwlConditionMask = 0;
-    int op = VER_GREATER_EQUAL;
+    ULONGLONG dwlConditionMask = 0;
+    BYTE op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
 
     NTSTATUS status = STATUS_DLL_NOT_FOUND;
@@ -144,12 +145,13 @@ bool s_is_windows_equal_or_above_10(void) {
     dwlConditionMask = VerSetConditionMask(dwlConditionMask,
                                            VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
-				PRTL_OSVERSIONINFOW lpVersionInformation,
+				//PRTL_OSVERSIONINFOW lpVersionInformation,
+				OSVERSIONINFOEX *lpVersionInformation,
 	 		    ULONG TypeMask,
                 ULONGLONG ConditionMask);
 
     pRtlGetVersionInfo f;
-    f = GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
+    f = (pRtlGetVersionInfo)GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
 
     if (f) {
         status = f(&osvi, VER_BUILDNUMBER,
@@ -1091,10 +1093,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 
     return AWS_OP_SUCCESS;
 }
-/* cipher exchange, key exchange etc.... */
-static int s_do_client_side_negotiation_step_3(struct aws_channel_handler *handler) {
-    struct secure_channel_handler *sc_handler = handler->impl;
-}
+
 static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -1225,7 +1224,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             SecBuffer input_buffers2[] = {
                 [0] = {
 				    .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
-                    .cbBuffer = sc_handler->buffered_read_in_data_buf.len,
+                    .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
                     .BufferType = SECBUFFER_TOKEN,
                 },
                 [1] =
@@ -1928,6 +1927,54 @@ on_error:
     return NULL;
 }
 
+static DWORD getEnabledProtocols( const struct aws_tls_ctx_options *options, bool is_client_mode) {
+    DWORD grbitEnabledProtocols = 0;
+    if (is_client_mode) {
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_TLSv1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1_1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+                grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+            case AWS_IO_TLSv1_3:
+                    #if defined(SP_PROT_TLS1_3_CLIENT)
+                grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
+#endif
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                grbitEnabledProtocols = 0;
+                break;
+        }
+    } else {
+        switch (options->minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_TLSv1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1_1:
+                grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_SERVER)
+                grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_3_SERVER)
+                grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
+#endif
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                grbitEnabledProtocols = 0;
+                break;
+        }
+    }
+    return grbitEnabledProtocols;
+}
+
 static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
@@ -1943,7 +1990,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     
     SCH_CREDENTIALS credentials = { 0 };
 
-    ZeroMemory(&credentials, 0x00, sizeof(SCH_CREDENTIALS));
+    ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
     credentials.cTlsParameters = 0;
     credentials.dwSessionLifespan = 0; /* default 10 hours */
@@ -2008,7 +2055,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
     credentials.paCred = sc_ctx->schannel_creds.paCred;
     credentials.cCreds = sc_ctx->schannel_creds.cCreds;
-    credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
+    credentials.grbitEnabledProtocols = sc_ctx->schannel_creds.enabledProtocols;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2109,74 +2156,6 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     aws_mem_release(secure_channel_ctx->ctx.alloc, secure_channel_ctx);
 }
 
-static struct aws_tls_ctx *s_ctx_new_above_win_10(
-    struct aws_allocator *alloc,
-    const struct aws_tls_ctx_options *options,
-    bool is_client_mode,
-    struct secure_channel_ctx *secure_channel_ctx) {
-
-}
-
-static struct aws_tls_ctx *s_ctx_new_below_win_10(
-    struct aws_allocator *alloc,
-    const struct aws_tls_ctx_options *options,
-    bool is_client_mode,
-    struct secure_channel_ctx *secure_channel_ctx ) {
-
-}
-
-static DWORD getEnabledProtocols(
-        const struct aws_tls_ctx_options *options,
-        bool is_client_mode)
-{
-
-    DWORD grbitEnabledProtocols = 0;
-    if (is_client_mode) {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
-            case AWS_IO_TLSv1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
-            case AWS_IO_TLSv1_1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_CLIENT)
-                grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
-#endif
-            case AWS_IO_TLSv1_3:
-                    #if defined(SP_PROT_TLS1_3_CLIENT)
-                grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                grbitEnabledProtocols = 0;
-                break;
-        }
-    } else {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
-            case AWS_IO_TLSv1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
-            case AWS_IO_TLSv1_1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_SERVER)
-                grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
-#endif
-            case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_SERVER)
-                grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                grbitEnabledProtocols = 0;
-                break;
-        }
-    }
-    return grbitEnabledProtocols;
-}
-
 struct aws_tls_ctx *s_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -2213,6 +2192,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->should_free_pcerts = true;
+    secure_channel_ctx->schannel_creds.enabledProtocols = getEnabledProtocols( options, is_client_mode);
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
