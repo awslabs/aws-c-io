@@ -25,7 +25,7 @@
 
 #include <schannel.h>
 #include <security.h>
-#include<sspi.h>
+#include <sspi.h>
 
 #include <errno.h>
 #include <inttypes.h>
@@ -142,20 +142,17 @@ bool s_is_windows_equal_or_above_10(void) {
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
     osvi.dwBuildNumber = 1809; /* Windows 10 */
 
-    dwlConditionMask = VerSetConditionMask(dwlConditionMask,
-                                           VER_BUILDNUMBER, op);
+    dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
-				//PRTL_OSVERSIONINFOW lpVersionInformation,
-				OSVERSIONINFOEX *lpVersionInformation,
-	 		    ULONG TypeMask,
-                ULONGLONG ConditionMask);
+        OSVERSIONINFOEX *lpVersionInformation,
+        ULONG TypeMask,
+        ULONGLONG ConditionMask);
 
     pRtlGetVersionInfo f;
     f = (pRtlGetVersionInfo)GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
 
     if (f) {
-        status = f(&osvi, VER_BUILDNUMBER,
-                   dwlConditionMask);
+        status = f(&osvi, VER_BUILDNUMBER, dwlConditionMask);
     } else {
         status = STATUS_DLL_NOT_FOUND;
     }
@@ -167,7 +164,6 @@ bool s_is_windows_equal_or_above_10(void) {
         return false;
     }
 }
-
 
 bool aws_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
@@ -853,7 +849,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 #endif /* SECBUFFER_APPLICATION_PROTOCOLS*/
 
     sc_handler->ctx_req = ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY |
-                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM; // | ISC_REQ_USE_SUPPLIED_CREDS; 
+                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM;
 
     SecBuffer output_buffer = {
         .pvBuffer = NULL,
@@ -991,7 +987,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         &sc_handler->sspi_timestamp);
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: Error during negotiation. initalizesecuritycontext SECURITY_STATUS is %lu", (void *)handler, (int)status);
+            AWS_LS_IO_TLS,
+            "id=%p: Error during negotiation. initalizesecuritycontext SECURITY_STATUS is %lu",
+            (void *)handler,
+            (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -1126,15 +1125,13 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
 
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
-        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE ||  status == SEC_I_CONTEXT_EXPIRED)
-        { 
+        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE ||  status == SEC_I_CONTEXT_EXPIRED) {
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
                We don't care what's in the third buffer for TLS usage.*/
-            if (input_buffers[1].BufferType == SECBUFFER_DATA)
-            {
+            if (input_buffers[1].BufferType == SECBUFFER_DATA) {
                 size_t decrypted_length = input_buffers[1].cbBuffer;
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS, "id=%p: Decrypted message with length %zu.", (void *)handler, decrypted_length);
@@ -1144,40 +1141,34 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
                 AWS_ASSERT(!append_failed);
                 (void)append_failed;
-
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
             }
-			if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
-			{
-				if (input_buffers[3].cbBuffer < read_len)
-				{
-					AWS_LOGF_TRACE(
-						AWS_LS_IO_TLS,
-						"id=%p: Extra (incomplete) message received with length %zu.",
-						(void *)handler,
-						sc_handler->read_extra);
-					memmove(
-						sc_handler->buffered_read_in_data_buf.buffer,
-						(sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
-						input_buffers[3].cbBuffer);
-					sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
-				}
-			}
-			else
-			{
-				error = AWS_OP_SUCCESS;
-				/* this means we processed everything in the buffer. */
-				sc_handler->buffered_read_in_data_buf.len = 0;
-				AWS_LOGF_TRACE(
-					AWS_LS_IO_TLS,
-					"id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
-					(void *)handler);
-			}
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
+                    if (input_buffers[3].cbBuffer < read_len) {
+                            AWS_LOGF_TRACE(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: Extra (incomplete) message received with length %zu.",
+                                    (void *)handler,
+                                    sc_handler->read_extra);
+                            memmove(
+                                    sc_handler->buffered_read_in_data_buf.buffer,
+                                    (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
+                                    input_buffers[3].cbBuffer);
+                            sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
+                    }
+            } else {
+                    error = AWS_OP_SUCCESS;
+                    /* this means we processed everything in the buffer. */
+                    sc_handler->buffered_read_in_data_buf.len = 0;
+                    AWS_LOGF_TRACE(
+                            AWS_LS_IO_TLS,
+                            "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
+                            (void *)handler);
+            }
         }
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
            append our next read to it and try again. */
-        else if (status == SEC_E_INCOMPLETE_MESSAGE)
-        {
+        else if (status == SEC_E_INCOMPLETE_MESSAGE) {
             sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
@@ -1193,8 +1184,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         }
         /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
            where this can happen is an unaccepted certificate. */
-        else if (status == SEC_I_CONTEXT_EXPIRED)
-        {
+        else if (status == SEC_I_CONTEXT_EXPIRED) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
                 "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
@@ -1212,19 +1202,15 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 (void *)handler,
                 (int)status);
             /* if we are the client */
-            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
-            {
-                if (input_buffers[3].cbBuffer < read_len)
-                {
-					AWS_LOGF_TRACE(
-						AWS_LS_IO_TLS,
-						"id=%p: Extra (incomplete) message received with length %zu.",
-						(void *)handler,
-						sc_handler->read_extra);
-                } else {
-
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
+                if (input_buffers[3].cbBuffer < read_len) {
+                    AWS_LOGF_TRACE(
+                            AWS_LS_IO_TLS,
+                            "id=%p: Extra (incomplete) message received with length %zu.",
+                            (void *)handler,
+                            sc_handler->read_extra);
                 }
-			}
+            }
 
             SecBuffer input_buffers2[] = {
                 [0] = {
@@ -1279,18 +1265,18 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error renegotiation happened. status %lu", (void*)handler, status);
             if (status == SEC_E_OK) {
-				if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 && sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
-					memmove(
-						sc_handler->buffered_read_in_data_buf.buffer,
-						(sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) - input_buffers2[1].cbBuffer,
-						input_buffers2[1].cbBuffer);
-					sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
-					sc_handler->read_extra = input_buffers2[1].cbBuffer;
-					continue;
-				}
-				break;
+                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 && sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
+                        memmove(
+                                sc_handler->buffered_read_in_data_buf.buffer,
+                                (sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) - input_buffers2[1].cbBuffer,
+                                input_buffers2[1].cbBuffer);
+                        sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
+                        sc_handler->read_extra = input_buffers2[1].cbBuffer;
+                        continue;
+                }
+                break;
             } else {
-                break; 
+                break;
             }
         } else {
             AWS_LOGF_ERROR(
@@ -1668,7 +1654,6 @@ static int s_handler_shutdown(
     int error_code,
     bool abort_immediately) {
     struct secure_channel_handler *sc_handler = handler->impl;
-	AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "shutting down schannel server");
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
@@ -1749,7 +1734,7 @@ static int s_handler_shutdown(
         }
     }
 
-	AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "calling handler shutdown complete");
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "calling handler shutdown complete");
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
@@ -1932,7 +1917,7 @@ on_error:
     return NULL;
 }
 
-static DWORD getEnabledProtocols( const struct aws_tls_ctx_options *options, bool is_client_mode) {
+static DWORD getEnabledProtocols(const struct aws_tls_ctx_options *options, bool is_client_mode) {
     DWORD grbitEnabledProtocols = 0;
     if (is_client_mode) {
         switch (options->minimum_tls_version) {
@@ -1947,7 +1932,7 @@ static DWORD getEnabledProtocols( const struct aws_tls_ctx_options *options, boo
                 grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
 #endif
             case AWS_IO_TLSv1_3:
-                    #if defined(SP_PROT_TLS1_3_CLIENT)
+#if defined(SP_PROT_TLS1_3_CLIENT)
                 grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
 #endif
                 break;
@@ -1992,8 +1977,8 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
         return NULL;
     }
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
-    
-    SCH_CREDENTIALS credentials = { 0 };
+
+    SCH_CREDENTIALS credentials = {0};
 
     ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
@@ -2042,7 +2027,6 @@ on_error:
 
     return NULL;
 }
-
 
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *alloc,
@@ -2099,7 +2083,6 @@ on_error:
 
     return NULL;
 }
-
 
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
@@ -2201,7 +2184,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->should_free_pcerts = true;
-    secure_channel_ctx->schannel_creds.enabledProtocols = getEnabledProtocols( options, is_client_mode);
+    secure_channel_ctx->schannel_creds.enabledProtocols = getEnabledProtocols(options, is_client_mode);
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
@@ -2224,9 +2207,8 @@ struct aws_tls_ctx *s_ctx_new(
             "static: x.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.");
         dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
-        dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-                   SCH_CRED_MANUAL_CRED_VALIDATION;
+        dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE |
+                   SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else if (is_client_mode) {
         dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
