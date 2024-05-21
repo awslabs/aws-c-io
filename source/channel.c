@@ -385,7 +385,6 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
 
 static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately) {
     bool need_to_schedule = true;
-    printf("s_channel_shutdown called\n");
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
     if (channel->cross_thread_tasks.shutdown_task.task.task_fn) {
         need_to_schedule = false;
@@ -810,7 +809,6 @@ int aws_channel_slot_send_message(
         (void *)slot,
         (void *)slot->adj_left,
         (void *)slot->adj_left->handler);
-    printf("%s handler %p\n",__FUNCTION__, slot->adj_left->handler);
     return aws_channel_handler_process_write_message(slot->adj_left->handler, slot->adj_left, message);
 }
 

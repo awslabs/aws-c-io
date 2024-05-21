@@ -309,7 +309,6 @@ static void s_tls_client_on_negotiation_result(
     int err_code,
     void *user_data) {
     struct client_connection_args *connection_args = user_data;
-    printf("entering s_tls_client_on_negotiation_resul entering\n");
     if (connection_args->channel_data.user_on_negotiation_result) {
         connection_args->channel_data.user_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);

@@ -22,8 +22,6 @@
 #include <Windows.h>
 
 #include <SubAuth.h>
-//#include <Winternl.h>
-//#include <Ntdef.h>
 
 #include <schannel.h>
 #include <security.h>
@@ -47,20 +45,6 @@
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
-
-static void print_buffer(unsigned char *message, int len, char* print_message)
-{
-    return;
-	char *str3 = message;
-    int read_len = len;
-    printf("%s of size: %d\n", print_message, read_len);
-	for (int i = 0; i < read_len; i++) {
-		printf("%.2X ",(unsigned char) str3[i]);
-		if (i != 0 && i % 32 == 0)
-			printf("\n");
-	}
-	printf("\n");
-} 
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
@@ -145,14 +129,8 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
 
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
-//#include "Ntddk.h"
 
 bool s_is_windows_equal_or_above_10(void) {
-   // return false;
-    // Windows 10 1809
-// Windows Server 1809
-// current 11 22631
-
     DWORDLONG dwlConditionMask = 0;
     int op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
@@ -161,7 +139,7 @@ bool s_is_windows_equal_or_above_10(void) {
 
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    osvi.dwBuildNumber = 1809;
+    osvi.dwBuildNumber = 1809; /* Windows 10 */
 
     dwlConditionMask = VerSetConditionMask(dwlConditionMask,
                                            VER_BUILDNUMBER, op);
@@ -178,13 +156,7 @@ bool s_is_windows_equal_or_above_10(void) {
                    dwlConditionMask);
     } else {
         status = STATUS_DLL_NOT_FOUND;
-        printf(" \\\\\\\\\\\\\\\\ could not load module\n"); 
     }
-   /*else {
-        status = !!VerifyVersionInfoW((OSVERSIONINFOEXW *)&osvi,
-                                       dwTypeMask,
-                                       VerSetConditionMask);
-    }*/
     if (status == STATUS_SUCCESS) {
         return true;
     } else {
@@ -435,34 +407,27 @@ static void s_invoke_negotiation_error(struct aws_channel_handler *handler, int 
 static void s_on_negotiation_success(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-	printf("s_on_negotiation_success entering\n");
     /* if the user provided an ALPN handler to the channel, we need to let them know what their protocol is. */
     if (sc_handler->slot->adj_right && sc_handler->advertise_alpn_message && sc_handler->protocol.len) {
-		printf("s_on_negotiation_success inside the if\n");
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             sc_handler->slot->channel,
             AWS_IO_MESSAGE_APPLICATION_DATA,
             sizeof(struct aws_tls_negotiated_protocol_message));
-        printf("s_on_negotiation_success middle part\n");
         message->message_tag = AWS_TLS_NEGOTIATED_PROTOCOL_MESSAGE;
         struct aws_tls_negotiated_protocol_message *protocol_message =
             (struct aws_tls_negotiated_protocol_message *)message->message_data.buffer;
 
         protocol_message->protocol = sc_handler->protocol;
         message->message_data.len = sizeof(struct aws_tls_negotiated_protocol_message);
-        printf("s_on_negotiation_success sending message\n");
         if (aws_channel_slot_send_message(sc_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             aws_mem_release(message->allocator, message);
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
     }
 
-	printf("s_on_negotiation_success calling aws_on_tls_negotiation_completed\n");
     aws_on_tls_negotiation_completed(&sc_handler->shared_state, AWS_ERROR_SUCCESS);
-	printf("s_on_negotiation_success calling aws_on_tls_negotiation_completed finished\n");
 
     if (sc_handler->on_negotiation_result) {
-		printf("s_on_negotiation_success calling inside the second if\n");
         sc_handler->on_negotiation_result(handler, sc_handler->slot, AWS_OP_SUCCESS, sc_handler->user_data);
     }
 }
@@ -829,7 +794,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                     handler,
                     (int)status);
                 int aws_error = s_determine_sspi_error(status);
-           //     aws_raise_error(aws_error);
+                aws_raise_error(aws_error);
             }
         }
 #endif
@@ -884,8 +849,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 #endif /* SECBUFFER_APPLICATION_PROTOCOLS*/
 
     sc_handler->ctx_req = ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY |
-                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM |
-        ISC_REQ_USE_SUPPLIED_CREDS; // Schannel must not attempt to supply credentials for the client automatically. (necessary for SCH_CREDENTIALS for negotiations to work)
+                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM | ISC_REQ_USE_SUPPLIED_CREDS; 
 
     SecBuffer output_buffer = {
         .pvBuffer = NULL,
@@ -903,7 +867,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     AWS_ZERO_ARRAY(server_name_cstr);
     AWS_ASSERT(sc_handler->server_name.len < 256);
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
-    // step 1
+
     SECURITY_STATUS status = InitializeSecurityContextA(
         &sc_handler->creds,
         NULL,
@@ -918,7 +882,6 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
         &sc_handler->ctx_ret_flags,
         &sc_handler->sspi_timestamp);
 
-    printf("first initialize security context called %lu\n", status);
     if (status != SEC_I_CONTINUE_NEEDED) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
@@ -960,10 +923,8 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 }
 
 /* cipher exchange, key exchange etc.... */
-bool second_call = true;
 static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    printf("-> %s entering\n", __FUNCTION__);
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
         "id=%p: running step 2 of client-side negotiation (cipher change, key exchange etc...)",
@@ -1011,7 +972,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     AWS_FATAL_ASSERT(sc_handler->server_name.len < sizeof(server_name_cstr));
     memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
 
-    // step 2
     status = InitializeSecurityContextA(
         &sc_handler->creds,
         &sc_handler->sec_handle,
@@ -1021,15 +981,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         0,
         &input_buffers_desc,
         0,
-        &sc_handler->sec_handle, //NULL,
+        &sc_handler->sec_handle,
         &output_buffers_desc,
         &sc_handler->ctx_ret_flags,
         &sc_handler->sspi_timestamp);
-    printf("second initialize security context called %lu\n", status);
-    if (status == SEC_I_INCOMPLETE_CREDENTIALS) {
-		printf("second initialize incomplete credentials %lu\n", status);
-	//	return AWS_OP_SUCCESS;
-    }
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS, "id=%p: Error during negotiation. initalizesecuritycontext SECURITY_STATUS is %lu", (void *)handler, (int)status);
@@ -1050,7 +1005,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     }
 
     if (status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK) {
-        printf("sending packets\n");
         for (size_t i = 0; i < output_buffers_desc.cBuffers; ++i) {
             SecBuffer *buf_ptr = &output_buffers[i];
 
@@ -1071,7 +1025,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
                     s_invoke_negotiation_error(handler, aws_last_error());
-                    printf("error sending packet\n");
                     return AWS_OP_ERR;
                 }
             }
@@ -1085,7 +1038,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
             if (status == SEC_I_CONTINUE_NEEDED) {
-                printf("sec i continue needed\n"); 
             }
         }
     }
@@ -1134,25 +1086,16 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 #endif
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", (void *)handler);
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
-        printf("before on _negotiation success %p\n", handler);
-        if (second_call == true) {
-            s_on_negotiation_success(handler);
-            printf("before on _negotiation success completed\n");
-        }
-        second_call = true;
+		s_on_negotiation_success(handler);
     }
 
-    printf("returning ok from this function\n");
     return AWS_OP_SUCCESS;
 }
 /* cipher exchange, key exchange etc.... */
 static int s_do_client_side_negotiation_step_3(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-
-
 }
-static int s_do_application_data_decrypt(struct aws_channel_handler *handler)
-{
+static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
     /* I know this is an unncessary initialization, it's initialized here to make linters happy.*/
@@ -1161,7 +1104,6 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler)
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
        always say BLOCKED_ON_READ, AWS_IO_TLS_ERROR_READ_FAILURE or SUCCESS. There will never be left over reads.*/
     do {
-label1:
         error = AWS_OP_ERR;
         /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
         SecBuffer input_buffers[4];
@@ -1182,16 +1124,10 @@ label1:
             .cBuffers = 4,
             .pBuffers = input_buffers,
         };
-        print_buffer(
-            sc_handler->buffered_read_in_data_buf.buffer,
-            sc_handler->buffered_read_in_data_buf.len,
-            "before decrypting");
 
-        printf("---------------- calling Decrypt Message\n");
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
-        printf(" status is 0x%X\n", status);
 
-        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE) // sec_i_context_expired
+        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE ||  status == SEC_I_CONTEXT_EXPIRED)
         { 
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
@@ -1215,18 +1151,6 @@ label1:
                 {
                     if (input_buffers[3].cbBuffer < read_len)
                     {
-                        printf("\\\\\\\\\\\\\\\\\\\\\\\\\\\\ input buffers extra less than read len\n");
-                        print_buffer(
-                            input_buffers[0].pvBuffer,
-                            input_buffers[0].cbBuffer,
-                            "encrypted input buffers input_buffers[0]");
-
-                        print_buffer(
-                            input_buffers[3].pvBuffer,
-                            input_buffers[3].cbBuffer,
-                            "encrypted input buffers input_buffers[3]");
-
-                        //sc_handler->read_extra = input_buffers[3].cbBuffer;
                         AWS_LOGF_TRACE(
                             AWS_LS_IO_TLS,
                             "id=%p: Extra (incomplete) message received with length %zu.",
@@ -1283,22 +1207,11 @@ label1:
             error = AWS_OP_SUCCESS;
         }
         if (status == SEC_I_RENEGOTIATE) {
-            printf("renegotiating received\n");
             /* if we are the client */
-            //char * extra_buffer = NULL;
-            //size_t buffer_size = 0;
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
             {
                 if (input_buffers[3].cbBuffer < read_len)
                 {
-                    printf(
-                        "\\\\\\\\\\\\\\\\\\\\\\\\\\\\\ extra buffer is less than input buffer read_len %d %d\n",
-                        input_buffers[3].cbBuffer,
-                        read_len);
-                
-					//sc_handler->read_extra = input_buffers[3].cbBuffer;
-					//extra_buffer = input_buffers[0].pvBuffer;
-					//buffer_size = input_buffers[3].cbBuffer;
 					AWS_LOGF_TRACE(
 						AWS_LS_IO_TLS,
 						"id=%p: Extra (incomplete) message received with length %zu.",
@@ -1310,13 +1223,8 @@ label1:
 			}
 
             SecBuffer input_buffers2[] = {
-                [0] = {/*
-                       .pvBuffer = extra_buffer,
-                       .cbBuffer = buffer_size,
-                       .BufferType = SECBUFFER_TOKEN,
-                       */
-
-				    .pvBuffer = malloc(sc_handler->buffered_read_in_data_buf.len),
+                [0] = {
+				    .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
                     .cbBuffer = sc_handler->buffered_read_in_data_buf.len,
                     .BufferType = SECBUFFER_TOKEN,
                 },
@@ -1327,10 +1235,6 @@ label1:
                     .BufferType = SECBUFFER_EMPTY,
                 },
             };
-            memcpy(
-                input_buffers2[0].pvBuffer,
-                sc_handler->buffered_read_in_data_buf.buffer,
-                sc_handler->buffered_read_in_data_buf.len);
 
             SecBufferDesc input_bufs_desc = {
                 .ulVersion = SECBUFFER_VERSION,
@@ -1353,6 +1257,7 @@ label1:
             AWS_ZERO_ARRAY(server_name_cstr);
             AWS_FATAL_ASSERT(sc_handler->server_name.len < sizeof(server_name_cstr));
             memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
+
             status = InitializeSecurityContextA(
                 &sc_handler->creds,
                 &sc_handler->sec_handle,
@@ -1361,173 +1266,28 @@ label1:
                 0,
                 0,
                 &input_bufs_desc,
-                // NULL,
                 0,
                 NULL,
-             //   &sc_handler->sec_handle,
                 &output_buffers_desc,
                 &sc_handler->ctx_ret_flags,
                 NULL);
             error = status;
-            /* if we are the server */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error renegotiation happened. status %lu", (void*)handler, status);
-            printf(" renegotiate initializesecuritycontext result %lu \n", status);
             if (status == SEC_E_OK) {
-                //sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_2;
-      //          status = s_do_client_side_negotiation_step_2(handler);
-       //         printf("client negotiation 2 return is 0x%X\n", status);
-        //        break; 
+				if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 && sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
+					memmove(
+						sc_handler->buffered_read_in_data_buf.buffer,
+						(sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) - input_buffers2[1].cbBuffer,
+						input_buffers2[1].cbBuffer);
+					sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
+					sc_handler->read_extra = input_buffers2[1].cbBuffer;
+					continue;
+				}
+				break;
+            } else {
+                break; 
             }
-
-            for (size_t i = 0; i < output_buffers_desc.cBuffers; ++i) {
-                //SecBuffer *buf_ptr = &extra_buffer[i];
-                SecBuffer *token_ptr;
-                SecBuffer* buf_ptr = &output_buffers[i];
-                printf("output buffers %d token %d size %lu\n", i, output_buffers[i].BufferType, output_buffers[i].cbBuffer);
-                if (buf_ptr->BufferType == SECBUFFER_TOKEN && buf_ptr->cbBuffer) {
-                    printf(" SECUFFER TOKEN data\n");
-					printf("....sending data....\n");
-                    struct aws_io_message* outgoing_message = aws_channel_acquire_message_from_pool(
-                        sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf_ptr->cbBuffer);
-
-                    if (!outgoing_message) {
-                        FreeContextBuffer(buf_ptr->pvBuffer);
-                        s_invoke_negotiation_error(handler, aws_last_error());
-                        return AWS_OP_ERR;
-                    }
-
-                    memcpy(outgoing_message->message_data.buffer, buf_ptr->pvBuffer, buf_ptr->cbBuffer);
-                    outgoing_message->message_data.len = buf_ptr->cbBuffer;
-                    FreeContextBuffer(buf_ptr->pvBuffer);
-                    printf("=========================== sending message from decrypt\n");
-                    if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                        aws_mem_release(outgoing_message->allocator, outgoing_message);
-                        s_invoke_negotiation_error(handler, aws_last_error());
-                        printf("error sending packet\n");
-                        return AWS_OP_ERR;
-                    }
-                }
-            }
-            // should be the mqtt connack
-			printf("checking Extra buffer\n");
-            if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0)
-            {
-                printf("Extra buffer size is %lu %lu\n", input_buffers2[1].cbBuffer, sc_handler->buffered_read_in_data_buf.capacity);
-                //sc_handler->read_extra = input_buffers2[1].cbBuffer;
-                //input_buffers[0].pvBuffer = input_buffers[1].pvBuffer;
-                //input_buffers[0].cbBuffer = input_buffers[1].cbBuffer;
-                //sc_handler->buffered_read_in_data_buf.buffer = input_buffers2[1].pvBuffer;
-                //sc_handler->buffered_read_in_data_buf.capacity = input_buffers2[1].cbBuffer * 2;
-
-                //if (sc_handler->buffered_read_in_data_buf.capacity < input_buffers2[1].cbBuffer) {
-                 //   printf("xxxxxx buffer too small\n"); 
-                  //  return SEC_E_DECRYPT_FAILURE;
-                //} 
-//                sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
-                if (sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
-                    printf(" \\\\\\\\\\\\\\ correct size lets copy the buffer\n");
-                    memmove(
-                        sc_handler->buffered_read_in_data_buf.buffer,
-                        (sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) -
-                            input_buffers2[1].cbBuffer,
-                        input_buffers2[1].cbBuffer);
-                    sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
-                }
-                goto label1;
-                //continue;
-
-			SecBuffer input_buffers3[] = {
-                    [0] =
-                        {
-                            /*
-                            .cbBuffer = input_buffers2[1].cbBuffer,
-                            .pvBuffer = input_buffers2[1].pvBuffer,
-                            .BufferType = SECBUFFER_DATA,
-                            */
-                            .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
-                            .cbBuffer = sc_handler->buffered_read_in_data_buf.len,
-                            .BufferType = SECBUFFER_DATA,
-                        },
-                    // [1] = {
-                    //    .pvBuffer = input_buffers[3].pvBuffer,
-                    //	.cbBuffer = input_buffers[3].cbBuffer,
-                    //   .BufferType = SECBUFFER_TOKEN,
-                    //},
-                    [1] = {
-                        .pvBuffer = input_buffers[3].pvBuffer,
-                        .cbBuffer = input_buffers[3].cbBuffer,
-                        .BufferType = SECBUFFER_EMPTY,
-                    },
-					[2] = {
-						.pvBuffer = input_buffers[3].pvBuffer,
-						.cbBuffer = input_buffers[3].cbBuffer,
-						.BufferType = SECBUFFER_EMPTY,
-					},
-					[3] = {
-						.pvBuffer = input_buffers[3].pvBuffer,
-						.cbBuffer = input_buffers[3].cbBuffer,
-						.BufferType = SECBUFFER_EMPTY,
-                        },
-					};
-                
-        //        [2]= {.pvBuffer = NULL, .cbBuffer = 0, .BufferType = SECBUFFER_EMPTY, },
-         //       [3]= {.pvBuffer = NULL, .cbBuffer = 0, .BufferType = SECBUFFER_EMPTY, },
-	//		};
-
-        SecBufferDesc buffer_desc2 = {
-            .ulVersion = SECBUFFER_VERSION,
-            .cBuffers = 4,
-            .pBuffers = input_buffers3,
-        };
-        printf("---------------- calling Decrypt Message2 %p\n", sc_handler->sec_handle);
-        status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc2, 0, NULL);
-        printf("---------------- Decrypt Message2 status 0x%X\n", status);
-        return status;
-
-        //    memcpy(
-         //       sc_handler->buffered_read_in_data_buf.buffer, input_buffers2[1].pvBuffer, 100);
-            //memmove(
-            //memcpy(
-             //   sc_handler->buffered_read_in_data_buf.buffer, input_buffers2[1].pvBuffer, input_buffers2[1].cbBuffer);
-                
-            /* memcpy(
-                sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len,
-                message_cursor.ptr,
-                amount_to_move_to_buffer);
-                */
-
-                offset = 0;
-                sc_handler->read_extra = 0;
-				printf("buffer can fit the extra data\n"); 
-                return s_do_application_data_decrypt(handler);
-			}
-        
-/*
-			struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
-                    sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf_ptr->cbBuffer);
-             if (!outgoing_message) {
-                FreeContextBuffer(output_buffer.pvBuffer);
-                s_invoke_negotiation_error(handler, aws_last_error());
-                return AWS_OP_ERR;
-             }
-
-             AWS_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
-             memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
-             outgoing_message->message_data.len = output_buffer.cbBuffer;
-             FreeContextBuffer(output_buffer.pvBuffer);
-
-             if (aws_channel_slot_send_message(sc_handler->slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
-                aws_mem_release(outgoing_message->allocator, outgoing_message);
-                s_invoke_negotiation_error(handler, aws_last_error());
-                return AWS_OP_ERR;
-             } 
-            //error = SEC_E_OK;
-            //continue;
-            */
-            //sc_handler->s_connection_state_fn = s_do_client_side_negotiation_step_2;
-            //  s_do_client_side_negotiation_step_2(handler);
-            break;
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %lu.", (void *)handler, (int)status);
@@ -1579,9 +1339,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
                 sc_handler->buffered_read_out_data_buf.len - copy_size);
             sc_handler->buffered_read_out_data_buf.len -= copy_size;
 
-			printf("is on data read is defined 1?\n");
             if (sc_handler->on_data_read) {
-                printf("on data read is defined 1\n");
                 sc_handler->on_data_read(handler, sc_handler->slot, &read_out_msg->message_data, sc_handler->user_data);
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
@@ -1594,9 +1352,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Downstream window is %zu", (void *)handler, downstream_window);
         } else {
-			printf("is on data read is defined 2?\n");
             if (sc_handler->on_data_read) {
-                printf("on dagta read is defined 2\n");
                 sc_handler->on_data_read(
                     handler, sc_handler->slot, &sc_handler->buffered_read_out_data_buf, sc_handler->user_data);
             }
@@ -1626,7 +1382,6 @@ static int s_process_read_message(
     struct aws_io_message *message) {
 
     struct secure_channel_handler *sc_handler = handler->impl;
-    printf("%s handle %p\n", __FUNCTION__, handler);
     if (message) {
         /* note, most of these functions log internally, so the log messages in this function are sparse. */
         AWS_LOGF_TRACE(
@@ -1634,8 +1389,6 @@ static int s_process_read_message(
             "id=%p: processing incoming message of size %zu",
             (void *)handler,
             message->message_data.len);
-
-	   print_buffer(message->message_data.buffer, message->message_data.len, "printing received data");
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
@@ -1813,31 +1566,6 @@ static int s_process_write_message(
                 .pBuffers = buffers,
             };
 
-			SecPkgContext_SessionKey session_key;
-            SecPkgContext_SessionAppData sess_app_data;
-            SecPkgContext_SessionInfo sess_info;
-            SecPkgContext_StreamSizes stream_size;
-
-			SECURITY_STATUS status =
-		//	QueryContextAttributesA(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &stream_size);
-         //   if (status == SEC_E_OK) {
-          //      printf("stream size = %lu\n", stream_size.cbMaximumMessage); 
-           // }
-
-			//status =
-				//QueryContextAttributesA(&sc_handler->sec_handle, SECPKG_ATTR_STREAM_SIZES, &y);
-			//	QueryContextAttributesA(&sc_handler->sec_handle, SECPKG_ATTR_SESSION_KEY, &session_key);
-       // printf("-----------query context status is %lu\n", status);
-       // if (status == SEC_E_OK) {
-		//	printf("-----------query context status is ok\n");
-                //for (int i = 0; i < sess_key.cbAppData; i++) {
-                 //   printf("%X", sess_key.pbAppData[i]);
-               // }
-                //printf("\n");
-       // }
-
-//            snprintf(stdout, sess_key.SessionKeyLength, "session key is %XX\n", sess_key.SessionKey);
-
             status = EncryptMessage(&sc_handler->sec_handle, 0, &buffer_desc, 0);
 
             if (status == SEC_E_OK) {
@@ -1936,7 +1664,6 @@ static int s_handler_shutdown(
     int error_code,
     bool abort_immediately) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    printf("===== > shutting down schannel server\n");
 	AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "shutting down schannel server");
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
@@ -1964,7 +1691,6 @@ static int s_handler_shutdown(
 
             if (status != SEC_E_OK) {
                 aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-                printf("raising sys call failrue\n");
                 return aws_channel_slot_on_handler_shutdown_complete(
                     slot, dir, AWS_ERROR_SYS_CALL_FAILURE, abort_immediately);
             }
@@ -2006,7 +1732,6 @@ static int s_handler_shutdown(
                     slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
 
                 if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
-                    printf("exiting line 1600\n");
                     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
@@ -2021,7 +1746,6 @@ static int s_handler_shutdown(
     }
 
 	AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "calling handler shutdown complete");
-    printf("normal exit %d\n", error_code);
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 
@@ -2161,6 +1885,10 @@ static struct aws_channel_handler *s_tls_handler_new_common(
             goto on_error;
         }
     }
+    sc_handler->handler.alloc = alloc;
+    sc_handler->handler.impl = sc_handler;
+    sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
 
     if (options->server_name) {
         AWS_LOGF_DEBUG(
@@ -2206,45 +1934,24 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     struct aws_channel_slot *slot,
     bool is_client_mode) {
     AWS_ASSERT(options->ctx);
-    DWORD dwFlags = 0;
 
     struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
     if (!sc_handler) {
         return NULL;
     }
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
-
     
-    dwFlags = SCH_CRED_NO_DEFAULT_CREDS |
-              SCH_CRED_NO_SERVERNAME_CHECK |
-              SCH_SEND_AUX_RECORD |
-	      SCH_USE_STRONG_CRYPTO |
-	      SCH_CRED_AUTO_CRED_VALIDATION;
-    
-    SCH_CREDENTIALS credentials_new2 = { 0 };
+    SCH_CREDENTIALS credentials = { 0 };
 
-    ZeroMemory(&credentials_new2, 0x00, sizeof(SCH_CREDENTIALS));
+    ZeroMemory(&credentials, 0x00, sizeof(SCH_CREDENTIALS));
 
-    credentials_new2.cTlsParameters = 0;
-    credentials_new2.dwSessionLifespan = 0; // default 10 hours
-    credentials_new2.dwVersion = SCH_CREDENTIALS_VERSION;
-    credentials_new2.dwCredFormat = 0; // kernel-mode only default
-    credentials_new2.dwFlags = sc_ctx->schannel_creds.dwFlags;
-    credentials_new2.paCred = sc_ctx->schannel_creds.paCred;
-    credentials_new2.cCreds = sc_ctx->schannel_creds.cCreds;
-
-    //sc_ctx->credentials_new.cTlsParameters = 0;
-    //sc_ctx->credentials_new.dwSessionLifespan = 0; // default 10 hours
-
-    // TODO: try to copy to the common section above
-    sc_handler->handler.alloc = alloc;
-    sc_handler->handler.impl = sc_handler;
-    sc_handler->handler.vtable = &s_handler_vtable;
-    sc_handler->handler.slot = slot;
-
-    //sc_ctx->credentials_new.dwFlags = dwFlags;
-
-//    sc_ctx->credentials_new.dwFlags = dwFlags;
+    credentials.cTlsParameters = 0;
+    credentials.dwSessionLifespan = 0; /* default 10 hours */
+    credentials.dwVersion = SCH_CREDENTIALS_VERSION;
+    credentials.dwCredFormat = 0;
+    credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
+    credentials.paCred = sc_ctx->schannel_creds.paCred;
+    credentials.cCreds = sc_ctx->schannel_creds.cCreds;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2253,19 +1960,17 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
         credential_use = SECPKG_CRED_OUTBOUND;
     }
 
-    //printf("\\\\\\\\\\\\\\ before acquire credentials handle %p %p\n", credentials_new2.paCred, sc_ctx->credentials_new.paCred);
     SECURITY_STATUS status = AcquireCredentialsHandleA(
         NULL,
         UNISP_NAME,
         credential_use,
         NULL,
-        //&sc_ctx->credentials_new,
-        &credentials_new2,
+        &credentials,
         NULL,
         NULL,
         &sc_handler->creds,
         &sc_handler->sspi_timestamp);
-    printf("\\\\\\\\\\\\\\ out of acquire credentials handle\n");
+
     if (status != SEC_E_OK) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (int)status);
         int aws_error = s_determine_sspi_error(status);
@@ -2299,21 +2004,13 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     SCHANNEL_CRED credentials = { 0 };
 	credentials.dwVersion = SCHANNEL_CRED_VERSION;
-	credentials.dwCredFormat = 0; // kernel-mode only default
+	credentials.dwCredFormat = 0;
 	credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
 	credentials.paCred = sc_ctx->schannel_creds.paCred;
 	credentials.cCreds = sc_ctx->schannel_creds.cCreds;
 	credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
-    
-
-    // TODO: try to copy to the common section above
-    sc_handler->handler.alloc = alloc;
-    sc_handler->handler.impl = sc_handler;
-    sc_handler->handler.vtable = &s_handler_vtable;
-    sc_handler->handler.slot = slot;
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
-
 
     unsigned long credential_use = SECPKG_CRED_INBOUND;
     if (is_client_mode) {
@@ -2326,7 +2023,6 @@ static struct aws_channel_handler *s_tls_handler_new(
         credential_use,
         NULL,
         &credentials,
-        //&sc_ctx->credentials,
         NULL,
         NULL,
         &sc_handler->creds,
@@ -2355,7 +2051,6 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_channel_slot *slot) {
 
     if (s_is_windows_equal_or_above_10()) {
-        printf("\\\\\\\\\\\\\\\\\\\doing windows above 10\n");
         return s_tls_handler_new_win10_plus(allocator, options, slot, true);
     } else {
         return s_tls_handler_new(allocator, options, slot, true);
@@ -2490,7 +2185,6 @@ struct aws_tls_ctx *s_ctx_new(
     DWORD dwFlags = 0;
     PCCERT_CONTEXT *paCred = NULL;
     DWORD cCreds = 1;
-    printf("\\\\\\\\\\\\\\\\\\ calling this s_ctx_new\n");
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -2518,16 +2212,11 @@ struct aws_tls_ctx *s_ctx_new(
     }
 
     secure_channel_ctx->verify_peer = options->verify_peer;
-
-
     secure_channel_ctx->should_free_pcerts = true;
-
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
         dwFlags |= SCH_CRED_MANUAL_CRED_VALIDATION;
-        //secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
-        //secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
 
         struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_buf(&options->ca_file);
         int error = aws_import_trusted_certificates(alloc, &ca_blob_cur, &secure_channel_ctx->custom_trust_store);
@@ -2538,8 +2227,6 @@ struct aws_tls_ctx *s_ctx_new(
         }
     } else if (is_client_mode) {
         dwFlags |= SCH_CRED_AUTO_CRED_VALIDATION;
-        //secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
-        //secure_channel_ctx->credentials_new.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
     }
 
     if (is_client_mode && !options->verify_peer) {
@@ -2551,32 +2238,13 @@ struct aws_tls_ctx *s_ctx_new(
         dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
                    SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
                    SCH_CRED_MANUAL_CRED_VALIDATION;
-
-        /*
-        secure_channel_ctx->credentials.dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-                                                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-                                                   SCH_CRED_MANUAL_CRED_VALIDATION;
-
-        secure_channel_ctx->credentials_new.dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
-        secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-                                                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-                                                   SCH_CRED_MANUAL_CRED_VALIDATION;
-        */
     } else if (is_client_mode) {
         dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
-
-//        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
-
- //       secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
 
-    dwFlags |= SCH_USE_STRONG_CRYPTO;
     /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
-    //secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
-
-    //secure_channel_ctx->credentials_new.dwFlags |= SCH_USE_STRONG_CRYPTO;
-    //secure_channel_ctx->credentials_new.dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
+    dwFlags |= SCH_USE_STRONG_CRYPTO;
+    dwFlags |= SCH_CRED_NO_DEFAULT_CREDS;
 
     /* if using a system store. */
     if (options->system_certificate_path) {
@@ -2589,12 +2257,6 @@ struct aws_tls_ctx *s_ctx_new(
         }
         paCred = &secure_channel_ctx->pcerts;
         cCreds = 1;
-        //secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        //secure_channel_ctx->credentials.cCreds = 1;
-
-        //secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
-        //secure_channel_ctx->credentials_new.cCreds = 1;
-
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
     } else if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 
@@ -2632,42 +2294,12 @@ struct aws_tls_ctx *s_ctx_new(
 
         paCred = &secure_channel_ctx->pcerts;
         cCreds = 1;
-        //secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        //secure_channel_ctx->credentials.cCreds = 1;
-
-        //secure_channel_ctx->credentials_new.paCred = &secure_channel_ctx->pcerts;
-        //secure_channel_ctx->credentials_new.cCreds = 1;
-
         secure_channel_ctx->should_free_pcerts = false;
     }
 
 	secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
 	secure_channel_ctx->schannel_creds.paCred = paCred;
 	secure_channel_ctx->schannel_creds.cCreds = cCreds;
-
-
-    bool is_above_win_10;
-    is_above_win_10 = s_is_windows_equal_or_above_10();
-    printf("\\\\\\\\\ windows is above 10? %d\n", is_above_win_10);
-    if (is_above_win_10 == true) {
-        //secure_channel_ctx->credentials_new.dwVersion = SCH_CREDENTIALS_VERSION;
-        //secure_channel_ctx->credentials_new.dwCredFormat = 0; // kernel-mode only default
-        //secure_channel_ctx->credentials_new.dwFlags = dwFlags;
-        //secure_channel_ctx->credentials_new.paCred = paCred;
-     //   printf("paCred is %p\n", paCred);
-        //secure_channel_ctx->credentials_new.cCreds = cCreds;
-
-   //     secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
-    //    secure_channel_ctx->schannel_creds.paCred = paCred;
-     //   secure_channel_ctx->schannel_creds.cCreds = cCreds;
-    } else {
-//        secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
- //       secure_channel_ctx->credentials.dwCredFormat = 0; // kernel-mode only default
-  //      secure_channel_ctx->credentials.dwFlags = dwFlags;
-   //     secure_channel_ctx->credentials.paCred = paCred;
-    //    secure_channel_ctx->credentials.cCreds = cCreds;
-     //   secure_channel_ctx->credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
-    }
 
     return &secure_channel_ctx->ctx;
 

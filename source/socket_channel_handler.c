@@ -97,7 +97,6 @@ static int s_socket_process_write_message(
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
-    printf("aws socket write\n");
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
         return AWS_OP_ERR;
@@ -147,7 +146,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
     int last_error = 0;
     while (total_read < max_to_read) {
         size_t iter_max_read = max_to_read - total_read;
-        printf("entering s_do_read function\n");
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
@@ -159,11 +157,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
-            printf("second break: %d errno %d\n", ret, errno);
             break;
         }
 
-        printf("total read is %lu max_read is: %lu read is: %lu\n", total_read, max_to_read, read);
         total_read += read;
 
         AWS_LOGF_TRACE(
@@ -175,7 +171,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
-            printf("third break\n");
             break;
         }
     }
@@ -383,7 +378,6 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 static void s_trigger_read(struct aws_channel_handler *handler) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-  //  printf("s_trigger read do \n");
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET_HANDLER, " caling s_do_read from s_trigger_read");
     s_do_read(socket_handler);
 }
@@ -429,7 +423,6 @@ struct aws_channel_handler *aws_socket_handler_new(
     if (aws_crt_statistics_socket_init(&impl->stats)) {
         goto cleanup_handler;
     }
-    printf("-------------------------> setting up s_socket_process_write_message handler %p\n", handler);
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET_HANDLER,
         "id=%p: Socket handler created with max_read_size of %llu",
