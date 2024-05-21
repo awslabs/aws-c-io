@@ -984,7 +984,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
     }
 
     if (slot->adj_left && slot->adj_left->handler) {
-		AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown2 in dir completed. error_code %d", err_code);
+        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown2 in dir completed. error_code %d", err_code);
         return aws_channel_handler_shutdown(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
@@ -1033,6 +1033,7 @@ int aws_channel_handler_process_write_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
+
     AWS_ASSERT(handler->vtable && handler->vtable->process_write_message);
     return handler->vtable->process_write_message(handler, slot, message);
 }

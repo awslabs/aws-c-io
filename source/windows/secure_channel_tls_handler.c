@@ -576,7 +576,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 #endif /* SECBUFFER_APPLICATION_PROTOCOLS*/
 
     sc_handler->ctx_req = ASC_REQ_SEQUENCE_DETECT | ASC_REQ_REPLAY_DETECT | ASC_REQ_CONFIDENTIALITY |
-                          ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM | ASC_REQ_CONNECTION;
+                          ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM;// | ASC_REQ_CONNECTION;
 
     if (sc_handler->verify_peer) {
         AWS_LOGF_DEBUG(
@@ -853,7 +853,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 #endif /* SECBUFFER_APPLICATION_PROTOCOLS*/
 
     sc_handler->ctx_req = ISC_REQ_SEQUENCE_DETECT | ISC_REQ_REPLAY_DETECT | ISC_REQ_CONFIDENTIALITY |
-                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM | ISC_REQ_USE_SUPPLIED_CREDS; 
+                          ISC_REQ_ALLOCATE_MEMORY | ISC_REQ_STREAM; // | ISC_REQ_USE_SUPPLIED_CREDS; 
 
     SecBuffer output_buffer = {
         .pvBuffer = NULL,
@@ -985,7 +985,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         0,
         &input_buffers_desc,
         0,
-        &sc_handler->sec_handle,
+        NULL,
         &output_buffers_desc,
         &sc_handler->ctx_ret_flags,
         &sc_handler->sspi_timestamp);
@@ -1041,8 +1041,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 (void *)handler,
                 input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
-            if (status == SEC_I_CONTINUE_NEEDED) {
-            }
         }
     }
 
@@ -1090,7 +1088,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 #endif
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: TLS handshake completed successfully.", (void *)handler);
         sc_handler->s_connection_state_fn = s_do_application_data_decrypt;
-		s_on_negotiation_success(handler);
+        s_on_negotiation_success(handler);
     }
 
     return AWS_OP_SUCCESS;
@@ -1999,7 +1997,11 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
 
     ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
-    credentials.cTlsParameters = 0;
+    TLS_PARAMETERS tls_params = {0};
+    tls_params.grbitDisabledProtocols = 0;
+
+    credentials.pTlsParameters = &tls_params;
+    credentials.cTlsParameters = 1;
     credentials.dwSessionLifespan = 0; /* default 10 hours */
     credentials.dwVersion = SCH_CREDENTIALS_VERSION;
     credentials.dwCredFormat = 0;

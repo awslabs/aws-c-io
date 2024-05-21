@@ -10,6 +10,7 @@
 
 static void s_tls_timeout_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
+
     if (status != AWS_TASK_STATUS_RUN_READY) {
         return;
     }

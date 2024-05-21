@@ -146,6 +146,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     int last_error = 0;
     while (total_read < max_to_read) {
         size_t iter_max_read = max_to_read - total_read;
+
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
@@ -161,7 +162,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
         }
 
         total_read += read;
-
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
             "id=%p: read %llu from socket",
@@ -249,7 +249,6 @@ static void s_read_task(struct aws_channel_task *task, void *arg, aws_task_statu
     task->task_fn = NULL;
     task->arg = NULL;
 
-	AWS_LOGF_TRACE(AWS_LS_IO_SOCKET_HANDLER, " caling s_read_task");
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct socket_handler *socket_handler = arg;
         s_do_read(socket_handler);
@@ -378,7 +377,6 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 static void s_trigger_read(struct aws_channel_handler *handler) {
     struct socket_handler *socket_handler = (struct socket_handler *)handler->impl;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET_HANDLER, " caling s_do_read from s_trigger_read");
     s_do_read(socket_handler);
 }
 
@@ -423,6 +421,7 @@ struct aws_channel_handler *aws_socket_handler_new(
     if (aws_crt_statistics_socket_init(&impl->stats)) {
         goto cleanup_handler;
     }
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET_HANDLER,
         "id=%p: Socket handler created with max_read_size of %llu",

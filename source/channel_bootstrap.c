@@ -190,6 +190,7 @@ static void s_connect_args_setup_callback_safe(
     AWS_FATAL_ASSERT(
         (args->requested_event_loop == NULL) || aws_event_loop_thread_is_callers_thread(args->requested_event_loop));
 
+    /* setup_callback is always called exactly once */
     AWS_FATAL_ASSERT(!args->setup_called);
 
     AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));
@@ -305,6 +306,7 @@ static void s_tls_client_on_negotiation_result(
     int err_code,
     void *user_data) {
     struct client_connection_args *connection_args = user_data;
+
     if (connection_args->channel_data.user_on_negotiation_result) {
         connection_args->channel_data.user_on_negotiation_result(
             handler, slot, err_code, connection_args->channel_data.tls_user_data);
