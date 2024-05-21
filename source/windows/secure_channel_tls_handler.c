@@ -2003,12 +2003,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
     SCHANNEL_CRED credentials = { 0 };
-	credentials.dwVersion = SCHANNEL_CRED_VERSION;
-	credentials.dwCredFormat = 0;
-	credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
-	credentials.paCred = sc_ctx->schannel_creds.paCred;
-	credentials.cCreds = sc_ctx->schannel_creds.cCreds;
-	credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
+    credentials.dwVersion = SCHANNEL_CRED_VERSION;
+    credentials.dwCredFormat = 0;
+    credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
+    credentials.paCred = sc_ctx->schannel_creds.paCred;
+    credentials.cCreds = sc_ctx->schannel_creds.cCreds;
+    credentials.grbitEnabledProtocols = getEnabledProtocols( options, is_client_mode);
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2297,9 +2297,9 @@ struct aws_tls_ctx *s_ctx_new(
         secure_channel_ctx->should_free_pcerts = false;
     }
 
-	secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
-	secure_channel_ctx->schannel_creds.paCred = paCred;
-	secure_channel_ctx->schannel_creds.cCreds = cCreds;
+    secure_channel_ctx->schannel_creds.dwFlags = dwFlags;
+    secure_channel_ctx->schannel_creds.paCred = paCred;
+    secure_channel_ctx->schannel_creds.cCreds = cCreds;
 
     return &secure_channel_ctx->ctx;
 
