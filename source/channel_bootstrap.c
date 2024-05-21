@@ -190,10 +190,6 @@ static void s_connect_args_setup_callback_safe(
     AWS_FATAL_ASSERT(
         (args->requested_event_loop == NULL) || aws_event_loop_thread_is_callers_thread(args->requested_event_loop));
 
-    /* setup_callback is always called exactly once */
-    if (args->setup_called) {
-        return;
-    }
     AWS_FATAL_ASSERT(!args->setup_called);
 
     AWS_ASSERT((error_code == AWS_OP_SUCCESS) == (channel != NULL));

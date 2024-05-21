@@ -160,8 +160,10 @@ bool s_is_windows_equal_or_above_10(void) {
         status = STATUS_DLL_NOT_FOUND;
     }
     if (status == STATUS_SUCCESS) {
+        AWS_LOGF_INFO(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
         return true;
     } else {
+        AWS_LOGF_INFO(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1808 or earlier");
         return false;
     }
 }
@@ -1146,33 +1148,33 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 (void)append_failed;
 
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
-                if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
-                {
-                    if (input_buffers[3].cbBuffer < read_len)
-                    {
-                        AWS_LOGF_TRACE(
-                            AWS_LS_IO_TLS,
-                            "id=%p: Extra (incomplete) message received with length %zu.",
-                            (void *)handler,
-                            sc_handler->read_extra);
-                        memmove(
-                            sc_handler->buffered_read_in_data_buf.buffer,
-                            (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
-                            input_buffers[3].cbBuffer);
-                        sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
-                    }
-                }
-                else
-                {
-                    error = AWS_OP_SUCCESS;
-                    /* this means we processed everything in the buffer. */
-                    sc_handler->buffered_read_in_data_buf.len = 0;
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_TLS,
-                        "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
-                        (void *)handler);
-                }
             }
+			if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
+			{
+				if (input_buffers[3].cbBuffer < read_len)
+				{
+					AWS_LOGF_TRACE(
+						AWS_LS_IO_TLS,
+						"id=%p: Extra (incomplete) message received with length %zu.",
+						(void *)handler,
+						sc_handler->read_extra);
+					memmove(
+						sc_handler->buffered_read_in_data_buf.buffer,
+						(sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
+						input_buffers[3].cbBuffer);
+					sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
+				}
+			}
+			else
+			{
+				error = AWS_OP_SUCCESS;
+				/* this means we processed everything in the buffer. */
+				sc_handler->buffered_read_in_data_buf.len = 0;
+				AWS_LOGF_TRACE(
+					AWS_LS_IO_TLS,
+					"id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
+					(void *)handler);
+			}
         }
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
            append our next read to it and try again. */
@@ -1206,6 +1208,11 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             error = AWS_OP_SUCCESS;
         }
         if (status == SEC_I_RENEGOTIATE) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Renegotiation received. SECURITY_STATUS is %d.",
+                (void *)handler,
+                (int)status);
             /* if we are the client */
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0)
             {
