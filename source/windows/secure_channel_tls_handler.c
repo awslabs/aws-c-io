@@ -144,7 +144,7 @@ bool s_is_windows_equal_or_above_10(void) {
 
     dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
-        OSVERSIONINFOEX *lpVersionInformation, ULONG TypeMask, ULONGLONG ConditionMask);
+        OSVERSIONINFOEX * lpVersionInformation, ULONG TypeMask, ULONGLONG ConditionMask);
 
     pRtlGetVersionInfo f;
     f = (pRtlGetVersionInfo)GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
@@ -1142,18 +1142,18 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
             }
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
-                    if (input_buffers[3].cbBuffer < read_len) {
-                            AWS_LOGF_TRACE(
-                                AWS_LS_IO_TLS,
-                                "id=%p: Extra (incomplete) message received with length %zu.",
-                                (void *)handler,
-                                sc_handler->read_extra);
-                            memmove(
-                                sc_handler->buffered_read_in_data_buf.buffer,
-                                (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
-                                input_buffers[3].cbBuffer);
-                            sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
-                    }
+                if (input_buffers[3].cbBuffer < read_len) {
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_TLS,
+                        "id=%p: Extra (incomplete) message received with length %zu.",
+                        (void *)handler,
+                        sc_handler->read_extra);
+                    memmove(
+                        sc_handler->buffered_read_in_data_buf.buffer,
+                        (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
+                        input_buffers[3].cbBuffer);
+                    sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
+                }
             } else {
                 error = AWS_OP_SUCCESS;
                 /* this means we processed everything in the buffer. */
@@ -1208,17 +1208,18 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             }
 
             SecBuffer input_buffers2[] = {
-                [0] = {
-                    .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
-                    .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
-                    .BufferType = SECBUFFER_TOKEN,
-                },
+                [0] =
+                    {
+                        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
+                        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
+                        .BufferType = SECBUFFER_TOKEN,
+                    },
                 [1] =
-                {
-                    .pvBuffer = NULL,
-                    .cbBuffer = 0,
-                    .BufferType = SECBUFFER_EMPTY,
-                },
+                    {
+                        .pvBuffer = NULL,
+                        .cbBuffer = 0,
+                        .BufferType = SECBUFFER_EMPTY,
+                    },
             };
 
             SecBufferDesc input_bufs_desc = {
@@ -1257,12 +1258,14 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 &sc_handler->ctx_ret_flags,
                 NULL);
             error = status;
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error renegotiation happened. status %lu", (void*)handler, status);
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error renegotiation happened. status %lu", (void *)handler, status);
             if (status == SEC_E_OK) {
-                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 && sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
+                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 &&
+                    sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
                     memmove(
                         sc_handler->buffered_read_in_data_buf.buffer,
-                        (sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) - input_buffers2[1].cbBuffer,
+                        (sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) -
+                            input_buffers2[1].cbBuffer,
                         input_buffers2[1].cbBuffer);
                     sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
                     sc_handler->read_extra = input_buffers2[1].cbBuffer;
