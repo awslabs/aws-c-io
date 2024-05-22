@@ -942,7 +942,6 @@ static void s_run_shutdown_write_direction(struct aws_task *task, void *arg, enu
     task->fn = NULL;
     task->arg = NULL;
     struct aws_channel_slot *slot = shutdown_notify->slot;
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "s_run_shutdown_write_direction");
     aws_channel_handler_shutdown(
         slot->handler, slot, AWS_CHANNEL_DIR_WRITE, shutdown_notify->error_code, shutdown_notify->shutdown_immediately);
 }
@@ -966,7 +965,6 @@ int aws_channel_slot_on_handler_shutdown_complete(
 
     if (dir == AWS_CHANNEL_DIR_READ) {
         if (slot->adj_right && slot->adj_right->handler) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown in dir completed. error_code %d", err_code);
             return aws_channel_handler_shutdown(
                 slot->adj_right->handler, slot->adj_right, dir, err_code, free_scarce_resources_immediately);
         }
@@ -984,7 +982,6 @@ int aws_channel_slot_on_handler_shutdown_complete(
     }
 
     if (slot->adj_left && slot->adj_left->handler) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL, "handler shutdown2 in dir completed. error_code %d", err_code);
         return aws_channel_handler_shutdown(
             slot->adj_left->handler, slot->adj_left, dir, err_code, free_scarce_resources_immediately);
     }
