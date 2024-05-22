@@ -1928,13 +1928,13 @@ static DWORD getEnabledProtocols(const struct aws_tls_ctx_options *options, bool
             case AWS_IO_TLSv1_1:
                 grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
             case AWS_IO_TLSv1_2:
-// #if defined(SP_PROT_TLS1_2_CLIENT)
+#if defined(SP_PROT_TLS1_2_CLIENT)
                 grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
-// #endif
+#endif
             case AWS_IO_TLSv1_3:
-// #if defined(SP_PROT_TLS1_3_CLIENT)
+#if defined(SP_PROT_TLS1_3_CLIENT)
                 grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
-// #endif
+#endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
                 grbitEnabledProtocols = 0;
@@ -1983,8 +1983,11 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
     TLS_PARAMETERS tls_params = {0};
-    // tls_params.grbitDisabledProtocols = 0;
-    tls_params.grbitDisabledProtocols = ~(sc_ctx->schannel_creds.enabledProtocols);
+    if (sc_ctx->schannel_creds.enabledProtocols == 0) {
+        tls_params.grbitDisabledProtocols = 0;
+    } else {
+        tls_params.grbitDisabledProtocols = ~(sc_ctx->schannel_creds.enabledProtocols);
+    }
     credentials.pTlsParameters = &tls_params;
     credentials.cTlsParameters = 1;
     credentials.dwSessionLifespan = 0; /* default 10 hours */
