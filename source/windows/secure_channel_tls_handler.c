@@ -1983,8 +1983,7 @@ static struct aws_channel_handler *s_tls_handler_new_win10_plus(
     ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
     TLS_PARAMETERS tls_params = {0};
-    //tls_params.grbitDisabledProtocols = 0;
-    tls_params.grbitDisabledProtocols =  ~(sc_ctx->schannel_creds.enabledProtocols | SP_PROT_TLS1_3_CLIENT);
+    tls_params.grbitDisabledProtocols = ~(sc_ctx->schannel_creds.enabledProtocols | SP_PROT_TLS1_3_CLIENT);
     credentials.pTlsParameters = &tls_params;
     credentials.cTlsParameters = 1;
     credentials.dwSessionLifespan = 0; /* default 10 hours */
