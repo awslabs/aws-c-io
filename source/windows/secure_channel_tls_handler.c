@@ -18,6 +18,7 @@
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
+/* To use the SCH_CREDENTIALS structure, define SCHANNEL_USE_BLACKLISTS  */
 #define SCHANNEL_USE_BLACKLISTS
 #include <Windows.h>
 
@@ -131,7 +132,7 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
-bool s_is_windows_equal_or_above_10(void) {
+static bool s_is_windows_equal_or_above_10(void) {
     ULONGLONG dwlConditionMask = 0;
     BYTE op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
@@ -155,10 +156,12 @@ bool s_is_windows_equal_or_above_10(void) {
         status = STATUS_DLL_NOT_FOUND;
     }
     if (status == STATUS_SUCCESS) {
-        AWS_LOGF_INFO(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
         return true;
     } else {
-        AWS_LOGF_INFO(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1808 or earlier");
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
         return false;
     }
 }
@@ -570,7 +573,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
 #endif /* SECBUFFER_APPLICATION_PROTOCOLS*/
 
     sc_handler->ctx_req = ASC_REQ_SEQUENCE_DETECT | ASC_REQ_REPLAY_DETECT | ASC_REQ_CONFIDENTIALITY |
-                          ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM; // | ASC_REQ_CONNECTION;
+                          ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_STREAM;
 
     if (sc_handler->verify_peer) {
         AWS_LOGF_DEBUG(
@@ -986,7 +989,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: Error during negotiation. initalizesecuritycontext SECURITY_STATUS is %lu",
+            "id=%p: Error during negotiation. initalizesecuritycontext SECURITY_STATUS is %d",
             (void *)handler,
             (int)status);
         int aws_error = s_determine_sspi_error(status);
@@ -1123,7 +1126,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
 
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
-        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE || status == SEC_I_CONTEXT_EXPIRED) {
+        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE) {
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
@@ -1193,10 +1196,11 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
             error = AWS_OP_SUCCESS;
         }
+        /* With TLS1.3 on SChannel a call to DecryptMessage could return SEC_I_RENEGOTIATE, at this point a client must
+         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received*/
         if (status == SEC_I_RENEGOTIATE) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS, "id=%p: Renegotiation received. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            /* if we are the client */
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                 if (input_buffers[3].cbBuffer < read_len) {
                     AWS_LOGF_TRACE(
@@ -1257,9 +1261,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 &output_buffers_desc,
                 &sc_handler->ctx_ret_flags,
                 NULL);
-            error = status;
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Error renegotiation happened. status %lu", (void *)handler, status);
             if (status == SEC_E_OK) {
+                error = AWS_OP_SUCCESS;
                 if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 &&
                     sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
                     memmove(
@@ -1273,6 +1276,12 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 }
                 break;
             } else {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Error InitializeSecurityContext after renegotiation. status %lu",
+                    (void *)handler,
+                    status);
+                error = AWS_OP_ERR;
                 break;
             }
         } else {
@@ -1965,7 +1974,7 @@ static DWORD getEnabledProtocols(const struct aws_tls_ctx_options *options, bool
     return grbitEnabledProtocols;
 }
 
-static struct aws_channel_handler *s_tls_handler_new_win10_plus(
+static struct aws_channel_handler *s_tls_handler_support_sch_scredentials(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
@@ -2093,7 +2102,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_channel_slot *slot) {
 
     if (s_is_windows_equal_or_above_10()) {
-        return s_tls_handler_new_win10_plus(allocator, options, slot, true);
+        return s_tls_handler_support_sch_scredentials(allocator, options, slot, true);
     } else {
         return s_tls_handler_new(allocator, options, slot, true);
     }
@@ -2105,7 +2114,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_channel_slot *slot) {
 
     if (s_is_windows_equal_or_above_10()) {
-        return s_tls_handler_new_win10_plus(allocator, options, slot, false);
+        return s_tls_handler_support_sch_scredentials(allocator, options, slot, false);
     } else {
         return s_tls_handler_new(allocator, options, slot, false);
     }
