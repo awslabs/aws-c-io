@@ -160,8 +160,7 @@ static bool s_is_windows_equal_or_above_10(void) {
         return true;
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS,
-            "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
+            AWS_LS_IO_TLS, "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
         return false;
     }
 }
