@@ -10,7 +10,7 @@
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
-
+#include <aws/common/environment.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 
@@ -644,6 +644,12 @@ int aws_socket_connect(
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
+        struct aws_string *device_name;
+        struct aws_string *env_name = aws_string_new_from_c_str(socket->allocator, "WAQAR_NETWORK_DEVICE_NAME");
+        aws_get_environment_value(socket->allocator, env_name, &device_name);
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE, aws_string_c_str(device_name), device_name->len);
+        aws_string_destroy(device_name);
+        aws_string_destroy(env_name);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
