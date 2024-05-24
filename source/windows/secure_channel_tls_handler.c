@@ -153,16 +153,19 @@ static bool s_is_windows_equal_or_above_10(void) {
     if (f) {
         status = f(&osvi, VER_BUILDNUMBER, dwlConditionMask);
     } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
         status = STATUS_DLL_NOT_FOUND;
     }
     if (status == STATUS_SUCCESS) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
         return true;
-    } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
+    } else if (status != STATUS_DLL_NOT_FOUND) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "Checking Windows Version: Running windows 10 build 1088 or earlier");
         return false;
     }
+    return false;
 }
 
 bool aws_tls_is_alpn_available(void) {
