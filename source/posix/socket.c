@@ -598,7 +598,7 @@ static int parse_cid(const char *cid_str, unsigned int *value) {
     return 1;
 }
 #endif
-
+static int cur_network_index = 0;
 int aws_socket_connect(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
@@ -639,17 +639,28 @@ int aws_socket_connect(
     AWS_ZERO_STRUCT(address);
     socklen_t sock_size = 0;
     int pton_err = 1;
+    #include <stdio.h>
+
+    // Define an array of 4 C strings
+    const char *interfaces[4] = {"ens32", "ens64", "ens96", "ens128"};
+    const int length[4] = {5,5,5,6};
+    int index = cur_network_index++ % 4; 
+
+    struct aws_string *device_name;
+    struct aws_string *env_name = aws_string_new_from_c_str(socket->allocator, "WAQAR_NETWORK_DEVICE_NAME");
+    aws_get_environment_value(socket->allocator, env_name, &device_name);
+    if(device_name != NULL && device_name->len >0) {
+        index+=2;
+    }
+
+    aws_string_destroy(device_name);
+    aws_string_destroy(env_name);
     if (socket->options.domain == AWS_SOCKET_IPV4) {
         pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
-        struct aws_string *device_name;
-        struct aws_string *env_name = aws_string_new_from_c_str(socket->allocator, "WAQAR_NETWORK_DEVICE_NAME");
-        aws_get_environment_value(socket->allocator, env_name, &device_name);
-        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE, aws_string_c_str(device_name), device_name->len);
-        aws_string_destroy(device_name);
-        aws_string_destroy(env_name);
+        setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE, interfaces[index], length[index]);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);

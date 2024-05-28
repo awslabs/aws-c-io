@@ -630,9 +630,9 @@ static void aws_event_loop_thread(void *args) {
                 event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
             }
 
-            if (events[i].events & EPOLLRDHUP) {
-                event_mask |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
-            }
+            // if (events[i].events & EPOLLRDHUP) {
+            //     event_mask |= AWS_IO_EVENT_TYPE_REMOTE_HANG_UP;
+            // }
 
             if (events[i].events & EPOLLHUP) {
                 event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
