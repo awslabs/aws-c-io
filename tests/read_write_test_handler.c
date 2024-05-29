@@ -191,23 +191,30 @@ struct rw_handler_write_task_args {
     void *user_data;
 };
 
+static void s_rw_handler_write_impl(
+    struct aws_channel_slot *slot,
+    struct aws_byte_buf *buffer,
+    aws_channel_on_message_write_completed_fn *on_completion,
+    void *user_data) {
+
+    struct aws_io_message *msg =
+        aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buffer->len);
+
+    msg->on_completion = on_completion;
+    msg->user_data = user_data;
+
+    struct aws_byte_cursor write_buffer = aws_byte_cursor_from_buf(buffer);
+    AWS_FATAL_ASSERT(aws_byte_buf_append(&msg->message_data, &write_buffer) == AWS_OP_SUCCESS);
+
+    AWS_FATAL_ASSERT(aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE) == AWS_OP_SUCCESS);
+}
+
 static void s_rw_handler_write_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
     (void)task_status;
     struct rw_handler_write_task_args *write_task_args = arg;
-
-    struct aws_io_message *msg = aws_channel_acquire_message_from_pool(
-        write_task_args->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, write_task_args->buffer->len);
-
-    msg->on_completion = write_task_args->on_completion;
-    msg->user_data = write_task_args->user_data;
-
-    struct aws_byte_cursor write_buffer = aws_byte_cursor_from_buf(write_task_args->buffer);
-    AWS_FATAL_ASSERT(aws_byte_buf_append(&msg->message_data, &write_buffer) == AWS_OP_SUCCESS);
-
-    AWS_FATAL_ASSERT(
-        aws_channel_slot_send_message(write_task_args->slot, msg, AWS_CHANNEL_DIR_WRITE) == AWS_OP_SUCCESS);
-
+    s_rw_handler_write_impl(
+        write_task_args->slot, write_task_args->buffer, write_task_args->on_completion, write_task_args->user_data);
     aws_mem_release(write_task_args->handler->alloc, write_task_args);
 }
 
@@ -222,16 +229,20 @@ void rw_handler_write_with_callback(
     aws_channel_on_message_write_completed_fn *on_completion,
     void *user_data) {
 
-    struct rw_handler_write_task_args *write_task_args =
-        aws_mem_acquire(handler->alloc, sizeof(struct rw_handler_write_task_args));
-    write_task_args->handler = handler;
-    write_task_args->buffer = buffer;
-    write_task_args->slot = slot;
-    write_task_args->on_completion = on_completion;
-    write_task_args->user_data = user_data;
-    aws_channel_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args, "rw_handler_write");
+    if (aws_channel_thread_is_callers_thread(slot->channel)) {
+        s_rw_handler_write_impl(slot, buffer, on_completion, user_data);
+    } else {
+        struct rw_handler_write_task_args *write_task_args =
+            aws_mem_acquire(handler->alloc, sizeof(struct rw_handler_write_task_args));
+        write_task_args->handler = handler;
+        write_task_args->buffer = buffer;
+        write_task_args->slot = slot;
+        write_task_args->on_completion = on_completion;
+        write_task_args->user_data = user_data;
+        aws_channel_task_init(&write_task_args->task, s_rw_handler_write_task, write_task_args, "rw_handler_write");
 
-    aws_channel_schedule_task_now(slot->channel, &write_task_args->task);
+        aws_channel_schedule_task_now(slot->channel, &write_task_args->task);
+    }
 }
 
 struct increment_read_window_task_args {
