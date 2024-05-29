@@ -122,6 +122,10 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
  */
 static void s_do_read(struct socket_handler *socket_handler) {
 
+    if (socket_handler->shutdown_in_progress) {
+        return;
+    }
+
     size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
@@ -139,17 +143,20 @@ static void s_do_read(struct socket_handler *socket_handler) {
 
     size_t total_read = 0;
     size_t read = 0;
-    while (total_read < max_to_read && !socket_handler->shutdown_in_progress) {
+    int last_error = 0;
+    while (total_read < max_to_read) {
         size_t iter_max_read = max_to_read - total_read;
 
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
         if (!message) {
+            last_error = aws_last_error();
             break;
         }
 
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
+            last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
             break;
         }
@@ -162,6 +169,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
             (unsigned long long)read);
 
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
+            last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
             break;
         }
@@ -177,23 +185,22 @@ static void s_do_read(struct socket_handler *socket_handler) {
 
     /* resubscribe as long as there's no error, just return if we're in a would block scenario. */
     if (total_read < max_to_read) {
-        int last_error = aws_last_error();
+        AWS_ASSERT(last_error != 0);
 
-        if (last_error != AWS_IO_READ_WOULD_BLOCK && !socket_handler->shutdown_in_progress) {
+        if (last_error != AWS_IO_READ_WOULD_BLOCK) {
             aws_channel_shutdown(socket_handler->slot->channel, last_error);
+        } else {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_SOCKET_HANDLER,
+                "id=%p: out of data to read on socket. "
+                "Waiting on event-loop notification.",
+                (void *)socket_handler->slot->handler);
         }
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: out of data to read on socket. "
-            "Waiting on event-loop notification.",
-            (void *)socket_handler->slot->handler);
         return;
     }
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
      * again. */
-    if (!socket_handler->shutdown_in_progress && total_read == socket_handler->max_rw_size &&
-        !socket_handler->read_task_storage.task_fn) {
+    if (total_read == socket_handler->max_rw_size && !socket_handler->read_task_storage.task_fn) {
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
@@ -210,6 +217,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
  * If an error, start the channel shutdown process. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
     (void)socket;
+    /* TODO: explain */
+    (void)error_code;
 
     struct socket_handler *socket_handler = user_data;
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET_HANDLER, "id=%p: socket is now readable", (void *)socket_handler->slot->handler);
@@ -219,10 +228,6 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
      * sure we read the ALERT, otherwise, we'll end up telling the user that the channel shutdown because of a socket
      * closure, when in reality it was a TLS error */
     s_do_read(socket_handler);
-
-    if (error_code && !socket_handler->shutdown_in_progress) {
-        aws_channel_shutdown(socket_handler->slot->channel, error_code);
-    }
 }
 
 /* Either the result of a context switch (for fairness in the event loop), or a window update. */
