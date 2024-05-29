@@ -949,7 +949,24 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_broken_crypto_null,
     s_tls_client_channel_negotiation_error_broken_crypto_null_fn)
 
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls13_host_name, "a2w1wmp9234lcw-ats.iot.us-west-2.amazonaws.com");
+static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
+}
+
+static int s_tls_client_channel_negotiation_error_override_legacy_crypto_tls13_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_legacy_crypto_tls13_host_name, 1011, &s_raise_tls_version_to_13);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_override_legacy_crypto_tls11,
+    s_tls_client_channel_negotiation_error_override_legacy_crypto_tls11_fn)
+
 AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls10_host_name, "tls-v1-0.badssl.com");
+
 
 static void s_raise_tls_version_to_11(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
