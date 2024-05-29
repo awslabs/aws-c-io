@@ -1967,7 +1967,7 @@ static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bo
                 break;
         }
     }
-    return bit_enabled_protocols ;
+    return bit_enabled_protocols;
 }
 
 static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
