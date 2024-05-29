@@ -781,8 +781,8 @@ static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_alloca
         0));
 
     /* NOTE client start with window=0 */
-    struct aws_channel_handler *client_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 0 /*window*/, &client_rw_args);
+    struct aws_channel_handler *client_rw_handler = rw_handler_new(
+        allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 0 /*window*/, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
     struct aws_channel_handler *server_rw_handler =

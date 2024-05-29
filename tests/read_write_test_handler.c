@@ -231,7 +231,7 @@ void rw_handler_write_with_callback(
     struct aws_byte_buf *buffer,
     aws_channel_on_message_write_completed_fn *on_completion,
     void *user_data) {
-    
+
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
     if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
