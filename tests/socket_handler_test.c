@@ -40,6 +40,7 @@ struct socket_common_tester {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
     struct aws_event_loop_group *el_group;
+    struct aws_host_resolver *resolver;
     struct aws_atomic_var current_time_ns;
     struct aws_atomic_var stats_handler;
 
@@ -55,6 +56,13 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     aws_io_library_init(allocator);
 
     tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = tester->el_group,
+        .max_entries = 8,
+    };
+    tester->resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
@@ -66,6 +74,7 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
 }
 
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
+    aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
     aws_mutex_clean_up(&tester->mutex);
@@ -311,13 +320,27 @@ static int s_local_server_tester_init(
     struct local_server_tester *tester,
     struct socket_test_args *args,
     struct socket_common_tester *s_c_tester,
+    enum aws_socket_domain socket_domain,
     bool enable_back_pressure) {
+
     AWS_ZERO_STRUCT(*tester);
     tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
-    tester->socket_options.domain = AWS_SOCKET_LOCAL;
-
-    aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
+    tester->socket_options.domain = socket_domain;
+    switch (socket_domain) {
+        case AWS_SOCKET_LOCAL:
+            aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
+            break;
+        case AWS_SOCKET_IPV4:
+            strcpy(tester->endpoint.address, "127.0.0.1");
+            break;
+        case AWS_SOCKET_IPV6:
+            strcpy(tester->endpoint.address, "::1");
+            break;
+        default:
+            ASSERT_TRUE(false);
+            break;
+    }
 
     tester->server_bootstrap = aws_server_bootstrap_new(allocator, s_c_tester->el_group);
     ASSERT_NOT_NULL(tester->server_bootstrap);
@@ -335,6 +358,9 @@ static int s_local_server_tester_init(
     };
     tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
     ASSERT_NOT_NULL(tester->listener);
+
+    /* find out which port the socket is bound to */
+    ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));
 
     return AWS_OP_SUCCESS;
 }
@@ -364,11 +390,12 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, true));
+    ASSERT_SUCCESS(
+        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, AWS_SOCKET_LOCAL, true));
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
-        .host_resolver = NULL,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -379,7 +406,7 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
     AWS_ZERO_STRUCT(client_channel_options);
     client_channel_options.bootstrap = client_bootstrap;
     client_channel_options.host_name = local_server_tester.endpoint.address;
-    client_channel_options.port = 0;
+    client_channel_options.port = local_server_tester.endpoint.port;
     client_channel_options.socket_options = &local_server_tester.socket_options;
     client_channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
     client_channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
@@ -470,15 +497,8 @@ static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *all
 
     s_socket_common_tester_init(allocator, &c_tester);
 
-    struct aws_host_resolver_default_options resolver_options = {
-        .el_group = c_tester.el_group,
-        .max_entries = 8,
-    };
-    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
-
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
-        .host_resolver = resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -516,7 +536,6 @@ static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *all
     aws_mutex_unlock(&c_tester.mutex);
 
     aws_client_bootstrap_release(client_bootstrap);
-    aws_host_resolver_release(resolver);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
 
     return AWS_OP_SUCCESS;
@@ -576,11 +595,12 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, true));
+    ASSERT_SUCCESS(
+        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, AWS_SOCKET_LOCAL, true));
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
-        .host_resolver = NULL,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -589,7 +609,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     AWS_ZERO_STRUCT(client_channel_options);
     client_channel_options.bootstrap = client_bootstrap;
     client_channel_options.host_name = local_server_tester.endpoint.address;
-    client_channel_options.port = 0;
+    client_channel_options.port = local_server_tester.endpoint.port;
     client_channel_options.socket_options = &local_server_tester.socket_options;
     client_channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
     client_channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
@@ -707,11 +727,12 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, false));
+    ASSERT_SUCCESS(
+        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, AWS_SOCKET_LOCAL, false));
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
-        .host_resolver = NULL,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -720,7 +741,7 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     AWS_ZERO_STRUCT(client_channel_options);
     client_channel_options.bootstrap = client_bootstrap;
     client_channel_options.host_name = local_server_tester.endpoint.address;
-    client_channel_options.port = 0;
+    client_channel_options.port = local_server_tester.endpoint.port;
     client_channel_options.socket_options = &local_server_tester.socket_options;
     client_channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
     client_channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
@@ -763,7 +784,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(socket_handler_close, s_socket_close_test)
 
-static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
+static int s_socket_read_to_eof_after_peer_hangup_test_common(
+    struct aws_allocator *allocator,
+    void *ctx,
+    enum aws_socket_domain socket_domain) {
+
     (void)ctx;
     s_socket_common_tester_init(allocator, &c_tester);
 
@@ -796,11 +821,12 @@ static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_alloca
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, false));
+    ASSERT_SUCCESS(
+        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false));
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
-        .host_resolver = NULL,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -808,7 +834,7 @@ static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_alloca
     struct aws_socket_channel_bootstrap_options client_channel_options = {
         .bootstrap = client_bootstrap,
         .host_name = local_server_tester.endpoint.address,
-        .port = 0,
+        .port = local_server_tester.endpoint.port,
         .socket_options = &local_server_tester.socket_options,
         .setup_callback = s_socket_handler_test_client_setup_callback,
         .shutdown_callback = s_socket_handler_test_client_shutdown_callback,
@@ -906,7 +932,20 @@ static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_alloca
 
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(socket_handler_read_to_eof_after_peer_hangup, s_socket_handler_read_to_eof_after_peer_hangup_test)
+static int s_socket_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
+    return s_socket_read_to_eof_after_peer_hangup_test_common(allocator, ctx, AWS_SOCKET_LOCAL);
+}
+AWS_TEST_CASE(socket_handler_read_to_eof_after_peer_hangup, s_socket_read_to_eof_after_peer_hangup_test)
+
+static int s_socket_ipv4_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
+    return s_socket_read_to_eof_after_peer_hangup_test_common(allocator, ctx, AWS_SOCKET_IPV4);
+}
+AWS_TEST_CASE(socket_handler_ipv4_read_to_eof_after_peer_hangup, s_socket_ipv4_read_to_eof_after_peer_hangup_test)
+
+static int s_socket_ipv6_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
+    return s_socket_read_to_eof_after_peer_hangup_test_common(allocator, ctx, AWS_SOCKET_IPV6);
+}
+AWS_TEST_CASE(socket_handler_ipv6_read_to_eof_after_peer_hangup, s_socket_ipv6_read_to_eof_after_peer_hangup_test)
 
 static void s_creation_callback_test_channel_creation_callback(
     struct aws_client_bootstrap *bootstrap,
@@ -1008,12 +1047,13 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, false));
+    ASSERT_SUCCESS(
+        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, AWS_SOCKET_LOCAL, false));
 
     struct aws_client_bootstrap_options client_bootstrap_options;
     AWS_ZERO_STRUCT(client_bootstrap_options);
     client_bootstrap_options.event_loop_group = c_tester.el_group;
-    client_bootstrap_options.host_resolver = NULL;
+    client_bootstrap_options.host_resolver = c_tester.resolver;
 
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -1022,7 +1062,7 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
     AWS_ZERO_STRUCT(client_channel_options);
     client_channel_options.bootstrap = client_bootstrap;
     client_channel_options.host_name = local_server_tester.endpoint.address;
-    client_channel_options.port = 0;
+    client_channel_options.port = local_server_tester.endpoint.port;
     client_channel_options.socket_options = &local_server_tester.socket_options;
     client_channel_options.creation_callback = s_creation_callback_test_channel_creation_callback;
     client_channel_options.setup_callback = s_socket_handler_test_client_setup_callback;
