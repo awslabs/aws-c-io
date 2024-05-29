@@ -332,10 +332,10 @@ static int s_local_server_tester_init(
             aws_socket_endpoint_init_local_address_for_test(&tester->endpoint);
             break;
         case AWS_SOCKET_IPV4:
-            strcpy(tester->endpoint.address, "127.0.0.1");
+            strncpy(tester->endpoint.address, "127.0.0.1", sizeof(tester->endpoint.address));
             break;
         case AWS_SOCKET_IPV6:
-            strcpy(tester->endpoint.address, "::1");
+            strncpy(tester->endpoint.address, "::1", sizeof(tester->endpoint.address));
             break;
         default:
             ASSERT_TRUE(false);
@@ -793,17 +793,18 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     s_socket_common_tester_init(allocator, &c_tester);
 
     const size_t total_bytes_to_send_from_server = g_aws_channel_max_fragment_size;
-    uint8_t *client_received_message = aws_mem_acquire(allocator, total_bytes_to_send_from_server);
+
+    struct aws_byte_buf client_received_message;
+    ASSERT_SUCCESS(aws_byte_buf_init(&client_received_message, allocator, total_bytes_to_send_from_server));
+
+    struct aws_byte_buf msg_from_server;
+    ASSERT_SUCCESS(aws_byte_buf_init(&msg_from_server, allocator, total_bytes_to_send_from_server));
 
     struct socket_test_rw_args server_rw_args;
     ASSERT_SUCCESS(s_rw_args_init(&server_rw_args, &c_tester, aws_byte_buf_from_empty_array(NULL, 0), 0));
 
     struct socket_test_rw_args client_rw_args;
-    ASSERT_SUCCESS(s_rw_args_init(
-        &client_rw_args,
-        &c_tester,
-        aws_byte_buf_from_empty_array(client_received_message, total_bytes_to_send_from_server),
-        0));
+    ASSERT_SUCCESS(s_rw_args_init(&client_rw_args, &c_tester, client_received_message, 0));
 
     /* NOTE client start with window=0 */
     struct aws_channel_handler *client_rw_handler = rw_handler_new(
@@ -820,9 +821,19 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     struct socket_test_args client_args;
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
+    bool skip_test = false;
     struct local_server_tester local_server_tester;
-    ASSERT_SUCCESS(
-        s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false));
+    if (s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false)) {
+        /* Skip if test environment doesn't support IPv6 */
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
+            skip_test = true;
+            aws_channel_handler_destroy(client_rw_handler);
+            aws_channel_handler_destroy(server_rw_handler);
+            goto clean_up;
+        } else {
+            ASSERT_TRUE(false, "s_local_server_tester_init() failed");
+        }
+    }
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
@@ -856,9 +867,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
      * before the client has fully read the data. This is tricky to do in a test.
      *
      * First, have the server send data... */
-    struct aws_byte_buf msg_from_server;
-    ASSERT_SUCCESS(aws_byte_buf_init(&msg_from_server, allocator, total_bytes_to_send_from_server));
-    msg_from_server.len = total_bytes_to_send_from_server;
+    ASSERT_TRUE(aws_byte_buf_write_u8_n(&msg_from_server, 's', total_bytes_to_send_from_server));
     rw_handler_write_with_callback(
         server_rw_handler,
         server_args.rw_slot,
@@ -922,15 +931,15 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
 
     aws_mutex_unlock(&c_tester.mutex);
 
-    /* clean up */
+/* clean up */
+clean_up:
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
-    aws_mem_release(allocator, client_received_message);
-
+    aws_byte_buf_clean_up(&client_received_message);
     aws_byte_buf_clean_up(&msg_from_server);
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
 
-    return AWS_OP_SUCCESS;
+    return skip_test ? AWS_OP_SKIP : AWS_OP_SUCCESS;
 }
 static int s_socket_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
     return s_socket_read_to_eof_after_peer_hangup_test_common(allocator, ctx, AWS_SOCKET_LOCAL);
