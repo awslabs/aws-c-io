@@ -826,17 +826,11 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     struct socket_test_args client_args;
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
-    struct aws_client_bootstrap *client_bootstrap = NULL;
-
-    bool skip_test = false;
     struct local_server_tester local_server_tester;
     if (s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false)) {
-        /* Skip if test environment doesn't support IPv6 */
+        /* Skip test if server can't bind to address (e.g. Gith9ub's ubuntu runners don't allow IPv6) */
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
-            skip_test = true;
-            aws_channel_handler_destroy(client_rw_handler);
-            aws_channel_handler_destroy(server_rw_handler);
-            goto clean_up;
+            return AWS_OP_SKIP;
         } else {
             ASSERT_TRUE(false, "s_local_server_tester_init() failed");
         }
@@ -846,7 +840,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
         .event_loop_group = c_tester.el_group,
         .host_resolver = c_tester.resolver,
     };
-    client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     struct aws_socket_channel_bootstrap_options client_channel_options = {
@@ -938,15 +932,14 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
 
     aws_mutex_unlock(&c_tester.mutex);
 
-/* clean up */
-clean_up:
+    /* clean up */
     ASSERT_SUCCESS(s_local_server_tester_clean_up(&local_server_tester));
     aws_byte_buf_clean_up(&client_received_message);
     aws_byte_buf_clean_up(&msg_from_server);
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
 
-    return skip_test ? AWS_OP_SKIP : AWS_OP_SUCCESS;
+    return AWS_OP_SUCCESS;
 }
 static int s_socket_read_to_eof_after_peer_hangup_test(struct aws_allocator *allocator, void *ctx) {
     return s_socket_read_to_eof_after_peer_hangup_test_common(allocator, ctx, AWS_SOCKET_LOCAL);
