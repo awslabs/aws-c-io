@@ -1981,6 +1981,7 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
 
     AWS_ASSERT(options->ctx);
 
+    /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
     ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
     if (ret != 0) {
         AWS_LOGF_DEBUG(
