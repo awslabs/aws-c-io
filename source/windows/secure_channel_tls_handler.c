@@ -1153,6 +1153,9 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         input_buffers[3].cbBuffer);
                     sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
                 }
+                if (status != SEC_I_RENEGOTIATE) {
+                    sc_handler->read_extra = input_buffers[3].cbBuffer;
+                }
             } else {
                 error = AWS_OP_SUCCESS;
                 /* this means we processed everything in the buffer. */
@@ -1193,7 +1196,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             error = AWS_OP_SUCCESS;
         }
         /* With TLS1.3 on SChannel a call to DecryptMessage could return SEC_I_RENEGOTIATE, at this point a client must
-         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received*/
+         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
         if (status == SEC_I_RENEGOTIATE) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS, "id=%p: Renegotiation received. SECURITY_STATUS is %d.", (void *)handler, (int)status);
@@ -1919,52 +1922,52 @@ on_error:
     return NULL;
 }
 
-static DWORD getEnabledProtocols(const struct aws_tls_ctx_options *options, bool is_client_mode) {
-    DWORD grbitEnabledProtocols = 0;
+static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bool is_client_mode) {
+    DWORD bit_enabled_protocols = 0;
     if (is_client_mode) {
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
-                grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
+                bit_enabled_protocols |= SP_PROT_SSL3_CLIENT;
             case AWS_IO_TLSv1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
+                bit_enabled_protocols |= SP_PROT_TLS1_0_CLIENT;
             case AWS_IO_TLSv1_1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
+                bit_enabled_protocols |= SP_PROT_TLS1_1_CLIENT;
             case AWS_IO_TLSv1_2:
 #if defined(SP_PROT_TLS1_2_CLIENT)
-                grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
+                bit_enabled_protocols |= SP_PROT_TLS1_2_CLIENT;
 #endif
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_CLIENT)
-                grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
+                bit_enabled_protocols |= SP_PROT_TLS1_3_CLIENT;
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                grbitEnabledProtocols = 0;
+                bit_enabled_protocols = 0;
                 break;
         }
     } else {
         switch (options->minimum_tls_version) {
             case AWS_IO_SSLv3:
-                grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
+                bit_enabled_protocols |= SP_PROT_SSL3_SERVER;
             case AWS_IO_TLSv1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
+                bit_enabled_protocols |= SP_PROT_TLS1_0_SERVER;
             case AWS_IO_TLSv1_1:
-                grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
+                bit_enabled_protocols |= SP_PROT_TLS1_1_SERVER;
             case AWS_IO_TLSv1_2:
 #if defined(SP_PROT_TLS1_2_SERVER)
-                grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
+                bit_enabled_protocols |= SP_PROT_TLS1_2_SERVER;
 #endif
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_SERVER)
-                grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
+                bit_enabled_protocols |= SP_PROT_TLS1_3_SERVER;
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                grbitEnabledProtocols = 0;
+                bit_enabled_protocols = 0;
                 break;
         }
     }
-    return grbitEnabledProtocols;
+    return bit_enabled_protocols ;
 }
 
 static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
@@ -2200,7 +2203,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->should_free_pcerts = true;
-    secure_channel_ctx->schannel_creds.enabledProtocols = getEnabledProtocols(options, is_client_mode);
+    secure_channel_ctx->schannel_creds.enabledProtocols = get_enabled_protocols(options, is_client_mode);
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
