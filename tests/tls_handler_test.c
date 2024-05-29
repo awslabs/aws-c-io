@@ -1221,8 +1221,9 @@ static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_
     return s_verify_good_host(allocator, s_aws_ecc384_host_name, 443, NULL);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384_tls1_3,
-              s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_ecc384_tls1_3,
+    s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn)
 
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
