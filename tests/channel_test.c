@@ -267,7 +267,7 @@ static int s_test_channel_refcount(struct aws_allocator *allocator, void *ctx) {
     struct aws_channel_slot *slot = aws_channel_slot_new(channel);
     ASSERT_NOT_NULL(slot);
 
-    struct aws_channel_handler *handler = rw_handler_new(allocator, NULL, NULL, 10000, NULL);
+    struct aws_channel_handler *handler = rw_handler_new(allocator, NULL, NULL, false, 10000, NULL);
 
     struct aws_atomic_var destroy_called = AWS_ATOMIC_INIT_INT(0);
     struct aws_mutex destroy_mutex = AWS_MUTEX_INIT;

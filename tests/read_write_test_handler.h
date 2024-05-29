@@ -25,6 +25,7 @@ struct aws_channel_handler *rw_handler_new(
     struct aws_allocator *allocator,
     rw_handler_driver_fn *on_read,
     rw_handler_driver_fn *on_write,
+    bool event_loop_driven,
     size_t window,
     void *ctx);
 

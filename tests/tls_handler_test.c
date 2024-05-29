@@ -515,11 +515,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, &local_server_tester, &incoming_args, &c_tester, true, "server.crt", "server.key"));
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, write_tag.len / 2, &outgoing_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len / 2, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
-    struct aws_channel_handler *incoming_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, read_tag.len / 2, &incoming_rw_args);
+    struct aws_channel_handler *incoming_rw_handler = rw_handler_new(
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;
@@ -1717,11 +1717,11 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
         allocator, &local_server_tester, &incoming_args, &c_tester, false, "server.crt", "server.key"));
 
     struct aws_channel_handler *outgoing_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, 10000, &outgoing_rw_args);
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct aws_channel_handler *incoming_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, 10000, &incoming_rw_args);
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;

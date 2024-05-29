@@ -23,6 +23,7 @@ struct rw_test_handler_impl {
     struct aws_condition_variable *destroy_condition_variable;
     rw_handler_driver_fn *on_read;
     rw_handler_driver_fn *on_write;
+    bool event_loop_driven;
     size_t window;
     struct aws_condition_variable condition_variable;
     struct aws_mutex mutex;
@@ -137,6 +138,7 @@ struct aws_channel_handler *rw_handler_new(
     struct aws_allocator *allocator,
     rw_handler_driver_fn *on_read,
     rw_handler_driver_fn *on_write,
+    bool event_loop_driven,
     size_t window,
     void *ctx) {
 
@@ -149,6 +151,7 @@ struct aws_channel_handler *rw_handler_new(
     handler_impl->on_read = on_read;
     handler_impl->on_write = on_write;
     handler_impl->ctx = ctx;
+    handler_impl->event_loop_driven = event_loop_driven;
     handler_impl->window = window;
     handler_impl->condition_variable = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
     handler_impl->mutex = (struct aws_mutex)AWS_MUTEX_INIT;
@@ -191,7 +194,7 @@ struct rw_handler_write_task_args {
     void *user_data;
 };
 
-static void s_rw_handler_write_impl(
+static void s_rw_handler_write_now(
     struct aws_channel_slot *slot,
     struct aws_byte_buf *buffer,
     aws_channel_on_message_write_completed_fn *on_completion,
@@ -213,7 +216,7 @@ static void s_rw_handler_write_task(struct aws_channel_task *task, void *arg, en
     (void)task;
     (void)task_status;
     struct rw_handler_write_task_args *write_task_args = arg;
-    s_rw_handler_write_impl(
+    s_rw_handler_write_now(
         write_task_args->slot, write_task_args->buffer, write_task_args->on_completion, write_task_args->user_data);
     aws_mem_release(write_task_args->handler->alloc, write_task_args);
 }
@@ -228,9 +231,11 @@ void rw_handler_write_with_callback(
     struct aws_byte_buf *buffer,
     aws_channel_on_message_write_completed_fn *on_completion,
     void *user_data) {
+    
+    struct rw_test_handler_impl *handler_impl = handler->impl;
 
-    if (aws_channel_thread_is_callers_thread(slot->channel)) {
-        s_rw_handler_write_impl(slot, buffer, on_completion, user_data);
+    if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
+        s_rw_handler_write_now(slot, buffer, on_completion, user_data);
     } else {
         struct rw_handler_write_task_args *write_task_args =
             aws_mem_acquire(handler->alloc, sizeof(struct rw_handler_write_task_args));
@@ -272,7 +277,7 @@ void rw_handler_trigger_increment_read_window(
 
     struct rw_test_handler_impl *handler_impl = handler->impl;
 
-    if (aws_channel_thread_is_callers_thread(slot->channel)) {
+    if (!handler_impl->event_loop_driven || aws_channel_thread_is_callers_thread(slot->channel)) {
         handler_impl->window += window_update;
         aws_channel_slot_increment_read_window(slot, window_update);
     } else {

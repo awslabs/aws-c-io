@@ -362,6 +362,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
         allocator,
         s_byo_crypto_test_handle_read,
         s_byo_crypto_test_handle_write,
+        true,
         s_outgoing_initial_read_window,
         &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
@@ -370,6 +371,7 @@ static int s_byo_tls_handler_test(struct aws_allocator *allocator, void *ctx) {
         allocator,
         s_byo_crypto_test_handle_read,
         s_byo_crypto_test_handle_write,
+        true,
         s_incoming_initial_read_window,
         &incoming_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);

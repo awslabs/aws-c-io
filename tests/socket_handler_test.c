@@ -228,7 +228,7 @@ static struct aws_byte_buf s_socket_test_handle_read(
     struct socket_test_rw_args *rw_args = (struct socket_test_rw_args *)user_data;
 
     aws_mutex_lock(rw_args->mutex);
-    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_buffer(&rw_args->received_message, *data_read));
+    AWS_FATAL_ASSERT(aws_byte_buf_write_from_whole_buffer(&rw_args->received_message, *data_read) == true);
     rw_args->amount_read += data_read->len;
     rw_args->invocation_happened = true;
     aws_condition_variable_notify_one(rw_args->condition_variable);
@@ -350,11 +350,11 @@ static int s_socket_pinned_event_loop_test(struct aws_allocator *allocator, void
     s_socket_common_tester_init(allocator, &c_tester);
 
     struct aws_channel_handler *client_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, SIZE_MAX, NULL);
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
     ASSERT_NOT_NULL(client_rw_handler);
 
     struct aws_channel_handler *server_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, SIZE_MAX, NULL);
+        rw_handler_new(allocator, s_socket_test_handle_write, s_socket_test_handle_write, true, SIZE_MAX, NULL);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
@@ -555,6 +555,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         allocator,
         s_socket_test_handle_read,
         s_socket_test_handle_write,
+        true,
         s_client_initial_read_window,
         &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
@@ -563,6 +564,7 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
         allocator,
         s_socket_test_handle_read,
         s_socket_test_handle_write,
+        true,
         s_server_initial_read_window,
         &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
@@ -691,11 +693,11 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
         0));
 
     struct aws_channel_handler *client_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 10000, &client_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
     struct aws_channel_handler *server_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 10000, &server_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
@@ -780,11 +782,11 @@ static int s_socket_handler_read_to_eof_after_peer_hangup_test(struct aws_alloca
 
     /* NOTE client start with window=0 */
     struct aws_channel_handler *client_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 0 /*window*/, &client_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 0 /*window*/, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
     struct aws_channel_handler *server_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 10000, &server_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
@@ -992,11 +994,11 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
         0));
 
     struct aws_channel_handler *client_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 10000, &client_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
 
     struct aws_channel_handler *server_rw_handler =
-        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, 10000, &server_rw_args);
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
     struct socket_test_args server_args;
