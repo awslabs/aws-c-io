@@ -17,6 +17,10 @@
 #include "statistics_handler_test.h"
 #include <read_write_test_handler.h>
 
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* allow strncpy() */
+#endif
+
 #define NANOS_PER_SEC ((uint64_t)AWS_TIMESTAMP_NANOS)
 #define TIMEOUT (10 * NANOS_PER_SEC)
 
@@ -499,6 +503,7 @@ static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *all
 
     struct aws_client_bootstrap_options client_bootstrap_options = {
         .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
     };
     struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
@@ -821,6 +826,8 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     struct socket_test_args client_args;
     ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, client_rw_handler));
 
+    struct aws_client_bootstrap *client_bootstrap = NULL;
+
     bool skip_test = false;
     struct local_server_tester local_server_tester;
     if (s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false)) {
@@ -839,7 +846,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
         .event_loop_group = c_tester.el_group,
         .host_resolver = c_tester.resolver,
     };
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
+    client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
     ASSERT_NOT_NULL(client_bootstrap);
 
     struct aws_socket_channel_bootstrap_options client_channel_options = {
