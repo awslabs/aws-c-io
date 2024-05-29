@@ -161,8 +161,7 @@ static bool s_is_windows_equal_or_above_10(void) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
         return true;
     } else if (status != STATUS_DLL_NOT_FOUND) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "Checking Windows Version: Running windows 10 build 1088 or earlier");
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: Running windows 10 build 1088 or earlier");
         return false;
     }
     return false;
@@ -1283,10 +1282,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             }
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "id=%p: Error decrypting message. SECURITY_STATUS is %d.",
-                (void *)handler,
-                (int)status);
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
@@ -1984,7 +1980,8 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
 
     ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
     if (ret != 0) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
         return false;
     }
 
@@ -2227,7 +2224,7 @@ struct aws_tls_ctx *s_ctx_new(
             "If this is not running in a test environment, this is likely a security vulnerability.");
         dw_flags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
         dw_flags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE |
-                   SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
+                    SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else if (is_client_mode) {
         dw_flags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
