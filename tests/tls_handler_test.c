@@ -518,8 +518,8 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, s_tls_test_handle_read, s_tls_test_handle_write, write_tag.len / 2, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
-    struct aws_channel_handler *incoming_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, read_tag.len / 2, &incoming_rw_args);
+    struct aws_channel_handler *incoming_rw_handler =
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;

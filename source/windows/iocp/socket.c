@@ -636,6 +636,7 @@ static int s_determine_socket_error(int error) {
         case IO_STATUS_TIMEOUT:
             return AWS_IO_SOCKET_TIMEOUT;
         case IO_PIPE_BROKEN:
+        case ERROR_BROKEN_PIPE:
             return AWS_IO_SOCKET_CLOSED;
         case STATUS_INVALID_ADDRESS_COMPONENT:
         case WSAEADDRNOTAVAIL:
