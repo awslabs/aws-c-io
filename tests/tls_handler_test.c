@@ -1200,6 +1200,7 @@ static int s_verify_good_host_mqtt_connect(
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
     /* NEW ********/
+    uint8_t outgoing_received_message[128] = {0};
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("Created from a blend of heirloom and cider apples");
 
     struct tls_test_rw_args outgoing_rw_args;
