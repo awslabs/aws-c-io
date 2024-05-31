@@ -178,7 +178,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET_HANDLER,
         "id=%p: total read on this tick %llu",
-        (void *)&socket_handler->slot->handler,
+        (void *)socket_handler->slot->handler,
         (unsigned long long)total_read);
 
     socket_handler->stats.bytes_read += total_read;
