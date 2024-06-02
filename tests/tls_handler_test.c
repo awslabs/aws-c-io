@@ -1311,13 +1311,13 @@ static int s_verify_good_host_mqtt_connect(
     /* XXX: ---- new ----*/
 
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
-    ASSERRT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex,
         s_tls_test_read_predicate, &outgoing_rw_args));
 
-    ASSERRT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     //outgoing_rw_args.invocation_happened = false;
     //ASSERT_INT_EQUALS(1, outgoing_rw_args.read_invocations);
