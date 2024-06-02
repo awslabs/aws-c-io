@@ -481,7 +481,8 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
-static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator,
+        void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
@@ -515,11 +516,13 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, &local_server_tester, &incoming_args, &c_tester, true, "server.crt", "server.key"));
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len / 2, &outgoing_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true,
+        write_tag.len / 2, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct aws_channel_handler *incoming_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true,
+        read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;
@@ -600,10 +603,12 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     incoming_rw_args.invocation_happened = false;
@@ -632,7 +637,10 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         incoming_rw_args.received_message.buffer,
         incoming_rw_args.received_message.len);
     ASSERT_BIN_ARRAYS_EQUALS(
-        read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer, outgoing_rw_args.received_message.len);
+        read_tag.buffer,
+        read_tag.len,
+        outgoing_rw_args.received_message.buffer,
+        outgoing_rw_args.received_message.len);
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
@@ -1210,7 +1218,8 @@ static int s_verify_good_host_mqtt_connect(
         aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
 
     struct aws_channel_handler *outgoing_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write,
+                true, write_tag.len, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     /* end new */
@@ -1242,7 +1251,8 @@ static int s_verify_good_host_mqtt_connect(
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
-    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+    aws_tls_connection_options_set_callbacks(
+        &tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
@@ -1298,9 +1308,21 @@ static int s_verify_good_host_mqtt_connect(
     ASSERT_BIN_ARRAYS_EQUALS(
         host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
+    /* XXX: ---- new ----*/
+
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
+    ASSERRT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex,
+        s_tls_test_read_predicate, &outgoing_rw_args));
+
+    ASSERRT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    //outgoing_rw_args.invocation_happened = false;
+    //ASSERT_INT_EQUALS(1, outgoing_rw_args.read_invocations);
+
+    /* ---- */
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
@@ -1856,11 +1878,13 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
         allocator, &local_server_tester, &incoming_args, &c_tester, false, "server.crt", "server.key"));
 
     struct aws_channel_handler *outgoing_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &outgoing_rw_args);
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write,
+                true, 10000, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct aws_channel_handler *incoming_rw_handler =
-        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, 10000, &incoming_rw_args);
+        rw_handler_new(allocator, s_tls_test_handle_read, s_tls_test_handle_write,
+                true, 10000, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;
