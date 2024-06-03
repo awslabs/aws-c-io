@@ -789,6 +789,15 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(socket_handler_close, s_socket_close_test)
 
+/* This is a regression test.
+ * Once upon a time, if the socket-handler received READABLE and HANGUP events simultaneously,
+ * it would read one last time from the socket before closing it. But one read may
+ * not be enough to get all remaining data. The correct thing is to do is
+ * repeatedly read until the read() call itself reports EOF or an error.
+ *
+ * Anyway, this test establishes a connection between server and client.
+ * The server sends a big chunk of data, and closes the socket immediately
+ * after the write completes. The client should still be able to read all the data. */
 static int s_socket_read_to_eof_after_peer_hangup_test_common(
     struct aws_allocator *allocator,
     void *ctx,
@@ -811,7 +820,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     struct socket_test_rw_args client_rw_args;
     ASSERT_SUCCESS(s_rw_args_init(&client_rw_args, &c_tester, client_received_message, 0));
 
-    /* NOTE client start with window=0 */
+    /* NOTE: client starts with window=0, so we can VERY CAREFULLY control when it reads data from the socket */
     struct aws_channel_handler *client_rw_handler = rw_handler_new(
         allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 0 /*window*/, &client_rw_args);
     ASSERT_NOT_NULL(client_rw_handler);
@@ -897,7 +906,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
         &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &server_args));
 
-    /* Now sleep a moment to give the OS time to propagate the socket-close event to the client-side. */
+    /* Now sleep a moment to 100% guarantee the OS propagates the socket-close event to the client-side. */
     aws_mutex_unlock(&c_tester.mutex);
     aws_thread_current_sleep(NANOS_PER_SEC / 4);
     aws_mutex_lock(&c_tester.mutex);
@@ -912,10 +921,10 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
         " The server needs to finish sending data, and close the socket,"
         " BEFORE the client reads all the data.");
 
-    /* Have the client open its window enough to receive the rest of the data.
+    /* Have the client open its window more-than-enough to receive the rest of the data.
      * If the client socket closes before all the data is received, then we still have the bug. */
     rw_handler_trigger_increment_read_window(
-        client_args.rw_handler, client_args.rw_slot, total_bytes_to_send_from_server);
+        client_args.rw_handler, client_args.rw_slot, total_bytes_to_send_from_server * 3 /*more-than-enough*/);
     client_rw_args.expected_read = total_bytes_to_send_from_server;
     ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
         &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_socket_test_full_read_predicate, &client_rw_args));
