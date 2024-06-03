@@ -124,11 +124,10 @@ add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 add_test_case(socket_handler_read_to_eof_after_peer_hangup)
-# These tests fail on Windows due to some bug in our server code.
+# These tests fail on Windows due to some bug in our server code where, if the socket is closed
+# immediately after data is written, that data does not flush cleanly to the client.
 # I've lost days to this bug, and no one is using our Windows server funcionality,
-# so disabling these tests on windows and moving along for now.
-# They fail because the client ends up seeing WSAECONNRESET (Connection reset by peer)
-# before receiving all the data. But it's totally the server's fault, not the client's.
+# so disabling these tests on Windows and moving along for now.
 # I tried the following:
 # 1) Wrote 2 simple standalone Windows programs, server and client, using simple synchronous socket code.
 #    WORKED PERFECTLY. So it's not a fundamental issue with Windows.
@@ -137,12 +136,12 @@ add_test_case(socket_handler_read_to_eof_after_peer_hangup)
 # 3) Copy/pasted the simple standlone server code into this test, and used that instead of our actual server code.
 #    WORKED PERFECTLY. So it's not a problem with the server and client sockets being in the same process.
 # 4) Commented out the client part of this failing test, and used the simple standalone client instead.
-#    FAILED. The standalone client got WSAECONNRESET before receiving all the data.
+#    FAILED. The standalone client got WSAECONNRESET (Connection reset by peer) before receiving all the data.
 #    So it's something with our complicated non-blocking server code.
 #    The last interesting thing I noticed before giving up was: we call shutdown() immediately
 #    before calling closesocket() but shutdown() gets error WSAENOTCONN, even
 #    though, at that moment, the socket should be connected just fine.
-if(NOT WINDOWS)
+if(NOT WIN32)
     add_net_test_case(socket_handler_ipv4_read_to_eof_after_peer_hangup)
     add_net_test_case(socket_handler_ipv6_read_to_eof_after_peer_hangup)
 endif()
