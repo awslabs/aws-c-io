@@ -602,12 +602,16 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex,
+        s_tls_test_read_predicate, &incoming_rw_args));
+
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex,
+        s_tls_test_read_predicate, &outgoing_rw_args));
 
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
@@ -1207,7 +1211,7 @@ static int s_verify_good_host_mqtt_connect(
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
 
-    /* NEW ********/
+    /* ****** NEW ********/
     uint8_t outgoing_received_message[128] = {0};
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("Created from a blend of heirloom and cider apples");
 
@@ -1253,6 +1257,25 @@ static int s_verify_good_host_mqtt_connect(
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
     aws_tls_connection_options_set_callbacks(
         &tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    /* ***** new ****** */
+    struct aws_byte_buf cert_buf = {0};
+    struct aws_byte_buf key_buf = {0};
+    struct aws_tls_ctx_options tls_options = {0};
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ecc-cert.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ecc-key.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options,
+            allocator, &cert_cur, &key_cur));
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+    /* new */
+    tls_client_conn_options.ctx = tls_context;
+    /* new */
+    /* ***** new ****** */
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
@@ -1309,13 +1332,19 @@ static int s_verify_good_host_mqtt_connect(
         host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
     /* XXX: ---- new ----*/
-
+    /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
+
+
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex,
         s_tls_test_read_predicate, &outgoing_rw_args));
+
+
+
+
 
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
@@ -1938,9 +1967,11 @@ static int s_tls_channel_statistics_test(struct aws_allocator *allocator, void *
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate,
+        &incoming_rw_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate,
+        &outgoing_rw_args));
 
     uint64_t ms_to_ns = aws_timestamp_convert(1, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
 
@@ -2277,7 +2308,8 @@ static void s_import_cert(void *ctx) {
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
     struct aws_tls_ctx_options tls_options = {0};
     AWS_FATAL_ASSERT(
-        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import->allocator, &cert_cur, &key_cur));
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, import->allocator,
+            &cert_cur, &key_cur));
 
     /* import happens in here */
     import->tls = aws_tls_client_ctx_new(import->allocator, &tls_options);
