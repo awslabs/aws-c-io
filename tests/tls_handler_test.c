@@ -1213,16 +1213,16 @@ static int s_verify_good_host_mqtt_connect(
 
     /* ****** NEW ********/
     uint8_t outgoing_received_message[128] = {0};
-    //struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("Created from a blend of heirloom and cider apples");
     const uint8_t mqtt_connect_message[] = {
-        /* connect */ 0x10,
-        /*packet length */ 0x10,
-        /* protocol name length */ 0x00, 0x04,
-        /* MQTT */ 0x4d, 0x51, 0x54, 0x54,
-        /* protocol version 4 (3.11) */ 0x04,
-        /* connect flags */ 0x02,
-        /* keep alive */0x00, 0x3c,
-        /* client id(size (2) + data(4) */ 0x00, 0x04, 't', 'e', 's', 't'};
+        0x10, /* connect */
+        0x10,/*packet length */
+        0x00, 0x04,/* protocol name length */
+        0x4d, 0x51, 0x54, 0x54,/* MQTT */
+        0x04,/* protocol version 4 (3.11) */
+        0x02,/* connect flags */
+        0x00, 0x3c,/* keep alive */
+        0x00, 0x04, 't', 'e', 's', 't' /* client id(size (2) + data(4) */
+    };
     struct aws_byte_buf write_tag = aws_byte_buf_from_array((const char*)mqtt_connect_message, 18);
 
     struct tls_test_rw_args outgoing_rw_args;
@@ -1429,7 +1429,8 @@ static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocat
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
 //AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2w1wmp9234lcw-ats.iot.us-west-2.amazonaws.com");
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152");
+//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
 
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

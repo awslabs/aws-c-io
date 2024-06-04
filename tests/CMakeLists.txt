@@ -80,6 +80,7 @@ add_test_case(socket_validate_port)
 
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)
+    add_net_test_case(tls_client_channel_negotiation_success_ecc384_tls1_3)
 endif()
 
 add_test_case(channel_setup)
@@ -225,7 +226,6 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_rsa2048)
     add_net_test_case(tls_client_channel_negotiation_success_ecc256)
     add_net_test_case(tls_client_channel_negotiation_success_ecc384)
-    add_net_test_case(tls_client_channel_negotiation_success_ecc384_tls1_3)
 
     # add_net_test_case(tls_client_channel_negotiation_success_extended_validation) test disabled until badssl updates cert (expired 2022.08.10)
     add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
