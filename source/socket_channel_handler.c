@@ -228,12 +228,18 @@ static void s_on_readable_notification(struct aws_socket *socket, int error_code
 
     /* Regardless of error code call read() until it reports error or EOF,
      * so we can pick up data that was sent prior to the close.
+     *
      * For example, if peer closes the socket immediately after sending the last
      * bytes of data, the READABLE and HANGUP events arrive simultaneously.
+     *
      * Another example, peer sends a TLS ALERT then immediately closes the socket.
      * On some platforms, we'll never see the readable flag. So we want to make
      * sure we read the ALERT, otherwise, we'll end up telling the user that the channel shutdown because of a socket
-     * closure, when in reality it was a TLS error */
+     * closure, when in reality it was a TLS error
+     *
+     * It may take more than one read() to get all remaining data.
+     * Also, if the downstream read-window reaches 0, we need to patiently
+     * wait until the window opens before we can call read() again. */
     (void)error_code;
     s_do_read(socket_handler);
 }
