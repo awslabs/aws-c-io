@@ -83,6 +83,7 @@ if(WIN32)
     string(REPLACE "." ";" BUILD_VERSION ${CMAKE_SYSTEM_VERSION})
     separate_arguments(BUILD_VERSION)
     list(GET BUILD_VERSION 2 BUILD_V)
+    message("Windows Version: " ${CMAKE_SYSTEM_VERSION})
 
     if(${BUILD_V} GREATER_EQUAL 22000)
         message("Building for version 22000 or higher: supporting TLS1.3")
