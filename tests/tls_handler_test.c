@@ -1273,9 +1273,13 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
     struct aws_tls_ctx_options tls_options = {0};
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
+    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
+    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
+    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "server_EC384.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "server_EC384.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "ca.pem"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -1357,6 +1361,7 @@ static int s_verify_good_host_mqtt_connect(
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
 
 
+    printf(" ============================================= waiting to read data \n");
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -1365,6 +1370,9 @@ static int s_verify_good_host_mqtt_connect(
 
 
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    //printf("conn ack is %d\n", outgoing_rw_args.received_message.buffer[3]);
+    ASSERT_INT_EQUALS(0, outgoing_rw_args.received_message.buffer[3]); /* conn ack */
+    printf(" =============================================  data  read\n");
 
     //outgoing_rw_args.invocation_happened = false;
     //ASSERT_INT_EQUALS(1, outgoing_rw_args.read_invocations);
@@ -1429,8 +1437,8 @@ static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocat
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
 //AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2w1wmp9234lcw-ats.iot.us-west-2.amazonaws.com");
-//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152");
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152");
+//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
 
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
