@@ -636,6 +636,7 @@ static int s_determine_socket_error(int error) {
         case IO_STATUS_TIMEOUT:
             return AWS_IO_SOCKET_TIMEOUT;
         case IO_PIPE_BROKEN:
+        case ERROR_BROKEN_PIPE:
             return AWS_IO_SOCKET_CLOSED;
         case STATUS_INVALID_ADDRESS_COMPONENT:
         case WSAEADDRNOTAVAIL:
@@ -2970,7 +2971,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
 
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: ReadFile() failed with error %d",
+        "id=%p handle=%p: recv() failed with error %d",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         error);

@@ -1685,6 +1685,23 @@ static void s_on_socket_io_event(
      * subscribed is set to false. */
     aws_ref_count_acquire(&socket_impl->internal_refcount);
 
+    /* NOTE: READABLE|WRITABLE|HANG_UP events might arrive simultaneously
+     * (e.g. peer sends last few bytes and immediately hangs up).
+     * Notify user of READABLE|WRITABLE events first, so they try to read any remaining bytes. */
+
+    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_READABLE) {
+        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is readable", (void *)socket, socket->io_handle.data.fd);
+        if (socket->readable_fn) {
+            socket->readable_fn(socket, AWS_OP_SUCCESS, socket->readable_user_data);
+        }
+    }
+    /* if socket closed in between these branches, the currently_subscribed will be false and socket_impl will not
+     * have been cleaned up, so this next branch is safe. */
+    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_WRITABLE) {
+        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is writable", (void *)socket, socket->io_handle.data.fd);
+        s_process_socket_write_requests(socket, NULL);
+    }
+
     if (events & AWS_IO_EVENT_TYPE_REMOTE_HANG_UP || events & AWS_IO_EVENT_TYPE_CLOSED) {
         aws_raise_error(AWS_IO_SOCKET_CLOSED);
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: closed remotely", (void *)socket, socket->io_handle.data.fd);
@@ -1703,19 +1720,6 @@ static void s_on_socket_io_event(
             socket->readable_fn(socket, aws_error, socket->readable_user_data);
         }
         goto end_check;
-    }
-
-    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_READABLE) {
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is readable", (void *)socket, socket->io_handle.data.fd);
-        if (socket->readable_fn) {
-            socket->readable_fn(socket, AWS_OP_SUCCESS, socket->readable_user_data);
-        }
-    }
-    /* if socket closed in between these branches, the currently_subscribed will be false and socket_impl will not
-     * have been cleaned up, so this next branch is safe. */
-    if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_WRITABLE) {
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is writable", (void *)socket, socket->io_handle.data.fd);
-        s_process_socket_write_requests(socket, NULL);
     }
 
 end_check:
