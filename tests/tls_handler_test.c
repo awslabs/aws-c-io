@@ -1271,20 +1271,20 @@ static int s_verify_good_host_mqtt_connect(
     /* ***** new ****** */
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
-    struct aws_byte_buf ca_buf = {0};
+    //struct aws_byte_buf ca_buf = {0};
     struct aws_tls_ctx_options tls_options = {0};
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "server_EC384.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "server_EC384.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "ca.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
+    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "ca.pem"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
+    //struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options,
             allocator, &cert_cur, &key_cur));
 
-    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+    //aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
 
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
     ASSERT_NOT_NULL(tls_context);
