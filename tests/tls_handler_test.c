@@ -1386,7 +1386,7 @@ static int s_verify_good_host_mqtt_connect(
 
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf );
-    aws_byte_buf_clean_up(&ca_buf );
+    //aws_byte_buf_clean_up(&ca_buf );
     aws_tls_ctx_release(client_ctx);
     aws_tls_ctx_release(client_ctx);
     aws_tls_ctx_release(tls_context->impl);
