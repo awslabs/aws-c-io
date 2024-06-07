@@ -20,13 +20,14 @@ jobs:
 
   linux-arm:
     name: ARM (${{ matrix.arch }})
-    runs-on: codebuild-aws-c-io-codebuild-${{ github.run_id }}-${{ github.run_attempt }}-arm-3.0-small
+    runs-on: codebuild-aws-c-io-codebuild-${{ github.run_id }}-${{ github.run_attempt }}-arm-3.0-large
     strategy:
       matrix:
-        arch: [armv6, armv7, arm64]
+        arch: [arm64]
     steps:
       - name: Build ${{ env.PACKAGE_NAME }}
         run: |
+          dnf install -y git python3-pip cmake gcc
           python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
           chmod a+x builder
           ./builder build -p ${{ env.PACKAGE_NAME }} --target=linux-${{ matrix.arch }} --spec=downstream
