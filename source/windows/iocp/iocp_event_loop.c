@@ -520,7 +520,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     /* iocp_handle should be the event loop's handle if this succeeded */
     bool iocp_associated = iocp_handle == impl->iocp_handle;
 
-/* clang-format off */
+    /* clang-format off */
 #if defined(AWS_SUPPORT_WIN7)
     /*
      * When associating named pipes, it is possible to open the same pipe in the same
