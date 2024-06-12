@@ -85,8 +85,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 }
 
-void aws_tls_clean_up_static_state(void) { /* no op */
-}
+void aws_tls_clean_up_static_state(void) { /* no op */ }
 
 struct secure_transport_handler {
     struct aws_channel_handler handler;
