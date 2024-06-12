@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#if _MSC_VER
+#ifdef _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
 #    pragma warning(disable : 4204) /* non-constant aggregate initializer */
 #    pragma warning(disable : 4306) /* Identifier is type cast to a larger pointer. */
@@ -59,6 +59,7 @@ struct secure_channel_ctx {
     HCRYPTPROV crypto_provider;
     HCRYPTKEY private_key;
     bool verify_peer;
+    bool should_free_pcerts;
 };
 
 struct secure_channel_handler {
@@ -427,7 +428,7 @@ static int s_fillin_alpn_data(
     size_t *written) {
     *written = 0;
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "")
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "");
 
     struct aws_array_list alpn_buffers;
     struct aws_byte_cursor alpn_buffer_array[4];
@@ -1052,7 +1053,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     int error = AWS_OP_ERR;
     /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
-       always say BLOCKED_ON_READ or SUCCESS. There will never be left over reads.*/
+       always say BLOCKED_ON_READ, AWS_IO_TLS_ERROR_READ_FAILURE or SUCCESS. There will never be left over reads.*/
     do {
         error = AWS_OP_ERR;
         /* 4 buffers are needed, only one is input, the others get zeroed out for the output operation. */
@@ -1078,6 +1079,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
         if (status == SEC_E_OK) {
+            error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
@@ -1143,8 +1145,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            int aws_error = s_determine_sspi_error(status);
-            aws_raise_error(aws_error);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
@@ -1366,8 +1367,12 @@ static int s_process_write_message(
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
 
-            if (!outgoing_message || outgoing_message->message_data.capacity <= upstream_overhead) {
+            if (!outgoing_message) {
                 return AWS_OP_ERR;
+            }
+            if (outgoing_message->message_data.capacity <= upstream_overhead) {
+                aws_mem_release(outgoing_message->allocator, outgoing_message);
+                return aws_raise_error(AWS_ERROR_INVALID_STATE);
             }
 
             /* what if message is larger than one record? */
@@ -1517,7 +1522,7 @@ static int s_handler_shutdown(
 
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler)
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler);
 
             /* send a TLS alert. */
             SECURITY_STATUS status;
@@ -1841,7 +1846,15 @@ static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_chann
     }
 
     if (secure_channel_ctx->pcerts) {
-        CertFreeCertificateContext(secure_channel_ctx->pcerts);
+        /**
+         * Only free the private certificate context if the private key is NOT
+         * from the certificate context because freeing the private key
+         * using CryptDestroyKey frees the certificate context and then
+         * trying to access it leads to a access violation.
+         */
+        if (secure_channel_ctx->should_free_pcerts == true) {
+            CertFreeCertificateContext(secure_channel_ctx->pcerts);
+        }
     }
 
     if (secure_channel_ctx->cert_store) {
@@ -1887,6 +1900,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
+    secure_channel_ctx->should_free_pcerts = true;
 
     secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
 
@@ -2015,6 +2029,7 @@ struct aws_tls_ctx *s_ctx_new(
 
         secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
         secure_channel_ctx->credentials.cCreds = 1;
+        secure_channel_ctx->should_free_pcerts = false;
     }
 
     return &secure_channel_ctx->ctx;

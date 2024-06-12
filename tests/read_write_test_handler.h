@@ -36,6 +36,13 @@ void rw_handler_enable_wait_on_destroy(
 
 void rw_handler_write(struct aws_channel_handler *handler, struct aws_channel_slot *slot, struct aws_byte_buf *buffer);
 
+void rw_handler_write_with_callback(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_byte_buf *buffer,
+    aws_channel_on_message_write_completed_fn *on_completion,
+    void *user_data);
+
 void rw_handler_trigger_read(struct aws_channel_handler *handler, struct aws_channel_slot *slot);
 
 bool rw_handler_shutdown_called(struct aws_channel_handler *handler);

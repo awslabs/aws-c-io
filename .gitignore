@@ -1,6 +1,7 @@
 # IDE Artifacts
 .metadata
 .build
+.vscode
 .idea
 *.d
 Debug

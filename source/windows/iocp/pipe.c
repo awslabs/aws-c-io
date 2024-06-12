@@ -90,7 +90,7 @@ enum write_end_state {
 };
 
 /* Data describing an async write request */
-struct write_request {
+struct pipe_write_request {
     struct aws_byte_cursor original_cursor;
     aws_pipe_on_write_completed_fn *user_callback;
     void *user_data;
@@ -106,10 +106,10 @@ struct write_end_impl {
     struct aws_io_handle handle;
     struct aws_event_loop *event_loop;
 
-    /* List of currently active write_requests */
+    /* List of currently active pipe_write_requests */
     struct aws_linked_list write_list;
 
-    /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated write_request around
+    /* Future optimization idea: avoid an allocation on each write by keeping 1 pre-allocated pipe_write_request around
      * and re-using it whenever possible */
 };
 
@@ -709,7 +709,7 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
     /* Inform outstanding writes about the clean up. */
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
-        struct write_request *write_req = AWS_CONTAINER_OF(node, struct write_request, list_node);
+        struct pipe_write_request *write_req = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
         write_req->is_write_end_cleaned_up = true;
     }
 
@@ -739,7 +739,7 @@ int aws_pipe_write(
     }
     DWORD num_bytes_to_write = (DWORD)src_buffer.len;
 
-    struct write_request *write = aws_mem_acquire(write_impl->alloc, sizeof(struct write_request));
+    struct pipe_write_request *write = aws_mem_acquire(write_impl->alloc, sizeof(struct pipe_write_request));
     if (!write) {
         return AWS_OP_ERR;
     }
@@ -778,7 +778,7 @@ void s_write_end_on_write_completion(
     (void)event_loop;
     (void)num_bytes_transferred;
 
-    struct write_request *write_request = AWS_CONTAINER_OF(overlapped, struct write_request, overlapped);
+    struct pipe_write_request *write_request = AWS_CONTAINER_OF(overlapped, struct pipe_write_request, overlapped);
     struct aws_pipe_write_end *write_end = write_request->is_write_end_cleaned_up ? NULL : overlapped->user_data;
 
     AWS_ASSERT((num_bytes_transferred == write_request->original_cursor.len) || status_code);
