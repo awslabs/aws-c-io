@@ -702,7 +702,9 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %lu", (void *)handler, (unsigned long)status);
+            AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %lu",
+            (void *)handler,
+            (unsigned long)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         s_invoke_negotiation_error(handler, aws_error);
@@ -1199,7 +1201,10 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
          * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
         if (status == SEC_I_RENEGOTIATE) {
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS, "id=%p: Renegotiation received. SECURITY_STATUS is %lu.", (void *)handler, (unsigned long)status);
+                AWS_LS_IO_TLS,
+                "id=%p: Renegotiation received. SECURITY_STATUS is %lu.",
+                (void *)handler,
+                (unsigned long)status);
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                 if (input_buffers[3].cbBuffer < read_len) {
                     AWS_LOGF_TRACE(
@@ -1285,7 +1290,10 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             }
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %lu.", (void *)handler, (unsigned long)status);
+                AWS_LS_IO_TLS,
+                "id=%p: Error decrypting message. SECURITY_STATUS is %lu.",
+                (void *)handler,
+                (unsigned long)status);
             aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
@@ -1606,7 +1614,10 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 
         if (status != SEC_E_OK) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: QueryContextAttributes failed with error %lu", (void *)handler, (unsigned long)status);
+                AWS_LS_IO_TLS,
+                "id=%p: QueryContextAttributes failed with error %lu",
+                (void *)handler,
+                (unsigned long)status);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             aws_channel_shutdown(slot->channel, AWS_ERROR_SYS_CALL_FAILURE);
             return AWS_OP_ERR;
@@ -2033,7 +2044,8 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
@@ -2089,7 +2101,8 @@ static struct aws_channel_handler *s_tls_handler_new(
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
