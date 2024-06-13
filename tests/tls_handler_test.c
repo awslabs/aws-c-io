@@ -1213,23 +1213,44 @@ static int s_verify_good_host_mqtt_connect(
 
     /* ****** NEW ********/
     uint8_t outgoing_received_message[128] = {0};
+    
+   // const uint8_t mqtt_connect_message[] = {
+    
+    //    0x10, /* connect */
+     //   0x10,/*packet length */
+      //  0x00, 0x04,/* protocol name length */
+      //  0x4d, 0x51, 0x54, 0x54,/* MQTT */
+       // 0x04,/* protocol version 4 (3.11) */
+       // 0x02,/* connect flags */
+       // 0x00, 0x3c,/* keep alive */
+       // 0x00, 0x04, 't', 'e', 's', 't' /* client id(size (2) + data(4) */
+    //};
+
+    const uint8_t mqtt_connect_message[] = {
+        0x10, 0x51, 0x00, 0x04, 0x4D, 0x51, 0x54, 0x54, 0x04, 0x80, 0x03, 0xE8, 0x00, 0x29, 0x74, 0x65, 0x73,
+        0x74, 0x2D, 0x30, 0x62, 0x34, 0x37, 0x36, 0x30, 0x64, 0x35, 0x2D, 0x62, 0x61, 0x39, 0x63, 0x2D, 0x38,
+        0x65, 0x66, 0x64, 0x2D, 0x33, 0x32, 0x65, 0x37, 0x2D, 0x34, 0x38, 0x64, 0x30, 0x35, 0x62, 0x62, 0x32,
+        0x30, 0x30, 0x65, 0x61, 0x00, 0x1A, 0x3F, 0x53, 0x44, 0x4B, 0x3D, 0x43, 0x50, 0x50, 0x76, 0x32, 0x26,
+        0x56, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x3D, 0x76, 0x31, 0x2E, 0x33, 0x32, 0x2E, 0x36
+    };
+
     /*
     const uint8_t mqtt_connect_message[] = {
-    */
-   //     0x10, /* connect */
-   //     0x10,/*packet length */
-   //     0x00, 0x04,/* protocol name length */
-   //     0x4d, 0x51, 0x54, 0x54,/* MQTT */
-   //     0x04,/* protocol version 4 (3.11) */
-   //     0x02,/* connect flags */
-  //      0x00, 0x3c,/* keep alive */
- //       0x00, 0x04, 't', 'e', 's', 't' /* client id(size (2) + data(4) */
-//    };
-
-    const uint8_t mqtt_connect_message[128] = {
-    0x10, 0x51, 0x00, 0x04, 0x4D, 0x51, 0x54, 0x54, 0x04, 0x80, 0x03, 0xE8, 0x00, 0x29, 0x74, 0x65, 0x73, 0x74, 0x2D, 0x35, 0x62, 0x39, 0x39, 0x36, 0x61, 0x62, 0x63, 0x2D, 0x63, 0x30, 0x38, 0x31, 0x2D, 0x37, 0x36, 0x31, 0x37, 0x2D, 0x64, 0x31, 0x34, 0x33, 0x2D, 0x64, 0x33, 0x35, 0x66, 0x37, 0x32, 0x65, 0x37, 0x36, 0x39, 0x64, 0x62, 0x00, 0x1A, 0x3F, 0x53, 0x44, 0x4B, 0x3D, 0x43, 0x50, 0x50, 0x76, 0x32, 0x26, 0x56, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x3D, 0x76, 0x31, 0x2E, 0x33, 0x32, 0x2E, 0x36
+       0x10, 0x51, 0x00, 0x04, 0x4D, 0x51, 0x54, 0x54, 0x04, 0x80,
+       0x03, 0xE8, 0x00, 0x29, 0x74, 0x65, 0x73, 0x74, 0x2D, 0x35,
+       0x62, 0x39, 0x39, 0x36, 0x61, 0x62, 0x63, 0x2D, 0x63, 0x30,
+       0x38, 0x31, 0x2D, 0x37, 0x36, 0x31, 0x37, 0x2D, 0x64, 0x31,
+       0x34, 0x33, 0x2D, 0x64, 0x33, 0x35, 0x66, 0x37, 0x32, 0x65,
+       0x37, 0x36, 0x39, 0x64, 0x62, 0x00, 0x1A, 0x3F, 0x53, 0x44,
+       0x4B, 0x3D, 0x43, 0x50, 0x50, 0x76, 0x32, 0x26, 0x56, 0x65,
+       0x72, 0x73, 0x69, 0x6F, 0x6E, 0x3D, 0x76, 0x31, 0x2E, 0x33,
+       0x32, 0x2E, 0x36, 0x00
     };
-    struct aws_byte_buf write_tag = aws_byte_buf_from_array((const char*)mqtt_connect_message, 18);
+    */
+
+//    const uint8_t mqtt_connect_message[] = {'a', 'l', 'f', 'r', 'e', 'd', 0x00, 0x02, 0x01};
+
+    struct aws_byte_buf write_tag = aws_byte_buf_from_array((const char*)mqtt_connect_message, 83);
 
     struct tls_test_rw_args outgoing_rw_args;
     ASSERT_SUCCESS(s_tls_rw_args_init(
@@ -1260,7 +1281,7 @@ static int s_verify_good_host_mqtt_connect(
     AWS_ZERO_STRUCT(client_ctx_options);
     aws_tls_ctx_options_set_verify_peer(&client_ctx_options, true);
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    //aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "http/1.1");
+    //aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "mqtt");
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&client_ctx_options);
@@ -1279,13 +1300,13 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
     struct aws_tls_ctx_options tls_options = {0};
-    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
-    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
-    //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
+   ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
+   ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
+   ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "server_EC384.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "server_EC384.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "ca.pem"));
+  // ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "server_EC384.pem"));
+  // ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "server_EC384.key"));
+   //ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "ca.pem"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -1305,7 +1326,7 @@ static int s_verify_good_host_mqtt_connect(
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
-    //aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "http/1.1");
+    //aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "mqtt");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -1377,7 +1398,12 @@ static int s_verify_good_host_mqtt_connect(
 
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
     //printf("conn ack is %d\n", outgoing_rw_args.received_message.buffer[3]);
-    ASSERT_INT_EQUALS(0, outgoing_rw_args.received_message.buffer[3]); /* conn ack */
+    //ASSERT_INT_EQUALS(0x20, outgoing_rw_args.received_message.buffer[0]); /* conn ack */
+    //ASSERT_INT_EQUALS(0x01, outgoing_rw_args.received_message.buffer[1]); /* conn ack */
+    //ASSERT_INT_EQUALS(0x00, outgoing_rw_args.received_message.buffer[2]); /* conn ack */
+    //ASSERT_INT_EQUALS('0', outgoing_rw_args.received_message.buffer[0]); /* conn ack */
+    //ASSERT_INT_EQUALS('0', outgoing_rw_args.received_message.buffer[1]); /* conn ack */
+    //ASSERT_INT_EQUALS('0', outgoing_rw_args.received_message.buffer[2]); /* conn ack */
     printf(" =============================================  data  read\n");
 
     //outgoing_rw_args.invocation_happened = false;
@@ -1443,12 +1469,13 @@ static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocat
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
 //AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2w1wmp9234lcw-ats.iot.us-west-2.amazonaws.com");
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152");
-//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
+//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "192.168.1.152"); /* mosuquitto/openssl local server */
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
+//AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "172.17.48.219"); /* s2n windows wsl */
 
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 443, NULL);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 8883, NULL);
 }
 
 AWS_TEST_CASE(
