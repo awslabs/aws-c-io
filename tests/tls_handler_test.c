@@ -1269,7 +1269,7 @@ static int s_verify_good_host_mqtt_connect(
     AWS_ZERO_STRUCT(client_ctx_options);
     aws_tls_ctx_options_set_verify_peer(&client_ctx_options, true);
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    //aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "mqtt");
+    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "x-amzn-mqtt-ca");
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&client_ctx_options);
@@ -1314,7 +1314,7 @@ static int s_verify_good_host_mqtt_connect(
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
-    //aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "mqtt");
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "x-amzn-mqtt-ca");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -1352,10 +1352,10 @@ static int s_verify_good_host_mqtt_connect(
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
-    //struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("http/1.1");
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("x-amzn-mqtt-ca");
     /* check ALPN and SNI was properly negotiated */
 
-    /*
+    
     if (aws_tls_is_alpn_available() && client_ctx_options.verify_peer) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
@@ -1363,7 +1363,7 @@ static int s_verify_good_host_mqtt_connect(
             outgoing_args.negotiated_protocol.buffer,
             outgoing_args.negotiated_protocol.len);
     }
-    */
+    
 
   //  ASSERT_BIN_ARRAYS_EQUALS(
   //      host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
@@ -1383,19 +1383,21 @@ static int s_verify_good_host_mqtt_connect(
         &c_tester.condition_variable, &c_tester.mutex,
         s_tls_test_read_predicate, &outgoing_rw_args));
 
-
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
-    //printf("=====================================printing message received message buffer\n");
-    //for (size_t i = 0; i < outgoing_rw_args.received_message.len; i++) {
-     //   printf(" %.2X ", outgoing_rw_args.received_message.buffer[i]);
-   // }
-   // printf("\n");
+    aws_mutex_lock(outgoing_rw_args.mutex);
+    printf("=====================================printing message received message buffer\n");
+    for (size_t i = 0; i < outgoing_rw_args.received_message.len; i++) {
+        printf(" %.2X ", outgoing_rw_args.received_message.buffer[i]);
+    }
+    printf("\n");
     //printf("conn ack is %d\n", outgoing_rw_args.received_message.buffer[3]);
+
     ASSERT_INT_EQUALS(0x20, outgoing_rw_args.received_message.buffer[0]); /* conn ack */
     ASSERT_INT_EQUALS(0x02, outgoing_rw_args.received_message.buffer[1]); /* conn ack */
     ASSERT_INT_EQUALS(0x01, outgoing_rw_args.received_message.buffer[2]); /* conn ack */
     ASSERT_INT_EQUALS(0x00, outgoing_rw_args.received_message.buffer[3]); /* conn ack */
+    aws_mutex_unlock(outgoing_rw_args.mutex);
 
     //ASSERT_INT_EQUALS('0', outgoing_rw_args.received_message.buffer[0]); /* conn ack */
     //ASSERT_INT_EQUALS('0', outgoing_rw_args.received_message.buffer[1]); /* conn ack */
@@ -1471,7 +1473,8 @@ AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.u
 
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 8883, NULL);
+    //return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 8883, NULL);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 443, NULL);
 }
 
 AWS_TEST_CASE(
