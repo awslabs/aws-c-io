@@ -599,15 +599,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     /* Do the IO operations */
     rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
     rw_handler_write(incoming_args.rw_handler, incoming_args.rw_slot, &read_tag);
-
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
-
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
-
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     incoming_rw_args.invocation_happened = false;
