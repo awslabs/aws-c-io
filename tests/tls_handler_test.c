@@ -481,8 +481,7 @@ static struct aws_byte_buf s_tls_test_handle_write(
     return (struct aws_byte_buf){0};
 }
 
-static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator,
-        void *ctx) {
+static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
@@ -516,13 +515,11 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         allocator, &local_server_tester, &incoming_args, &c_tester, true, "server.crt", "server.key"));
     /* make the windows small to make sure back pressure is honored. */
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true,
-        write_tag.len / 2, &outgoing_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len / 2, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct aws_channel_handler *incoming_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true,
-        read_tag.len / 2, &incoming_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, read_tag.len / 2, &incoming_rw_args);
     ASSERT_NOT_NULL(incoming_rw_handler);
 
     incoming_args.rw_handler = incoming_rw_handler;
@@ -606,12 +603,10 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex,
-        s_tls_test_read_predicate, &incoming_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &incoming_rw_args));
 
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex,
-        s_tls_test_read_predicate, &outgoing_rw_args));
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
 
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
@@ -641,10 +636,7 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
         incoming_rw_args.received_message.buffer,
         incoming_rw_args.received_message.len);
     ASSERT_BIN_ARRAYS_EQUALS(
-        read_tag.buffer,
-        read_tag.len,
-        outgoing_rw_args.received_message.buffer,
-        outgoing_rw_args.received_message.len);
+        read_tag.buffer, read_tag.len, outgoing_rw_args.received_message.buffer, outgoing_rw_args.received_message.len);
 
     aws_channel_shutdown(incoming_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
