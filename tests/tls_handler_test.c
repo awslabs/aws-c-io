@@ -1201,7 +1201,8 @@ static int s_verify_good_host_mqtt_connect(
 
     uint8_t outgoing_received_message[128] = {0};
 
-    const uint8_t mqtt_connect_message[] = {
+    const uint8_t mqtt_connect_message[] =
+    {
         /* connect packet */
         0x10,
         /* packet length */
