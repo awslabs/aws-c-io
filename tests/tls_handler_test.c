@@ -1230,12 +1230,7 @@ static int s_verify_good_host_mqtt_connect(
         aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
 
     struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator,
-        s_tls_test_handle_read,
-        s_tls_test_handle_write,
-        true,
-        write_tag.len,
-        &outgoing_rw_args);
+        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len, &outgoing_rw_args);
     ASSERT_NOT_NULL(outgoing_rw_handler);
 
     struct tls_test_args outgoing_args = {
