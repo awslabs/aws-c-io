@@ -30,6 +30,12 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+#ifdef _WIN32
+#   define AWS_NETWORK_INTERFACE_MAX_LEN 16
+#else
+#   include<net/if.h> // TODO: Can I move it to .c file?
+#   define AWS_NETWORK_INTERFACE_MAX_LEN IFNAMSIZ
+#endif
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -43,6 +49,9 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+
+    /* not supported on windows */
+    char interface_name[AWS_NETWORK_INTERFACE_MAX_LEN];
 };
 
 struct aws_socket;

@@ -18,7 +18,6 @@
 #include <aws/io/io.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -1253,6 +1252,50 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             (void *)socket,
             socket->io_handle.data.fd,
             errno_value);
+    }
+    // waahm7
+    size_t network_interface_length = 0;
+    if (aws_secure_strlen(options->interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: interface_name (%s) is not null terminated",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            options->interface_name);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+    if (network_interface_length) {
+#ifdef __APPLE__
+        uint network_interface_index = if_nametoindex(options->interface_name);
+        if(network_interface_index == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: interface_name (%s) was not found",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            options->interface_name);
+           return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS); 
+        }
+        if(AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, IPPROTO_IP, IP_BOUND_IF, &network_interface_index, sizeof(network_interface_index)))) {
+        int errno_value = errno; /* Always cache errno before potential side-effect */
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: setsockopt() for IPROTO_IP failed with errno %d.",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            errno_value);
+        }
+#else
+        if(AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_BINDTODEVICE, options->interface_name,network_interface_length))) {
+        int errno_value = errno; /* Always cache errno before potential side-effect */
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: setsockopt() for SO_BINDTODEVICE failed with errno %d.",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            errno_value);
+        }
+#endif
     }
 
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
