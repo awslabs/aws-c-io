@@ -762,13 +762,11 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 "id=%p: Custom CA was configured, evaluating trust before completing connection",
                 (void *)handler);
 
-            /*
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
             }
-            */
         }
         sc_handler->negotiation_finished = true;
 
@@ -1055,13 +1053,11 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 AWS_LS_IO_TLS,
                 "id=%p: Custom CA was configured, evaluating trust before completing connection",
                 (void *)handler);
-            /*
             if (s_manually_verify_peer_cert(handler)) {
                 aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 s_invoke_negotiation_error(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                 return AWS_OP_ERR;
             }
-            */
         }
         sc_handler->negotiation_finished = true;
         /* force the sizes query, so future Encrypt message calls work.*/
