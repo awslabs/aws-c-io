@@ -702,7 +702,8 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
 
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %lu",
+            AWS_LS_IO_TLS,
+            "id=%p: Error during negotiation. SECURITY_STATUS is %lu",
             (void *)handler,
             (unsigned long)status);
         int aws_error = s_determine_sspi_error(status);
