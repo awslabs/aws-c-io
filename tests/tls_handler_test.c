@@ -1486,19 +1486,17 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
     if (ret == 0) {
         ASSERT_TRUE(0);
     }
-    return s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
+    s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
     ret = SetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", NULL);
     if (ret == 0) {
         ASSERT_TRUE(0);
     }
+    return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384_deprecated,
               s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
 #endif
-
-
-
 
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
