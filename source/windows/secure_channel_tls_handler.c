@@ -2134,6 +2134,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
     DWORD ret;
+    char buffer[10];
 
     if (s_is_windows_equal_or_above_10()) {
         /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
