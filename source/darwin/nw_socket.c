@@ -124,8 +124,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                   }
                 });
         } else if (options->domain == AWS_SOCKET_LOCAL) {
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+//            nw_socket->socket_options_to_params =
+//                nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->socket_options_to_params =
