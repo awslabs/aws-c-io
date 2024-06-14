@@ -2108,19 +2108,28 @@ on_error:
     return NULL;
 }
 
+static bool s_is_testing_deprecated_schannel_creds_defined()
+{
+    DWORD ret;
+    char buffer[10];
+
+    /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
+    ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
+    if (ret != 0) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
+            return true;
+    }
+    return false;
+}
+
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    DWORD ret;
-    char buffer[10];
 
     if (s_is_windows_equal_or_above_10()) {
-        /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
-        ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
-        if (ret != 0) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
+        if (s_is_testing_deprecated_schannel_creds_defined()) {
             return s_tls_handler_new(allocator, options, slot, true);
         }
         return s_tls_handler_support_sch_credentials(allocator, options, slot, true);
@@ -2133,15 +2142,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
-    DWORD ret;
-    char buffer[10];
 
     if (s_is_windows_equal_or_above_10()) {
-        /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
-        ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
-        if (ret != 0) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
+        if (s_is_testing_deprecated_schannel_creds_defined()) {
             return s_tls_handler_new(allocator, options, slot, false);
         }
         return s_tls_handler_support_sch_credentials(allocator, options, slot, false);
