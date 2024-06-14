@@ -1476,10 +1476,11 @@ static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocat
 }
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
 
-#ifdef _WIN32
+#    ifdef _WIN32
 
 static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
-    struct aws_allocator *allocator, void *ctx) {
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
     DWORD ret;
     ret = SetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", "true");
@@ -1494,9 +1495,10 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384_deprecated,
-              s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
-#endif
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_ecc384_deprecated,
+    s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
+#    endif
 
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
