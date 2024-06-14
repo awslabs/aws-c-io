@@ -85,7 +85,7 @@ if(WIN32)
     list(GET BUILD_VERSION 2 BUILD_V)
     message("Windows Version " ${CMAKE_SYSTEM_VERSION})
 
-    if(${BUILD_V} GREATER_EQUAL 22000)
+    if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 22000 or higher: supporting TLS1.3")
         add_net_test_case(tls_client_channel_negotiation_success_ecc384_tls1_3)
     endif()
