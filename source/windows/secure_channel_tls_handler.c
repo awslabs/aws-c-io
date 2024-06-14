@@ -2117,7 +2117,7 @@ static bool s_is_testing_deprecated_schannel_creds_defined() {
     if (ret != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
-            return true;
+        return true;
     }
     return false;
 }
