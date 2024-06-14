@@ -1988,7 +1988,6 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     bool is_client_mode) {
-    char buffer[10];
 
     AWS_ASSERT(options->ctx);
 
@@ -2114,6 +2113,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
     DWORD ret;
+    char buffer[10];
 
     if (s_is_windows_equal_or_above_10()) {
         /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
