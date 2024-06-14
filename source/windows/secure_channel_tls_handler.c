@@ -2108,8 +2108,7 @@ on_error:
     return NULL;
 }
 
-static bool s_is_testing_deprecated_schannel_creds_defined()
-{
+static bool s_is_testing_deprecated_schannel_creds_defined() {
     DWORD ret;
     char buffer[10];
 
