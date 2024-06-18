@@ -1195,6 +1195,18 @@ static int s_verify_good_host_mqtt_connect(
     uint32_t port,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
+    struct aws_byte_buf cert_buf = {0};
+    struct aws_byte_buf key_buf = {0};
+    struct aws_byte_buf ca_buf = {0};
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
+
     aws_io_library_init(allocator);
 
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
@@ -1320,43 +1332,26 @@ static int s_verify_good_host_mqtt_connect(
         .shutdown_finished = false,
     };
 
-    struct aws_tls_ctx_options client_ctx_options;
-    AWS_ZERO_STRUCT(client_ctx_options);
-    aws_tls_ctx_options_set_verify_peer(&client_ctx_options, true);
-    aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
-    aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "x-amzn-mqtt-ca");
-
-    if (override_tls_options_fn) {
-        (*override_tls_options_fn)(&client_ctx_options);
-    }
-
-    struct aws_tls_ctx *client_ctx = aws_tls_client_ctx_new(allocator, &client_ctx_options);
-    ASSERT_NOT_NULL(client_ctx);
-
-    struct aws_tls_connection_options tls_client_conn_options;
-    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, client_ctx);
-    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
-
-    struct aws_byte_buf cert_buf = {0};
-    struct aws_byte_buf key_buf = {0};
-    struct aws_byte_buf ca_buf = {0};
     struct aws_tls_ctx_options tls_options = {0};
+    AWS_ZERO_STRUCT(tls_options);
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
-
-    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
-    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
-
-    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+    aws_tls_ctx_options_set_verify_peer(&tls_options, true);
+    aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
 
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
     ASSERT_NOT_NULL(tls_context);
-    tls_client_conn_options.ctx = tls_context;
+
+    if (override_tls_options_fn) {
+        (*override_tls_options_fn)(&tls_options);
+    }
+
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
@@ -1400,7 +1395,7 @@ static int s_verify_good_host_mqtt_connect(
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("x-amzn-mqtt-ca");
     /* check ALPN and SNI was properly negotiated */
-    if (aws_tls_is_alpn_available() && client_ctx_options.verify_peer) {
+    if (aws_tls_is_alpn_available() && tls_options.verify_peer) {
         ASSERT_BIN_ARRAYS_EQUALS(
             expected_protocol.buffer,
             expected_protocol.len,
@@ -1435,18 +1430,13 @@ static int s_verify_good_host_mqtt_connect(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
+    /* cleanups */
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf);
     aws_byte_buf_clean_up(&ca_buf);
-    aws_tls_ctx_release(client_ctx);
-    aws_tls_ctx_release(client_ctx);
-    aws_tls_ctx_release(tls_context->impl);
-
+    aws_tls_ctx_release(tls_context);
     aws_tls_ctx_options_clean_up(&tls_options);
-
     aws_client_bootstrap_release(client_bootstrap);
-
-    aws_tls_ctx_options_clean_up(&client_ctx_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
     return AWS_OP_SUCCESS;
