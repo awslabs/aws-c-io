@@ -214,6 +214,11 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf pkcs12_password;
 
+    // TODO STEVE
+    // We probably want to set whatever is needed for SecItem support in this struct somewhere.
+    const char *cert_label;
+    const char *key_label;
+
 #    if !defined(AWS_OS_IOS)
     /**
      * On Apple OS you can also use a custom keychain instead of
