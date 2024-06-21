@@ -1071,7 +1071,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 kCFStringEncodingUTF8);
         } else {
             // apply a default label to certificate
-            secure_transport_ctx->cert_label = CFStringCreateWithCString(
+            secure_transport_ctx->key_label = CFStringCreateWithCString(
                 secure_transport_ctx->wrapped_allocator,
                 "default_key_label",
                 kCFStringEncodingUTF8);
