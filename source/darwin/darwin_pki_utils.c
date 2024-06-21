@@ -122,7 +122,7 @@ int aws_import_public_and_private_keys_to_keychain(
 
     // Create dictionary for certificate
     const void *cert_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
-    const void *cert_values[] = { kSecClassCertificate, &cert_label, cert_data_ref };
+    const void *cert_values[] = { kSecClassCertificate, cert_label, cert_data_ref };
     CFDictionaryRef cert_dict = CFDictionaryCreate(
         cf_alloc,
         cert_keys,
@@ -133,7 +133,7 @@ int aws_import_public_and_private_keys_to_keychain(
 
     // Create dictionary for private key
     const void *key_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
-    const void *key_values[] = { kSecClassKey, &key_label, key_data_ref };
+    const void *key_values[] = { kSecClassKey, key_label, key_data_ref };
     CFDictionaryRef key_dict = CFDictionaryCreate(
         cf_alloc,
         key_keys,
