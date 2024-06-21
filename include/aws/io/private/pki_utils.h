@@ -33,6 +33,21 @@ AWS_IO_API const char *aws_determine_default_pki_ca_file(void);
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
  * into identity for use with SecurityFramework.
+ *
+ * WIP SecItem
+ */
+int aws_import_public_and_private_keys_to_keychain(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    SecCertificateRef *sec_certificate_ref,
+    CFStringRef *cert_label,
+    CFStringRef *key_label);
+
+/**
+ * Imports a PEM armored PKCS#7 public/private key pair
+ * into identity for use with SecurityFramework.
  */
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,

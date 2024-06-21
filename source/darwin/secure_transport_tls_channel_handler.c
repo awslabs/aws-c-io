@@ -784,6 +784,9 @@ struct secure_transport_ctx {
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     CFArrayRef ca_cert;
+    SecCertificateRef sec_certificate_ref;
+    CFStringRef cert_label;
+    CFStringRef key_label;
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;
     bool veriify_peer;
@@ -799,9 +802,6 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     struct secure_transport_handler *secure_transport_handler =
         (struct secure_transport_handler *)aws_mem_calloc(allocator, 1, sizeof(struct secure_transport_handler));
-    if (!secure_transport_handler) {
-        return NULL;
-    }
 
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
@@ -885,8 +885,11 @@ static struct aws_channel_handler *s_tls_handler_new(
         SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
-    if (secure_transport_ctx->certs) {
-        status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
+    // if (secure_transport_ctx->certs) {
+    //     status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
+    // }
+    if (secure_transport_ctx->sec_certificate_ref) {
+        status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->sec_certificate_ref);
     }
 
     secure_transport_handler->ca_certs = NULL;
@@ -968,6 +971,18 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         aws_release_certificates(secure_transport_ctx->ca_cert);
     }
 
+    if (secure_transport_ctx->sec_certificate_ref) {
+        CFRelease(secure_transport_ctx->sec_certificate_ref);
+    }
+
+    if (secure_transport_ctx->cert_label) {
+        CFRelease(secure_transport_ctx->cert_label);
+    }
+
+    if (secure_transport_ctx->key_label) {
+        CFRelease(secure_transport_ctx->key_label);
+    }
+
     if (secure_transport_ctx->alpn_list) {
         aws_string_destroy(secure_transport_ctx->alpn_list);
     }
@@ -1006,6 +1021,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
+    secure_transport_ctx->sec_certificate_ref = NULL;
+    secure_transport_ctx->cert_label = NULL;
+    secure_transport_ctx->key_label = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
@@ -1031,15 +1049,58 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
-        if (aws_import_public_and_private_keys_to_identity(
-                alloc,
+
+        // Steve TODO convert key and cert labels and store them in secure_transport_ctx to use for
+        // storage and recovery.
+        if (options->cert_label) {
+            secure_transport_ctx->cert_label = CFStringCreateWithCString(
                 secure_transport_ctx->wrapped_allocator,
-                &cert_chain_cur,
-                &private_key_cur,
-                &secure_transport_ctx->certs,
-                options->keychain_path)) {
+                options->cert_label,
+                kCFStringEncodingUTF8);
+        } else {
+            // apply a default label to certificate
+            secure_transport_ctx->cert_label = CFStringCreateWithCString(
+                secure_transport_ctx->wrapped_allocator,
+                "default_cert_label",
+                kCFStringEncodingUTF8);
+        }
+        if (options->key_label) {
+            secure_transport_ctx->key_label = CFStringCreateWithCString(
+                secure_transport_ctx->wrapped_allocator,
+                options->key_label,
+                kCFStringEncodingUTF8);
+        } else {
+            // apply a default label to certificate
+            secure_transport_ctx->cert_label = CFStringCreateWithCString(
+                secure_transport_ctx->wrapped_allocator,
+                "default_key_label",
+                kCFStringEncodingUTF8);
+        }
+
+        // if (aws_import_public_and_private_keys_to_identity(
+        //         alloc,
+        //         secure_transport_ctx->wrapped_allocator,
+        //         &cert_chain_cur,
+        //         &private_key_cur,
+        //         &secure_transport_ctx->certs,
+        //         options->keychain_path)) {
+        //     AWS_LOGF_ERROR(
+        //         AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+        //     goto cleanup_wrapped_allocator;
+        // }
+
+        if (aws_import_public_and_private_keys_to_keychain(
+            alloc,
+            secure_transport_ctx->wrapped_allocator,
+            &cert_chain_cur,
+            &private_key_cur,
+            &secure_transport_ctx->sec_certificate_ref,
+            secure_transport_ctx->cert_label,
+            secure_transport_ctx->key_label)){
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+                AWS_LS_IO_TLS,
+                "static: failed to import certificate and private key with error %d.",
+                aws_last_error());
             goto cleanup_wrapped_allocator;
         }
 #endif

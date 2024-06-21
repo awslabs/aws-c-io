@@ -89,6 +89,135 @@ ecc_import_cleanup:
     return result;
 }
 
+int aws_import_public_and_private_keys_to_keychain(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    SecCertificateRef *sec_certificate_ref,
+    CFStringRef *cert_label,
+    CFStringRef *key_label) {
+
+    AWS_PRECONDITION(public_cert_chain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
+
+    int result = AWS_OP_ERR;
+
+    CFDataRef cert_data_ref = NULL;
+    CFDataRef key_data_ref = NULL;
+
+    cert_data_ref = CFDataCreate(cf_alloc, public_cert_chain->ptr, public_cert_chain->len);
+    if (!cert_data_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating public cert chain data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Create dictionary for certificate
+    const void *cert_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
+    const void *cert_values[] = { kSecClassCertificate, &cert_label, cert_data_ref };
+    CFDictionaryRef cert_dict = CFDictionaryCreate(
+        cf_alloc,
+        cert_keys,
+        cert_values,
+        3,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+
+    // Create dictionary for private key
+    const void *key_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
+    const void *key_values[] = { kSecClassKey, &key_label, key_data_ref };
+    CFDictionaryRef key_dict = CFDictionaryCreate(
+        cf_alloc,
+        key_keys,
+        key_values,
+        3,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+
+    aws_mutex_lock(&s_sec_mutex);
+
+    OSStatus cert_status = SecItemAdd(cert_dict, NULL);
+    if (cert_status == errSecDuplicateItem) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI,
+            "static: certificate has an existing label-value pair that was previously imported into the Keychain.  "
+            "Updating value in the keychain to the one provided.");
+        const void *update_cert_keys[] = { kSecValueData };
+        const void *update_cert_values[] = { cert_data_ref };
+        CFDictionaryRef update_cert_dict = CFDictionaryCreate(
+            cf_alloc,
+            update_cert_keys,
+            update_cert_values,
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks);
+        cert_status = SecItemUpdate(cert_dict, update_cert_dict);
+        CFRelease(update_cert_dict);
+    }
+
+    if (cert_status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing certificate with OSStatus %d", (int)cert_status);
+        result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
+    }
+
+    key_data_ref = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
+    if (!key_data_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating private key data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+
+    OSStatus key_status = SecItemAdd(key_dict, NULL);
+    if (key_status == errSecDuplicateItem) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI,
+            "static: private key has an existing key-value pair that was previously imported into the Keychain.  "
+            "Updating value in the keychain to the one provided.");
+        const void *update_key_keys[] = { kSecValueData };
+        const void *update_key_values[] = { key_data_ref };
+        CFDictionaryRef update_key_dict = CFDictionaryCreate(
+            cf_alloc,
+            update_key_keys,
+            update_key_values,
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks);
+        cert_status = SecItemUpdate(key_dict, update_key_dict);
+        CFRelease(update_key_dict);
+    }
+
+    if (key_status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing private key with OSStatus %d", (int)key_status);
+        result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
+    }
+
+    OSStatus copy_status = SecItemCopyMatching(cert_dict, (CFTypeRef *)sec_certificate_ref);
+
+    if(copy_status != errSecSuccess){
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed retrieiving stored certificate.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+    aws_mutex_unlock(&s_sec_mutex);
+
+    if (cert_data_ref) {
+        CFRelease(cert_data_ref);
+    }
+    if (key_data_ref) {
+        CFRelease(key_data_ref);
+    }
+
+    return result;
+}
+
 int aws_import_public_and_private_keys_to_identity(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
