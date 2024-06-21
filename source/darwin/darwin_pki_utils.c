@@ -113,6 +113,13 @@ int aws_import_public_and_private_keys_to_keychain(
         goto done;
     }
 
+    key_data_ref = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
+    if (!key_data_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating private key data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
     // Create dictionary for certificate
     const void *cert_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
     const void *cert_values[] = { kSecClassCertificate, &cert_label, cert_data_ref };
@@ -161,14 +168,6 @@ int aws_import_public_and_private_keys_to_keychain(
         result = aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         goto done;
     }
-
-    key_data_ref = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
-    if (!key_data_ref) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating private key data.");
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
 
     OSStatus key_status = SecItemAdd(key_dict, NULL);
     if (key_status == errSecDuplicateItem) {
