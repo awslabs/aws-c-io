@@ -106,6 +106,14 @@ int aws_import_public_and_private_keys_to_keychain(
     CFDataRef cert_data_ref = NULL;
     CFDataRef key_data_ref = NULL;
 
+    CFDictionaryRef cert_dict = NULL;
+    CFDictionaryRef key_dict = NULL;
+
+    CFDictionaryRef update_query_cert_dict = NULL;
+    CFDictionaryRef update_cert_dict = NULL;
+
+    CFDictionaryRef update_key_dict = NULL;
+
     cert_data_ref = CFDataCreate(cf_alloc, public_cert_chain->ptr, public_cert_chain->len);
     if (!cert_data_ref) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: failed creating public cert chain data.");
@@ -123,7 +131,7 @@ int aws_import_public_and_private_keys_to_keychain(
     // Create dictionary for certificate
     const void *cert_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
     const void *cert_values[] = { kSecClassCertificate, cert_label, cert_data_ref };
-    CFDictionaryRef cert_dict = CFDictionaryCreate(
+    cert_dict = CFDictionaryCreate(
         cf_alloc,
         cert_keys,
         cert_values,
@@ -134,7 +142,7 @@ int aws_import_public_and_private_keys_to_keychain(
     // Create dictionary for private key
     const void *key_keys[] = { kSecClass, kSecAttrLabel, kSecValueData };
     const void *key_values[] = { kSecClassKey, key_label, key_data_ref };
-    CFDictionaryRef key_dict = CFDictionaryCreate(
+    key_dict = CFDictionaryCreate(
         cf_alloc,
         key_keys,
         key_values,
@@ -153,7 +161,7 @@ int aws_import_public_and_private_keys_to_keychain(
             "Updating value in the keychain to the one provided.");
         const void *update_cert_query_keys[] = { kSecClass, kSecAttrLabel };
         const void *update_cert_query_values[] = { kSecClassCertificate, cert_label };
-        CFDictionaryRef update_query_dict = CFDictionaryCreate(
+        update_query_cert_dict = CFDictionaryCreate(
         cf_alloc,
         update_cert_query_keys,
         update_cert_query_values,
@@ -164,7 +172,7 @@ int aws_import_public_and_private_keys_to_keychain(
         // Create update dictionary with the new value
         const void *update_cert_keys[] = { kSecValueData };
         const void *update_cert_values[] = { cert_data_ref };
-        CFDictionaryRef update_cert_dict = CFDictionaryCreate(
+        update_cert_dict = CFDictionaryCreate(
             cf_alloc,
             update_cert_keys,
             update_cert_values,
@@ -172,9 +180,7 @@ int aws_import_public_and_private_keys_to_keychain(
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
 
-        cert_status = SecItemUpdate(update_query_dict, update_cert_dict);
-        CFRelease(update_query_dict);
-        CFRelease(update_cert_dict);
+        cert_status = SecItemUpdate(update_query_cert_dict, update_cert_dict);
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "DEBUG: after SecItemUpdate OSStatus %d", (int)cert_status);
     }
 
@@ -192,7 +198,7 @@ int aws_import_public_and_private_keys_to_keychain(
             "Updating value in the keychain to the one provided.");
         const void *update_key_keys[] = { kSecValueData };
         const void *update_key_values[] = { key_data_ref };
-        CFDictionaryRef update_key_dict = CFDictionaryCreate(
+        update_key_dict = CFDictionaryCreate(
             cf_alloc,
             update_key_keys,
             update_key_values,
@@ -200,7 +206,6 @@ int aws_import_public_and_private_keys_to_keychain(
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
         key_status = SecItemUpdate(key_dict, update_key_dict);
-        CFRelease(update_key_dict);
     }
 
     if (key_status != errSecSuccess) {
@@ -227,6 +232,25 @@ done:
     }
     if (key_data_ref) {
         CFRelease(key_data_ref);
+    }
+
+    if (cert_dict) {
+        CFRelease(cert_dict);
+    }
+
+    if (key_dict) {
+        CFRelease(key_dict);
+    }
+
+    if (update_query_cert_dict) {
+        CFRelease(update_query_cert_dict);
+    }
+    if (update_cert_dict) {
+        CFRelease(update_cert_dict);
+    }
+
+    if (update_key_dict) {
+        CFRelease(update_key_dict);
     }
 
     return result;
