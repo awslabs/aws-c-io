@@ -145,6 +145,7 @@ int aws_import_public_and_private_keys_to_keychain(
     aws_mutex_lock(&s_sec_mutex);
 
     OSStatus cert_status = SecItemAdd(cert_dict, NULL);
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "DEBUG: after SecItemAdd OSStatus %d", (int)cert_status);
     if (cert_status == errSecDuplicateItem) {
         AWS_LOGF_INFO(
             AWS_LS_IO_PKI,
@@ -161,6 +162,7 @@ int aws_import_public_and_private_keys_to_keychain(
             &kCFTypeDictionaryValueCallBacks);
         cert_status = SecItemUpdate(cert_dict, update_cert_dict);
         CFRelease(update_cert_dict);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "DEBUG: after SecItemUpdate OSStatus %d", (int)cert_status);
     }
 
     if (cert_status != errSecSuccess) {
