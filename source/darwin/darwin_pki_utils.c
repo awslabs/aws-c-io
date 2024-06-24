@@ -151,6 +151,17 @@ int aws_import_public_and_private_keys_to_keychain(
             AWS_LS_IO_PKI,
             "static: certificate has an existing label-value pair that was previously imported into the Keychain.  "
             "Updating value in the keychain to the one provided.");
+        const void *update_cert_query_keys[] = { kSecClass, kSecAttrLabel };
+        const void *update_cert_query_values[] = { kSecClassCertificate, cert_label };
+        CFDictionaryRef update_query_dict = CFDictionaryCreate(
+        cf_alloc,
+        update_cert_query_keys,
+        update_cert_query_values,
+        2,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+
+        // Create update dictionary with the new value
         const void *update_cert_keys[] = { kSecValueData };
         const void *update_cert_values[] = { cert_data_ref };
         CFDictionaryRef update_cert_dict = CFDictionaryCreate(
@@ -160,7 +171,9 @@ int aws_import_public_and_private_keys_to_keychain(
             1,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
-        cert_status = SecItemUpdate(cert_dict, update_cert_dict);
+
+        cert_status = SecItemUpdate(update_query_dict, update_cert_dict);
+        CFRelease(update_query_dict);
         CFRelease(update_cert_dict);
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "DEBUG: after SecItemUpdate OSStatus %d", (int)cert_status);
     }
