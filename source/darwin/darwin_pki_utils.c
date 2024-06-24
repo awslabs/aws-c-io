@@ -184,7 +184,7 @@ int aws_import_public_and_private_keys_to_keychain(
             1,
             &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
-        cert_status = SecItemUpdate(key_dict, update_key_dict);
+        key_status = SecItemUpdate(key_dict, update_key_dict);
         CFRelease(update_key_dict);
     }
 
