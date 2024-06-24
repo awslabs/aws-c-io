@@ -885,12 +885,13 @@ static struct aws_channel_handler *s_tls_handler_new(
         SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
-    // if (secure_transport_ctx->certs) {
-    //     status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
-    // }
-    if (secure_transport_ctx->sec_certificate_ref) {
-        status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->sec_certificate_ref);
+    // STEVE DEBUG Setup for use
+    if (secure_transport_ctx->certs) {
+        status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
     }
+    // if (secure_transport_ctx->sec_certificate_ref) {
+    //     status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->sec_certificate_ref);
+    // }
 
     secure_transport_handler->ca_certs = NULL;
     if (secure_transport_ctx->ca_cert) {
@@ -1076,33 +1077,33 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 "default_key_label",
                 kCFStringEncodingUTF8);
         }
-
-        // if (aws_import_public_and_private_keys_to_identity(
-        //         alloc,
-        //         secure_transport_ctx->wrapped_allocator,
-        //         &cert_chain_cur,
-        //         &private_key_cur,
-        //         &secure_transport_ctx->certs,
-        //         options->keychain_path)) {
-        //     AWS_LOGF_ERROR(
-        //         AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
-        //     goto cleanup_wrapped_allocator;
-        // }
-
-        if (aws_import_public_and_private_keys_to_keychain(
-            alloc,
-            secure_transport_ctx->wrapped_allocator,
-            &cert_chain_cur,
-            &private_key_cur,
-            &secure_transport_ctx->sec_certificate_ref,
-            secure_transport_ctx->cert_label,
-            secure_transport_ctx->key_label)){
+        // STEVE DEBUG
+        if (aws_import_public_and_private_keys_to_identity(
+                alloc,
+                secure_transport_ctx->wrapped_allocator,
+                &cert_chain_cur,
+                &private_key_cur,
+                &secure_transport_ctx->certs,
+                options->keychain_path)) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "static: failed to import certificate and private key with error %d.",
-                aws_last_error());
+                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
+
+        // if (aws_import_public_and_private_keys_to_keychain(
+        //     alloc,
+        //     secure_transport_ctx->wrapped_allocator,
+        //     &cert_chain_cur,
+        //     &private_key_cur,
+        //     &secure_transport_ctx->sec_certificate_ref,
+        //     secure_transport_ctx->cert_label,
+        //     secure_transport_ctx->key_label)){
+        //     AWS_LOGF_ERROR(
+        //         AWS_LS_IO_TLS,
+        //         "static: failed to import certificate and private key with error %d.",
+        //         aws_last_error());
+        //     goto cleanup_wrapped_allocator;
+        // }
 #endif
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
