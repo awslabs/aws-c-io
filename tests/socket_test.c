@@ -434,7 +434,7 @@ AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
 static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#if !defined(__APPLE__) || !defined(__LINUX__)
+#if !defined(__APPLE__) && !defined(__LINUX__)
     return AWS_OP_SKIP;
 #endif
     struct aws_socket_options options;
@@ -451,8 +451,16 @@ static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_all
     strncpy(options.interface_name, "lo", AWS_NETWORK_INTERFACE_MAX_LEN);
 #endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
-
-    return s_test_socket(allocator, &options, &endpoint);
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_LOCAL;
+    AWS_ZERO_STRUCT(endpoint);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+    return AWS_ERROR_SUCCESS;
 }
 AWS_TEST_CASE(
     test_tcp_socket_communication_with_bind_to_interface,
