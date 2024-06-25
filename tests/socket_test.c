@@ -432,7 +432,7 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
-static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
+static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 #if !defined(__APPLE__) && !defined(__LINUX__)
     return AWS_OP_SKIP;
@@ -462,9 +462,7 @@ static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_all
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
     return AWS_ERROR_SUCCESS;
 }
-AWS_TEST_CASE(
-    test_tcp_socket_communication_with_bind_to_interface,
-    s_test_tcp_socket_communication_with_bind_to_interface)
+AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
