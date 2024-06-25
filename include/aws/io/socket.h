@@ -31,7 +31,7 @@ enum aws_socket_type {
 };
 
 #ifdef _WIN32
-#    define AWS_NETWORK_INTERFACE_MAX_LEN 16
+#    define AWS_NETWORK_INTERFACE_MAX_LEN 0 
 #else
 #    include <net/if.h> // TODO: Can I move it to .c file?
 #    define AWS_NETWORK_INTERFACE_MAX_LEN IFNAMSIZ
