@@ -446,11 +446,11 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
-#if defined(__APPLE__)
+#    if defined(__APPLE__)
     strncpy(options.interface_name, "lo0", AWS_NETWORK_INTERFACE_MAX_LEN);
-#else
+#    else
     strncpy(options.interface_name, "lo", AWS_NETWORK_INTERFACE_MAX_LEN);
-#endif
+#    endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
     options.type = AWS_SOCKET_DGRAM;
