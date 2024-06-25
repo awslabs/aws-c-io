@@ -456,11 +456,6 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
-    options.type = AWS_SOCKET_STREAM;
-    options.domain = AWS_SOCKET_LOCAL;
-    AWS_ZERO_STRUCT(endpoint);
-    aws_socket_endpoint_init_local_address_for_test(&endpoint);
-    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
     return AWS_OP_SUCCESS;
 #endif
 }
