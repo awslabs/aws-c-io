@@ -1253,7 +1253,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             socket->io_handle.data.fd,
             errno_value);
     }
-    // waahm7
     size_t network_interface_length = 0;
     if (aws_secure_strlen(options->interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
         AWS_LOGF_ERROR(
