@@ -1265,7 +1265,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     if (network_interface_length) {
-#ifdef __APPLE__
+#if defined(__APPLE__)
         uint network_interface_index = if_nametoindex(options->interface_name);
         if (network_interface_index == 0) {
             AWS_LOGF_ERROR(
@@ -1290,7 +1290,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 socket->io_handle.data.fd,
                 errno_value);
         }
-#else
+#elif defined(__linux__)
         if (AWS_UNLIKELY(setsockopt(
                 socket->io_handle.data.fd,
                 SOL_SOCKET,
@@ -1305,6 +1305,12 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 socket->io_handle.data.fd,
                 errno_value);
         }
+#else
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: interface_name is ignored. This parameter is only supported on Linux and MacOs.",
+            (void *)socket,
+            socket->io_handle.data.fd);
 #endif
     }
 
