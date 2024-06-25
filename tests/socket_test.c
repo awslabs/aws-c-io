@@ -434,7 +434,9 @@ AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
 static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-
+#if !defined(__APPLE__) || !defined(__LINUX__)
+    return AWS_OP_SKIP;
+#endif
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -443,16 +445,18 @@ static int s_test_tcp_socket_communication_with_bind_to_interface(struct aws_all
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
-    #if defined(__APPLE__)
-    strncpy(options.interface_name, "lo0", AWS_NETWORK_INTERFACE_MAX_LEN); 
-    #else
-    strncpy(options.interface_name, "lo", AWS_NETWORK_INTERFACE_MAX_LEN); 
-    #endif
+#if defined(__APPLE__)
+    strncpy(options.interface_name, "lo0", AWS_NETWORK_INTERFACE_MAX_LEN);
+#else
+    strncpy(options.interface_name, "lo", AWS_NETWORK_INTERFACE_MAX_LEN);
+#endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
 
     return s_test_socket(allocator, &options, &endpoint);
 }
-AWS_TEST_CASE(test_tcp_socket_communication_with_bind_to_interface, s_test_tcp_socket_communication_with_bind_to_interface)
+AWS_TEST_CASE(
+    test_tcp_socket_communication_with_bind_to_interface,
+    s_test_tcp_socket_communication_with_bind_to_interface)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
