@@ -435,7 +435,7 @@ AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 #if !defined(__APPLE__) && !defined(__LINUX__)
-    (void) allocator;
+    (void)allocator;
     return AWS_OP_SKIP;
 #endif
     struct aws_socket_options options;
@@ -468,7 +468,7 @@ AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_int
 static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 #if !defined(__APPLE__) && !defined(__LINUX__)
-    (void) allocator;
+    (void)allocator;
     return AWS_OP_SKIP;
 #else
     struct aws_socket_options options;
