@@ -437,7 +437,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
 #if !defined(__APPLE__) && !defined(__LINUX__)
     (void)allocator;
     return AWS_OP_SKIP;
-#endif
+#else
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -462,6 +462,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     aws_socket_endpoint_init_local_address_for_test(&endpoint);
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
     return AWS_OP_SUCCESS;
+#endif
 }
 AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
 
