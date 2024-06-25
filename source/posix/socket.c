@@ -1276,39 +1276,41 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 options->interface_name);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
-        if (AWS_UNLIKELY(setsockopt(
+        if (setsockopt(
                 socket->io_handle.data.fd,
                 IPPROTO_IP,
                 IP_BOUND_IF,
                 &network_interface_index,
-                sizeof(network_interface_index)))) {
+                sizeof(network_interface_index))) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
-            AWS_LOGF_WARN(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: setsockopt() for IPROTO_IP failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
 #elif defined(__linux__)
-        if (AWS_UNLIKELY(setsockopt(
+        if (setsockopt(
                 socket->io_handle.data.fd,
                 SOL_SOCKET,
                 SO_BINDTODEVICE,
                 options->interface_name,
-                network_interface_length))) {
+                network_interface_length)) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
-            AWS_LOGF_WARN(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: setsockopt() for SO_BINDTODEVICE failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
 #else
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: interface_name is ignored. This parameter is only supported on Linux and MacOs.",
+            "id=%p fd=%d: interface_name is ignored. This parameter is only supported on Linux and MacOS.",
             (void *)socket,
             socket->io_handle.data.fd);
 #endif

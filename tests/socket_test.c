@@ -460,9 +460,30 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     AWS_ZERO_STRUCT(endpoint);
     aws_socket_endpoint_init_local_address_for_test(&endpoint);
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
-    return AWS_ERROR_SUCCESS;
+    return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
+
+static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+#if !defined(__APPLE__) && !defined(__LINUX__)
+    return AWS_OP_SKIP;
+#else
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    strncpy(options.interface_name, "invalid", AWS_NETWORK_INTERFACE_MAX_LEN);
+    struct aws_socket outgoing;
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
+    return AWS_OP_SUCCESS;
+#endif
+}
+AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
