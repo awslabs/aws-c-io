@@ -1269,7 +1269,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 #if defined(__APPLE__)
         uint network_interface_index = if_nametoindex(options->network_interface_name);
         if (network_interface_index == 0) {
-        int errno_value = errno; /* Always cache errno before potential side-effect */
+            int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: network_interface_name (%s) was not found with errno %d.",
