@@ -36,6 +36,7 @@ enum aws_socket_type {
 #    include <net/if.h>
 #    define AWS_NETWORK_INTERFACE_MAX_LEN IFNAMSIZ
 #endif
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;

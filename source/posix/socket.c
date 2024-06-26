@@ -1258,10 +1258,9 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name (%s) max length must be %d length and NULL terminated",
+            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
             (void *)socket,
             socket->io_handle.data.fd,
-            options->network_interface_name,
             AWS_NETWORK_INTERFACE_MAX_LEN);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
