@@ -22,6 +22,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <net/if.h>
 
 /*
  * On OsX, suppress NoPipe signals via flags to setsockopt()
@@ -1257,13 +1258,14 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     if (aws_secure_strlen(options->interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: interface_name (%s) is not null terminated",
+            "id=%p fd=%d: interface_name (%s) max length must be %d length and NULL terminated",
             (void *)socket,
             socket->io_handle.data.fd,
-            options->interface_name);
+            options->interface_name,
+            AWS_NETWORK_INTERFACE_MAX_LEN);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
-    if (network_interface_length) {
+    if (network_interface_length != 0) {
 #if defined(__APPLE__)
         uint network_interface_index = if_nametoindex(options->interface_name);
         if (network_interface_index == 0) {

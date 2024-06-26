@@ -30,10 +30,12 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+extern const int AWS_NETWORK_INTERFACE_MAX_LEN;
+
 #ifdef _WIN32
 #    define AWS_NETWORK_INTERFACE_MAX_LEN 16
 #else
-#    include <net/if.h> // TODO: Can I move it to .c file?
+#    include <net/if.h>
 #    define AWS_NETWORK_INTERFACE_MAX_LEN IFNAMSIZ
 #endif
 struct aws_socket_options {
@@ -50,7 +52,13 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 
-    /* not supported on windows */
+    /**
+     * (Optional)
+     * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
+     * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
+     * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
+     * supported on Linux and MacOS and will be ignored on other platforms.
+     */
     char interface_name[AWS_NETWORK_INTERFACE_MAX_LEN];
 };
 
