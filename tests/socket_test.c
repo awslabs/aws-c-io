@@ -463,10 +463,6 @@ AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_int
 
 static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#if !defined(__APPLE__) && !defined(__LINUX__)
-    (void)allocator;
-    return AWS_OP_SKIP;
-#else
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -477,9 +473,13 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     options.domain = AWS_SOCKET_IPV4;
     strncpy(options.interface_name, "invalid", AWS_NETWORK_INTERFACE_MAX_LEN);
     struct aws_socket outgoing;
+#if defined(__APPLE__) || defined(__LINUX__)
     ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
-    return AWS_OP_SUCCESS;
+#else
+    /* test that interface_name is successfully ignored on unsupported platforms */
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 #endif
+    return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
 
