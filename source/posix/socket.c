@@ -1255,26 +1255,26 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             errno_value);
     }
     size_t network_interface_length = 0;
-    if (aws_secure_strlen(options->interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
+    if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_MAX_LEN, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: interface_name (%s) max length must be %d length and NULL terminated",
+            "id=%p fd=%d: network_interface_name (%s) max length must be %d length and NULL terminated",
             (void *)socket,
             socket->io_handle.data.fd,
-            options->interface_name,
+            options->network_interface_name,
             AWS_NETWORK_INTERFACE_MAX_LEN);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     if (network_interface_length != 0) {
 #if defined(__APPLE__)
-        uint network_interface_index = if_nametoindex(options->interface_name);
+        uint network_interface_index = if_nametoindex(options->network_interface_name);
         if (network_interface_index == 0) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: interface_name (%s) was not found",
+                "id=%p fd=%d: network_interface_name (%s) was not found",
                 (void *)socket,
                 socket->io_handle.data.fd,
-                options->interface_name);
+                options->network_interface_name);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
         if (setsockopt(
@@ -1297,7 +1297,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 socket->io_handle.data.fd,
                 SOL_SOCKET,
                 SO_BINDTODEVICE,
-                options->interface_name,
+                options->network_interface_name,
                 network_interface_length)) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
@@ -1311,7 +1311,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 #else
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: interface_name is ignored. This parameter is only supported on Linux and MacOS.",
+            "id=%p fd=%d: network_interface_name is ignored. This parameter is only supported on Linux and MacOS.",
             (void *)socket,
             socket->io_handle.data.fd);
 #endif

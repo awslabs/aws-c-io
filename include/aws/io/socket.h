@@ -59,7 +59,7 @@ struct aws_socket_options {
      * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
      * supported on Linux and MacOS and will be ignored on other platforms.
      */
-    char interface_name[AWS_NETWORK_INTERFACE_MAX_LEN];
+    char network_interface_name[AWS_NETWORK_INTERFACE_MAX_LEN];
 };
 
 struct aws_socket;
