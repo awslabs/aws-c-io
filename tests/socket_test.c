@@ -478,6 +478,7 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
 #else
     /* test that interface_name is successfully ignored on unsupported platforms */
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_clean_up(&outgoing);
 #endif
     return AWS_OP_SUCCESS;
 }
