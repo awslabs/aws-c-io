@@ -872,7 +872,7 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
     result = AWS_OP_SUCCESS;
-    
+
     goto cleanup; /* to avoid unused label warning on systems other than FreeBSD */
 cleanup:
     aws_socket_clean_up(&outgoing);
