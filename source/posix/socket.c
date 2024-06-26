@@ -18,11 +18,11 @@
 #include <aws/io/io.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <net/if.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <net/if.h>
 
 /*
  * On OsX, suppress NoPipe signals via flags to setsockopt()
