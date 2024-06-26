@@ -1265,7 +1265,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     if (network_interface_length != 0) {
-#if defined(__APPLE__)
+#if defined(AWS_OS_APPLE)
         uint network_interface_index = if_nametoindex(options->network_interface_name);
         if (network_interface_index == 0) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
@@ -1293,7 +1293,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
-#elif defined(__linux__)
+#elif defined(AWS_OS_LINUX)
         if (setsockopt(
                 socket->io_handle.data.fd,
                 SOL_SOCKET,

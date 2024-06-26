@@ -30,7 +30,7 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
-#ifdef _WIN32
+#ifdef AWS_OS_WINDOWS
 #    define AWS_NETWORK_INTERFACE_MAX_LEN 16
 #else
 #    include <net/if.h>
