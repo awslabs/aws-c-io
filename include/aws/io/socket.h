@@ -30,8 +30,6 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
-extern const int AWS_NETWORK_INTERFACE_MAX_LEN;
-
 #ifdef _WIN32
 #    define AWS_NETWORK_INTERFACE_MAX_LEN 16
 #else
