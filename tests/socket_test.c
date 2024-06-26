@@ -861,7 +861,8 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
      * socket which is not listening. Since this test does not aim to test for that, skip it in that case.
      */
     if (result != AWS_ERROR_SUCCESS) {
-        return AWS_OP_SKIP;
+        result = AWS_OP_SKIP;
+        goto cleanup;
     }
 #endif
     ASSERT_SUCCESS(result);
@@ -870,11 +871,12 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args));
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+    result = AWS_OP_SUCCESS;
 
+cleanup:
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
-
-    return 0;
+    return result;
 }
 
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
