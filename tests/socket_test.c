@@ -842,6 +842,8 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket_endpoint endpoint = {
         .address = "127.0.0.1",
+        /* note: the port is completely random from testing perspective, but
+         * freebsd seems to firewall higher numbered ports so keeping it low */
         .port = 1567,
     };
 
@@ -854,30 +856,17 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
-    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
-#ifdef __FreeBSD__
-    /**
-     * FreeBSD doesn't seem to respect the connect timeout. It sometimes fails immediately when trying to connect to a
-     * socket which is not listening. Since this test does not aim to test for that, skip it in that case.
-     */
-    if (result != AWS_ERROR_SUCCESS) {
-        result = AWS_OP_SKIP;
-        goto cleanup;
-    }
-#endif
-    ASSERT_SUCCESS(result);
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args));
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
-    result = AWS_OP_SUCCESS;
 
-    goto cleanup; /* to avoid unused label warning on systems other than FreeBSD */
-cleanup:
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
-    return result;
+
+    return 0;
 }
 
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
