@@ -777,6 +777,7 @@ static bool s_outgoing_tcp_error_predicate(void *args) {
 
 static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+    for(int i=0; i<100; i++) {
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
@@ -813,7 +814,7 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
-
+    }
     return 0;
 }
 
