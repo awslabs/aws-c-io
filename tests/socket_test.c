@@ -805,8 +805,8 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 #ifdef __FreeBSD__
     /**
      * FreeBSD doesn't seem to respect the O_NONBLOCK or SOCK_NONBLOCK flag. It fails immediately when trying to
-     * connect to a socket which is not listening. This is flaky and works sometimes, but we don't know why. Since this test does not aim to test for that, skip it in that
-     * case.
+     * connect to a socket which is not listening. This is flaky and works sometimes, but we don't know why. Since this
+     * test does not aim to test for that, skip it in that case.
      */
     if (result != AWS_ERROR_SUCCESS) {
         ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, aws_last_error());
