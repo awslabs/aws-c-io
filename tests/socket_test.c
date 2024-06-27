@@ -790,8 +790,6 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket_endpoint endpoint = {
         .address = "127.0.0.1",
-        /* note: the port is completely random from testing perspective, but
-         * freebsd seems to firewall higher numbered ports so keeping it low */
         .port = 1567,
     };
 
