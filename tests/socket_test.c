@@ -803,20 +803,33 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
+    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+#ifdef __FreeBSD__
+    /**
+     * FreeBSD doesn't seem to respect the O_NONBLOCK or SOCK_NONBLOCK flag. It fails immediately when trying to
+     * connect to a socket which is not listening. Since this test does not aim to test for that, skip it in that
+     * case.
+     */
+    if (result != AWS_ERROR_SUCCESS) {
+        ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, aws_last_error());
+        result = AWS_OP_SKIP;
+        goto cleanup;
+    }
+#endif
+    ASSERT_SUCCESS(result);
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args));
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+    result = AWS_OP_SUCCESS;
 
+    goto cleanup; /* to avoid unused label warning on systems other than FreeBSD */
+cleanup:
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
-
-    return 0;
+    return result;
 }
-
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
 static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *ctx) {
