@@ -139,7 +139,7 @@ static int s_determine_socket_error(int error) {
 
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
 
-    int fd = socket(s_convert_domain(options->domain), s_convert_type(options->type) | SOCK_NONBLOCK, 0);
+    int fd = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
     int errno_value = errno; /* Always cache errno before potential side-effect */
 
     AWS_LOGF_DEBUG(
