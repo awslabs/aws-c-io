@@ -36,9 +36,13 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
-#    if !defined(AWS_OS_IOS)
+#   if !defined(AWS_OS_IOS)
     aws_string_destroy(options->keychain_path);
-#    endif
+#   else
+    aws_string_destroy(options->cert_label);
+    aws_string_destroy(options->key_label);
+    aws_string_destroy(options->service_label);
+#   endif
 #endif
 
     aws_string_destroy(options->alpn_list);
@@ -52,8 +56,6 @@ int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
-
-#if !defined(AWS_OS_IOS)
 
     aws_tls_ctx_options_init_default_client(options, allocator);
 
@@ -79,15 +81,6 @@ int aws_tls_ctx_options_init_client_mtls(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
-
-#else
-    (void)allocator;
-    (void)cert;
-    (void)pkey;
-    AWS_ZERO_STRUCT(*options);
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_path(
@@ -95,8 +88,6 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path) {
-
-#if !defined(AWS_OS_IOS)
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
@@ -121,15 +112,6 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
-
-#else
-    (void)allocator;
-    (void)cert_path;
-    (void)pkey_path;
-    AWS_ZERO_STRUCT(*options);
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
@@ -263,7 +245,8 @@ int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor) {
 
-#if defined(__APPLE__) && !defined(AWS_OS_IOS)
+#if defined(__APPLE__)
+    # if !defined(AWS_OS_IOS)
     AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: Keychain path is deprecated.");
 
     options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
@@ -272,11 +255,12 @@ int aws_tls_ctx_options_set_keychain_path(
     }
 
     return AWS_OP_SUCCESS;
-#else
+    #else
     (void)options;
     (void)keychain_path_cursor;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    #endif
 #endif
 }
 

@@ -284,6 +284,185 @@ done:
     return result;
 }
 
+#else
+
+void log_entitlement_error(OSStatus status) {
+    switch (status) {
+    case errSecMissingEntitlement:
+        printf("Error: Missing required entitlements.\n");
+        break;
+    case errSecAuthFailed:
+        printf("Error: Authentication failed.\n");
+        break;
+    case errSecNotAvailable:
+        printf("Error: Keychain not available.\n");
+        break;
+    default:
+        printf("Error: OSStatus %d\n", (int)status);
+        break;
+    }
+}
+
+void check_keychain_entitlements() {
+    printf("Checking Keychain Entitlements\n");
+    CFStringRef service = CFSTR("com.example.service");
+    const void *keys[] = { kSecClass, kSecAttrService, kSecReturnAttributes };
+    const void *values[] = { kSecClassGenericPassword, service, kCFBooleanTrue };
+    CFDictionaryRef query = CFDictionaryCreate(NULL, keys, values, 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+
+    CFTypeRef item = NULL;
+    OSStatus status = SecItemCopyMatching(query, &item);
+
+    if (status == errSecSuccess) {
+        printf("Keychain access successful.\n");
+        if (CFDictionaryGetTypeID() == CFGetTypeID(item)) {
+            CFShow(item);
+        }
+    } else if (status == errSecItemNotFound) {
+        printf("No keychain item found for the given query.\n");
+    } else {
+        printf("Keychain access failed with status: %d\n", (int)status);
+        log_entitlement_error(status);
+    }
+
+    if (item) {
+        CFRelease(item);
+    }
+    CFRelease(query);
+}
+
+int aws_import_public_and_private_keys_to_identity(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    CFArrayRef *identity,
+    const struct aws_string *cert_label,
+    const struct aws_string *key_label,
+    const struct aws_string *service_label) {
+
+    AWS_PRECONDITION(public_cert_chain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
+
+    check_keychain_entitlements();
+
+    int result = AWS_OP_ERR;
+
+    CFDataRef cert_data = NULL;
+    CFDataRef key_data = NULL;
+    CFDataRef root_cert_data = NULL;
+
+    CFStringRef cert_label_ref = NULL;
+    CFStringRef key_label_ref = NULL;
+    CFStringRef service_label_ref = NULL;
+
+    cert_data = CFDataCreate(cf_alloc, public_cert_chain->ptr, public_cert_chain->len);
+    if (!cert_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating public cert chain data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    key_data = CFDataCreate(cf_alloc, private_key->ptr, private_key->len);
+    if (!key_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key data.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    cert_label_ref = CFStringCreateWithBytes(cf_alloc, (const UInt8 *)aws_string_bytes(cert_label), cert_label->len, kCFStringEncodingUTF8, false);
+    if (!cert_label_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating certificate label.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    key_label_ref = CFStringCreateWithBytes(cf_alloc, (const UInt8 *)aws_string_bytes(key_label), key_label->len, kCFStringEncodingUTF8, false);
+    if (!key_label_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key label.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    service_label_ref = CFStringCreateWithBytes(cf_alloc, (const UInt8 *)aws_string_bytes(service_label), service_label->len, kCFStringEncodingUTF8, false);
+    if (!service_label_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating service label.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+    printf("Debug print statement\n");
+
+    // STEVE DEBUG
+    // kSecAttyAccessible default should be to omit it from the dictionaries. Adding it with kSecAttrAccessibleAfterFirstUnlock
+    // returns  OSStatus -34018 errSecMissingEntitlement
+
+    // Create dictionary for certificate
+    const void *cert_keys[] = { kSecClass, kSecAttrLabel, kSecAttrService, kSecValueData };
+    const void *cert_values[] = { kSecClassCertificate, cert_label_ref, service_label_ref, cert_data };
+    CFDictionaryRef cert_dict = CFDictionaryCreate(cf_alloc, cert_keys, cert_values, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (!cert_dict) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating certificate dictionary.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Create dictionary for private key
+    const void *key_keys[] = { kSecClass, kSecAttrLabel, kSecAttrService, kSecValueData };
+    const void *key_values[] = { kSecClassKey, key_label_ref, service_label_ref, key_data };
+    CFDictionaryRef key_dict = CFDictionaryCreate(cf_alloc, key_keys, key_values, 4, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (!key_dict) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating key dictionary.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Add certificate to keychain
+    OSStatus cert_status = SecItemAdd(cert_dict, NULL);
+    if (cert_status != errSecSuccess && cert_status != errSecDuplicateItem) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed adding certificate to keychain with OSStatus %d", (int)cert_status);
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Add private key to keychain
+    OSStatus key_status = SecItemAdd(key_dict, NULL);
+    if (key_status != errSecSuccess && key_status != errSecDuplicateItem) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed adding private key to keychain with OSStatus %d", (int)key_status);
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+
+    if (cert_data != NULL) {
+        CFRelease(cert_data);
+    }
+
+    if (key_data != NULL) {
+        CFRelease(key_data);
+    }
+
+    if (root_cert_data != NULL) {
+        CFRelease(root_cert_data);
+    }
+
+    if (cert_label_ref) {
+        CFRelease(cert_label_ref);
+    }
+
+    if (key_label_ref) {
+        CFRelease(key_label_ref);
+    }
+
+    if (service_label_ref) {
+        CFRelease(service_label_ref);
+    }
+
+    return result;
+}
+
 #endif /* !AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(

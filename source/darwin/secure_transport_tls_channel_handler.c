@@ -1014,7 +1014,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
-#if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
@@ -1031,6 +1030,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
+
+#if !defined(AWS_OS_IOS)
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
@@ -1042,6 +1043,26 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
+#else
+        // STEVE TODO check if these aws_strings can fail and report error if they do.
+        // Also, set up appropriate default values for these if one isn't provided.
+        struct aws_string *cert_label = aws_string_new_from_c_str(alloc, "default_cert_label");
+        struct aws_string *key_label = aws_string_new_from_c_str(alloc, "default_key_label");
+        struct aws_string *service_label = aws_string_new_from_c_str(alloc, "default_service_label");
+        if (aws_import_public_and_private_keys_to_identity(
+                alloc,
+                secure_transport_ctx->wrapped_allocator,
+                &cert_chain_cur,
+                &private_key_cur,
+                &secure_transport_ctx->certs,
+                cert_label,
+                key_label,
+                service_label)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+            goto cleanup_wrapped_allocator;
+    }
+
 #endif
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");

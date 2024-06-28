@@ -214,13 +214,38 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf pkcs12_password;
 
-#    if !defined(AWS_OS_IOS)
+#   if !defined(AWS_OS_IOS)
     /**
      * On Apple OS you can also use a custom keychain instead of
      * the default keychain of the account.
      */
     struct aws_string *keychain_path;
-#    endif
+    #else
+
+    /**
+     * Human-Readable identifier to tag for certificate being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *cert_label;
+
+    /**
+     * Human-Readable identifier to tag for private key being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *key_label;
+
+    /**
+     * Human-Readable identifier for service associated with cert_label and key_label.
+     * Value will be used with kSecAttrService Key in SecItem functions.
+     * SecItem allows duplicate kSecAttrLabel items in the Keychain but does not allow
+     * duplicate kSecAttrService paired with kSecAttrLabel. This will prevent ambiguity
+     * between which certificate and private key should be used during a TLS handshake.
+     */
+    struct aws_string *service_label;
+
+#   endif
 
 #endif
 
