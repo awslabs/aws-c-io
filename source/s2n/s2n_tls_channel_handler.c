@@ -1021,6 +1021,10 @@ static int s_s2n_handler_shutdown(
             s2n_handler->state = NEGOTIATION_FAILED;
         }
 
+        // if (!abort_immediately) {
+        //     /* TODO: process the cached data from tls???? instead of drop them to the ground?? */
+        // }
+
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);

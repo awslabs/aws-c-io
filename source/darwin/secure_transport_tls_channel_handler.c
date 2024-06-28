@@ -566,6 +566,10 @@ static int s_handle_shutdown(
             "id=%p: shutting down read direction with error %d. Flushing queues.",
             (void *)handler,
             error_code);
+
+        // if (!abort_immediately) {
+        //     /* TODO: process the cached data from tls???? */
+        // }
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
