@@ -600,13 +600,13 @@ static int s_set_socket_channel(struct tls_channel_server_client_tester *server_
      * done messed up. */
     aws_tls_connection_options_clean_up(&client_tls_opt_tester.opt);
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable,
-        &c_tester.mutex,
+        &s_server_client_tester.server_condition_variable,
+        &s_server_client_tester.server_mutex,
         s_tls_channel_setup_predicate,
         &server_client_tester->server_args));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_mutex_lock(&s_server_client_tester.server_mutex));
     ASSERT_FALSE(server_client_tester->server_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
