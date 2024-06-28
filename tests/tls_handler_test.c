@@ -338,8 +338,8 @@ static void s_tls_handler_test_server_shutdown_callback(
     if (error_code) {
         setup_test_args->last_error_code = error_code;
     }
-    aws_mutex_unlock(setup_test_args->mutex);
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
 }
 
 static void s_tls_handler_test_server_listener_destroy_callback(
@@ -350,9 +350,8 @@ static void s_tls_handler_test_server_listener_destroy_callback(
     struct tls_test_args *setup_test_args = (struct tls_test_args *)user_data;
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->listener_destroyed = true;
+    aws_condition_variable_notify_all(setup_test_args->condition_variable);
     aws_mutex_unlock(setup_test_args->mutex);
-
-    aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
 static void s_tls_on_negotiated(
@@ -747,8 +746,8 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
      * Because of the limited window size, we also have more data cached in the TLS hanlder.
      *
      * Now:
-     * - Shutdown the server channel, and wait for it to finish, which will close the socket, and the socket will read
-     * 0.
+     * - Shutdown the server channel, and wait for it to finish, which will close the socket, and the socket will
+     * schedule the channel shutdown process when this function returns.
      * - Update the window from this thread, it should schedule another task from channel thread to do so.
      */
     (void)slot;
@@ -786,6 +785,14 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
     return client_rw_args->received_message;
 }
 
+/**
+ * Test that when the socket initailize the shutdown process becasue of socket closed, we have a pending window update
+ * task to start the reading of the cached data in TLS handler. So, the channel will run the window update task and
+ * followed by a shutdown task immediately.
+ *
+ * Previously, the window update task will schedule read task if it opens the window back from close, but since the
+ * shutdown task already been scheluded, the read will happen after shutdown. So, it result in lost of data.
+ */
 static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_init(allocator));
