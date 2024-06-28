@@ -531,7 +531,7 @@ static int s_s2n_handler_process_read_message(
 
         if (s2n_handler->state == NEGOTIATION_ONGOING) {
             size_t message_len = message->message_data.len;
-            if (!s_drive_negotiation(handler)) {
+            if (s_drive_negotiation(handler) == AWS_OP_SUCCESS) {
                 aws_channel_slot_increment_read_window(slot, message_len);
             } else {
                 aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
@@ -1020,6 +1020,10 @@ static int s_s2n_handler_shutdown(
         if (s2n_handler->state == NEGOTIATION_ONGOING) {
             s2n_handler->state = NEGOTIATION_FAILED;
         }
+
+        // if (!abort_immediately) {
+        //     /* TODO: process the cached data from tls???? instead of drop them to the ground?? */
+        // }
 
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
