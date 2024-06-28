@@ -72,6 +72,7 @@ jobs:
   clang-sanitizers:
     runs-on: ubuntu-22.04 # latest
     strategy:
+      fail-fast: false
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:

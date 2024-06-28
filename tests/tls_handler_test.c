@@ -556,6 +556,7 @@ static int s_tls_channel_server_client_tester_cleanup(void) {
     aws_server_bootstrap_destroy_socket_listener(
         s_server_client_tester.local_server_tester.server_bootstrap,
         s_server_client_tester.local_server_tester.listener);
+    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&s_server_client_tester.local_server_tester));
     ASSERT_SUCCESS(aws_mutex_lock(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &s_server_client_tester.server_condition_variable,
@@ -568,7 +569,6 @@ static int s_tls_channel_server_client_tester_cleanup(void) {
     aws_mutex_clean_up(&s_server_client_tester.server_mutex);
     aws_condition_variable_clean_up(&s_server_client_tester.server_condition_variable);
     aws_client_bootstrap_release(s_server_client_tester.client_bootstrap);
-    ASSERT_SUCCESS(s_tls_local_server_tester_clean_up(&s_server_client_tester.local_server_tester));
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     return AWS_OP_SUCCESS;
 }
