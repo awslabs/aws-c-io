@@ -476,9 +476,7 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
 #if defined(AWS_OS_APPLE) || defined(AWS_OS_LINUX)
     ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
 #else
-    /* test that network_interface_name is successfully ignored on unsupported platforms */
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    aws_socket_clean_up(&outgoing);
+    ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
 #endif
     return AWS_OP_SUCCESS;
 }

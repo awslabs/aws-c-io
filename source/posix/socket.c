@@ -1267,7 +1267,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     if (network_interface_length != 0) {
 #if defined(AWS_OS_APPLE)
         /*
-         * Apple does not support SO_BINDTODEVICE so we have to use IP_BOUND_IF with an index.
+         * Apple does not support SO_BINDTODEVICE and the alternative is IP_BOUND_IF which requires an index instead
+         * of name.
          */
         uint network_interface_index = if_nametoindex(options->network_interface_name);
         if (network_interface_index == 0) {
@@ -1281,12 +1282,29 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
-        if (setsockopt(
-                socket->io_handle.data.fd,
-                IPPROTO_IP,
-                IP_BOUND_IF,
-                &network_interface_index,
-                sizeof(network_interface_index))) {
+        if (options->domain == AWS_SOCKET_IPV6) {
+            if (setsockopt(
+                    socket->io_handle.data.fd,
+                    IPPROTO_IPV6,
+                    IPV6_BOUND_IF,
+                    &network_interface_index,
+                    sizeof(network_interface_index))) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() with IPV6_BOUND_IF for \"%s\" failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    options->network_interface_name,
+                    errno_value);
+                return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+            }
+        } else if (setsockopt(
+                       socket->io_handle.data.fd,
+                       IPPROTO_IP,
+                       IP_BOUND_IF,
+                       &network_interface_index,
+                       sizeof(network_interface_index))) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
