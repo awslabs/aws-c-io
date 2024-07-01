@@ -1271,7 +1271,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: network_interface_name (%s) was not found with errno %d.",
+                "id=%p fd=%d: network_interface_name "%s" not found. if_nametoindex() failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 options->network_interface_name,
