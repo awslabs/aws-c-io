@@ -1266,12 +1266,15 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
     }
     if (network_interface_length != 0) {
 #if defined(AWS_OS_APPLE)
+        /*
+         * Apple does not support SO_BINDTODEVICE so we have to use IP_BOUND_IF with an index.
+         */
         uint network_interface_index = if_nametoindex(options->network_interface_name);
         if (network_interface_index == 0) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: network_interface_name "%s" not found. if_nametoindex() failed with errno %d.",
+                "id=%p fd=%d: network_interface_name \"%s\" not found. if_nametoindex() failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 options->network_interface_name,
@@ -1287,9 +1290,10 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: setsockopt() for IPROTO_IP failed with errno %d.",
+                "id=%p fd=%d: setsockopt() with IP_BOUND_IF for \"%s\" failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
+                options->network_interface_name,
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
@@ -1303,9 +1307,10 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: setsockopt() for SO_BINDTODEVICE failed with errno %d.",
+                "id=%p fd=%d: setsockopt() with SO_BINDTODEVICE for \"%s\" failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
+                options->network_interface_name,
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
