@@ -1586,6 +1586,7 @@ static int s_handler_shutdown(
                     slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
 
                 if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
+                    FreeContextBuffer(output_buffer.pvBuffer); // add free for InitializeSecurityContextA
                     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
@@ -1596,6 +1597,7 @@ static int s_handler_shutdown(
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
                 }
             }
+            FreeContextBuffer(output_buffer.pvBuffer); // add free for InitializeSecurityContextA
         }
     }
 
