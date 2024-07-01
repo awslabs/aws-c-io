@@ -31,10 +31,10 @@ enum aws_socket_type {
 };
 
 #ifdef AWS_OS_WINDOWS
-#    define AWS_NETWORK_INTERFACE_MAX_LEN 16
+#    define AWS_NETWORK_INTERFACE_NAME_MAX 16
 #else
 #    include <net/if.h>
-#    define AWS_NETWORK_INTERFACE_MAX_LEN IFNAMSIZ
+#    define AWS_NETWORK_INTERFACE_NAME_MAX IFNAMSIZ
 #endif
 
 struct aws_socket_options {
@@ -58,7 +58,7 @@ struct aws_socket_options {
      * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
      * supported on Linux and MacOS and will be ignored on other platforms.
      */
-    char network_interface_name[AWS_NETWORK_INTERFACE_MAX_LEN];
+    char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
 
 struct aws_socket;
