@@ -30,13 +30,7 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
-#ifdef AWS_OS_WINDOWS
-#    define AWS_NETWORK_INTERFACE_NAME_MAX 16
-#else
-#    include <net/if.h>
-#    define AWS_NETWORK_INTERFACE_NAME_MAX IFNAMSIZ
-#endif
-
+#define AWS_NETWORK_INTERFACE_NAME_MAX 16
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
