@@ -2344,12 +2344,13 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     if (network_interface_length != 0) {
-        AWS_LOGF_WARN(
+        AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name (%s) is ignored. This parameter is only supported on Linux and MacOS.",
+            "id=%p fd=%d: network_interface_name is not supported on this platform. This parameter is only supported "
+            "on Linux and MacOS.",
             (void *)socket,
-            socket->io_handle.data.fd,
-            options->network_interface_name);
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     }
 
     return AWS_OP_SUCCESS;
