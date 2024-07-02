@@ -31,6 +31,7 @@ enum aws_socket_type {
 };
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
