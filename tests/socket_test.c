@@ -230,7 +230,7 @@ static int s_test_socket_ex(
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
     if (aws_socket_bind(&listener, endpoint)) {
-        /* Skip test if server can't bind to address (e.g. Codebuild ubuntu runners don't allow IPv6) */
+        /* Skip test if server can't bind to address (e.g. CodeBuild's ubuntu runners don't allow IPv6) */
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         }
