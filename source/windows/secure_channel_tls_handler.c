@@ -1564,8 +1564,7 @@ static int s_handler_shutdown(
                     if (error_code == 0) {
                         error_code = AWS_IO_TLS_ERROR_WRITE_FAILURE;
                     }
-                    return aws_channel_slot_on_handler_shutdown_complete(
-                        slot, dir, error_code, true);
+                    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
                 outgoing_message->message_data.len = output_buffer.cbBuffer;
