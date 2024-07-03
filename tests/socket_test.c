@@ -228,6 +228,7 @@ static int s_test_socket_ex(
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
+
     ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
     struct aws_socket_endpoint bound_endpoint;
@@ -245,9 +246,8 @@ static int s_test_socket_ex(
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
-
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
-        ASSERT_SUCCESS(aws_socket_bind(&outgoing, endpoint));
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
     }
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
@@ -434,10 +434,6 @@ AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
 static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#if defined(AWS_OS_WINDOWS)
-    (void)allocator;
-    return AWS_OP_SKIP;
-#else
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
     options.connect_timeout_ms = 3000;
@@ -475,7 +471,6 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     }
 
     return AWS_OP_SUCCESS;
-#endif
 }
 AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
 
