@@ -227,15 +227,7 @@ static int s_test_socket_ex(
     };
 
     struct aws_socket listener;
-    if (aws_socket_init(&listener, allocator, options)) {
-#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
-        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
-            return AWS_OP_SKIP;
-        }
-#endif
-        ASSERT_TRUE(false, "aws_socket_init() failed");
-    }
-
+    ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
     if (aws_socket_bind(&listener, endpoint)) {
         /* Skip test if server can't bind to address (e.g. CodeBuild's ubuntu runners don't allow IPv6) */
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
@@ -258,7 +250,15 @@ static int s_test_socket_ex(
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
 
     struct aws_socket outgoing;
-    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
+    if (aws_socket_init(&outgoing, allocator, options)) {
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#endif
+        ASSERT_TRUE(false, "aws_socket_init() failed");
+    }
+
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
         ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
     }
