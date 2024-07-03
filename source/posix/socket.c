@@ -1282,7 +1282,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
-#elif defined(IPPROTO_IP)
+#elif defined(IP_BOUND_IF)
         /*
          * Apple does not support SO_BINDTODEVICE and the alternative is IP_BOUND_IF which requires an index instead
          * of a name. We are not using this for Linux because this requires 2 system calls instead of 1, and is
