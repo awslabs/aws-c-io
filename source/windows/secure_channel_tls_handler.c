@@ -579,13 +579,8 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     /* send the server hello. */
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
-    if (!outgoing_message) {
-        FreeContextBuffer(output_buffer.pvBuffer);
-        s_invoke_negotiation_error(handler, aws_last_error());
-        return AWS_OP_ERR;
-    }
 
-    AWS_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
+    AWS_FATAL_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
     memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
     outgoing_message->message_data.len = output_buffer.cbBuffer;
     FreeContextBuffer(output_buffer.pvBuffer);
@@ -678,12 +673,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
                     sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf_ptr->cbBuffer);
 
-                if (!outgoing_message) {
-                    FreeContextBuffer(buf_ptr->pvBuffer);
-                    s_invoke_negotiation_error(handler, aws_last_error());
-                    return AWS_OP_ERR;
-                }
-
+                AWS_FATAL_ASSERT(outgoing_message->message_data.capacity >= buf_ptr->cbBuffer);
                 memcpy(outgoing_message->message_data.buffer, buf_ptr->pvBuffer, buf_ptr->cbBuffer);
                 outgoing_message->message_data.len = buf_ptr->cbBuffer;
                 FreeContextBuffer(buf_ptr->pvBuffer);
@@ -855,13 +845,8 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
         sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data_to_write_len);
-    if (!outgoing_message) {
-        FreeContextBuffer(output_buffer.pvBuffer);
-        s_invoke_negotiation_error(handler, aws_last_error());
-        return AWS_OP_ERR;
-    }
 
-    AWS_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
+    AWS_FATAL_ASSERT(outgoing_message->message_data.capacity >= data_to_write_len);
     memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
     outgoing_message->message_data.len = output_buffer.cbBuffer;
     FreeContextBuffer(output_buffer.pvBuffer);
@@ -968,12 +953,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
                     sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buf_ptr->cbBuffer);
 
-                if (!outgoing_message) {
-                    FreeContextBuffer(buf_ptr->pvBuffer);
-                    s_invoke_negotiation_error(handler, aws_last_error());
-                    return AWS_OP_ERR;
-                }
-
+                AWS_FATAL_ASSERT(outgoing_message->message_data.capacity >= buf_ptr->cbBuffer);
                 memcpy(outgoing_message->message_data.buffer, buf_ptr->pvBuffer, buf_ptr->cbBuffer);
                 outgoing_message->message_data.len = buf_ptr->cbBuffer;
                 FreeContextBuffer(buf_ptr->pvBuffer);
@@ -1176,10 +1156,6 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             struct aws_io_message *read_out_msg = aws_channel_acquire_message_from_pool(
                 sc_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, requested_message_size);
 
-            if (!read_out_msg) {
-                return AWS_OP_ERR;
-            }
-
             size_t copy_size = read_out_msg->message_data.capacity < requested_message_size
                                    ? read_out_msg->message_data.capacity
                                    : requested_message_size;
@@ -1367,9 +1343,6 @@ static int s_process_write_message(
             struct aws_io_message *outgoing_message =
                 aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, to_write);
 
-            if (!outgoing_message) {
-                return AWS_OP_ERR;
-            }
             if (outgoing_message->message_data.capacity <= upstream_overhead) {
                 aws_mem_release(outgoing_message->allocator, outgoing_message);
                 return aws_raise_error(AWS_ERROR_INVALID_STATE);
@@ -1585,11 +1558,18 @@ static int s_handler_shutdown(
                 struct aws_io_message *outgoing_message = aws_channel_acquire_message_from_pool(
                     slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, output_buffer.cbBuffer);
 
-                if (!outgoing_message || outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
-                    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, aws_last_error(), true);
+                if (outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
+                    aws_mem_release(outgoing_message->allocator, outgoing_message);
+                    FreeContextBuffer(output_buffer.pvBuffer);
+                    if (error_code == 0) {
+                        error_code = AWS_IO_TLS_ERROR_WRITE_FAILURE;
+                    }
+                    return aws_channel_slot_on_handler_shutdown_complete(
+                        slot, dir, error_code, true);
                 }
                 memcpy(outgoing_message->message_data.buffer, output_buffer.pvBuffer, output_buffer.cbBuffer);
                 outgoing_message->message_data.len = output_buffer.cbBuffer;
+                FreeContextBuffer(output_buffer.pvBuffer);
 
                 /* we don't really care if this succeeds or not, it's just sending the TLS alert. */
                 if (aws_channel_slot_send_message(slot, outgoing_message, AWS_CHANNEL_DIR_WRITE)) {
