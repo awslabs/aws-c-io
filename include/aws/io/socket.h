@@ -51,7 +51,8 @@ struct aws_socket_options {
      * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
      * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
      * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
-     * supported on Linux and MacOS. On other platforms, `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised.
+     * supported on Linux, macOS, and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not supported on
+     * Windows. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on unsupported platforms.
      */
     char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
