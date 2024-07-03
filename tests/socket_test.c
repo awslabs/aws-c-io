@@ -227,10 +227,12 @@ static int s_test_socket_ex(
     };
 
     struct aws_socket listener;
-    if (aws_socket_init(&listener, allocator, options)){
+    if (aws_socket_init(&listener, allocator, options)) {
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
         if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
             return AWS_OP_SKIP;
         }
+#endif
         ASSERT_TRUE(false, "aws_socket_init() failed");
     }
 
