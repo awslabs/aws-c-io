@@ -250,14 +250,7 @@ static int s_test_socket_ex(
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
 
     struct aws_socket outgoing;
-    if (aws_socket_init(&outgoing, allocator, options)) {
-#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
-        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
-            return AWS_OP_SKIP;
-        }
-#endif
-        ASSERT_TRUE(false, "aws_socket_init() failed");
-    }
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
 
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
         if (aws_socket_bind(&outgoing, local)) {
@@ -479,7 +472,15 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     struct aws_socket_endpoint endpoint_ipv6 = {.address = "::1", .port = 1024};
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV6;
-    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint_ipv6));
+    if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
+#    if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#    endif
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+
     return AWS_OP_SUCCESS;
 #endif
 }
