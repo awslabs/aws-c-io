@@ -440,7 +440,7 @@ AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
 static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+#if defined(AWS_OS_WINDOWS)
     (void)allocator;
     return AWS_OP_SKIP;
 #else
