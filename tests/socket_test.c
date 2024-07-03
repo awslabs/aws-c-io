@@ -464,6 +464,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV6;
     if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
+        /* Skip test if server can't bind to address (e.g. Codebuild's ubuntu runners don't allow IPv6) */
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         }
