@@ -442,18 +442,18 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
-#    if defined(AWS_OS_APPLE)
+#if defined(AWS_OS_APPLE)
     strncpy(options.network_interface_name, "lo0", AWS_NETWORK_INTERFACE_NAME_MAX);
-#    else
+#else
     strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
-#    endif
+#endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
     if (s_test_socket(allocator, &options, &endpoint)) {
-#    if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
         if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
             return AWS_OP_SKIP;
         }
-#    endif
+#endif
         ASSERT_TRUE(false, "s_test_socket() failed");
     }
     options.type = AWS_SOCKET_DGRAM;
