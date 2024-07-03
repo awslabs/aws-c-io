@@ -6,10 +6,10 @@ phases:
     commands:
       - add-apt-repository ppa:ubuntu-toolchain-r/test
       - apt-get update -y
-      - apt-get install gcc cmake ninja-build python3 -y
+      - apt-get install gcc-7 cmake ninja-build python3 -y
   pre_build:
     commands:
-      - export CC=gcc
+      - export CC=gcc-7
       - export BUILDER_VERSION=$(cat .github/workflows/ci.yml | grep 'BUILDER_VERSION:' | sed 's/\s*BUILDER_VERSION:\s*\(.*\)/\1/')
       - export BUILDER_SOURCE=$(cat .github/workflows/ci.yml | grep 'BUILDER_SOURCE:' | sed 's/\s*BUILDER_SOURCE:\s*\(.*\)/\1/')
       - echo "Using builder version='${BUILDER_VERSION}' source='${BUILDER_SOURCE}'"
