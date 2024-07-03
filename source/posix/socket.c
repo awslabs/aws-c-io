@@ -1285,7 +1285,7 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 #elif defined(IP_BOUND_IF)
         /*
          * Apple does not support SO_BINDTODEVICE and the alternative is IP_BOUND_IF which requires an index instead
-         * of a name. We are not using this for Linux because this requires 2 system calls instead of 1, and is
+         * of a name. We are not using this everywhere because this requires 2 system calls instead of 1, and is
          * dependent upon the type of sockets, which doesn't support AWS_SOCKET_LOCAL. As a future optimization, we can
          * look into caching the result of if_nametoindex.
          */
