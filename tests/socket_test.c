@@ -228,13 +228,7 @@ static int s_test_socket_ex(
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
-    if (aws_socket_bind(&listener, endpoint)) {
-        /* Skip test if server can't bind to address (e.g. CodeBuild's ubuntu runners don't allow IPv6) */
-        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
-            return AWS_OP_SKIP;
-        }
-        ASSERT_TRUE(false, "aws_socket_bind() failed");
-    }
+    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
@@ -253,13 +247,7 @@ static int s_test_socket_ex(
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
 
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
-        if (aws_socket_bind(&outgoing, local)) {
-            /* Skip test if server can't bind to address (e.g. CodeBuild's ubuntu runners don't allow IPv6) */
-            if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
-                return AWS_OP_SKIP;
-            }
-            ASSERT_TRUE(false, "aws_socket_bind() failed");
-        }
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, endpoint));
     }
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
