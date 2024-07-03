@@ -464,7 +464,14 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
 #    endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
-    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+    if (s_test_socket(allocator, &options, &endpoint)) {
+#    if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#    endif
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
@@ -473,11 +480,9 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV6;
     if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
-#    if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
-        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         }
-#    endif
         ASSERT_TRUE(false, "s_test_socket() failed");
     }
 
