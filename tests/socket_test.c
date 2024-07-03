@@ -457,10 +457,10 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.domain = AWS_SOCKET_IPV4;
     ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
 
-    struct aws_socket_endpoint endpointIPv6 = {.address = "::1", .port = 8127};
+    struct aws_socket_endpoint endpoint_ipv6 = {.address = "::1", .port = 8127};
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV6;
-    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpointIPv6));
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint_ipv6));
     return AWS_OP_SUCCESS;
 #endif
 }
