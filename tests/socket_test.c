@@ -229,7 +229,13 @@ static int s_test_socket_ex(
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
+    if (aws_socket_bind(&listener, endpoint)) {
+        /* Skip test if server can't bind to address (e.g. Codebuild ubuntu runners don't allow IPv6) */
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
+            return AWS_OP_SKIP;
+        }
+        ASSERT_TRUE(false, "aws_socket_bind() failed");
+    }
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
