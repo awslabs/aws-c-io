@@ -1265,7 +1265,24 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     if (network_interface_length != 0) {
-#if defined(AWS_OS_APPLE)
+#if defined(SO_BINDTODEVICE)
+        if (setsockopt(
+                socket->io_handle.data.fd,
+                SOL_SOCKET,
+                SO_BINDTODEVICE,
+                options->network_interface_name,
+                network_interface_length)) {
+            int errno_value = errno; /* Always cache errno before potential side-effect */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: setsockopt() with SO_BINDTODEVICE for \"%s\" failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                options->network_interface_name,
+                errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+#elif defined(IPPROTO_IP)
         /*
          * Apple does not support SO_BINDTODEVICE and the alternative is IP_BOUND_IF which requires an index instead
          * of a name. We are not using this for Linux because this requires 2 system calls instead of 1, and is
@@ -1311,23 +1328,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p fd=%d: setsockopt() with IP_BOUND_IF for \"%s\" failed with errno %d.",
-                (void *)socket,
-                socket->io_handle.data.fd,
-                options->network_interface_name,
-                errno_value);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
-#elif defined(AWS_OS_LINUX)
-        if (setsockopt(
-                socket->io_handle.data.fd,
-                SOL_SOCKET,
-                SO_BINDTODEVICE,
-                options->network_interface_name,
-                network_interface_length)) {
-            int errno_value = errno; /* Always cache errno before potential side-effect */
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: setsockopt() with SO_BINDTODEVICE for \"%s\" failed with errno %d.",
                 (void *)socket,
                 socket->io_handle.data.fd,
                 options->network_interface_name,
