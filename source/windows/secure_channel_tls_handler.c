@@ -1585,9 +1585,7 @@ static int s_handler_shutdown(
 
                 if (outgoing_message->message_data.capacity < output_buffer.cbBuffer) {
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
-                    if (error_code == 0) {
-                        error_code = AWS_IO_TLS_ERROR_WRITE_FAILURE;
-                    }
+                    error_code = AWS_IO_TLS_ERROR_WRITE_FAILURE;
                     abort_immediately = true;
                     goto cleanup;
                 }
