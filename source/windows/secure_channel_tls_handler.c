@@ -103,6 +103,7 @@ struct secure_channel_handler {
     bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
+    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
 };
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
@@ -1213,6 +1214,10 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
+    if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->read_delayed_shutdown_task) {
+        /* We finished deliver the buffered data, schedule the delayed shutdown task now. */
+        aws_channel_schedule_task_now(slot->channel, &sc_handler->read_delayed_shutdown_task->task);
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -1512,6 +1517,25 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     return EST_HANDSHAKE_SIZE;
 }
 
+static void s_win_read_delayed_shutdown_task(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
+    (void)channel_task;
+    (void)status;
+
+    struct aws_channel_handler *handler = arg;
+    struct secure_channel_handler *sc_handler = handler->impl;
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
+    aws_channel_slot_on_handler_shutdown_complete(
+        sc_handler->read_delayed_shutdown_task->slot,
+        AWS_CHANNEL_DIR_READ,
+        sc_handler->read_delayed_shutdown_task->error,
+        false);
+    aws_mem_release(handler->alloc, sc_handler->read_delayed_shutdown_task);
+    sc_handler->read_delayed_shutdown_task = NULL;
+}
+
 static int s_handler_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -1596,6 +1620,24 @@ static int s_handler_shutdown(
                     aws_mem_release(outgoing_message->allocator, outgoing_message);
                 }
             }
+        }
+    } else {
+        if (!abort_immediately && error_code == AWS_IO_SOCKET_CLOSED && sc_handler->buffered_read_out_data_buf.len) {
+            /* We still have data pending to be delivered to the downstream. */
+            if (sc_handler->read_delayed_shutdown_task == NULL) {
+                sc_handler->read_delayed_shutdown_task =
+                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+                aws_channel_task_init(
+                    &sc_handler->read_delayed_shutdown_task->task,
+                    s_win_read_delayed_shutdown_task,
+                    &sc_handler->handler,
+                    "win_read_delayed_shutdown");
+
+                sc_handler->read_delayed_shutdown_task->slot = slot;
+                sc_handler->read_delayed_shutdown_task->error = error_code;
+                /* Not schedule the delay shutdown until the handler reads to block. */
+            }
+            return AWS_OP_SUCCESS;
         }
     }
 

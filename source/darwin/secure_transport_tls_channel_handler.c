@@ -548,7 +548,7 @@ static int s_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
-static void s_read_delayed_shutdown_task(
+static void s_darwin_read_delayed_shutdown_task(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
@@ -597,7 +597,7 @@ static int s_handle_shutdown(
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
                     aws_channel_task_init(
                         &secure_transport_handler->read_delayed_shutdown_task->task,
-                        s_read_delayed_shutdown_task,
+                        s_darwin_read_delayed_shutdown_task,
                         &secure_transport_handler->handler,
                         "darwin_tls_read_delayed_shutdown");
 

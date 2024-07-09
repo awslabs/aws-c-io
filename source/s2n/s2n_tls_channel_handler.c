@@ -694,7 +694,7 @@ static void s_write_delayed_shutdown_task_fn(
     s2n_handler->write_delayed_shutdown_task = NULL;
 }
 
-static void s_read_delayed_shutdown_task(
+static void s_s2n_read_delayed_shutdown_task(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
@@ -1077,7 +1077,7 @@ static int s_s2n_handler_shutdown(
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
                     aws_channel_task_init(
                         &s2n_handler->read_delayed_shutdown_task->task,
-                        s_read_delayed_shutdown_task,
+                        s_s2n_read_delayed_shutdown_task,
                         &s2n_handler->handler,
                         "s2n_read_delayed_shutdown");
 

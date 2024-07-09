@@ -764,8 +764,8 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
 
     if (!rw_handler_shutdown_called(handler)) {
 
-        int shutdown_invoked = aws_atomic_load_int(&s_server_client_tester.server_shutdown_invoked);
-        if (!shutdown_invoked) {
+        size_t shutdown_invoked = aws_atomic_load_int(&s_server_client_tester.server_shutdown_invoked);
+        if (shutdown_invoked == 0) {
             aws_atomic_store_int(&s_server_client_tester.server_shutdown_invoked, 1);
             rw_handler_trigger_increment_read_window(
                 s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
@@ -856,6 +856,7 @@ static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *alloc
         &s_server_client_tester.client_args));
     aws_mutex_unlock(&c_tester.mutex);
 
+    ASSERT_UINT_EQUALS(AWS_IO_SOCKET_CLOSED, s_server_client_tester.client_args.last_error_code);
     s_server_client_tester.client_rw_args.invocation_happened = false;
 
     ASSERT_INT_EQUALS(2, s_server_client_tester.client_rw_args.read_invocations);
