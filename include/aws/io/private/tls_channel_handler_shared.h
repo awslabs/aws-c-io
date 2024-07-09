@@ -19,6 +19,12 @@ struct aws_tls_channel_handler_shared {
     struct aws_crt_statistics_tls stats;
 };
 
+struct aws_tls_delayed_shutdown_task {
+    struct aws_channel_task task;
+    struct aws_channel_slot *slot;
+    int error;
+};
+
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API void aws_tls_channel_handler_shared_init(

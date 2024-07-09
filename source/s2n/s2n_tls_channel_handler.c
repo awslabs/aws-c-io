@@ -35,12 +35,6 @@
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
 
-struct s2n_delayed_shutdown_task {
-    struct aws_channel_task task;
-    struct aws_channel_slot *slot;
-    int error;
-};
-
 struct s2n_handler {
     struct aws_channel_handler handler;
     struct aws_tls_channel_handler_shared shared_state;
@@ -63,7 +57,9 @@ struct s2n_handler {
         NEGOTIATION_FAILED,
         NEGOTIATION_SUCCEEDED,
     } state;
-    struct s2n_delayed_shutdown_task delayed_shutdown_task;
+    struct aws_tls_delayed_shutdown_task *write_delayed_shutdown_task;
+    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
+    bool shutdown_pending;
 };
 
 struct s2n_ctx {
@@ -545,6 +541,7 @@ static int s_s2n_handler_process_read_message(
     if (slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(slot);
     }
+    int shutdown_error_code = AWS_OP_SUCCESS;
 
     size_t processed = 0;
     AWS_LOGF_TRACE(
@@ -579,8 +576,7 @@ static int s_s2n_handler_process_read_message(
                 (void *)handler,
                 s2n_connection_get_alert(s2n_handler->connection));
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
-            return AWS_OP_SUCCESS;
+            goto shutdown_channel;
         }
 
         if (read < 0) {
@@ -588,6 +584,10 @@ static int s_s2n_handler_process_read_message(
 
             /* the socket blocked so exit from the loop */
             if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_BLOCKED) {
+                if (s2n_handler->read_delayed_shutdown_task) {
+                    /* Propagate the shutdown as we blocked now. */
+                    goto shutdown_channel;
+                }
                 break;
             }
 
@@ -598,8 +598,8 @@ static int s_s2n_handler_process_read_message(
                 (void *)handler,
                 s2n_strerror(s2n_errno, "EN"),
                 s2n_strerror_debug(s2n_errno, "EN"));
-            aws_channel_shutdown(slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
-            return AWS_OP_SUCCESS;
+            shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;
+            goto shutdown_channel;
         };
 
         /* if read > 0 */
@@ -623,6 +623,19 @@ static int s_s2n_handler_process_read_message(
         (void *)handler,
         (unsigned long long)downstream_window - processed);
 
+    return AWS_OP_SUCCESS;
+
+shutdown_channel:
+    if (s2n_handler->read_delayed_shutdown_task) {
+        if (shutdown_error_code != AWS_ERROR_SUCCESS) {
+            s2n_handler->read_delayed_shutdown_task->error = shutdown_error_code;
+        }
+        /* Schedule the task to continue the shutdown process. */
+        aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_delayed_shutdown_task->task);
+    } else {
+        /* Starts the shutdown process */
+        aws_channel_shutdown(slot->channel, shutdown_error_code);
+    }
     return AWS_OP_SUCCESS;
 }
 
@@ -657,7 +670,10 @@ static int s_s2n_handler_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
-static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+static void s_write_delayed_shutdown_task_fn(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
     (void)channel_task;
 
     struct aws_channel_handler *handler = arg;
@@ -670,10 +686,31 @@ static void s_delayed_shutdown_task_fn(struct aws_channel_task *channel_task, vo
         s2n_shutdown(s2n_handler->connection, &blocked);
     }
     aws_channel_slot_on_handler_shutdown_complete(
-        s2n_handler->delayed_shutdown_task.slot,
+        s2n_handler->write_delayed_shutdown_task->slot,
         AWS_CHANNEL_DIR_WRITE,
-        s2n_handler->delayed_shutdown_task.error,
+        s2n_handler->write_delayed_shutdown_task->error,
         false);
+    aws_mem_release(handler->alloc, s2n_handler->write_delayed_shutdown_task);
+    s2n_handler->write_delayed_shutdown_task = NULL;
+}
+
+static void s_read_delayed_shutdown_task(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
+    (void)channel_task;
+    (void)status;
+
+    struct aws_channel_handler *handler = arg;
+    struct s2n_handler *s2n_handler = handler->impl;
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
+    aws_channel_slot_on_handler_shutdown_complete(
+        s2n_handler->read_delayed_shutdown_task->slot,
+        AWS_CHANNEL_DIR_READ,
+        s2n_handler->read_delayed_shutdown_task->error,
+        false);
+    aws_mem_release(handler->alloc, s2n_handler->read_delayed_shutdown_task);
+    s2n_handler->read_delayed_shutdown_task = NULL;
 }
 
 static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls_signature_algorithm s2n_alg) {
@@ -975,14 +1012,22 @@ static int s_s2n_async_pkey_callback(struct s2n_connection *conn, struct s2n_asy
     return S2N_SUCCESS;
 }
 
-static int s_s2n_do_delayed_shutdown(
+static int s_s2n_do_write_delayed_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     int error_code) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    s2n_handler->delayed_shutdown_task.slot = slot;
-    s2n_handler->delayed_shutdown_task.error = error_code;
+    s2n_handler->write_delayed_shutdown_task =
+        aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+    aws_channel_task_init(
+        &s2n_handler->write_delayed_shutdown_task->task,
+        s_write_delayed_shutdown_task_fn,
+        &s2n_handler->handler,
+        "s2n_write_delayed_shutdown");
+
+    s2n_handler->write_delayed_shutdown_task->slot = slot;
+    s2n_handler->write_delayed_shutdown_task->error = error_code;
 
     uint64_t shutdown_delay = s2n_connection_get_delay(s2n_handler->connection);
     uint64_t now = 0;
@@ -992,7 +1037,7 @@ static int s_s2n_do_delayed_shutdown(
     }
 
     uint64_t shutdown_time = aws_add_u64_saturating(shutdown_delay, now);
-    aws_channel_schedule_task_future(slot->channel, &s2n_handler->delayed_shutdown_task.task, shutdown_time);
+    aws_channel_schedule_task_future(slot->channel, &s2n_handler->write_delayed_shutdown_task->task, shutdown_time);
 
     return AWS_OP_SUCCESS;
 }
@@ -1008,7 +1053,7 @@ static int s_s2n_handler_shutdown(
     if (dir == AWS_CHANNEL_DIR_WRITE) {
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Scheduling delayed write direction shutdown", (void *)handler);
-            if (s_s2n_do_delayed_shutdown(handler, slot, error_code) == AWS_OP_SUCCESS) {
+            if (s_s2n_do_write_delayed_shutdown(handler, slot, error_code) == AWS_OP_SUCCESS) {
                 return AWS_OP_SUCCESS;
             }
         }
@@ -1021,9 +1066,28 @@ static int s_s2n_handler_shutdown(
             s2n_handler->state = NEGOTIATION_FAILED;
         }
 
-        // if (!abort_immediately) {
-        //     /* TODO: process the cached data from tls???? instead of drop them to the ground?? */
-        // }
+        if (!abort_immediately && error_code == AWS_IO_SOCKET_CLOSED) {
+            /**
+             * In case of socket closed, we should check if we have any queued data in the handler,
+             * and make sure we pass those data down the pipeline before we complete the shutdown.
+             */
+            if (!aws_linked_list_empty(&s2n_handler->input_queue)) {
+                if (s2n_handler->read_delayed_shutdown_task == NULL) {
+                    s2n_handler->read_delayed_shutdown_task =
+                        aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+                    aws_channel_task_init(
+                        &s2n_handler->read_delayed_shutdown_task->task,
+                        s_read_delayed_shutdown_task,
+                        &s2n_handler->handler,
+                        "s2n_read_delayed_shutdown");
+
+                    s2n_handler->read_delayed_shutdown_task->slot = slot;
+                    s2n_handler->read_delayed_shutdown_task->error = error_code;
+                    /* Not schedule the delay shutdown until the handler reads to block. */
+                }
+                return AWS_OP_SUCCESS;
+            }
+        }
 
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
@@ -1306,12 +1370,6 @@ static struct aws_channel_handler *s_new_tls_handler(
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
         goto cleanup_conn;
     }
-
-    aws_channel_task_init(
-        &s2n_handler->delayed_shutdown_task.task,
-        s_delayed_shutdown_task_fn,
-        &s2n_handler->handler,
-        "s2n_delayed_shutdown");
 
     if (s_s2n_tls_channel_handler_schedule_thread_local_cleanup(slot)) {
         goto cleanup_conn;

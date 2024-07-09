@@ -755,19 +755,20 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
     struct tls_test_rw_args *client_rw_args = &s_server_client_tester.client_rw_args;
 
     if (!rw_handler_shutdown_called(handler)) {
-        rw_handler_trigger_increment_read_window(
-            s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
+        if (!s_server_client_tester.server_args.shutdown_finished) {
+            rw_handler_trigger_increment_read_window(
+                s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
 
-        aws_channel_shutdown(s_server_client_tester.server_args.channel, AWS_OP_SUCCESS);
+            aws_channel_shutdown(s_server_client_tester.server_args.channel, AWS_OP_SUCCESS);
 
-        aws_mutex_lock(&s_server_client_tester.server_mutex);
-        aws_condition_variable_wait_pred(
-            &s_server_client_tester.server_condition_variable,
-            &s_server_client_tester.server_mutex,
-            s_tls_channel_shutdown_predicate,
-            &s_server_client_tester.server_args);
-        aws_mutex_unlock(&s_server_client_tester.server_mutex);
-
+            aws_mutex_lock(&s_server_client_tester.server_mutex);
+            aws_condition_variable_wait_pred(
+                &s_server_client_tester.server_condition_variable,
+                &s_server_client_tester.server_mutex,
+                s_tls_channel_shutdown_predicate,
+                &s_server_client_tester.server_args);
+            aws_mutex_unlock(&s_server_client_tester.server_mutex);
+        }
         aws_mutex_lock(client_rw_args->mutex);
 
         aws_byte_buf_write_from_whole_buffer(&client_rw_args->received_message, *data_read);
@@ -846,7 +847,7 @@ static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *alloc
 
     s_server_client_tester.client_rw_args.invocation_happened = false;
 
-    ASSERT_INT_EQUALS(1, s_server_client_tester.client_rw_args.read_invocations);
+    ASSERT_INT_EQUALS(2, s_server_client_tester.client_rw_args.read_invocations);
 
     ASSERT_BIN_ARRAYS_EQUALS(
         read_tag.buffer,

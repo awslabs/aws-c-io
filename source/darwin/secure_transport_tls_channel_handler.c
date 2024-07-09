@@ -111,6 +111,7 @@ struct secure_transport_handler {
     bool negotiation_finished;
     bool verify_peer;
     bool read_task_pending;
+    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -547,6 +548,25 @@ static int s_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
+static void s_read_delayed_shutdown_task(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
+    (void)channel_task;
+    (void)status;
+
+    struct aws_channel_handler *handler = arg;
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
+    aws_channel_slot_on_handler_shutdown_complete(
+        secure_transport_handler->read_delayed_shutdown_task->slot,
+        AWS_CHANNEL_DIR_READ,
+        secure_transport_handler->read_delayed_shutdown_task->error,
+        false);
+    aws_mem_release(handler->alloc, secure_transport_handler->read_delayed_shutdown_task);
+    secure_transport_handler->read_delayed_shutdown_task = NULL;
+}
+
 static int s_handle_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -566,10 +586,28 @@ static int s_handle_shutdown(
             "id=%p: shutting down read direction with error %d. Flushing queues.",
             (void *)handler,
             error_code);
+        if (!abort_immediately && error_code == AWS_IO_SOCKET_CLOSED) {
+            /**
+             * In case of socket closed, we should check if we have any queued data in the handler,
+             * and make sure we pass those data down the pipeline before we complete the shutdown.
+             */
+            if (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+                if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
+                    secure_transport_handler->read_delayed_shutdown_task =
+                        aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+                    aws_channel_task_init(
+                        &secure_transport_handler->read_delayed_shutdown_task->task,
+                        s_read_delayed_shutdown_task,
+                        &secure_transport_handler->handler,
+                        "darwin_tls_read_delayed_shutdown");
 
-        // if (!abort_immediately) {
-        //     /* TODO: process the cached data from tls???? */
-        // }
+                    secure_transport_handler->read_delayed_shutdown_task->slot = slot;
+                    secure_transport_handler->read_delayed_shutdown_task->error = error_code;
+                    /* Not schedule the delay shutdown until the handler reads to block. */
+                }
+                return AWS_OP_SUCCESS;
+            }
+        }
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
@@ -612,6 +650,7 @@ static int s_process_read_message(
     size_t processed = 0;
 
     OSStatus status = noErr;
+    int shutdown_error_code = AWS_OP_SUCCESS;
     while (processed < downstream_window && status == noErr) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
@@ -642,10 +681,17 @@ static int s_process_read_message(
 
                 if (status != errSSLClosedGraceful) {
                     aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
-                    aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
+                    shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;
+                    goto shutdown_channel;
                 } else {
                     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
-                    aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_ERROR_SUCCESS);
+                    goto shutdown_channel;
+                }
+            } else {
+                if (secure_transport_handler->read_delayed_shutdown_task) {
+                    /* Propagate the shutdown as we blocked now. */
+                    aws_channel_shutdown(slot->channel, AWS_IO_SOCKET_CLOSED);
+                    return AWS_OP_SUCCESS;
                 }
             }
             continue;
@@ -676,6 +722,19 @@ static int s_process_read_message(
         (void *)handler,
         (unsigned long long)downstream_window - processed);
 
+    return AWS_OP_SUCCESS;
+
+shutdown_channel:
+    if (secure_transport_handler->read_delayed_shutdown_task) {
+        if (shutdown_error_code != AWS_ERROR_SUCCESS) {
+            secure_transport_handler->read_delayed_shutdown_task->error = shutdown_error_code;
+        }
+        /* Schedule the task to continue the shutdown process. */
+        aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_delayed_shutdown_task->task);
+    } else {
+        /* Starts the shutdown process */
+        aws_channel_shutdown(slot->channel, shutdown_error_code);
+    }
     return AWS_OP_SUCCESS;
 }
 

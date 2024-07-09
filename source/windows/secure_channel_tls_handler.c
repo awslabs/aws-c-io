@@ -1049,7 +1049,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
 static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
-    /* I know this is an unncessary initialization, it's initialized here to make linters happy.*/
+    /* I know this is an unnecessary initialization, it's initialized here to make linters happy.*/
     int error = AWS_OP_ERR;
     /* when we get an Extra buffer we have to move the pointer and replay the buffer, so we loop until we don't have
        any extra buffers left over, in the last phase, we then go ahead and send the output. This state function will
