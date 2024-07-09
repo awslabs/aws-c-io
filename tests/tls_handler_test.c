@@ -501,6 +501,10 @@ struct tls_channel_server_client_tester {
 
     struct aws_mutex server_mutex;
     struct aws_condition_variable server_condition_variable;
+
+    struct aws_atomic_var server_shutdown_invoked;
+    /* Make sure server and client doesn't use the same thread */
+    struct aws_event_loop_group *client_el_group;
 };
 
 static struct tls_channel_server_client_tester s_server_client_tester;
@@ -510,6 +514,7 @@ static int s_tls_channel_server_client_tester_init(struct aws_allocator *allocat
     AWS_ZERO_STRUCT(s_server_client_tester);
     ASSERT_SUCCESS(aws_mutex_init(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_server_client_tester.server_condition_variable));
+    s_server_client_tester.client_el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
 
     ASSERT_SUCCESS(s_tls_rw_args_init(
         &s_server_client_tester.server_rw_args,
@@ -535,10 +540,12 @@ static int s_tls_channel_server_client_tester_init(struct aws_allocator *allocat
         "server.crt",
         "server.key"));
     struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = c_tester.el_group,
+        .event_loop_group = s_server_client_tester.client_el_group,
         .host_resolver = c_tester.resolver,
     };
     s_server_client_tester.client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+
+    aws_atomic_store_int(&s_server_client_tester.server_shutdown_invoked, 0);
     return AWS_OP_SUCCESS;
 }
 
@@ -568,6 +575,7 @@ static int s_tls_channel_server_client_tester_cleanup(void) {
     aws_mutex_clean_up(&s_server_client_tester.server_mutex);
     aws_condition_variable_clean_up(&s_server_client_tester.server_condition_variable);
     aws_client_bootstrap_release(s_server_client_tester.client_bootstrap);
+    aws_event_loop_group_release(s_server_client_tester.client_el_group);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
     return AWS_OP_SUCCESS;
 }
@@ -755,7 +763,10 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
     struct tls_test_rw_args *client_rw_args = &s_server_client_tester.client_rw_args;
 
     if (!rw_handler_shutdown_called(handler)) {
-        if (!s_server_client_tester.server_args.shutdown_finished) {
+
+        int shutdown_invoked = aws_atomic_load_int(&s_server_client_tester.server_shutdown_invoked);
+        if (!shutdown_invoked) {
+            aws_atomic_store_int(&s_server_client_tester.server_shutdown_invoked, 1);
             rw_handler_trigger_increment_read_window(
                 s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
 
