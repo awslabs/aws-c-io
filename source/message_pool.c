@@ -154,13 +154,10 @@ struct aws_io_message *aws_message_pool_acquire(
             break;
         default:
             AWS_ASSERT(0);
-            aws_raise_error(AWS_IO_CHANNEL_UNKNOWN_MESSAGE_TYPE);
-            return NULL;
+            break;
     }
 
-    if (!message_wrapper) {
-        return NULL;
-    }
+    AWS_FATAL_ASSERT(message_wrapper);
 
     message_wrapper->message.message_type = message_type;
     message_wrapper->message.message_tag = 0;

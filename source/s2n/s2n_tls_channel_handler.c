@@ -324,7 +324,8 @@ static int s_generic_send(struct s2n_handler *handler, struct aws_byte_buf *buf)
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message || message->message_data.capacity <= overhead) {
+        if (message->message_data.capacity <= overhead) {
+            aws_mem_release(message->allocator, message);
             errno = ENOMEM;
             return -1;
         }
@@ -551,9 +552,6 @@ static int s_s2n_handler_process_read_message(
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
-        if (!outgoing_read_message) {
-            return AWS_OP_ERR;
-        }
 
         ssize_t read = s2n_recv(
             s2n_handler->connection,

@@ -150,11 +150,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
-        if (!message) {
-            last_error = aws_last_error();
-            break;
-        }
-
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
