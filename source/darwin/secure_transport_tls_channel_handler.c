@@ -586,7 +586,7 @@ static int s_handle_shutdown(
             "id=%p: shutting down read direction with error %d. Flushing queues.",
             (void *)handler,
             error_code);
-        if (!abort_immediately && error_code == AWS_IO_SOCKET_CLOSED) {
+        if (!abort_immediately) {
             /**
              * In case of socket closed, we should check if we have any queued data in the handler,
              * and make sure we pass those data down the pipeline before we complete the shutdown.
