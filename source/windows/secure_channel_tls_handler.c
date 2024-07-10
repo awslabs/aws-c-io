@@ -1216,7 +1216,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     }
     if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->read_delayed_shutdown_task) {
         /* We finished deliver the buffered data, schedule the delayed shutdown task now. */
-        aws_channel_schedule_task_now(slot->channel, &sc_handler->read_delayed_shutdown_task->task);
+        aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->read_delayed_shutdown_task->task);
     }
 
     return AWS_OP_SUCCESS;
