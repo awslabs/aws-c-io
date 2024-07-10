@@ -567,6 +567,8 @@ static void s_darwin_read_delayed_shutdown_task(
     secure_transport_handler->read_delayed_shutdown_task = NULL;
 }
 
+static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status);
+
 static int s_handle_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,

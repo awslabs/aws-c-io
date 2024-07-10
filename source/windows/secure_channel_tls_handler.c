@@ -1652,7 +1652,10 @@ static int s_handler_shutdown(
                     /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
                      * Nothing will kick off read in that case. */
                     aws_channel_task_init(
-                        &sc_handler->read_task, s_run_read, handler, "win_channel_handler_read_on_delay_shutdown");
+                        &sc_handler->read_task,
+                        s_process_pending_output_task,
+                        handler,
+                        "win_channel_handler_read_on_delay_shutdown");
                     aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
                 }
             }
