@@ -1069,7 +1069,7 @@ static int s_s2n_handler_shutdown(
              * In case of socket closed, we should check if we have any queued data in the handler,
              * and make sure we pass those data down the pipeline before we complete the shutdown.
              */
-            if (!aws_linked_list_empty(&s2n_handler->input_queue)) {
+            if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !aws_linked_list_empty(&s2n_handler->input_queue)) {
                 if (s2n_handler->read_delayed_shutdown_task == NULL) {
                     s2n_handler->read_delayed_shutdown_task =
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));

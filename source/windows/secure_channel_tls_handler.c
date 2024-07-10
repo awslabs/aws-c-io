@@ -1624,7 +1624,7 @@ static int s_handler_shutdown(
             }
         }
     } else {
-        if (!abort_immediately && sc_handler->buffered_read_out_data_buf.len) {
+        if (!abort_immediately && sc_handler->negotiation_finished && sc_handler->buffered_read_out_data_buf.len) {
             /* We still have data pending to be delivered to the downstream. */
             if (sc_handler->read_delayed_shutdown_task == NULL) {
                 sc_handler->read_delayed_shutdown_task =

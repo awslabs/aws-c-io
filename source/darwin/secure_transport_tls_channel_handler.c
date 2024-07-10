@@ -592,7 +592,8 @@ static int s_handle_shutdown(
              * In case of socket closed, we should check if we have any queued data in the handler,
              * and make sure we pass those data down the pipeline before we complete the shutdown.
              */
-            if (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+            if (secure_transport_handler->negotiation_finished &&
+                !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
                 if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
                     secure_transport_handler->read_delayed_shutdown_task =
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
