@@ -15,6 +15,9 @@
 #ifdef AWS_OS_APPLE
 /* It's ok to include external headers because this is a PRIVATE header file */
 #    include <CoreFoundation/CFArray.h>
+#if defined(AWS_OS_IOS)
+struct aws_secitem_options;
+#endif /* AWS_OS_IOS */
 #endif /* AWS_OS_APPLE */
 
 struct aws_string;
@@ -41,6 +44,7 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
     const struct aws_string *keychain_path);
+
 #    else
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
@@ -52,10 +56,8 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
-    const struct aws_string *cert_label,
-    const struct aws_string *key_label,
-    const struct aws_string *service_label);
-#    endif /* AWS_OS_IOS */
+    const struct aws_secitem_options *secitem_options);
+#    endif /* !AWS_OS_IOS */
 
 /**
  * Imports a PKCS#12 file into identity for use with

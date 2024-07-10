@@ -24,6 +24,15 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
+
+    #ifdef __APPLE__
+    #if defined(AWS_OS_IOS)
+
+    // DEBUG STEVE Set default SecItem options here
+    options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
+
+    #endif /* AWS_OS_IOS */
+    #endif /* __APPLE__ */
 }
 
 void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
@@ -38,12 +47,17 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
 #   if !defined(AWS_OS_IOS)
     aws_string_destroy(options->keychain_path);
-#   else
-    aws_string_destroy(options->cert_label);
-    aws_string_destroy(options->key_label);
-    aws_string_destroy(options->service_label);
-#   endif
-#endif
+#   endif /* !AWS_OS_IOS */
+#   if defined(AWS_OS_IOS)
+
+    if (options->secitem_options != NULL) {
+        aws_string_destroy(options->secitem_options->cert_label);
+        aws_string_destroy(options->secitem_options->key_label);
+    }
+    aws_mem_release(options->allocator, options->secitem_options);
+
+#   endif /* AWS_OS_IOS */
+#endif /* __APPLE__ */
 
     aws_string_destroy(options->alpn_list);
     aws_custom_key_op_handler_release(options->custom_key_op_handler);

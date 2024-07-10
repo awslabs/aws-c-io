@@ -978,9 +978,6 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
-    if (!secure_transport_ctx) {
-        return NULL;
-    }
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -1043,27 +1040,37 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#else
-        // STEVE TODO check if these aws_strings can fail and report error if they do.
+#endif /* !AWS_OS_IOS */
+#if defined(AWS_OS_IOS)
+
+        // STEVE DEBUG this is temp. The setup of options->secitem_options should be done prior to here and
+        // mandatory default values should be set.
+        // if (options->secitem_options != NULL) {
+        //     // Copy the options set in options to local secitem_options
+        // }
+        // Check secitem_options and apply defaults where applicable.
         // Also, set up appropriate default values for these if one isn't provided.
-        struct aws_string *cert_label = aws_string_new_from_c_str(alloc, "default_cert_label");
-        struct aws_string *key_label = aws_string_new_from_c_str(alloc, "default_key_label");
-        struct aws_string *service_label = aws_string_new_from_c_str(alloc, "default_service_label");
+        if (options->secitem_options->cert_label == NULL){
+            options->secitem_options->cert_label = aws_string_new_from_c_str(alloc, "com.default.certlabel");
+        }
+        if (options->secitem_options->key_label == NULL){
+            options->secitem_options->key_label = aws_string_new_from_c_str(alloc, "com.default.keylabel");
+        }
+
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
                 &cert_chain_cur,
                 &private_key_cur,
                 &secure_transport_ctx->certs,
-                cert_label,
-                key_label,
-                service_label)) {
+                options->secitem_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
-    }
+        }
 
-#endif
+#endif /* AWS_OS_IOS */
+
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
