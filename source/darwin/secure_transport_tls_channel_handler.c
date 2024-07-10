@@ -167,7 +167,8 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message || message->message_data.capacity <= overhead) {
+        if (message->message_data.capacity <= overhead) {
+            aws_mem_release(message->allocator, message);
             return errSecMemoryError;
         }
 
@@ -655,11 +656,6 @@ static int s_process_read_message(
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
-        if (!outgoing_read_message) {
-            /* even though this is a failure, this handler has taken ownership of the message */
-            aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
-            return AWS_OP_SUCCESS;
-        }
 
         size_t read = 0;
         status = SSLRead(

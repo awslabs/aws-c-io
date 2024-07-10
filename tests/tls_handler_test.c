@@ -25,6 +25,22 @@
 
 #    include <aws/io/private/pki_utils.h>
 
+/* badssl.com has occasional lags, make this timeout longer so we have a
+ * higher chance of actually testing something. */
+#    define BADSSL_TIMEOUT_MS 10000
+
+bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
+    if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
+        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
+            fprintf(
+                AWS_TESTING_REPORT_FD,
+                "Warning: badssl.com is timing out right now. Maybe run the test again later?\n");
+            return true;
+        }
+    }
+    return false;
+}
+
 struct tls_test_args {
     struct aws_allocator *allocator;
     struct aws_mutex *mutex;
@@ -916,9 +932,7 @@ static int s_verify_negotiation_fails_helper(
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    /* badssl.com is great but has occasional lags, make this timeout longer so we have a
-       higher chance of actually testing something. */
-    options.connect_timeout_ms = 10000;
+    options.connect_timeout_ms = BADSSL_TIMEOUT_MS;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -952,16 +966,12 @@ static int s_verify_negotiation_fails_helper(
 
     ASSERT_TRUE(outgoing_args.error_invoked);
 
-    /* we're talking to an external internet endpoint, yeah this sucks... we don't know for sure that
-       this failed for the right reasons, but there's not much we can do about it.*/
-    if (outgoing_args.last_error_code != AWS_IO_SOCKET_TIMEOUT) {
-        ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
-    } else {
-        fprintf(
-            stderr,
-            "Warning: the connection timed out and we're not completely certain"
-            " that this fails for the right reasons. Maybe run the test again?\n");
+    if (s_is_badssl_being_flaky(host_name, outgoing_args.last_error_code)) {
+        return AWS_OP_SKIP;
     }
+
+    ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
+
     aws_client_bootstrap_release(client_bootstrap);
 
     aws_tls_ctx_release(client_ctx);
@@ -1335,7 +1345,7 @@ static int s_verify_good_host(
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 10000;
+    options.connect_timeout_ms = BADSSL_TIMEOUT_MS;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 
@@ -1367,6 +1377,10 @@ static int s_verify_good_host(
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    if (s_is_badssl_being_flaky(host_name, outgoing_args.last_error_code)) {
+        return AWS_OP_SKIP;
+    }
 
     ASSERT_FALSE(outgoing_args.error_invoked);
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("http/1.1");
