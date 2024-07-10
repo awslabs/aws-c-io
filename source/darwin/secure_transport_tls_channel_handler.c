@@ -110,7 +110,6 @@ struct secure_transport_handler {
     bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
-    bool read_task_pending;
     struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
 };
 
@@ -587,33 +586,41 @@ static int s_handle_shutdown(
             "id=%p: shutting down read direction with error %d. Flushing queues.",
             (void *)handler,
             error_code);
-        if (!abort_immediately) {
+        if (!abort_immediately && secure_transport_handler->negotiation_finished &&
+            !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             /**
-             * In case of socket closed, we should check if we have any queued data in the handler,
-             * and make sure we pass those data down the pipeline before we complete the shutdown.
+             * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
+             * make sure we pass those data down the pipeline before we complete the shutdown.
              */
-            if (secure_transport_handler->negotiation_finished &&
-                !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS,
-                    "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
-                    "reads the data.",
-                    (void *)handler);
-                if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
-                    secure_transport_handler->read_delayed_shutdown_task =
-                        aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
-                    aws_channel_task_init(
-                        &secure_transport_handler->read_delayed_shutdown_task->task,
-                        s_darwin_read_delayed_shutdown_task,
-                        &secure_transport_handler->handler,
-                        "darwin_tls_read_delayed_shutdown");
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
+                "reads the data.",
+                (void *)handler);
+            if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
+                secure_transport_handler->read_delayed_shutdown_task =
+                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+                aws_channel_task_init(
+                    &secure_transport_handler->read_delayed_shutdown_task->task,
+                    s_darwin_read_delayed_shutdown_task,
+                    &secure_transport_handler->handler,
+                    "darwin_tls_read_delayed_shutdown");
 
-                    secure_transport_handler->read_delayed_shutdown_task->slot = slot;
-                    secure_transport_handler->read_delayed_shutdown_task->error = error_code;
-                    /* Not schedule the delay shutdown until the handler reads to block. */
+                secure_transport_handler->read_delayed_shutdown_task->slot = slot;
+                secure_transport_handler->read_delayed_shutdown_task->error = error_code;
+                /* Not schedule the delay shutdown until the handler reads to block. */
+                if (!secure_transport_handler->read_task.node.next) {
+                    /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
+                     * Nothing will kick off read in that case. */
+                    aws_channel_task_init(
+                        &secure_transport_handler->read_task,
+                        s_run_read,
+                        handler,
+                        "darwin_channel_handler_read_on_delay_shutdown");
+                    aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
                 }
-                return AWS_OP_SUCCESS;
             }
+            return AWS_OP_SUCCESS;
         }
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
@@ -745,7 +752,6 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
         struct secure_transport_handler *secure_transport_handler = handler->impl;
-        secure_transport_handler->read_task_pending = false;
         s_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
     }
 }
@@ -776,12 +782,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
     if (secure_transport_handler->negotiation_finished && !secure_transport_handler->read_task.node.next) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
-         *
-         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
-         * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
-         * have no idea what's going on inside there. So we need to attempt another read.
          */
-        secure_transport_handler->read_task_pending = true;
         aws_channel_task_init(
             &secure_transport_handler->read_task,
             s_run_read,

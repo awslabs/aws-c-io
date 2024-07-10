@@ -57,6 +57,7 @@ struct s2n_handler {
         NEGOTIATION_FAILED,
         NEGOTIATION_SUCCEEDED,
     } state;
+    struct aws_channel_task read_task;
     struct aws_tls_delayed_shutdown_task *write_delayed_shutdown_task;
     struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
     bool shutdown_pending;
@@ -1075,50 +1076,38 @@ static int s_s2n_handler_shutdown(
             s2n_handler->state = NEGOTIATION_FAILED;
         }
 
-        if (!abort_immediately) {
+        if (!abort_immediately && s2n_handler->state == NEGOTIATION_SUCCEEDED &&
+            !aws_linked_list_empty(&s2n_handler->input_queue)) {
             /**
-             * In case of socket closed, we should check if we have any queued data in the handler,
-             * and make sure we pass those data down the pipeline before we complete the shutdown.
+             * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
+             * make sure we pass those data down the pipeline before we complete the shutdown.
              */
-            if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !aws_linked_list_empty(&s2n_handler->input_queue)) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS,
-                    "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
-                    "reads the data.",
-                    (void *)handler);
-                if (s2n_handler->read_delayed_shutdown_task == NULL) {
-                    s2n_handler->read_delayed_shutdown_task =
-                        aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
-                    aws_channel_task_init(
-                        &s2n_handler->read_delayed_shutdown_task->task,
-                        s_s2n_read_delayed_shutdown_task,
-                        &s2n_handler->handler,
-                        "s2n_read_delayed_shutdown");
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
+                "reads the data.",
+                (void *)handler);
+            if (s2n_handler->read_delayed_shutdown_task == NULL) {
+                s2n_handler->read_delayed_shutdown_task =
+                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
+                aws_channel_task_init(
+                    &s2n_handler->read_delayed_shutdown_task->task,
+                    s_s2n_read_delayed_shutdown_task,
+                    &s2n_handler->handler,
+                    "s2n_read_delayed_shutdown");
 
-                    s2n_handler->read_delayed_shutdown_task->slot = slot;
-                    s2n_handler->read_delayed_shutdown_task->error = error_code;
-                    /* Not schedule the delay shutdown until the handler reads to block. */
+                s2n_handler->read_delayed_shutdown_task->slot = slot;
+                s2n_handler->read_delayed_shutdown_task->error = error_code;
+                /* Not schedule the delay shutdown until the handler reads to block. */
+                if (!s2n_handler->read_task.node.next) {
                     /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
                      * Nothing will kick off read in that case. */
-                    if (!s2n_handler->sequential_tasks.node.next) {
-                        /* TLS requires full records before it can decrypt anything. As a result we need to check
-                         * everything we've buffered instead of just waiting on a read from the socket, or we'll hit a
-                         * deadlock.
-                         *
-                         * We have messages in a queue and they need to be run after the socket has popped (even if it
-                         * didn't have data to read). Alternatively, s2n reads entire records at a time, so we'll need
-                         * to grab whatever we can and we have no idea what's going on inside there. So we need to
-                         * attempt another read.*/
-                        aws_channel_task_init(
-                            &s2n_handler->sequential_tasks,
-                            s_run_read,
-                            handler,
-                            "s2n_channel_handler_read_on_window_increment");
-                        aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
-                    }
+                    aws_channel_task_init(
+                        &s2n_handler->read_task, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
+                    aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_task);
                 }
-                return AWS_OP_SUCCESS;
             }
+            return AWS_OP_SUCCESS;
         }
 
         while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
@@ -1158,7 +1147,7 @@ static int s_s2n_handler_increment_read_window(
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->sequential_tasks.node.next) {
+    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->read_task.node.next) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          *
@@ -1166,8 +1155,8 @@ static int s_s2n_handler_increment_read_window(
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
         aws_channel_task_init(
-            &s2n_handler->sequential_tasks, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
-        aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
+            &s2n_handler->read_task, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
+        aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_task);
     }
 
     return AWS_OP_SUCCESS;

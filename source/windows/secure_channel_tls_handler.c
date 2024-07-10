@@ -103,6 +103,7 @@ struct secure_channel_handler {
     bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
+    struct aws_channel_task read_task;
     struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
 };
 
@@ -1497,13 +1498,16 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (sc_handler->negotiation_finished && !sc_handler->sequential_task_storage.task_fn) {
+    if (sc_handler->negotiation_finished && !sc_handler->read_task.node.next) {
+        /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
+         * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
+         */
         aws_channel_task_init(
-            &sc_handler->sequential_task_storage,
+            &sc_handler->read_task,
             s_process_pending_output_task,
             handler,
             "secure_channel_handler_process_pending_output_on_window_increment");
-        aws_channel_schedule_task_now(slot->channel, &sc_handler->sequential_task_storage);
+        aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
     }
     return AWS_OP_SUCCESS;
 }
@@ -1628,7 +1632,7 @@ static int s_handler_shutdown(
             /* We still have data pending to be delivered to the downstream. */
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
+                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
                 "reads the data.",
                 (void *)handler);
             if (sc_handler->read_delayed_shutdown_task == NULL) {
@@ -1644,8 +1648,13 @@ static int s_handler_shutdown(
                 sc_handler->read_delayed_shutdown_task->error = error_code;
                 /* Not schedule the delay shutdown until the handler reads to block. */
 
-                /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
-                 * Nothing will kick off read in that case. */
+                if (!sc_handler->read_task.node.next) {
+                    /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
+                     * Nothing will kick off read in that case. */
+                    aws_channel_task_init(
+                        &sc_handler->read_task, s_run_read, handler, "win_channel_handler_read_on_delay_shutdown");
+                    aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
+                }
             }
             return AWS_OP_SUCCESS;
         }
