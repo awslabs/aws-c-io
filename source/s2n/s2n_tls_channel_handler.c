@@ -1070,6 +1070,11 @@ static int s_s2n_handler_shutdown(
              * and make sure we pass those data down the pipeline before we complete the shutdown.
              */
             if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !aws_linked_list_empty(&s2n_handler->input_queue)) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_TLS,
+                    "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
+                    "reads the data.",
+                    (void *)handler);
                 if (s2n_handler->read_delayed_shutdown_task == NULL) {
                     s2n_handler->read_delayed_shutdown_task =
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
@@ -1082,671 +1087,681 @@ static int s_s2n_handler_shutdown(
                     s2n_handler->read_delayed_shutdown_task->slot = slot;
                     s2n_handler->read_delayed_shutdown_task->error = error_code;
                     /* Not schedule the delay shutdown until the handler reads to block. */
+                    if (!s2n_handler->sequential_tasks.node.next) {
+                        /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after
+                         * negotiation. Nothing will kick off read in that case. */
+                        aws_channel_task_init(
+                            &s2n_handler->sequential_tasks,
+                            s_run_read,
+                            handler,
+                            "s2n_channel_handler_read_on_delay_shutdown");
+                        aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
+                    }
+                    return AWS_OP_SUCCESS;
                 }
-                return AWS_OP_SUCCESS;
+            }
+
+            while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
+                struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
+                struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+                aws_mem_release(message->allocator, message);
             }
         }
 
-        while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
-            struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_mem_release(message->allocator, message);
+        return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
+    }
+
+    static void s_run_read(struct aws_channel_task * task, void *arg, aws_task_status status) {
+        task->task_fn = NULL;
+        task->arg = NULL;
+
+        if (status == AWS_TASK_STATUS_RUN_READY) {
+            struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
+            struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+            s_s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
         }
     }
 
-    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
-}
+    static int s_s2n_handler_increment_read_window(
+        struct aws_channel_handler * handler, struct aws_channel_slot * slot, size_t size) {
+        (void)size;
+        struct s2n_handler *s2n_handler = handler->impl;
 
-static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
-    task->task_fn = NULL;
-    task->arg = NULL;
+        size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+        size_t current_window_size = slot->window_size;
 
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
-        struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-        s_s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
-    }
-}
-
-static int s_s2n_handler_increment_read_window(
-    struct aws_channel_handler *handler,
-    struct aws_channel_slot *slot,
-    size_t size) {
-    (void)size;
-    struct s2n_handler *s2n_handler = handler->impl;
-
-    size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-    size_t current_window_size = slot->window_size;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
-
-    size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(MAX_RECORD_SIZE));
-    size_t offset_size = aws_mul_size_saturating(likely_records_count, EST_TLS_RECORD_OVERHEAD);
-    size_t total_desired_size = aws_add_size_saturating(offset_size, downstream_size);
-
-    if (total_desired_size > current_window_size) {
-        size_t window_update_size = total_desired_size - current_window_size;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
-            "id=%p: Propagating read window increment of size %llu",
+            "id=%p: Increment read window message received %llu",
             (void *)handler,
-            (unsigned long long)window_update_size);
-        aws_channel_slot_increment_read_window(slot, window_update_size);
+            (unsigned long long)size);
+
+        size_t likely_records_count = (size_t)ceil((double)(downstream_size) / (double)(MAX_RECORD_SIZE));
+        size_t offset_size = aws_mul_size_saturating(likely_records_count, EST_TLS_RECORD_OVERHEAD);
+        size_t total_desired_size = aws_add_size_saturating(offset_size, downstream_size);
+
+        if (total_desired_size > current_window_size) {
+            size_t window_update_size = total_desired_size - current_window_size;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Propagating read window increment of size %llu",
+                (void *)handler,
+                (unsigned long long)window_update_size);
+            aws_channel_slot_increment_read_window(slot, window_update_size);
+        }
+
+        if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->sequential_tasks.node.next) {
+            /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
+             * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
+             *
+             * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have
+             * data to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can
+             * and we have no idea what's going on inside there. So we need to attempt another read.*/
+            aws_channel_task_init(
+                &s2n_handler->sequential_tasks, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
+            aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
+        }
+
+        return AWS_OP_SUCCESS;
     }
 
-    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->sequential_tasks.node.next) {
-        /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
-         * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
-         *
-         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
-         * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
-         * have no idea what's going on inside there. So we need to attempt another read.*/
-        aws_channel_task_init(
-            &s2n_handler->sequential_tasks, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
-        aws_channel_schedule_task_now(slot->channel, &s2n_handler->sequential_tasks);
+    static size_t s_s2n_handler_message_overhead(struct aws_channel_handler * handler) {
+        (void)handler;
+        return EST_TLS_RECORD_OVERHEAD;
     }
 
-    return AWS_OP_SUCCESS;
-}
+    static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler * handler) {
+        (void)handler;
 
-static size_t s_s2n_handler_message_overhead(struct aws_channel_handler *handler) {
-    (void)handler;
-    return EST_TLS_RECORD_OVERHEAD;
-}
-
-static size_t s_s2n_handler_initial_window_size(struct aws_channel_handler *handler) {
-    (void)handler;
-
-    return EST_HANDSHAKE_SIZE;
-}
-
-static void s_s2n_handler_reset_statistics(struct aws_channel_handler *handler) {
-    struct s2n_handler *s2n_handler = handler->impl;
-
-    aws_crt_statistics_tls_reset(&s2n_handler->shared_state.stats);
-}
-
-static void s_s2n_handler_gather_statistics(struct aws_channel_handler *handler, struct aws_array_list *stats) {
-    struct s2n_handler *s2n_handler = handler->impl;
-
-    void *stats_base = &s2n_handler->shared_state.stats;
-    aws_array_list_push_back(stats, &stats_base);
-}
-
-struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
-    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-    return s2n_handler->protocol;
-}
-
-struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
-    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
-    return s2n_handler->server_name;
-}
-
-static struct aws_channel_handler_vtable s_handler_vtable = {
-    .destroy = s_s2n_handler_destroy,
-    .process_read_message = s_s2n_handler_process_read_message,
-    .process_write_message = s_s2n_handler_process_write_message,
-    .shutdown = s_s2n_handler_shutdown,
-    .increment_read_window = s_s2n_handler_increment_read_window,
-    .initial_window_size = s_s2n_handler_initial_window_size,
-    .message_overhead = s_s2n_handler_message_overhead,
-    .reset_statistics = s_s2n_handler_reset_statistics,
-    .gather_statistics = s_s2n_handler_gather_statistics,
-};
-
-static int s_parse_protocol_preferences(
-    struct aws_string *alpn_list_str,
-    const char protocol_output[4][128],
-    size_t *protocol_count) {
-    size_t max_count = *protocol_count;
-    *protocol_count = 0;
-
-    struct aws_byte_cursor alpn_list_buffer[4];
-    AWS_ZERO_ARRAY(alpn_list_buffer);
-    struct aws_array_list alpn_list;
-    struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_string(alpn_list_str);
-
-    aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
-
-    if (aws_byte_cursor_split_on_char(&user_alpn_str, ';', &alpn_list)) {
-        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-        return AWS_OP_ERR;
+        return EST_HANDSHAKE_SIZE;
     }
 
-    size_t protocols_list_len = aws_array_list_length(&alpn_list);
-    if (protocols_list_len < 1) {
-        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-        return AWS_OP_ERR;
+    static void s_s2n_handler_reset_statistics(struct aws_channel_handler * handler) {
+        struct s2n_handler *s2n_handler = handler->impl;
+
+        aws_crt_statistics_tls_reset(&s2n_handler->shared_state.stats);
     }
 
-    for (size_t i = 0; i < protocols_list_len && i < max_count; ++i) {
-        struct aws_byte_cursor cursor;
-        AWS_ZERO_STRUCT(cursor);
-        if (aws_array_list_get_at(&alpn_list, (void *)&cursor, (size_t)i)) {
+    static void s_s2n_handler_gather_statistics(struct aws_channel_handler * handler, struct aws_array_list * stats) {
+        struct s2n_handler *s2n_handler = handler->impl;
+
+        void *stats_base = &s2n_handler->shared_state.stats;
+        aws_array_list_push_back(stats, &stats_base);
+    }
+
+    struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler * handler) {
+        struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+        return s2n_handler->protocol;
+    }
+
+    struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler * handler) {
+        struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+        return s2n_handler->server_name;
+    }
+
+    static struct aws_channel_handler_vtable s_handler_vtable = {
+        .destroy = s_s2n_handler_destroy,
+        .process_read_message = s_s2n_handler_process_read_message,
+        .process_write_message = s_s2n_handler_process_write_message,
+        .shutdown = s_s2n_handler_shutdown,
+        .increment_read_window = s_s2n_handler_increment_read_window,
+        .initial_window_size = s_s2n_handler_initial_window_size,
+        .message_overhead = s_s2n_handler_message_overhead,
+        .reset_statistics = s_s2n_handler_reset_statistics,
+        .gather_statistics = s_s2n_handler_gather_statistics,
+    };
+
+    static int s_parse_protocol_preferences(
+        struct aws_string * alpn_list_str, const char protocol_output[4][128], size_t *protocol_count) {
+        size_t max_count = *protocol_count;
+        *protocol_count = 0;
+
+        struct aws_byte_cursor alpn_list_buffer[4];
+        AWS_ZERO_ARRAY(alpn_list_buffer);
+        struct aws_array_list alpn_list;
+        struct aws_byte_cursor user_alpn_str = aws_byte_cursor_from_string(alpn_list_str);
+
+        aws_array_list_init_static(&alpn_list, alpn_list_buffer, 4, sizeof(struct aws_byte_cursor));
+
+        if (aws_byte_cursor_split_on_char(&user_alpn_str, ';', &alpn_list)) {
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             return AWS_OP_ERR;
         }
-        AWS_FATAL_ASSERT(cursor.ptr && cursor.len > 0);
-        memcpy((void *)protocol_output[i], cursor.ptr, cursor.len);
-        *protocol_count += 1;
+
+        size_t protocols_list_len = aws_array_list_length(&alpn_list);
+        if (protocols_list_len < 1) {
+            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            return AWS_OP_ERR;
+        }
+
+        for (size_t i = 0; i < protocols_list_len && i < max_count; ++i) {
+            struct aws_byte_cursor cursor;
+            AWS_ZERO_STRUCT(cursor);
+            if (aws_array_list_get_at(&alpn_list, (void *)&cursor, (size_t)i)) {
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                return AWS_OP_ERR;
+            }
+            AWS_FATAL_ASSERT(cursor.ptr && cursor.len > 0);
+            memcpy((void *)protocol_output[i], cursor.ptr, cursor.len);
+            *protocol_count += 1;
+        }
+
+        return AWS_OP_SUCCESS;
     }
 
-    return AWS_OP_SUCCESS;
-}
-
-static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash table */
-
-/*
- * This local object is added to the table of every event loop that has a (s2n) tls connection
- * added to it at some point in time
- */
-static struct aws_event_loop_local_object s_tl_cleanup_object = {
-    .key = &s_tl_cleanup_key,
-    .object = NULL,
-    .on_object_removed = NULL,
-};
-
-static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
-    (void)user_data;
-
-    s2n_cleanup();
-}
-
-/* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
-static int s_s2n_tls_channel_handler_schedule_thread_local_cleanup(struct aws_channel_slot *slot) {
-    struct aws_channel *channel = slot->channel;
-
-    struct aws_event_loop_local_object existing_marker;
-    AWS_ZERO_STRUCT(existing_marker);
+    static size_t s_tl_cleanup_key = 0; /* Address of variable serves as key in hash table */
 
     /*
-     * Check whether another s2n_tls_channel_handler has already scheduled the cleanup task.
+     * This local object is added to the table of every event loop that has a (s2n) tls connection
+     * added to it at some point in time
      */
-    if (aws_channel_fetch_local_object(channel, &s_tl_cleanup_key, &existing_marker)) {
-        /* Doesn't exist in event loop table: add it and add the at-exit cleanup callback */
-        if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, &s_tl_cleanup_object)) {
-            return AWS_OP_ERR;
+    static struct aws_event_loop_local_object s_tl_cleanup_object = {
+        .key = &s_tl_cleanup_key,
+        .object = NULL,
+        .on_object_removed = NULL,
+    };
+
+    static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
+        (void)user_data;
+
+        s2n_cleanup();
+    }
+
+    /* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
+    static int s_s2n_tls_channel_handler_schedule_thread_local_cleanup(struct aws_channel_slot * slot) {
+        struct aws_channel *channel = slot->channel;
+
+        struct aws_event_loop_local_object existing_marker;
+        AWS_ZERO_STRUCT(existing_marker);
+
+        /*
+         * Check whether another s2n_tls_channel_handler has already scheduled the cleanup task.
+         */
+        if (aws_channel_fetch_local_object(channel, &s_tl_cleanup_key, &existing_marker)) {
+            /* Doesn't exist in event loop table: add it and add the at-exit cleanup callback */
+            if (aws_channel_put_local_object(channel, &s_tl_cleanup_key, &s_tl_cleanup_object)) {
+                return AWS_OP_ERR;
+            }
+
+            aws_thread_current_at_exit(s_aws_cleanup_s2n_thread_local_state, NULL);
         }
 
-        aws_thread_current_at_exit(s_aws_cleanup_s2n_thread_local_state, NULL);
+        return AWS_OP_SUCCESS;
     }
 
-    return AWS_OP_SUCCESS;
-}
+    static struct aws_channel_handler *s_new_tls_handler(
+        struct aws_allocator * allocator,
+        struct aws_tls_connection_options * options,
+        struct aws_channel_slot * slot,
+        s2n_mode mode) {
 
-static struct aws_channel_handler *s_new_tls_handler(
-    struct aws_allocator *allocator,
-    struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot,
-    s2n_mode mode) {
+        AWS_ASSERT(options->ctx);
+        struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
+        s2n_handler->handler.impl = s2n_handler;
+        s2n_handler->handler.alloc = allocator;
+        s2n_handler->handler.vtable = &s_handler_vtable;
+        s2n_handler->handler.slot = slot;
 
-    AWS_ASSERT(options->ctx);
-    struct s2n_handler *s2n_handler = aws_mem_calloc(allocator, 1, sizeof(struct s2n_handler));
-    s2n_handler->handler.impl = s2n_handler;
-    s2n_handler->handler.alloc = allocator;
-    s2n_handler->handler.vtable = &s_handler_vtable;
-    s2n_handler->handler.slot = slot;
+        aws_tls_ctx_acquire(options->ctx);
+        s2n_handler->s2n_ctx = options->ctx->impl;
 
-    aws_tls_ctx_acquire(options->ctx);
-    s2n_handler->s2n_ctx = options->ctx->impl;
+        s2n_handler->connection = s2n_connection_new(mode);
 
-    s2n_handler->connection = s2n_connection_new(mode);
-
-    if (!s2n_handler->connection) {
-        goto cleanup_conn;
-    }
-
-    aws_tls_channel_handler_shared_init(&s2n_handler->shared_state, &s2n_handler->handler, options);
-
-    s2n_handler->user_data = options->user_data;
-    s2n_handler->on_data_read = options->on_data_read;
-    s2n_handler->on_error = options->on_error;
-    s2n_handler->on_negotiation_result = options->on_negotiation_result;
-    s2n_handler->advertise_alpn_message = options->advertise_alpn_message;
-
-    s2n_handler->latest_message_completion_user_data = NULL;
-    s2n_handler->latest_message_on_completion = NULL;
-    s2n_handler->slot = slot;
-    aws_linked_list_init(&s2n_handler->input_queue);
-
-    s2n_handler->protocol = aws_byte_buf_from_array(NULL, 0);
-
-    if (options->server_name) {
-
-        if (s2n_set_server_name(s2n_handler->connection, aws_string_c_str(options->server_name))) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-            goto cleanup_conn;
-        }
-    }
-
-    s2n_handler->state = NEGOTIATION_ONGOING;
-
-    s2n_connection_set_recv_cb(s2n_handler->connection, s_s2n_handler_recv);
-    s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
-    s2n_connection_set_send_cb(s2n_handler->connection, s_s2n_handler_send);
-    s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
-    s2n_connection_set_ctx(s2n_handler->connection, s2n_handler);
-    s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
-
-    if (options->alpn_list) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS,
-            "id=%p: Setting ALPN list %s",
-            (void *)&s2n_handler->handler,
-            aws_string_c_str(options->alpn_list));
-
-        const char protocols_cpy[4][128];
-        AWS_ZERO_ARRAY(protocols_cpy);
-        size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
-            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+        if (!s2n_handler->connection) {
             goto cleanup_conn;
         }
 
-        const char *protocols[4];
-        AWS_ZERO_ARRAY(protocols);
-        for (size_t i = 0; i < protocols_size; ++i) {
-            protocols[i] = protocols_cpy[i];
+        aws_tls_channel_handler_shared_init(&s2n_handler->shared_state, &s2n_handler->handler, options);
+
+        s2n_handler->user_data = options->user_data;
+        s2n_handler->on_data_read = options->on_data_read;
+        s2n_handler->on_error = options->on_error;
+        s2n_handler->on_negotiation_result = options->on_negotiation_result;
+        s2n_handler->advertise_alpn_message = options->advertise_alpn_message;
+
+        s2n_handler->latest_message_completion_user_data = NULL;
+        s2n_handler->latest_message_on_completion = NULL;
+        s2n_handler->slot = slot;
+        aws_linked_list_init(&s2n_handler->input_queue);
+
+        s2n_handler->protocol = aws_byte_buf_from_array(NULL, 0);
+
+        if (options->server_name) {
+
+            if (s2n_set_server_name(s2n_handler->connection, aws_string_c_str(options->server_name))) {
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_conn;
+            }
         }
 
-        if (s2n_connection_set_protocol_preferences(
-                s2n_handler->connection, (const char *const *)protocols, (int)protocols_size)) {
+        s2n_handler->state = NEGOTIATION_ONGOING;
+
+        s2n_connection_set_recv_cb(s2n_handler->connection, s_s2n_handler_recv);
+        s2n_connection_set_recv_ctx(s2n_handler->connection, s2n_handler);
+        s2n_connection_set_send_cb(s2n_handler->connection, s_s2n_handler_send);
+        s2n_connection_set_send_ctx(s2n_handler->connection, s2n_handler);
+        s2n_connection_set_ctx(s2n_handler->connection, s2n_handler);
+        s2n_connection_set_blinding(s2n_handler->connection, S2N_SELF_SERVICE_BLINDING);
+
+        if (options->alpn_list) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: Setting ALPN list %s",
+                (void *)&s2n_handler->handler,
+                aws_string_c_str(options->alpn_list));
+
+            const char protocols_cpy[4][128];
+            AWS_ZERO_ARRAY(protocols_cpy);
+            size_t protocols_size = 4;
+            if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_conn;
+            }
+
+            const char *protocols[4];
+            AWS_ZERO_ARRAY(protocols);
+            for (size_t i = 0; i < protocols_size; ++i) {
+                protocols[i] = protocols_cpy[i];
+            }
+
+            if (s2n_connection_set_protocol_preferences(
+                    s2n_handler->connection, (const char *const *)protocols, (int)protocols_size)) {
+                aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+                goto cleanup_conn;
+            }
+        }
+
+        if (s2n_connection_set_config(s2n_handler->connection, s2n_handler->s2n_ctx->s2n_config)) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_TLS,
+                "id=%p: configuration error %s (%s)",
+                (void *)&s2n_handler->handler,
+                s2n_strerror(s2n_errno, "EN"),
+                s2n_strerror_debug(s2n_errno, "EN"));
             aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_conn;
         }
-    }
 
-    if (s2n_connection_set_config(s2n_handler->connection, s2n_handler->s2n_ctx->s2n_config)) {
-        AWS_LOGF_WARN(
-            AWS_LS_IO_TLS,
-            "id=%p: configuration error %s (%s)",
-            (void *)&s2n_handler->handler,
-            s2n_strerror(s2n_errno, "EN"),
-            s2n_strerror_debug(s2n_errno, "EN"));
-        aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-        goto cleanup_conn;
-    }
-
-    if (s_s2n_tls_channel_handler_schedule_thread_local_cleanup(slot)) {
-        goto cleanup_conn;
-    }
-
-    return &s2n_handler->handler;
-
-cleanup_conn:
-    s_s2n_handler_destroy(&s2n_handler->handler);
-
-    return NULL;
-}
-
-struct aws_channel_handler *aws_tls_client_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot) {
-
-    return s_new_tls_handler(allocator, options, slot, S2N_CLIENT);
-}
-
-struct aws_channel_handler *aws_tls_server_handler_new(
-    struct aws_allocator *allocator,
-    struct aws_tls_connection_options *options,
-    struct aws_channel_slot *slot) {
-
-    return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
-}
-
-static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
-    if (s2n_ctx != NULL) {
-        if (s2n_ctx->s2n_config) {
-            s2n_config_free(s2n_ctx->s2n_config);
+        if (s_s2n_tls_channel_handler_schedule_thread_local_cleanup(slot)) {
+            goto cleanup_conn;
         }
-        if (s2n_ctx->custom_cert_chain_and_key) {
-            s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
-        }
-        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
 
-        aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
-    }
-}
+        return &s2n_handler->handler;
 
-static int s2n_wall_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
-    (void)context;
-    if (aws_sys_clock_get_ticks(time_in_ns)) {
-        *time_in_ns = 0;
-        return -1;
-    }
+    cleanup_conn:
+        s_s2n_handler_destroy(&s2n_handler->handler);
 
-    return 0;
-}
-
-static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
-    (void)context;
-    if (aws_high_res_clock_get_ticks(time_in_ns)) {
-        *time_in_ns = 0;
-        return -1;
-    }
-
-    return 0;
-}
-
-static void s_log_and_raise_s2n_errno(const char *msg) {
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_TLS, "%s: %s (%s)", msg, s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
-    aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-}
-
-static struct aws_tls_ctx *s_tls_ctx_new(
-    struct aws_allocator *alloc,
-    const struct aws_tls_ctx_options *options,
-    s2n_mode mode) {
-    struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
-
-    if (!s2n_ctx) {
         return NULL;
     }
 
-    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
-        aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
-        return NULL;
+    struct aws_channel_handler *aws_tls_client_handler_new(
+        struct aws_allocator * allocator, struct aws_tls_connection_options * options, struct aws_channel_slot * slot) {
+
+        return s_new_tls_handler(allocator, options, slot, S2N_CLIENT);
     }
 
-    s2n_ctx->ctx.alloc = alloc;
-    s2n_ctx->ctx.impl = s2n_ctx;
-    aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
+    struct aws_channel_handler *aws_tls_server_handler_new(
+        struct aws_allocator * allocator, struct aws_tls_connection_options * options, struct aws_channel_slot * slot) {
 
-    s2n_ctx->s2n_config = s2n_config_new();
-    if (!s2n_ctx->s2n_config) {
-        s_log_and_raise_s2n_errno("ctx: creation failed");
-        goto cleanup_s2n_config;
+        return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
     }
 
-    int set_clock_result = s2n_config_set_wall_clock(s2n_ctx->s2n_config, s2n_wall_clock_time_nanoseconds, NULL);
-    if (set_clock_result != S2N_ERR_T_OK) {
-        s_log_and_raise_s2n_errno("ctx: failed to set wall clock");
-        goto cleanup_s2n_config;
-    }
+    static void s_s2n_ctx_destroy(struct s2n_ctx * s2n_ctx) {
+        if (s2n_ctx != NULL) {
+            if (s2n_ctx->s2n_config) {
+                s2n_config_free(s2n_ctx->s2n_config);
+            }
+            if (s2n_ctx->custom_cert_chain_and_key) {
+                s2n_cert_chain_and_key_free(s2n_ctx->custom_cert_chain_and_key);
+            }
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_release(s2n_ctx->custom_key_handler);
 
-    set_clock_result = s2n_config_set_monotonic_clock(s2n_ctx->s2n_config, s2n_monotonic_clock_time_nanoseconds, NULL);
-    if (set_clock_result != S2N_ERR_T_OK) {
-        s_log_and_raise_s2n_errno("ctx: failed to set monotonic clock");
-        goto cleanup_s2n_config;
-    }
-
-    const char *security_policy = NULL;
-    if (options->custom_key_op_handler != NULL) {
-        /* When custom_key_op_handler is set, don't use security policy that allow TLS 1.3.
-         * This hack is necessary until our PKCS#11 custom_key_op_handler supports RSA PSS */
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                security_policy = "CloudFront-SSL-v-3";
-                break;
-            case AWS_IO_TLSv1:
-                security_policy = "CloudFront-TLS-1-0-2014";
-                break;
-            case AWS_IO_TLSv1_1:
-                security_policy = "ELBSecurityPolicy-TLS-1-1-2017-01";
-                break;
-            case AWS_IO_TLSv1_2:
-                security_policy = "ELBSecurityPolicy-TLS-1-2-Ext-2018-06";
-                break;
-            case AWS_IO_TLSv1_3:
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 with PKCS#11 is not supported yet.");
-                aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
-                goto cleanup_s2n_config;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            default:
-                security_policy = "ELBSecurityPolicy-TLS-1-1-2017-01";
-        }
-    } else {
-        /* No custom_key_op_handler is set, use normal security policies */
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                security_policy = "AWS-CRT-SDK-SSLv3.0-2023";
-                break;
-            case AWS_IO_TLSv1:
-                security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
-                break;
-            case AWS_IO_TLSv1_1:
-                security_policy = "AWS-CRT-SDK-TLSv1.1-2023";
-                break;
-            case AWS_IO_TLSv1_2:
-                security_policy = "AWS-CRT-SDK-TLSv1.2-2023";
-                break;
-            case AWS_IO_TLSv1_3:
-                security_policy = "AWS-CRT-SDK-TLSv1.3-2023";
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            default:
-                security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
+            aws_mem_release(s2n_ctx->ctx.alloc, s2n_ctx);
         }
     }
 
-    switch (options->cipher_pref) {
-        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
-            /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set */
-            break;
-        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
-            security_policy = "PQ-TLS-1-0-2021-05-26";
-            break;
-        default:
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
-            aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
-            goto cleanup_s2n_config;
+    static int s2n_wall_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
+        (void)context;
+        if (aws_sys_clock_get_ticks(time_in_ns)) {
+            *time_in_ns = 0;
+            return -1;
+        }
+
+        return 0;
     }
 
-    AWS_ASSERT(security_policy != NULL);
-    if (s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, security_policy)) {
+    static int s2n_monotonic_clock_time_nanoseconds(void *context, uint64_t *time_in_ns) {
+        (void)context;
+        if (aws_high_res_clock_get_ticks(time_in_ns)) {
+            *time_in_ns = 0;
+            return -1;
+        }
+
+        return 0;
+    }
+
+    static void s_log_and_raise_s2n_errno(const char *msg) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS,
-            "ctx: Failed setting security policy '%s' (newer S2N required?): %s (%s)",
-            security_policy,
-            s2n_strerror(s2n_errno, "EN"),
-            s2n_strerror_debug(s2n_errno, "EN"));
+            AWS_LS_IO_TLS, "%s: %s (%s)", msg, s2n_strerror(s2n_errno, "EN"), s2n_strerror_debug(s2n_errno, "EN"));
         aws_raise_error(AWS_IO_TLS_CTX_ERROR);
-        goto cleanup_s2n_config;
     }
 
-    if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
+    static struct aws_tls_ctx *s_tls_ctx_new(
+        struct aws_allocator * alloc, const struct aws_tls_ctx_options *options, s2n_mode mode) {
+        struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
 
-        if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
-            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_s2n_config;
+        if (!s2n_ctx) {
+            return NULL;
         }
 
-        if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
-            aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_s2n_config;
+        if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+            aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
+            return NULL;
         }
 
-        /* Ensure that what we pass to s2n is zero-terminated */
-        struct aws_string *certificate_string = aws_string_new_from_buf(alloc, &options->certificate);
-        struct aws_string *private_key_string = aws_string_new_from_buf(alloc, &options->private_key);
+        s2n_ctx->ctx.alloc = alloc;
+        s2n_ctx->ctx.impl = s2n_ctx;
+        aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
 
-        int err_code = s2n_config_add_cert_chain_and_key(
-            s2n_ctx->s2n_config, (const char *)certificate_string->bytes, (const char *)private_key_string->bytes);
-
-        aws_string_destroy(certificate_string);
-        aws_string_destroy_secure(private_key_string);
-
-        if (mode == S2N_CLIENT) {
-            s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
-        }
-
-        if (err_code != S2N_ERR_T_OK) {
-            s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
-            goto cleanup_s2n_config;
-        }
-    } else if (options->custom_key_op_handler != NULL) {
-
-        s2n_ctx->custom_key_handler = aws_custom_key_op_handler_acquire(options->custom_key_op_handler);
-
-        /* set callback so that we can do custom private key operations */
-        if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_async_pkey_callback)) {
-            s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
-            goto cleanup_s2n_config;
-        }
-
-        /* set certificate.
-         * we need to create a custom s2n_cert_chain_and_key that knows the cert but not the key */
-        s2n_ctx->custom_cert_chain_and_key = s2n_cert_chain_and_key_new();
-        if (!s2n_ctx->custom_cert_chain_and_key) {
+        s2n_ctx->s2n_config = s2n_config_new();
+        if (!s2n_ctx->s2n_config) {
             s_log_and_raise_s2n_errno("ctx: creation failed");
             goto cleanup_s2n_config;
         }
 
-        if (s2n_cert_chain_and_key_load_public_pem_bytes(
-                s2n_ctx->custom_cert_chain_and_key, options->certificate.buffer, options->certificate.len)) {
-            s_log_and_raise_s2n_errno("ctx: failed to load certificate");
+        int set_clock_result = s2n_config_set_wall_clock(s2n_ctx->s2n_config, s2n_wall_clock_time_nanoseconds, NULL);
+        if (set_clock_result != S2N_ERR_T_OK) {
+            s_log_and_raise_s2n_errno("ctx: failed to set wall clock");
             goto cleanup_s2n_config;
         }
 
-        if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, s2n_ctx->custom_cert_chain_and_key)) {
-            s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
+        set_clock_result =
+            s2n_config_set_monotonic_clock(s2n_ctx->s2n_config, s2n_monotonic_clock_time_nanoseconds, NULL);
+        if (set_clock_result != S2N_ERR_T_OK) {
+            s_log_and_raise_s2n_errno("ctx: failed to set monotonic clock");
             goto cleanup_s2n_config;
         }
 
-        if (mode == S2N_CLIENT) {
-            s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
-        }
-    }
-
-    if (options->verify_peer) {
-        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
-            if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
-                s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
-                goto cleanup_s2n_config;
+        const char *security_policy = NULL;
+        if (options->custom_key_op_handler != NULL) {
+            /* When custom_key_op_handler is set, don't use security policy that allow TLS 1.3.
+             * This hack is necessary until our PKCS#11 custom_key_op_handler supports RSA PSS */
+            switch (options->minimum_tls_version) {
+                case AWS_IO_SSLv3:
+                    security_policy = "CloudFront-SSL-v-3";
+                    break;
+                case AWS_IO_TLSv1:
+                    security_policy = "CloudFront-TLS-1-0-2014";
+                    break;
+                case AWS_IO_TLSv1_1:
+                    security_policy = "ELBSecurityPolicy-TLS-1-1-2017-01";
+                    break;
+                case AWS_IO_TLSv1_2:
+                    security_policy = "ELBSecurityPolicy-TLS-1-2-Ext-2018-06";
+                    break;
+                case AWS_IO_TLSv1_3:
+                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "TLS 1.3 with PKCS#11 is not supported yet.");
+                    aws_raise_error(AWS_IO_TLS_VERSION_UNSUPPORTED);
+                    goto cleanup_s2n_config;
+                case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                default:
+                    security_policy = "ELBSecurityPolicy-TLS-1-1-2017-01";
             }
         } else {
-            if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
-                AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
-            } else {
-                s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
-                goto cleanup_s2n_config;
+            /* No custom_key_op_handler is set, use normal security policies */
+            switch (options->minimum_tls_version) {
+                case AWS_IO_SSLv3:
+                    security_policy = "AWS-CRT-SDK-SSLv3.0-2023";
+                    break;
+                case AWS_IO_TLSv1:
+                    security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
+                    break;
+                case AWS_IO_TLSv1_1:
+                    security_policy = "AWS-CRT-SDK-TLSv1.1-2023";
+                    break;
+                case AWS_IO_TLSv1_2:
+                    security_policy = "AWS-CRT-SDK-TLSv1.2-2023";
+                    break;
+                case AWS_IO_TLSv1_3:
+                    security_policy = "AWS-CRT-SDK-TLSv1.3-2023";
+                    break;
+                case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                default:
+                    security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
             }
         }
 
-        if (options->ca_path || aws_tls_options_buf_is_set(&options->ca_file)) {
-            /* The user called an override_default_trust_store() function.
-             * Begin by wiping anything that s2n loaded by default */
-            if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
-                s_log_and_raise_s2n_errno("ctx: failed to wipe default trust store");
+        switch (options->cipher_pref) {
+            case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+                /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set
+                 */
+                break;
+            case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
+                security_policy = "PQ-TLS-1-0-2021-05-26";
+                break;
+            default:
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
+                aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
                 goto cleanup_s2n_config;
-            }
+        }
 
-            if (options->ca_path) {
-                if (s2n_config_set_verification_ca_location(
-                        s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
-                    s_log_and_raise_s2n_errno("ctx: configuration error");
-                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
-                    goto cleanup_s2n_config;
-                }
-            }
-
-            if (aws_tls_options_buf_is_set(&options->ca_file)) {
-                /* Ensure that what we pass to s2n is zero-terminated */
-                struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
-                int set_ca_result =
-                    s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)ca_file_string->bytes);
-                aws_string_destroy(ca_file_string);
-
-                if (set_ca_result) {
-                    s_log_and_raise_s2n_errno("ctx: configuration error");
-                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
-                    goto cleanup_s2n_config;
-                }
-            }
-        } else if (s_default_ca_file || s_default_ca_dir) {
-            /* User wants to use the system's default trust store.
-             *
-             * Note that s2n's trust store always starts with libcrypto's default locations.
-             * These paths are configured when libcrypto is built (--openssldir),
-             * but might not be right for the current machine (e.g. if libcrypto
-             * is statically linked into an application that is distributed
-             * to multiple flavors of Linux). Therefore, load the locations that
-             * were found at library startup. */
-            if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
-                s_log_and_raise_s2n_errno("ctx: configuration error");
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
-                goto cleanup_s2n_config;
-            }
-        } else {
-            /* Cannot find system's trust store */
-            aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
+        AWS_ASSERT(security_policy != NULL);
+        if (s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, security_policy)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "Default TLS trust store not found on this system."
-                " Install CA certificates, or \"override default trust store\".");
+                "ctx: Failed setting security policy '%s' (newer S2N required?): %s (%s)",
+                security_policy,
+                s2n_strerror(s2n_errno, "EN"),
+                s2n_strerror_debug(s2n_errno, "EN"));
+            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
             goto cleanup_s2n_config;
         }
 
-        if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
-            s_log_and_raise_s2n_errno("ctx: failed to set client auth type");
-            goto cleanup_s2n_config;
+        if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Certificate and key have been set, setting them up now.");
+
+            if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
+                aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                goto cleanup_s2n_config;
+            }
+
+            if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
+                aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+                goto cleanup_s2n_config;
+            }
+
+            /* Ensure that what we pass to s2n is zero-terminated */
+            struct aws_string *certificate_string = aws_string_new_from_buf(alloc, &options->certificate);
+            struct aws_string *private_key_string = aws_string_new_from_buf(alloc, &options->private_key);
+
+            int err_code = s2n_config_add_cert_chain_and_key(
+                s2n_ctx->s2n_config, (const char *)certificate_string->bytes, (const char *)private_key_string->bytes);
+
+            aws_string_destroy(certificate_string);
+            aws_string_destroy_secure(private_key_string);
+
+            if (mode == S2N_CLIENT) {
+                s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
+            }
+
+            if (err_code != S2N_ERR_T_OK) {
+                s_log_and_raise_s2n_errno("ctx: Failed to add certificate and private key");
+                goto cleanup_s2n_config;
+            }
+        } else if (options->custom_key_op_handler != NULL) {
+
+            s2n_ctx->custom_key_handler = aws_custom_key_op_handler_acquire(options->custom_key_op_handler);
+
+            /* set callback so that we can do custom private key operations */
+            if (s2n_config_set_async_pkey_callback(s2n_ctx->s2n_config, s_s2n_async_pkey_callback)) {
+                s_log_and_raise_s2n_errno("ctx: failed to set private key callback");
+                goto cleanup_s2n_config;
+            }
+
+            /* set certificate.
+             * we need to create a custom s2n_cert_chain_and_key that knows the cert but not the key */
+            s2n_ctx->custom_cert_chain_and_key = s2n_cert_chain_and_key_new();
+            if (!s2n_ctx->custom_cert_chain_and_key) {
+                s_log_and_raise_s2n_errno("ctx: creation failed");
+                goto cleanup_s2n_config;
+            }
+
+            if (s2n_cert_chain_and_key_load_public_pem_bytes(
+                    s2n_ctx->custom_cert_chain_and_key, options->certificate.buffer, options->certificate.len)) {
+                s_log_and_raise_s2n_errno("ctx: failed to load certificate");
+                goto cleanup_s2n_config;
+            }
+
+            if (s2n_config_add_cert_chain_and_key_to_store(s2n_ctx->s2n_config, s2n_ctx->custom_cert_chain_and_key)) {
+                s_log_and_raise_s2n_errno("ctx: failed to add certificate to store");
+                goto cleanup_s2n_config;
+            }
+
+            if (mode == S2N_CLIENT) {
+                s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED);
+            }
         }
-    } else if (mode != S2N_SERVER) {
-        AWS_LOGF_WARN(
-            AWS_LS_IO_TLS,
-            "ctx: X.509 validation has been disabled. "
-            "If this is not running in a test environment, this is likely a security vulnerability.");
-        if (s2n_config_disable_x509_verification(s2n_ctx->s2n_config)) {
-            s_log_and_raise_s2n_errno("ctx: failed to disable x509 verification");
-            goto cleanup_s2n_config;
+
+        if (options->verify_peer) {
+            if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
+                if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
+                    s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
+                    goto cleanup_s2n_config;
+                }
+            } else {
+                if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
+                    AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+                } else {
+                    s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
+                    goto cleanup_s2n_config;
+                }
+            }
+
+            if (options->ca_path || aws_tls_options_buf_is_set(&options->ca_file)) {
+                /* The user called an override_default_trust_store() function.
+                 * Begin by wiping anything that s2n loaded by default */
+                if (s2n_config_wipe_trust_store(s2n_ctx->s2n_config)) {
+                    s_log_and_raise_s2n_errno("ctx: failed to wipe default trust store");
+                    goto cleanup_s2n_config;
+                }
+
+                if (options->ca_path) {
+                    if (s2n_config_set_verification_ca_location(
+                            s2n_ctx->s2n_config, NULL, aws_string_c_str(options->ca_path))) {
+                        s_log_and_raise_s2n_errno("ctx: configuration error");
+                        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_path %s\n", aws_string_c_str(options->ca_path));
+                        goto cleanup_s2n_config;
+                    }
+                }
+
+                if (aws_tls_options_buf_is_set(&options->ca_file)) {
+                    /* Ensure that what we pass to s2n is zero-terminated */
+                    struct aws_string *ca_file_string = aws_string_new_from_buf(alloc, &options->ca_file);
+                    int set_ca_result =
+                        s2n_config_add_pem_to_trust_store(s2n_ctx->s2n_config, (const char *)ca_file_string->bytes);
+                    aws_string_destroy(ca_file_string);
+
+                    if (set_ca_result) {
+                        s_log_and_raise_s2n_errno("ctx: configuration error");
+                        AWS_LOGF_ERROR(
+                            AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
+                        goto cleanup_s2n_config;
+                    }
+                }
+            } else if (s_default_ca_file || s_default_ca_dir) {
+                /* User wants to use the system's default trust store.
+                 *
+                 * Note that s2n's trust store always starts with libcrypto's default locations.
+                 * These paths are configured when libcrypto is built (--openssldir),
+                 * but might not be right for the current machine (e.g. if libcrypto
+                 * is statically linked into an application that is distributed
+                 * to multiple flavors of Linux). Therefore, load the locations that
+                 * were found at library startup. */
+                if (s2n_config_set_verification_ca_location(s2n_ctx->s2n_config, s_default_ca_file, s_default_ca_dir)) {
+                    s_log_and_raise_s2n_errno("ctx: configuration error");
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_TLS,
+                        "Failed to set ca_path: %s and ca_file %s\n",
+                        s_default_ca_dir,
+                        s_default_ca_file);
+                    goto cleanup_s2n_config;
+                }
+            } else {
+                /* Cannot find system's trust store */
+                aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "Default TLS trust store not found on this system."
+                    " Install CA certificates, or \"override default trust store\".");
+                goto cleanup_s2n_config;
+            }
+
+            if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
+                s_log_and_raise_s2n_errno("ctx: failed to set client auth type");
+                goto cleanup_s2n_config;
+            }
+        } else if (mode != S2N_SERVER) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_TLS,
+                "ctx: X.509 validation has been disabled. "
+                "If this is not running in a test environment, this is likely a security vulnerability.");
+            if (s2n_config_disable_x509_verification(s2n_ctx->s2n_config)) {
+                s_log_and_raise_s2n_errno("ctx: failed to disable x509 verification");
+                goto cleanup_s2n_config;
+            }
         }
+
+        if (options->alpn_list) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", aws_string_c_str(options->alpn_list));
+            const char protocols_cpy[4][128];
+            AWS_ZERO_ARRAY(protocols_cpy);
+            size_t protocols_size = 4;
+            if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
+                s_log_and_raise_s2n_errno("ctx: Failed to parse ALPN list");
+                goto cleanup_s2n_config;
+            }
+
+            const char *protocols[4];
+            AWS_ZERO_ARRAY(protocols);
+            for (size_t i = 0; i < protocols_size; ++i) {
+                protocols[i] = protocols_cpy[i];
+            }
+
+            if (s2n_config_set_protocol_preferences(s2n_ctx->s2n_config, protocols, (int)protocols_size)) {
+                s_log_and_raise_s2n_errno("ctx: Failed to set protocol preferences");
+                goto cleanup_s2n_config;
+            }
+        }
+
+        if (options->max_fragment_size == 512) {
+            s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_512);
+        } else if (options->max_fragment_size == 1024) {
+            s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_1024);
+        } else if (options->max_fragment_size == 2048) {
+            s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_2048);
+        } else if (options->max_fragment_size == 4096) {
+            s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_4096);
+        }
+
+        return &s2n_ctx->ctx;
+
+    cleanup_s2n_config:
+        s_s2n_ctx_destroy(s2n_ctx);
+
+        return NULL;
     }
 
-    if (options->alpn_list) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", aws_string_c_str(options->alpn_list));
-        const char protocols_cpy[4][128];
-        AWS_ZERO_ARRAY(protocols_cpy);
-        size_t protocols_size = 4;
-        if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
-            s_log_and_raise_s2n_errno("ctx: Failed to parse ALPN list");
-            goto cleanup_s2n_config;
-        }
-
-        const char *protocols[4];
-        AWS_ZERO_ARRAY(protocols);
-        for (size_t i = 0; i < protocols_size; ++i) {
-            protocols[i] = protocols_cpy[i];
-        }
-
-        if (s2n_config_set_protocol_preferences(s2n_ctx->s2n_config, protocols, (int)protocols_size)) {
-            s_log_and_raise_s2n_errno("ctx: Failed to set protocol preferences");
-            goto cleanup_s2n_config;
-        }
+    struct aws_tls_ctx *aws_tls_server_ctx_new(
+        struct aws_allocator * alloc, const struct aws_tls_ctx_options *options) {
+        aws_io_fatal_assert_library_initialized();
+        return s_tls_ctx_new(alloc, options, S2N_SERVER);
     }
 
-    if (options->max_fragment_size == 512) {
-        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_512);
-    } else if (options->max_fragment_size == 1024) {
-        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_1024);
-    } else if (options->max_fragment_size == 2048) {
-        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_2048);
-    } else if (options->max_fragment_size == 4096) {
-        s2n_config_send_max_fragment_length(s2n_ctx->s2n_config, S2N_TLS_MAX_FRAG_LEN_4096);
+    struct aws_tls_ctx *aws_tls_client_ctx_new(
+        struct aws_allocator * alloc, const struct aws_tls_ctx_options *options) {
+        aws_io_fatal_assert_library_initialized();
+        return s_tls_ctx_new(alloc, options, S2N_CLIENT);
     }
-
-    return &s2n_ctx->ctx;
-
-cleanup_s2n_config:
-    s_s2n_ctx_destroy(s2n_ctx);
-
-    return NULL;
-}
-
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    aws_io_fatal_assert_library_initialized();
-    return s_tls_ctx_new(alloc, options, S2N_SERVER);
-}
-
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    aws_io_fatal_assert_library_initialized();
-    return s_tls_ctx_new(alloc, options, S2N_CLIENT);
-}

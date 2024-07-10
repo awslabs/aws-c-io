@@ -594,6 +594,11 @@ static int s_handle_shutdown(
              */
             if (secure_transport_handler->negotiation_finished &&
                 !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_TLS,
+                    "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
+                    "reads the data.",
+                    (void *)handler);
                 if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
                     secure_transport_handler->read_delayed_shutdown_task =
                         aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));

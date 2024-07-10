@@ -1626,6 +1626,11 @@ static int s_handler_shutdown(
     } else {
         if (!abort_immediately && sc_handler->negotiation_finished && sc_handler->buffered_read_out_data_buf.len) {
             /* We still have data pending to be delivered to the downstream. */
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until dowstream "
+                "reads the data.",
+                (void *)handler);
             if (sc_handler->read_delayed_shutdown_task == NULL) {
                 sc_handler->read_delayed_shutdown_task =
                     aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
@@ -1638,6 +1643,9 @@ static int s_handler_shutdown(
                 sc_handler->read_delayed_shutdown_task->slot = slot;
                 sc_handler->read_delayed_shutdown_task->error = error_code;
                 /* Not schedule the delay shutdown until the handler reads to block. */
+
+                /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
+                 * Nothing will kick off read in that case. */
             }
             return AWS_OP_SUCCESS;
         }
