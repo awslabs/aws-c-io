@@ -521,6 +521,8 @@ struct tls_channel_server_client_tester {
     struct aws_atomic_var server_shutdown_invoked;
     /* Make sure server and client doesn't use the same thread */
     struct aws_event_loop_group *client_el_group;
+
+    bool window_update_after_shutdown;
 };
 
 static struct tls_channel_server_client_tester s_server_client_tester;
@@ -783,9 +785,10 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
         size_t shutdown_invoked = aws_atomic_load_int(&s_server_client_tester.server_shutdown_invoked);
         if (shutdown_invoked == 0) {
             aws_atomic_store_int(&s_server_client_tester.server_shutdown_invoked, 1);
-            rw_handler_trigger_increment_read_window(
-                s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
-
+            if (!s_server_client_tester.window_update_after_shutdown) {
+                rw_handler_trigger_increment_read_window(
+                    s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
+            }
             aws_channel_shutdown(s_server_client_tester.server_args.channel, AWS_OP_SUCCESS);
 
             aws_mutex_lock(&s_server_client_tester.server_mutex);
@@ -795,6 +798,10 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
                 s_tls_channel_shutdown_predicate,
                 &s_server_client_tester.server_args);
             aws_mutex_unlock(&s_server_client_tester.server_mutex);
+            if (s_server_client_tester.window_update_after_shutdown) {
+                rw_handler_trigger_increment_read_window(
+                    s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
+            }
         }
         aws_mutex_lock(client_rw_args->mutex);
 
@@ -805,9 +812,6 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
         aws_mutex_unlock(client_rw_args->mutex);
         aws_condition_variable_notify_one(client_rw_args->condition_variable);
     } else {
-        /**
-         * TODO: The handler received read data AFTER shutdown, it's probably unexpected.
-         */
         AWS_FATAL_ASSERT(false && "The channel has already shutdown before process the message.");
     }
     return client_rw_args->received_message;
@@ -821,9 +825,9 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
  * Previously, the window update task will schedule read task if it opens the window back from close, but since the
  * shutdown task already been scheluded, the read will happen after shutdown. So, it result in lost of data.
  */
-static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
+static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *allocator, bool after_shutdown) {
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_init(allocator));
+    s_server_client_tester.window_update_after_shutdown = after_shutdown;
 
     struct aws_byte_buf read_tag = aws_byte_buf_from_c_str("I'm a little teapot.");
     struct aws_byte_buf write_tag = aws_byte_buf_from_c_str("I'm a big teapot");
@@ -872,7 +876,6 @@ static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *alloc
         &s_server_client_tester.client_args));
     aws_mutex_unlock(&c_tester.mutex);
 
-    // ASSERT_UINT_EQUALS(AWS_IO_SOCKET_CLOSED, s_server_client_tester.client_args.last_error_code);
     s_server_client_tester.client_rw_args.invocation_happened = false;
 
     ASSERT_INT_EQUALS(2, s_server_client_tester.client_rw_args.read_invocations);
@@ -891,7 +894,22 @@ static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *alloc
     return AWS_OP_SUCCESS;
 }
 
+static int s_tls_channel_shutdown_with_cache_test_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_tls_channel_shutdown_with_cache_test_helper(allocator, false);
+}
+
 AWS_TEST_CASE(tls_channel_shutdown_with_cache_test, s_tls_channel_shutdown_with_cache_test_fn)
+
+static int s_tls_channel_shutdown_with_cache_window_update_after_shutdown_test_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    return s_tls_channel_shutdown_with_cache_test_helper(allocator, true);
+}
+AWS_TEST_CASE(
+    tls_channel_shutdown_with_cache_window_update_after_shutdown_test,
+    s_tls_channel_shutdown_with_cache_window_update_after_shutdown_test_fn)
 
 struct default_host_callback_data {
     struct aws_host_address aaaa_address;
