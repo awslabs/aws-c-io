@@ -721,7 +721,6 @@ static int s_process_read_message(
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
                 shutdown_error_code = aws_last_error();
                 goto shutdown_channel;
-                return AWS_OP_SUCCESS;
             }
             /* outgoing message was pushed to the input_queue, so this handler owns it now */
         } else {
