@@ -1100,8 +1100,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 struct aws_byte_cursor to_append =
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
-                AWS_ASSERT(!append_failed);
-                (void)append_failed;
+                AWS_FATAL_ASSERT(!append_failed);
 
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
                 if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
@@ -1289,15 +1288,23 @@ static int s_process_read_message(
                             break;
                         }
                     }
-                    /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
-                       record, and the amount they're requesting is less than the size of a tls record. */
-                    size_t window_size = slot->window_size;
-                    if (!window_size &&
-                        aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
-                        err = AWS_OP_ERR;
-                    } else {
-                        sc_handler->estimated_incomplete_size = 0;
-                        err = AWS_OP_SUCCESS;
+
+                    size_t downstream_window = SIZE_MAX;
+
+                    if (sc_handler->slot->adj_right) {
+                        downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+                    }
+                    if (downstream_window > 0) {
+                        /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
+                           record, and the amount they're requesting is less than the size of a tls record. */
+                        size_t window_size = slot->window_size;
+                        if (!window_size &&
+                            aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
+                            err = AWS_OP_ERR;
+                        } else {
+                            sc_handler->estimated_incomplete_size = 0;
+                            err = AWS_OP_SUCCESS;
+                        }
                     }
                 }
                 aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
