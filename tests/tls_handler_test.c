@@ -798,10 +798,6 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
                 s_tls_channel_shutdown_predicate,
                 &s_server_client_tester.server_args);
             aws_mutex_unlock(&s_server_client_tester.server_mutex);
-            if (s_server_client_tester.window_update_after_shutdown) {
-                rw_handler_trigger_increment_read_window(
-                    s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
-            }
         }
         aws_mutex_lock(client_rw_args->mutex);
 
@@ -866,6 +862,11 @@ static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *a
         s_tls_test_read_predicate,
         &s_server_client_tester.client_rw_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    if (s_server_client_tester.window_update_after_shutdown) {
+        rw_handler_trigger_increment_read_window(
+            s_server_client_tester.client_args.rw_handler, s_server_client_tester.client_args.rw_slot, 100);
+    }
 
     /* Make sure client also shutdown without error. */
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
