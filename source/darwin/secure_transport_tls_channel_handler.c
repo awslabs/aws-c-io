@@ -667,7 +667,7 @@ static int s_process_read_message(
 
     OSStatus status = noErr;
     int shutdown_error_code = AWS_OP_SUCCESS;
-    while (processed < downstream_window && status == noErr) {
+    while (processed < downstream_window) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
@@ -701,11 +701,11 @@ static int s_process_read_message(
             } else {
                 if (secure_transport_handler->read_delayed_shutdown_task) {
                     /* Propagate the shutdown as we blocked now. */
-                    aws_channel_shutdown(slot->channel, AWS_IO_SOCKET_CLOSED);
-                    return AWS_OP_SUCCESS;
+                    shutdown_error_code = AWS_IO_SOCKET_CLOSED;
+                    goto shutdown_channel;
                 }
+                break;
             }
-            continue;
         };
 
         processed += read;
@@ -719,10 +719,11 @@ static int s_process_read_message(
         if (slot->adj_right) {
             if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-                aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
-                /* incoming message was pushed to the input_queue, so this handler owns it now */
+                shutdown_error_code = aws_last_error();
+                goto shutdown_channel;
                 return AWS_OP_SUCCESS;
             }
+            /* outgoing message was pushed to the input_queue, so this handler owns it now */
         } else {
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
         }
