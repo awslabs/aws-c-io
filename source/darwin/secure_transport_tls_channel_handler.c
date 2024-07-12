@@ -589,16 +589,25 @@ static int s_handle_shutdown(
             (void *)handler,
             error_code);
         if (!abort_immediately && secure_transport_handler->negotiation_finished &&
-            !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+            !aws_linked_list_empty(&secure_transport_handler->input_queue) && slot->adj_right) {
             /**
              * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
              * make sure we pass those data down the pipeline before we complete the shutdown.
              */
+            size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
+
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
                 "reads the data.",
                 (void *)handler);
+            if (downstream_size == 0) {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_TLS,
+                    "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
+                    "It's possible to result in hanging without any further window update.",
+                    (void *)handler);
+            }
             if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
                 secure_transport_handler->read_delayed_shutdown_task =
                     aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
