@@ -47,6 +47,7 @@ struct aws_socket_options {
     bool keepalive;
 
     /**
+     * THIS IS AN EXPERIMENTAL AND UNSTABLE API
      * (Optional)
      * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
      * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
