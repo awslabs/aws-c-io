@@ -245,22 +245,22 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf pkcs12_password;
 
-#   if !defined(AWS_OS_IOS)
-    /**
-     * On Apple OS you can also use a custom keychain instead of
-     * the default keychain of the account.
-     */
-    struct aws_string *keychain_path;
-#   endif /* !AWS_OS_IOS */
-
-#   if defined(AWS_OS_IOS)
     /**
      * When adding items to the keychain, SecItem allows the setting of attributes
      * that control various options and settings related to access of the items. This
      * struct contains the various attributes we currently support.
      */
     struct aws_secitem_options *secitem_options;
-#   endif /* AWS_OS_IOS*/
+
+#   if !defined(AWS_OS_IOS)
+    /**
+     * On Apple OS you can also use a custom keychain instead of
+     * the default keychain of the account.
+     */
+    struct aws_string *keychain_path;
+
+#   endif /* !AWS_OS_IOS */
+
 
 #endif /* __APPLE__ */
 
