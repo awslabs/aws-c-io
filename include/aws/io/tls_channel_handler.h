@@ -147,29 +147,34 @@ struct aws_tls_connection_options {
 struct aws_tls_key_operation;
 
 #ifdef __APPLE__
-#if defined(AWS_OS_IOS)
 
 /**
- * Options related to Certificate and Key being added to an iOS keychain
- * using the Apple SecItem API
+ * A struct containing parameters used during import of Certificate and Private Key into a
+ * data protection keychain using Apple's SecItem API.
  */
 struct aws_secitem_options {
     /**
-     * Human-Readable identifier to tag for certificate being used in keychain.
+     * Human-Readable identifier tag for certificate being used in keychain.
      * Value will be used with kSecAttrLabel Key in SecItem functions.
      * If one is not provided, we generate it ourselves.
      */
     struct aws_string *cert_label;
 
     /**
-     * Human-Readable identifier to tag for private key being used in keychain.
+     * Human-Readable identifier tag for private key being used in keychain.
      * Value will be used with kSecAttrLabel Key in SecItem functions.
      * If one is not provided, we generate it ourselves.
      */
     struct aws_string *key_label;
+
+    /**
+     * Human-Readable unique identifier tag for private key being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *application_label;
 };
 
-#endif /* AWS_OS_IOS */
 #endif /* __APPLE__ */
 
 struct aws_tls_ctx_options {
@@ -543,36 +548,6 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor);
-
-/**
- * Applies SecItem attributes for certificate storage in iOS keychain. These attributes will be used in the dictionary
- * for both Queries and Uniqueness when adding new certificates or updating existing certificate items.
- *
- * Only options supported by crt will be applied. Unsupported or unknown options will be logged as such.
- *
- * @param keys       Array of Keys set by user
- * @param values     Array of Values set by user
- * @param count      Number of items in the keys and values array
- *
- * NOTE: This only works on iOS
- */
-AWS_IO_API int aws_tls_ctx_options_set_certificate_keychain_attributes(
-   struct aws_tls_ctx_options *options, void *keys[], void *values[], int count);
-
-/**
- * Applies SecItem attributes for private key storage in iOS keychain. These attributes will be used in the dictionary
- * for both Queries and Uniqueness when adding new private keys or updating existing private key items.
- *
- * Only options supported by crt will be applied. Unsupported or unknown options will be logged as such.
- *
- * @param keys       Array of Keys set by user
- * @param values     Array of Values set by user
- * @param count      Number of items in the keys and values array
- *
- * NOTE: This only works on iOS
- */
-AWS_IO_API int aws_tls_ctx_options_set_private_key_keychain_attributes(
-    struct aws_tls_ctx_options *options, void *keys[], void *values[], int count);
 
 /**
  * Initializes options for use with in server mode.
