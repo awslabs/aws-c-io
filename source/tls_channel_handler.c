@@ -257,8 +257,7 @@ int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor) {
 
-#if defined(__APPLE__)
-    # if !defined(AWS_OS_IOS)
+#if defined(__APPLE__) && !defined(AWS_OS_IOS)
     AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: Keychain path is deprecated.");
 
     options->keychain_path = aws_string_new_from_cursor(options->allocator, keychain_path_cursor);
@@ -267,13 +266,12 @@ int aws_tls_ctx_options_set_keychain_path(
     }
 
     return AWS_OP_SUCCESS;
-    #else
+#else
     (void)options;
     (void)keychain_path_cursor;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-    #endif
-#endif /* __APPLE__ */
+#endif /* __APPLE__ && !AWS_OS_IOS*/
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(
