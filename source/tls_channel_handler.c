@@ -26,12 +26,12 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
     #ifdef __APPLE__
-    #if defined(AWS_OS_IOS)
 
-    // DEBUG STEVE Set default SecItem options here
     options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
+    options->secitem_options->cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
+    options->secitem_options->key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
+    options->secitem_options->application_label = aws_string_new_from_c_str(allocator, "aws-crt-default-application-label");
 
-    #endif /* AWS_OS_IOS */
     #endif /* __APPLE__ */
 }
 
@@ -42,21 +42,19 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->private_key);
 
 #ifdef __APPLE__
+
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
+
+    aws_string_destroy(options->secitem_options->cert_label);
+    aws_string_destroy(options->secitem_options->key_label);
+    aws_string_destroy(options->secitem_options->application_label);
+    aws_mem_release(options->allocator, options->secitem_options);
 
 #   if !defined(AWS_OS_IOS)
     aws_string_destroy(options->keychain_path);
 #   endif /* !AWS_OS_IOS */
-#   if defined(AWS_OS_IOS)
 
-    if (options->secitem_options != NULL) {
-        aws_string_destroy(options->secitem_options->cert_label);
-        aws_string_destroy(options->secitem_options->key_label);
-    }
-    aws_mem_release(options->allocator, options->secitem_options);
-
-#   endif /* AWS_OS_IOS */
 #endif /* __APPLE__ */
 
     aws_string_destroy(options->alpn_list);
@@ -275,7 +273,7 @@ int aws_tls_ctx_options_set_keychain_path(
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     #endif
-#endif
+#endif /* __APPLE__ */
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(

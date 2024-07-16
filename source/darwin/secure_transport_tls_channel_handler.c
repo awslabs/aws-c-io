@@ -1047,23 +1047,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 #endif /* !AWS_OS_IOS */
 #if defined(AWS_OS_IOS)
 
-        // STEVE DEBUG this is temp. The setup of options->secitem_options should be done prior to here and
-        // mandatory default values should be set.
-        // if (options->secitem_options != NULL) {
-        //     // Copy the options set in options to local secitem_options
-        // }
-        // Check secitem_options and apply defaults where applicable.
-        // Also, set up appropriate default values for these if one isn't provided.
-        if (options->secitem_options->cert_label == NULL) {
-            options->secitem_options->cert_label = aws_string_new_from_c_str(alloc, "aws-crt-defaut-certificate-label");
-        }
-        if (options->secitem_options->key_label == NULL) {
-            options->secitem_options->key_label = aws_string_new_from_c_str(alloc, "aws-crt-default-private-key-label");
-        }
-        if (options->secitem_options->application_label == NULL) {
-            options->secitem_options->application_label = aws_string_new_from_c_str(alloc, "aws-crt-default-application-label");
-        }
-
         if (aws_secitem_import_cert_and_key(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
