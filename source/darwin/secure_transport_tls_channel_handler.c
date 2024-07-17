@@ -652,7 +652,7 @@ static int s_process_read_message(
         AWS_LS_IO_TLS, "id=%p: downstream window is %llu", (void *)handler, (unsigned long long)downstream_window);
     size_t processed = 0;
 
-    int shutdown_error_code = AWS_OP_SUCCESS;
+    int shutdown_error_code = 0;
     while (processed < downstream_window) {
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
