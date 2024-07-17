@@ -110,7 +110,9 @@ struct secure_transport_handler {
     bool advertise_alpn_message;
     bool negotiation_finished;
     bool verify_peer;
-    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
+    bool read_task_pending;
+    bool delay_shutdown_scheduled;
+    bool delay_shutdown_error_code;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -548,26 +550,40 @@ static int s_process_write_message(
     return AWS_OP_SUCCESS;
 }
 
-static void s_darwin_read_delayed_shutdown_task(
-    struct aws_channel_task *channel_task,
-    void *arg,
-    enum aws_task_status status) {
-    (void)channel_task;
-    (void)status;
-
-    struct aws_channel_handler *handler = arg;
-    struct secure_transport_handler *secure_transport_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
-    aws_channel_slot_on_handler_shutdown_complete(
-        secure_transport_handler->read_delayed_shutdown_task->slot,
-        AWS_CHANNEL_DIR_READ,
-        secure_transport_handler->read_delayed_shutdown_task->error,
-        false);
-    aws_mem_release(handler->alloc, secure_transport_handler->read_delayed_shutdown_task);
-    secure_transport_handler->read_delayed_shutdown_task = NULL;
-}
-
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status);
+
+static void s_initialize_read_delay_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    int error_code) {
+    struct secure_transport_handler *secure_transport_handler = handler->impl;
+    /**
+     * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
+     * make sure we pass those data down the pipeline before we complete the shutdown.
+     */
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
+        "reads the data.",
+        (void *)handler);
+    if (aws_channel_slot_downstream_read_window(slot) == 0) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
+            "It's possible to result in hanging without any further window update.",
+            (void *)handler);
+    }
+    secure_transport_handler->delay_shutdown_scheduled = true;
+    secure_transport_handler->delay_shutdown_error_code = error_code;
+    if (!secure_transport_handler->read_task_pending) {
+        /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
+         * Nothing will kick off read in that case. */
+        secure_transport_handler->read_task_pending = true;
+        aws_channel_task_init(
+            &secure_transport_handler->read_task, s_run_read, handler, "darwin_channel_handler_read_on_delay_shutdown");
+        aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
+    }
+}
 
 static int s_handle_shutdown(
     struct aws_channel_handler *handler,
@@ -577,66 +593,28 @@ static int s_handle_shutdown(
     bool abort_immediately) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
-            SSLClose(secure_transport_handler->ctx);
-        }
-    } else {
+    if (dir == AWS_CHANNEL_DIR_READ) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS,
-            "id=%p: shutting down read direction with error %d. Flushing queues.",
-            (void *)handler,
-            error_code);
+            AWS_LS_IO_TLS, "id=%p: shutting down read direction with error %d.", (void *)handler, error_code);
         if (!abort_immediately && secure_transport_handler->negotiation_finished &&
-            !aws_linked_list_empty(&secure_transport_handler->input_queue) && slot->adj_right) {
-            /**
-             * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
-             * make sure we pass those data down the pipeline before we complete the shutdown.
-             */
-            size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS,
-                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
-                "reads the data.",
-                (void *)handler);
-            if (downstream_size == 0) {
-                AWS_LOGF_WARN(
-                    AWS_LS_IO_TLS,
-                    "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
-                    "It's possible to result in hanging without any further window update.",
-                    (void *)handler);
-            }
-            if (secure_transport_handler->read_delayed_shutdown_task == NULL) {
-                secure_transport_handler->read_delayed_shutdown_task =
-                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
-                aws_channel_task_init(
-                    &secure_transport_handler->read_delayed_shutdown_task->task,
-                    s_darwin_read_delayed_shutdown_task,
-                    &secure_transport_handler->handler,
-                    "darwin_tls_read_delayed_shutdown");
-
-                secure_transport_handler->read_delayed_shutdown_task->slot = slot;
-                secure_transport_handler->read_delayed_shutdown_task->error = error_code;
-                /* Not schedule the delay shutdown until the handler reads to block. */
-                if (!secure_transport_handler->read_task.node.next) {
-                    /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
-                     * Nothing will kick off read in that case. */
-                    aws_channel_task_init(
-                        &secure_transport_handler->read_task,
-                        s_run_read,
-                        handler,
-                        "darwin_channel_handler_read_on_delay_shutdown");
-                    aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_task);
-                }
-            }
+            !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+            s_initialize_read_delay_shutdown(handler, slot, error_code);
+            /* Early out, not complete the shutdown process for the handler until the handler processes the pending
+             * data. */
             return AWS_OP_SUCCESS;
         }
+        /* Flushing queues */
         while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
             struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
             struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
             aws_mem_release(message->allocator, message);
+        }
+
+    } else {
+        /* Shutdown in write direction */
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: shutting down write direction.", (void *)handler);
+            SSLClose(secure_transport_handler->ctx);
         }
     }
 
@@ -674,7 +652,6 @@ static int s_process_read_message(
         AWS_LS_IO_TLS, "id=%p: downstream window is %llu", (void *)handler, (unsigned long long)downstream_window);
     size_t processed = 0;
 
-    OSStatus status = noErr;
     int shutdown_error_code = AWS_OP_SUCCESS;
     while (processed < downstream_window) {
 
@@ -682,59 +659,61 @@ static int s_process_read_message(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
 
         size_t read = 0;
-        status = SSLRead(
+        OSStatus status = SSLRead(
             secure_transport_handler->ctx,
             outgoing_read_message->message_data.buffer,
             outgoing_read_message->message_data.capacity,
             &read);
 
         AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read %llu", (void *)handler, (unsigned long long)read);
-        if (read <= 0) {
+        if (read > 0) {
+            processed += read;
+            outgoing_read_message->message_data.len = read;
+
+            if (secure_transport_handler->on_data_read) {
+                secure_transport_handler->on_data_read(
+                    handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
+            }
+
+            if (slot->adj_right) {
+                if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
+                    aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+                    shutdown_error_code = aws_last_error();
+                    goto shutdown_channel;
+                }
+                /* outgoing message was pushed to the input_queue, so this handler owns it now */
+            } else {
+                aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+            }
+        } else {
+            /* Nothing was read */
             aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+        }
 
-            if (status != errSSLWouldBlock) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "id=%p: error reported during SSLRead. OSStatus code %d",
-                    (void *)handler,
-                    (int)status);
-
-                if (status != errSSLClosedGraceful) {
-                    aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
-                    shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;
+        switch (status) {
+            case errSSLWouldBlock:
+                if (secure_transport_handler->delay_shutdown_scheduled) {
+                    /* Propagate the shutdown as we blocked now. */
+                    shutdown_error_code = secure_transport_handler->delay_shutdown_error_code;
                     goto shutdown_channel;
                 } else {
-                    AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
-                    goto shutdown_channel;
+                    break;
                 }
-            } else {
-                if (secure_transport_handler->read_delayed_shutdown_task) {
-                    /* Propagate the shutdown as we blocked now. */
-                    shutdown_error_code = AWS_IO_SOCKET_CLOSED;
-                    goto shutdown_channel;
-                }
-                break;
-            }
-        };
-
-        processed += read;
-        outgoing_read_message->message_data.len = read;
-
-        if (secure_transport_handler->on_data_read) {
-            secure_transport_handler->on_data_read(
-                handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
-        }
-
-        if (slot->adj_right) {
-            if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
-                aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
-                shutdown_error_code = aws_last_error();
+            case errSSLClosedGraceful:
+                AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
                 goto shutdown_channel;
-            }
-            /* outgoing message was pushed to the input_queue, so this handler owns it now */
-        } else {
-            aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
+            case noErr:
+                /* continue the while loop */
+                continue;
+            default:
+                /* unexpected error happened */
+                aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
+                shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;
+                goto shutdown_channel;
         }
+
+        /* Break the while loop */
+        break;
     }
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
@@ -745,12 +724,9 @@ static int s_process_read_message(
     return AWS_OP_SUCCESS;
 
 shutdown_channel:
-    if (secure_transport_handler->read_delayed_shutdown_task) {
-        if (shutdown_error_code != AWS_ERROR_SUCCESS) {
-            secure_transport_handler->read_delayed_shutdown_task->error = shutdown_error_code;
-        }
-        /* Schedule the task to continue the shutdown process. */
-        aws_channel_schedule_task_now(slot->channel, &secure_transport_handler->read_delayed_shutdown_task->task);
+    if (secure_transport_handler->delay_shutdown_scheduled) {
+        /* Continue the shutdown process delayed before. */
+        aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
         /* Starts the shutdown process */
         aws_channel_shutdown(slot->channel, shutdown_error_code);
@@ -763,6 +739,7 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
         struct secure_transport_handler *secure_transport_handler = handler->impl;
+        secure_transport_handler->read_task_pending = false;
         s_process_read_message(handler, secure_transport_handler->parent_slot, NULL);
     }
 }
@@ -790,10 +767,11 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (secure_transport_handler->negotiation_finished && !secure_transport_handler->read_task.node.next) {
+    if (secure_transport_handler->negotiation_finished && !secure_transport_handler->read_task_pending) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          */
+        secure_transport_handler->read_task_pending = true;
         aws_channel_task_init(
             &secure_transport_handler->read_task,
             s_run_read,
