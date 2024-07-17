@@ -113,6 +113,7 @@ struct secure_transport_handler {
     bool read_task_pending;
     bool delay_shutdown_scheduled;
     bool delay_shutdown_error_code;
+    bool shutdown_in_progress;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -597,7 +598,7 @@ static int s_handle_shutdown(
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: shutting down read direction with error %d.", (void *)handler, error_code);
         if (!abort_immediately && secure_transport_handler->negotiation_finished &&
-            !aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+            !aws_linked_list_empty(&secure_transport_handler->input_queue) && slot->adj_right) {
             s_initialize_read_delay_shutdown(handler, slot, error_code);
             /* Early out, not complete the shutdown process for the handler until the handler processes the pending
              * data. */
