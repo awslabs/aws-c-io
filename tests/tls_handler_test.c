@@ -1035,7 +1035,7 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path));
 
-    int ret = s_verify_negotiation_fails_helper(allocator, host_name, port, &client_ctx_options);
+    int ret = s_verify_negotiation_fails_helper(allocator, host_name, 443, &client_ctx_options);
     if(ret == AWS_OP_SUCCESS) {
         aws_tls_ctx_options_clean_up(&client_ctx_options);
         ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
