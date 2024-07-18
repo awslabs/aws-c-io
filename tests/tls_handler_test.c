@@ -1013,12 +1013,14 @@ static int s_verify_negotiation_fails(
         (*context_options_override_fn)(&client_ctx_options);
     }
 
-    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, port, &client_ctx_options));
+    int ret = s_verify_negotiation_fails_helper(allocator, host_name, port, &client_ctx_options);
+    if(ret == AWS_OP_SUCCESS) {
+        aws_tls_ctx_options_clean_up(&client_ctx_options);
+        ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
-    aws_tls_ctx_options_clean_up(&client_ctx_options);
-    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-
-    return AWS_OP_SUCCESS;
+        return AWS_OP_SUCCESS;
+    }
+    return ret;
 }
 
 static int s_verify_negotiation_fails_with_ca_override(
@@ -1033,12 +1035,14 @@ static int s_verify_negotiation_fails_with_ca_override(
 
     ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store_from_path(&client_ctx_options, NULL, root_ca_path));
 
-    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(allocator, host_name, 443, &client_ctx_options));
+    int ret = s_verify_negotiation_fails_helper(allocator, host_name, port, &client_ctx_options);
+    if(ret == AWS_OP_SUCCESS) {
+        aws_tls_ctx_options_clean_up(&client_ctx_options);
+        ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
-    aws_tls_ctx_options_clean_up(&client_ctx_options);
-    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-
-    return AWS_OP_SUCCESS;
+        return AWS_OP_SUCCESS;
+    }
+    return ret;
 }
 
 #    if defined(USE_S2N)

@@ -112,8 +112,7 @@ struct secure_transport_handler {
     bool verify_peer;
     bool read_task_pending;
     bool delay_shutdown_scheduled;
-    bool delay_shutdown_error_code;
-    bool shutdown_in_progress;
+    int delay_shutdown_error_code;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -604,13 +603,6 @@ static int s_handle_shutdown(
              * data. */
             return AWS_OP_SUCCESS;
         }
-        /* Flushing queues */
-        while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
-            struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_mem_release(message->allocator, message);
-        }
-
     } else {
         /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
@@ -618,7 +610,12 @@ static int s_handle_shutdown(
             SSLClose(secure_transport_handler->ctx);
         }
     }
-
+    /* Flushing queues */
+    while (!aws_linked_list_empty(&secure_transport_handler->input_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&secure_transport_handler->input_queue);
+        struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+        aws_mem_release(message->allocator, message);
+    }
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
 }
 

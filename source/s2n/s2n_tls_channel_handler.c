@@ -59,8 +59,9 @@ struct s2n_handler {
     } state;
     struct aws_channel_task read_task;
     struct aws_tls_delayed_shutdown_task *write_delayed_shutdown_task;
-    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
-    bool shutdown_pending;
+    bool read_task_pending;
+    bool delay_shutdown_scheduled;
+    int delay_shutdown_error_code;
 };
 
 struct s2n_ctx {
@@ -543,7 +544,7 @@ static int s_s2n_handler_process_read_message(
     if (slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(slot);
     }
-    int shutdown_error_code = AWS_OP_SUCCESS;
+    int shutdown_error_code = 0;
 
     size_t processed = 0;
     AWS_LOGF_TRACE(
@@ -583,7 +584,8 @@ static int s_s2n_handler_process_read_message(
 
             /* the socket blocked so exit from the loop */
             if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_BLOCKED) {
-                if (s2n_handler->read_delayed_shutdown_task) {
+                if (s2n_handler->delay_shutdown_scheduled) {
+                    shutdown_error_code = s2n_handler->delay_shutdown_error_code;
                     /* Propagate the shutdown as we blocked now. */
                     goto shutdown_channel;
                 }
@@ -625,12 +627,8 @@ static int s_s2n_handler_process_read_message(
     return AWS_OP_SUCCESS;
 
 shutdown_channel:
-    if (s2n_handler->read_delayed_shutdown_task) {
-        if (shutdown_error_code != AWS_ERROR_SUCCESS) {
-            s2n_handler->read_delayed_shutdown_task->error = shutdown_error_code;
-        }
-        /* Schedule the task to continue the shutdown process. */
-        aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_delayed_shutdown_task->task);
+    if (s2n_handler->delay_shutdown_scheduled) {
+        aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
         /* Starts the shutdown process */
         aws_channel_shutdown(slot->channel, shutdown_error_code);
@@ -693,24 +691,6 @@ static void s_write_delayed_shutdown_task_fn(
     s2n_handler->write_delayed_shutdown_task = NULL;
 }
 
-static void s_s2n_read_delayed_shutdown_task(
-    struct aws_channel_task *channel_task,
-    void *arg,
-    enum aws_task_status status) {
-    (void)channel_task;
-    (void)status;
-
-    struct aws_channel_handler *handler = arg;
-    struct s2n_handler *s2n_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
-    aws_channel_slot_on_handler_shutdown_complete(
-        s2n_handler->read_delayed_shutdown_task->slot,
-        AWS_CHANNEL_DIR_READ,
-        s2n_handler->read_delayed_shutdown_task->error,
-        false);
-    aws_mem_release(handler->alloc, s2n_handler->read_delayed_shutdown_task);
-    s2n_handler->read_delayed_shutdown_task = NULL;
-}
 
 static enum aws_tls_signature_algorithm s_s2n_to_aws_signature_algorithm(s2n_tls_signature_algorithm s2n_alg) {
     switch (s2n_alg) {
@@ -1048,7 +1028,41 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = (struct aws_channel_handler *)arg;
         struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+        s2n_handler->read_task_pending = false;
         s_s2n_handler_process_read_message(handler, s2n_handler->slot, NULL);
+    }
+}
+
+static void s_initialize_read_delay_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    int error_code) {
+    struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
+    /**
+     * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
+     * make sure we pass those data down the pipeline before we complete the shutdown.
+     */
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
+        "reads the data.",
+        (void *)handler);
+    if (aws_channel_slot_downstream_read_window(slot) == 0) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
+            "It's possible to result in hanging without any further window update.",
+            (void *)handler);
+    }
+    s2n_handler->delay_shutdown_scheduled = true;
+    s2n_handler->delay_shutdown_error_code = error_code;
+    if (!s2n_handler->read_task_pending) {
+        /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
+         * Nothing will kick off read in that case. */
+        s2n_handler->read_task_pending = true;
+        aws_channel_task_init(
+            &s2n_handler->read_task, s_run_read, handler, "darwin_channel_handler_read_on_delay_shutdown");
+        aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_task);
     }
 }
 
@@ -1060,14 +1074,7 @@ static int s_s2n_handler_shutdown(
     bool abort_immediately) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
-    if (dir == AWS_CHANNEL_DIR_WRITE) {
-        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Scheduling delayed write direction shutdown", (void *)handler);
-            if (s_s2n_do_write_delayed_shutdown(handler, slot, error_code) == AWS_OP_SUCCESS) {
-                return AWS_OP_SUCCESS;
-            }
-        }
-    } else {
+    if (dir == AWS_CHANNEL_DIR_READ) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: Shutting down read direction with error code %d", (void *)handler, error_code);
 
@@ -1078,53 +1085,22 @@ static int s_s2n_handler_shutdown(
 
         if (!abort_immediately && s2n_handler->state == NEGOTIATION_SUCCEEDED &&
             !aws_linked_list_empty(&s2n_handler->input_queue) && slot->adj_right) {
-            /**
-             * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
-             * make sure we pass those data down the pipeline before we complete the shutdown.
-             */
-            size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS,
-                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
-                "reads the data.",
-                (void *)handler);
-            if (downstream_size == 0) {
-                AWS_LOGF_WARN(
-                    AWS_LS_IO_TLS,
-                    "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
-                    "It's possible to result in hanging without any further window update.",
-                    (void *)handler);
-            }
-
-            if (s2n_handler->read_delayed_shutdown_task == NULL) {
-                s2n_handler->read_delayed_shutdown_task =
-                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
-                aws_channel_task_init(
-                    &s2n_handler->read_delayed_shutdown_task->task,
-                    s_s2n_read_delayed_shutdown_task,
-                    &s2n_handler->handler,
-                    "s2n_read_delayed_shutdown");
-
-                s2n_handler->read_delayed_shutdown_task->slot = slot;
-                s2n_handler->read_delayed_shutdown_task->error = error_code;
-                /* Not schedule the delay shutdown until the handler reads to block. */
-                if (!s2n_handler->read_task.node.next) {
-                    /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
-                     * Nothing will kick off read in that case. */
-                    aws_channel_task_init(
-                        &s2n_handler->read_task, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
-                    aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_task);
-                }
-            }
+            s_initialize_read_delay_shutdown(handler, slot, error_code);
             return AWS_OP_SUCCESS;
         }
-
-        while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
-            struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
-            struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
-            aws_mem_release(message->allocator, message);
+    } else {
+        /* Shutdown in write direction */
+        if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Scheduling delayed write direction shutdown", (void *)handler);
+            if (s_s2n_do_write_delayed_shutdown(handler, slot, error_code) == AWS_OP_SUCCESS) {
+                return AWS_OP_SUCCESS;
+            }
         }
+    }
+    while (!aws_linked_list_empty(&s2n_handler->input_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&s2n_handler->input_queue);
+        struct aws_io_message *message = AWS_CONTAINER_OF(node, struct aws_io_message, queueing_handle);
+        aws_mem_release(message->allocator, message);
     }
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, abort_immediately);
@@ -1157,13 +1133,14 @@ static int s_s2n_handler_increment_read_window(
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->read_task.node.next) {
+    if (s2n_handler->state == NEGOTIATION_SUCCEEDED && !s2n_handler->read_task_pending) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          *
          * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
          * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
          * have no idea what's going on inside there. So we need to attempt another read.*/
+        s2n_handler->read_task_pending = true;
         aws_channel_task_init(
             &s2n_handler->read_task, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
         aws_channel_schedule_task_now(slot->channel, &s2n_handler->read_task);
