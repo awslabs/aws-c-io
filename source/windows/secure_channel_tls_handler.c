@@ -104,7 +104,9 @@ struct secure_channel_handler {
     bool negotiation_finished;
     bool verify_peer;
     struct aws_channel_task read_task;
-    struct aws_tls_delayed_shutdown_task *read_delayed_shutdown_task;
+    bool read_task_pending;
+    bool delay_shutdown_scheduled;
+    int delay_shutdown_error_code;
 };
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
@@ -1216,9 +1218,10 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
-    if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->read_delayed_shutdown_task) {
-        /* We finished deliver the buffered data, schedule the delayed shutdown task now. */
-        aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->read_delayed_shutdown_task->task);
+    if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->delay_shutdown_scheduled) {
+        /* Continue the shutdown process delayed before. */
+        aws_channel_slot_on_handler_shutdown_complete(
+            slot, AWS_CHANNEL_DIR_READ, sc_handler->delay_shutdown_error_code, false);
     }
 
     return AWS_OP_SUCCESS;
@@ -1227,11 +1230,12 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
 static void s_process_pending_output_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     struct aws_channel_handler *handler = arg;
+    struct secure_channel_handler *sc_handler = handler->impl;
+    sc_handler->read_task_pending = false;
 
     aws_channel_task_init(task, NULL, NULL, "secure_channel_handler_process_pending_output");
     if (status == AWS_TASK_STATUS_RUN_READY) {
         if (s_process_pending_output_messages(handler)) {
-            struct secure_channel_handler *sc_handler = arg;
             aws_channel_shutdown(sc_handler->slot->channel, aws_last_error());
         }
     }
@@ -1505,10 +1509,11 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (sc_handler->negotiation_finished && !sc_handler->read_task.node.next) {
+    if (sc_handler->negotiation_finished && !sc_handler->read_task.read_task_pending) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          */
+        sc_handler->read_task_pending = true;
         aws_channel_task_init(
             &sc_handler->read_task,
             s_process_pending_output_task,
@@ -1527,23 +1532,40 @@ static size_t s_initial_window_size(struct aws_channel_handler *handler) {
     return EST_HANDSHAKE_SIZE;
 }
 
-static void s_win_read_delayed_shutdown_task(
-    struct aws_channel_task *channel_task,
-    void *arg,
-    enum aws_task_status status) {
-    (void)channel_task;
-    (void)status;
-
-    struct aws_channel_handler *handler = arg;
+static void s_initialize_read_delay_shutdown(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    int error_code) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Delayed shut down in read direction", (void *)handler);
-    aws_channel_slot_on_handler_shutdown_complete(
-        sc_handler->read_delayed_shutdown_task->slot,
-        AWS_CHANNEL_DIR_READ,
-        sc_handler->read_delayed_shutdown_task->error,
-        false);
-    aws_mem_release(handler->alloc, sc_handler->read_delayed_shutdown_task);
-    sc_handler->read_delayed_shutdown_task = NULL;
+    /**
+     * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
+     * make sure we pass those data down the pipeline before we complete the shutdown.
+     */
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
+        "reads the data.",
+        (void *)handler);
+    if (aws_channel_slot_downstream_read_window(slot) == 0) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_TLS,
+            "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
+            "It's possible to result in hanging without any further window update.",
+            (void *)handler);
+    }
+    sc_handler->delay_shutdown_scheduled = true;
+    sc_handler->delay_shutdown_error_code = error_code;
+    if (!sc_handler->read_task_pending) {
+        /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
+         * Nothing will kick off read in that case. */
+        sc_handler->read_task_pending = true;
+        aws_channel_task_init(
+            &sc_handler->read_task,
+            s_process_pending_output_task,
+            handler,
+            "darwin_channel_handler_read_on_delay_shutdown");
+        aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
+    }
 }
 
 static int s_handler_shutdown(
@@ -1566,7 +1588,16 @@ static int s_handler_shutdown(
         .pBuffers = &output_buffer,
     };
 
-    if (dir == AWS_CHANNEL_DIR_WRITE) {
+    if (dir == AWS_CHANNEL_DIR_READ) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "id=%p: shutting down read direction with error %d.", (void *)handler, error_code);
+        if (!abort_immediately && sc_handler->negotiation_finished && sc_handler->buffered_read_out_data_buf.len &&
+            slot->adj_right) {
+            s_initialize_read_delay_shutdown(handler, slot, error_code);
+            return AWS_OP_SUCCESS;
+        }
+    } else {
+        /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Shutting down the write direction", (void *)handler);
 
@@ -1633,53 +1664,6 @@ static int s_handler_shutdown(
                     goto cleanup;
                 }
             }
-        }
-    } else {
-        if (!abort_immediately && sc_handler->negotiation_finished && sc_handler->buffered_read_out_data_buf.len &&
-            slot->adj_right) {
-            /**
-             * In case of if we have any queued data in the handler after negotiation and we start to shutdown,
-             * make sure we pass those data down the pipeline before we complete the shutdown.
-             */
-            size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS,
-                "id=%p: TLS handler still have pending data to be delivered during shutdown. Wait until downstream "
-                "reads the data.",
-                (void *)handler);
-            if (downstream_size == 0) {
-                AWS_LOGF_WARN(
-                    AWS_LS_IO_TLS,
-                    "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
-                    "It's possible to result in hanging without any further window update.",
-                    (void *)handler);
-            }
-            if (sc_handler->read_delayed_shutdown_task == NULL) {
-                sc_handler->read_delayed_shutdown_task =
-                    aws_mem_calloc(handler->alloc, 1, sizeof(struct aws_tls_delayed_shutdown_task));
-                aws_channel_task_init(
-                    &sc_handler->read_delayed_shutdown_task->task,
-                    s_win_read_delayed_shutdown_task,
-                    &sc_handler->handler,
-                    "win_read_delayed_shutdown");
-
-                sc_handler->read_delayed_shutdown_task->slot = slot;
-                sc_handler->read_delayed_shutdown_task->error = error_code;
-                /* Not schedule the delay shutdown until the handler reads to block. */
-
-                if (!sc_handler->read_task.node.next) {
-                    /* Kick off read, in case data arrives with TLS negotiation. Shutdown stars right after negotiation.
-                     * Nothing will kick off read in that case. */
-                    aws_channel_task_init(
-                        &sc_handler->read_task,
-                        s_process_pending_output_task,
-                        handler,
-                        "win_channel_handler_read_on_delay_shutdown");
-                    aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
-                }
-            }
-            return AWS_OP_SUCCESS;
         }
     }
 
