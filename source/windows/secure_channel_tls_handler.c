@@ -1221,7 +1221,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->delay_shutdown_scheduled) {
         /* Continue the shutdown process delayed before. */
         aws_channel_slot_on_handler_shutdown_complete(
-            slot, AWS_CHANNEL_DIR_READ, sc_handler->delay_shutdown_error_code, false);
+            sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->delay_shutdown_error_code, false);
     }
 
     return AWS_OP_SUCCESS;
@@ -1509,7 +1509,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         aws_channel_slot_increment_read_window(slot, window_update_size);
     }
 
-    if (sc_handler->negotiation_finished && !sc_handler->read_task.read_task_pending) {
+    if (sc_handler->negotiation_finished && !sc_handler->read_task_pending) {
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          */
