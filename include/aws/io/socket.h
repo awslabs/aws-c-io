@@ -31,6 +31,8 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+#define AWS_NETWORK_INTERFACE_NAME_MAX 16
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -45,6 +47,17 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     enum aws_event_loop_style event_loop_style;
     bool keepalive;
+
+    /**
+     * THIS IS AN EXPERIMENTAL AND UNSTABLE API
+     * (Optional)
+     * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
+     * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
+     * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
+     * supported on Linux, macOS, and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not supported on
+     * Windows. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on unsupported platforms.
+     */
+    char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
 
 struct aws_socket;

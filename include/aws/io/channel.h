@@ -272,7 +272,7 @@ int aws_channel_remove_local_object(
 /**
  * Acquires a message from the event loop's message pool. size_hint is merely a hint, it may be smaller than you
  * requested and you are responsible for checking the bounds of it. If the returned message is not large enough, you
- * must send multiple messages.
+ * must send multiple messages. This cannot fail, it never returns NULL.
  */
 AWS_IO_API
 struct aws_io_message *aws_channel_acquire_message_from_pool(
@@ -403,7 +403,7 @@ int aws_channel_slot_send_message(
 /**
  * Convenience function that invokes aws_channel_acquire_message_from_pool(),
  * asking for the largest reasonable DATA message that can be sent in the write direction,
- * with upstream overhead accounted for.
+ * with upstream overhead accounted for. This cannot fail, it never returns NULL.
  */
 AWS_IO_API
 struct aws_io_message *aws_channel_slot_acquire_max_message_for_write(struct aws_channel_slot *slot);

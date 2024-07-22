@@ -458,6 +458,70 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
+static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+#if defined(AWS_OS_APPLE)
+    strncpy(options.network_interface_name, "lo0", AWS_NETWORK_INTERFACE_NAME_MAX);
+#else
+    strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
+#endif
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
+    if (s_test_socket(allocator, &options, &endpoint)) {
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#endif
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+
+    struct aws_socket_endpoint endpoint_ipv6 = {.address = "::1", .port = 1024};
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV6;
+    if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
+        /* Skip test if server can't bind to address (e.g. Codebuild's ubuntu runners don't allow IPv6) */
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
+            return AWS_OP_SKIP;
+        }
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
+
+static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
+    struct aws_socket outgoing;
+#if defined(AWS_OS_APPLE) || defined(AWS_OS_LINUX)
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
+#else
+    ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
+
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
 /* Without vsock loopback it's difficult to test vsock functionality.
@@ -848,7 +912,6 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     return 0;
 }
-
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
 static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *ctx) {
