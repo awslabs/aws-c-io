@@ -83,7 +83,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
 /* on a platform without both socket types, we need to define the symbols for that type of socket so the linker will be
  * happy. */
-#define AWS_USE_DISPATCH_QUEUE 1
 #if !AWS_USE_DISPATCH_QUEUE && !AWS_USE_IO_COMPLETION_PORTS
 int aws_socket_init_completion_port_based(
     struct aws_socket *socket,

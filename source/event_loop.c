@@ -10,6 +10,8 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+#include <TargetConditionals.h>
+
 static const struct aws_event_loop_configuration s_available_configurations[] = {
 #ifdef AWS_USE_IO_COMPLETION_PORTS
     {
@@ -34,7 +36,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
 #    if TARGET_OS_OSX
-        .is_default = false,
+        .is_default = true,
 #    else
         .is_default = true,
 #    endif
@@ -621,8 +623,7 @@ void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, s
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->is_on_callers_thread);
-    return true;
-    //return event_loop->vtable->is_on_callers_thread(event_loop);
+    return event_loop->vtable->is_on_callers_thread(event_loop);
 }
 
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {

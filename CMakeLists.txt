@@ -62,7 +62,6 @@ file(GLOB AWS_IO_SRC
         )
 
 set(USE_S2N OFF)
-set(AWS_USE_DISPATCH_QUEUE ON)
 
 if (WIN32)
     option(USE_IO_COMPLETION_PORTS
