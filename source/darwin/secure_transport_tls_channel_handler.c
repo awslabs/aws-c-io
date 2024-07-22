@@ -85,8 +85,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 }
 
-void aws_tls_clean_up_static_state(void) { /* no op */
-}
+void aws_tls_clean_up_static_state(void) { /* no op */ }
 
 struct secure_transport_handler {
     struct aws_channel_handler handler;
@@ -167,7 +166,8 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             handler->parent_slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, message_size_hint);
 
-        if (!message || message->message_data.capacity <= overhead) {
+        if (message->message_data.capacity <= overhead) {
+            aws_mem_release(message->allocator, message);
             return errSecMemoryError;
         }
 
@@ -335,7 +335,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                     &secure_transport_handler->protocol, handler->alloc, (size_t)CFStringGetLength(protocol) + 1)) {
                 CFRelease(protocol);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             memset(secure_transport_handler->protocol.buffer, 0, secure_transport_handler->protocol.capacity);
@@ -399,7 +399,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         if (secure_transport_handler->verify_peer) {
             if (!secure_transport_handler->ca_certs) {
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             SecTrustRef trust;
@@ -407,7 +407,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
             if (status != errSecSuccess) {
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             SecPolicyRef policy;
@@ -428,7 +428,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)handler, (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             status = SecTrustSetAnchorCertificates(trust, secure_transport_handler->ca_certs);
@@ -440,7 +440,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                     (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             /* Use ONLY the custom CA bundle (ignoring system anchors) */
@@ -453,7 +453,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                     (int)status);
                 CFRelease(trust);
                 s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-                return AWS_OP_ERR;
+                return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
             }
 
             SecTrustResultType trust_eval = 0;
@@ -470,8 +470,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 "id=%p: Using custom CA, certificate validation failed with OSStatus %d and Trust Eval %d.",
                 (void *)handler,
                 (int)status,
-                (int)trust_eval)
-            return AWS_OP_ERR;
+                (int)trust_eval);
+            return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         }
         return s_drive_negotiation(handler);
         /* if this is here, everything went wrong. */
@@ -479,9 +479,8 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         secure_transport_handler->negotiation_finished = false;
 
         AWS_LOGF_WARN(AWS_LS_IO_TLS, "id=%p: negotiation failed with OSStatus %d.", (void *)handler, (int)status);
-        aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         s_invoke_negotiation_callback(handler, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
     }
 
     return AWS_OP_SUCCESS;
@@ -505,7 +504,7 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
         return s_drive_negotiation(handler);
     }
 
-    struct aws_channel_task *negotiation_task = aws_mem_acquire(handler->alloc, sizeof(struct aws_task));
+    struct aws_channel_task *negotiation_task = aws_mem_acquire(handler->alloc, sizeof(struct aws_channel_task));
 
     if (!negotiation_task) {
         return AWS_OP_ERR;
@@ -614,11 +613,6 @@ static int s_process_read_message(
 
         struct aws_io_message *outgoing_read_message = aws_channel_acquire_message_from_pool(
             slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, downstream_window - processed);
-        if (!outgoing_read_message) {
-            /* even though this is a failure, this handler has taken ownership of the message */
-            aws_channel_shutdown(secure_transport_handler->parent_slot->channel, aws_last_error());
-            return AWS_OP_SUCCESS;
-        }
 
         size_t read = 0;
         status = SSLRead(
@@ -639,9 +633,8 @@ static int s_process_read_message(
                     (int)status);
 
                 if (status != errSSLClosedGraceful) {
-                    aws_raise_error(AWS_IO_TLS_ERROR_ALERT_RECEIVED);
-                    aws_channel_shutdown(
-                        secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_ALERT_RECEIVED);
+                    aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
+                    aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_IO_TLS_ERROR_READ_FAILURE);
                 } else {
                     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: connection shutting down gracefully.", (void *)handler);
                     aws_channel_shutdown(secure_transport_handler->parent_slot->channel, AWS_ERROR_SUCCESS);

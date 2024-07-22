@@ -9,6 +9,8 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 enum aws_socket_domain {
     AWS_SOCKET_IPV4,
     AWS_SOCKET_IPV6,
@@ -29,6 +31,8 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+#define AWS_NETWORK_INTERFACE_NAME_MAX 16
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -43,6 +47,17 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     enum aws_event_loop_style event_loop_style;
     bool keepalive;
+
+    /**
+     * THIS IS AN EXPERIMENTAL AND UNSTABLE API
+     * (Optional)
+     * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
+     * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
+     * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
+     * supported on Linux, macOS, and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not supported on
+     * Windows. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on unsupported platforms.
+     */
+    char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
 
 struct aws_socket;
@@ -98,7 +113,7 @@ typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_cod
 #endif
 struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
-    uint16_t port;
+    uint32_t port;
 };
 
 struct aws_socket;
@@ -348,6 +363,29 @@ AWS_IO_API int aws_socket_get_error(struct aws_socket *socket);
  */
 AWS_IO_API bool aws_socket_is_open(struct aws_socket *socket);
 
+/**
+ * Raises AWS_IO_SOCKET_INVALID_ADDRESS and logs an error if connecting to this port is illegal.
+ * For example, port must be in range 1-65535 to connect with IPv4.
+ * These port values would fail eventually in aws_socket_connect(),
+ * but you can use this function to validate earlier.
+ */
+AWS_IO_API int aws_socket_validate_port_for_connect(uint32_t port, enum aws_socket_domain domain);
+
+/**
+ * Raises AWS_IO_SOCKET_INVALID_ADDRESS and logs an error if binding to this port is illegal.
+ * For example, port must in range 0-65535 to bind with IPv4.
+ * These port values would fail eventually in aws_socket_bind(),
+ * but you can use this function to validate earlier.
+ */
+AWS_IO_API int aws_socket_validate_port_for_bind(uint32_t port, enum aws_socket_domain domain);
+
+/**
+ * Assigns a random address (UUID) for use with AWS_SOCKET_LOCAL (Unix Domain Sockets).
+ * For use in internal tests only.
+ */
+AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint);
+
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_SOCKET_H */

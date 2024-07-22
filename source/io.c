@@ -7,8 +7,9 @@
 #include <aws/io/logging.h>
 
 #include <aws/cal/cal.h>
+#include <aws/io/private/tracing.h>
 
-#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
+#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE) - 0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 #define AWS_DEFINE_ERROR_PKCS11_CKR(CKR)                                                                               \
     AWS_DEFINE_ERROR_INFO_IO(                                                                                          \
@@ -282,6 +283,29 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
        AWS_ERROR_PKCS11_ENCODING_ERROR,
        "A PKCS#11 (Cryptoki) library function was unable to ASN.1 (DER) encode a data structure. See log for more details."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND,
+        "Default TLS trust store not found on this system."
+        " Trusted CA certificates must be installed,"
+        " or \"override default trust store\" must be used while creating the TLS context."),
+
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_SEEK_FAILED,
+        "Stream failed to seek from the underlying I/O source."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_GET_LENGTH_FAILED,
+        "Stream failed to get length from the underlying I/O source."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_SEEK_UNSUPPORTED,
+        "Seek is not supported in the underlying I/O source."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_STREAM_GET_LENGTH_UNSUPPORTED,
+        "Get length is not supported in the underlying I/O source."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_READ_FAILURE,
+        "Failure during TLS read."),
+    AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED, "Malformed PEM object encountered."),
+
 };
 /* clang-format on */
 
@@ -318,7 +342,7 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "standard-retry-strategy",
         "Subject for standard retry strategy"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
-};
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,
@@ -338,6 +362,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
         aws_tls_init_static_state(allocator);
+        aws_io_tracing_init();
     }
 }
 

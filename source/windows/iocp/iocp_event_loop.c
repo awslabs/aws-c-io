@@ -106,7 +106,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data);
-static void s_event_thread_main(void *user_data);
+static void aws_event_loop_thread(void *user_data);
 
 void aws_overlapped_init(
     struct aws_overlapped *overlapped,
@@ -358,7 +358,7 @@ static int s_run(struct aws_event_loop *event_loop) {
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
     aws_thread_increment_unjoined_count();
-    int err = aws_thread_launch(&impl->thread_created_on, s_event_thread_main, event_loop, &impl->thread_options);
+    int err = aws_thread_launch(&impl->thread_created_on, aws_event_loop_thread, event_loop, &impl->thread_options);
     if (err) {
         aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: thread creation failed.", (void *)event_loop);
@@ -521,7 +521,7 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     /* iocp_handle should be the event loop's handle if this succeeded */
     bool iocp_associated = iocp_handle == impl->iocp_handle;
 
-/* clang-format off */
+    /* clang-format off */
 #if defined(AWS_SUPPORT_WIN7)
     /*
      * When associating named pipes, it is possible to open the same pipe in the same
@@ -636,7 +636,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: failed to un-subscribe from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-    return AWS_OP_ERR;
+    return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
 }
 
 static void s_free_io_event_resources(void *user_data) {
@@ -644,8 +644,32 @@ static void s_free_io_event_resources(void *user_data) {
     (void)user_data;
 }
 
+/**
+ * This just calls GetQueuedCompletionStatusEx()
+ *
+ * We broke this out into its own function so that the stacktrace clearly shows
+ * what this thread is doing. We've had a lot of cases where users think this
+ * thread is deadlocked because it's stuck here. We want it to be clear
+ * that it's doing nothing on purpose. It's waiting for events to happen...
+ */
+AWS_NO_INLINE
+static bool aws_event_loop_listen_for_io_events(
+    HANDLE iocp_handle,
+    OVERLAPPED_ENTRY completion_packets[MAX_COMPLETION_PACKETS_PER_LOOP],
+    ULONG *num_entries,
+    DWORD timeout_ms) {
+
+    return GetQueuedCompletionStatusEx(
+        iocp_handle,                     /* Completion port */
+        completion_packets,              /* Out: completion port entries */
+        MAX_COMPLETION_PACKETS_PER_LOOP, /* max number of entries to remove */
+        num_entries,                     /* Out: number of entries removed */
+        timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
+        false);                          /* Alertable */
+}
+
 /* Called from event-thread */
-static void s_event_thread_main(void *user_data) {
+static void aws_event_loop_thread(void *user_data) {
     struct aws_event_loop *event_loop = user_data;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
 
@@ -668,13 +692,11 @@ static void s_event_thread_main(void *user_data) {
         ULONG num_entries = 0;
         bool should_process_synced_data = false;
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %d ms", (void *)event_loop, timeout_ms);
-        bool has_completion_entries = GetQueuedCompletionStatusEx(
-            impl->iocp_handle,               /* Completion port */
-            completion_packets,              /* Out: completion port entries */
-            MAX_COMPLETION_PACKETS_PER_LOOP, /* max number of entries to remove */
-            &num_entries,                    /* Out: number of entries removed */
-            timeout_ms,                      /* Timeout in ms. If timeout reached then FALSE is returned. */
-            false);                          /* fAlertable */
+        bool has_completion_entries = aws_event_loop_listen_for_io_events(
+            impl->iocp_handle,  /* Completion port */
+            completion_packets, /* Out: completion port entries */
+            &num_entries,       /* Out: number of entries removed */
+            timeout_ms);        /* Timeout in ms. If timeout reached then FALSE is returned. */
 
         aws_event_loop_register_tick_start(event_loop);
 

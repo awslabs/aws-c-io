@@ -12,6 +12,8 @@
 
 #include <aws/io/io.h>
 
+AWS_PUSH_SANE_WARNING_LEVEL
+
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
@@ -132,10 +134,9 @@ struct aws_event_loop_options {
     struct aws_thread_options *thread_options;
 };
 
-typedef struct aws_event_loop *(aws_new_event_loop_fn)(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options,
-    void *new_loop_user_data);
+typedef struct aws_event_loop *(aws_new_event_loop_fn)(struct aws_allocator *alloc,
+                                                       const struct aws_event_loop_options *options,
+                                                       void *new_loop_user_data);
 
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
@@ -524,5 +525,6 @@ AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
 AWS_EXTERN_C_END
+AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_EVENT_LOOP_H */

@@ -14,14 +14,8 @@
 #include <aws/io/host_resolver.h>
 #include <aws/io/socket.h>
 
-#ifdef _WIN32
-#    define LOCAL_SOCK_TEST_PATTERN "\\\\.\\pipe\\testsock%llu"
-#else
-#    define LOCAL_SOCK_TEST_PATTERN "testsock%llu.sock"
-#endif
-
-#if _MSC_VER
-#    pragma warning(disable : 4996) /* sprintf */
+#ifdef _MSC_VER
+#    pragma warning(disable : 4996) /* strncpy */
 #endif
 
 #if USE_VSOCK
@@ -441,8 +435,7 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     return s_test_socket(allocator, &options, &endpoint);
 }
@@ -467,6 +460,70 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
+
+static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+#if defined(AWS_OS_APPLE)
+    strncpy(options.network_interface_name, "lo0", AWS_NETWORK_INTERFACE_NAME_MAX);
+#else
+    strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
+#endif
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8127};
+    if (s_test_socket(allocator, &options, &endpoint)) {
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#endif
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+
+    struct aws_socket_endpoint endpoint_ipv6 = {.address = "::1", .port = 1024};
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV6;
+    if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
+        /* Skip test if server can't bind to address (e.g. Codebuild's ubuntu runners don't allow IPv6) */
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
+            return AWS_OP_SKIP;
+        }
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
+
+static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
+    struct aws_socket outgoing;
+#if defined(AWS_OS_APPLE) || defined(AWS_OS_LINUX)
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
+#else
+    ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
@@ -576,7 +633,6 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_event_loop_options options;
     AWS_ZERO_STRUCT(options);
-    bool is_root = false;
 
     for (size_t i = 0; i < group->configuration_count; ++i) {
         struct aws_event_loop_group *el_group =
@@ -664,7 +720,6 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     struct aws_event_loop_options options;
     AWS_ZERO_STRUCT(options);
-    bool is_root = false;
 
     for (size_t i = 0; i < group->configuration_count; ++i) {
         struct aws_event_loop_group *el_group =
@@ -1648,7 +1703,8 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
         ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
         struct aws_socket_endpoint endpoint;
         AWS_ZERO_STRUCT(endpoint);
-        snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+        aws_socket_endpoint_init_local_address_for_test(&endpoint);
+
 
         struct aws_socket listener;
         ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1742,7 +1798,7 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
-    snprintf(endpoint.address, sizeof(endpoint.address), LOCAL_SOCK_TEST_PATTERN, (long long unsigned)timestamp);
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
@@ -1833,3 +1889,56 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
 AWS_TEST_CASE(local_socket_pipe_connected_race, s_local_socket_pipe_connected_race)
 
 #endif
+
+static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    /* IPv4 - 16bit port, only bind can use 0 */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_IPV4));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_IPV4));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0, AWS_SOCKET_IPV4));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_IPV4));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0xFFFFFFFF, AWS_SOCKET_IPV4));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(0xFFFFFFFF, AWS_SOCKET_IPV4));
+
+    /* IPv6 - 16bit port, only bind can use 0 */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_IPV6));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_IPV6));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0, AWS_SOCKET_IPV6));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_IPV6));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(0xFFFFFFFF, AWS_SOCKET_IPV6));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(0xFFFFFFFF, AWS_SOCKET_IPV6));
+
+    /* VSOCK - 32bit port, only bind can use VMADDR_PORT_ANY (-1U) */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_VSOCK));
+
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_VSOCK));
+
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0x7FFFFFFF, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0x7FFFFFFF, AWS_SOCKET_VSOCK));
+
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect((uint32_t)-1, AWS_SOCKET_VSOCK));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind((uint32_t)-1, AWS_SOCKET_VSOCK));
+
+    /* LOCAL - ignores port */
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(0, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(0, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect(80, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind(80, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_connect((uint32_t)-1, AWS_SOCKET_LOCAL));
+    ASSERT_SUCCESS(aws_socket_validate_port_for_bind((uint32_t)-1, AWS_SOCKET_LOCAL));
+
+    /* invalid domain should fail */
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_connect(80, (enum aws_socket_domain)(-1)));
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_ADDRESS, aws_socket_validate_port_for_bind(80, (enum aws_socket_domain)(-1)));
+
+    return 0;
+}
+AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)
