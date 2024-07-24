@@ -524,7 +524,7 @@ static int s_s2n_handler_process_read_message(
     struct s2n_handler *s2n_handler = handler->impl;
 
     if (s2n_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     if (AWS_UNLIKELY(s2n_handler->state == NEGOTIATION_FAILED)) {
@@ -1106,7 +1106,7 @@ static int s_s2n_handler_increment_read_window(
     (void)size;
     struct s2n_handler *s2n_handler = handler->impl;
     if (s2n_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);

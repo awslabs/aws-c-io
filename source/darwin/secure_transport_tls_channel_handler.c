@@ -628,7 +628,7 @@ static int s_process_read_message(
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     if (secure_transport_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     if (message) {
@@ -754,7 +754,7 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     if (secure_transport_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     AWS_LOGF_TRACE(

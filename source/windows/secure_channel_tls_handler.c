@@ -1165,7 +1165,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
 static int s_process_pending_output_messages(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     if (sc_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     size_t downstream_window = SIZE_MAX;
@@ -1253,7 +1253,7 @@ static int s_process_read_message(
 
     struct secure_channel_handler *sc_handler = handler->impl;
     if (sc_handler->read_shutdown_completed) {
-        return;
+        return AWS_OP_SUCCESS;
     }
 
     if (message) {
