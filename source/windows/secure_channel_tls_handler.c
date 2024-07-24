@@ -1172,6 +1172,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     if (sc_handler->slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
     }
+    int ret = AWS_OP_ERR;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
@@ -1206,7 +1207,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(read_out_msg->allocator, read_out_msg);
-                return AWS_OP_ERR;
+                goto done;
             }
 
             if (sc_handler->slot->adj_right) {
@@ -1221,15 +1222,21 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
-    if (sc_handler->buffered_read_out_data_buf.len == 0 &&
-        sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
+    ret = AWS_OP_SUCCESS;
+    if (sc_handler->buffered_read_out_data_buf.len > 0) {
+        /* Still have more data to be delivered */
+        return ret;
+    }
+
+done:
+    if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
         sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         /* Continue the shutdown process delayed before. */
         aws_channel_slot_on_handler_shutdown_complete(
             sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->shutdown_error_code, false);
     }
 
-    return AWS_OP_SUCCESS;
+    return ret;
 }
 
 static void s_process_pending_output_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
