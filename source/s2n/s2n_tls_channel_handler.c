@@ -59,11 +59,9 @@ struct s2n_handler {
     } state;
     struct aws_channel_task read_task;
     bool read_task_pending;
-
-    bool is_shutting_down;
+    enum aws_tls_handler_state state;
     int shutdown_error_code;
     struct aws_channel_task delayed_shutdown_task;
-    bool read_shutdown_completed;
 };
 
 struct s2n_ctx {
@@ -523,7 +521,10 @@ static int s_s2n_handler_process_read_message(
 
     struct s2n_handler *s2n_handler = handler->impl;
 
-    if (s2n_handler->read_shutdown_completed) {
+    if (s2n_handler->state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
+        if (message) {
+            aws_mem_release(message->allocator, message);
+        }
         return AWS_OP_SUCCESS;
     }
 
@@ -590,7 +591,7 @@ static int s_s2n_handler_process_read_message(
 
             /* the socket blocked so exit from the loop */
             if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_BLOCKED) {
-                if (s2n_handler->is_shutting_down) {
+                if (s2n_handler->state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
                     /* Propagate the shutdown as we blocked now. */
                     goto shutdown_channel;
                 }
@@ -632,7 +633,7 @@ static int s_s2n_handler_process_read_message(
     return AWS_OP_SUCCESS;
 
 shutdown_channel:
-    if (s2n_handler->is_shutting_down) {
+    if (s2n_handler->state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
         if (s2n_handler->shutdown_error_code != 0) {
             /* Propagate the original error code if it is set. */
             shutdown_error_code = s2n_handler->shutdown_error_code;
@@ -1046,7 +1047,7 @@ static void s_initialize_read_delay_shutdown(
             " Your application may hang if the read window never opens",
             (void *)handler);
     }
-    s2n_handler->is_shutting_down = true;
+    s2n_handler->state = AWS_TLS_HANDLER_READ_SHUTTING_DOWN;
     s2n_handler->shutdown_error_code = error_code;
     if (!s2n_handler->read_task_pending) {
         /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
@@ -1080,7 +1081,7 @@ static int s_s2n_handler_shutdown(
             s_initialize_read_delay_shutdown(handler, slot, error_code);
             return AWS_OP_SUCCESS;
         }
-        s2n_handler->read_shutdown_completed = true;
+        s2n_handler->state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
     } else {
         /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
@@ -1105,7 +1106,7 @@ static int s_s2n_handler_increment_read_window(
     size_t size) {
     (void)size;
     struct s2n_handler *s2n_handler = handler->impl;
-    if (s2n_handler->read_shutdown_completed) {
+    if (s2n_handler->state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
         return AWS_OP_SUCCESS;
     }
 
