@@ -1163,7 +1163,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
 
 static int s_process_pending_output_messages(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
-    if (sc_handler->state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
+    if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
         return AWS_OP_SUCCESS;
     }
 
@@ -1221,8 +1221,9 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
-    if (sc_handler->buffered_read_out_data_buf.len == 0 && sc_handler->state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
-        sc_handler->state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
+    if (sc_handler->buffered_read_out_data_buf.len == 0 &&
+        sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
+        sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         /* Continue the shutdown process delayed before. */
         aws_channel_slot_on_handler_shutdown_complete(
             sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->shutdown_error_code, false);
@@ -1251,7 +1252,7 @@ static int s_process_read_message(
     struct aws_io_message *message) {
 
     struct secure_channel_handler *sc_handler = handler->impl;
-    if (sc_handler->state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
+    if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
         if (message) {
             aws_mem_release(message->allocator, message);
         }
@@ -1482,7 +1483,7 @@ static int s_process_write_message(
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     (void)size;
     struct secure_channel_handler *sc_handler = handler->impl;
-    if (sc_handler->state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
+    if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
         return AWS_OP_SUCCESS;
     }
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Increment read window message received %zu", (void *)handler, size);
@@ -1566,7 +1567,7 @@ static void s_initialize_read_delay_shutdown(
             " Your application may hang if the read window never opens",
             (void *)handler);
     }
-    sc_handler->state = AWS_TLS_HANDLER_READ_SHUTTING_DOWN;
+    sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUTTING_DOWN;
     sc_handler->shutdown_error_code = error_code;
     if (!sc_handler->read_task_pending) {
         /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
@@ -1610,7 +1611,7 @@ static int s_handler_shutdown(
             s_initialize_read_delay_shutdown(handler, slot, error_code);
             return AWS_OP_SUCCESS;
         }
-        sc_handler->state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
+        sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
     } else {
         /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {

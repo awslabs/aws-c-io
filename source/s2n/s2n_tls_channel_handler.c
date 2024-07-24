@@ -638,7 +638,7 @@ shutdown_channel:
             /* Propagate the original error code if it is set. */
             shutdown_error_code = s2n_handler->shutdown_error_code;
         }
-        s2n_handler->read_shutdown_completed = true;
+        s2n_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
         /* Starts the shutdown process */
