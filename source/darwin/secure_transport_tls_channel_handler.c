@@ -692,7 +692,6 @@ static int s_process_read_message(
             case errSSLWouldBlock:
                 if (secure_transport_handler->delay_shutdown_scheduled) {
                     /* Propagate the shutdown as we blocked now. */
-                    shutdown_error_code = secure_transport_handler->delay_shutdown_error_code;
                     goto shutdown_channel;
                 } else {
                     break;
@@ -723,6 +722,10 @@ static int s_process_read_message(
 
 shutdown_channel:
     if (secure_transport_handler->delay_shutdown_scheduled) {
+        if (secure_transport_handler->delay_shutdown_error_code != 0) {
+            /* Propagate the original error code if it is set. */
+            shutdown_error_code = secure_transport_handler->delay_shutdown_error_code;
+        }
         /* Continue the shutdown process delayed before. */
         aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
