@@ -44,10 +44,6 @@ file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
         )
 
-file(GLOB AWS_IO_UV_HEADERS
-        "include/aws/io/uv/*.h"
-        )
-
 file(GLOB AWS_IO_TESTING_HEADERS
         "include/aws/testing/*.h"
         )
