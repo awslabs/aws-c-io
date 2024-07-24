@@ -113,6 +113,7 @@ struct secure_transport_handler {
     bool read_task_pending;
     bool delay_shutdown_scheduled;
     int delay_shutdown_error_code;
+    bool read_shutdown_completed;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -603,6 +604,7 @@ static int s_handle_shutdown(
              * data. */
             return AWS_OP_SUCCESS;
         }
+        secure_transport_handler->read_shutdown_completed = true;
     } else {
         /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
@@ -625,6 +627,9 @@ static int s_process_read_message(
     struct aws_io_message *message) {
 
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+    if (secure_transport_handler->read_shutdown_completed) {
+        return;
+    }
 
     if (message) {
         aws_linked_list_push_back(&secure_transport_handler->input_queue, &message->queueing_handle);
@@ -727,6 +732,7 @@ shutdown_channel:
             shutdown_error_code = secure_transport_handler->delay_shutdown_error_code;
         }
         /* Continue the shutdown process delayed before. */
+        secure_transport_handler->read_shutdown_completed = true;
         aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
         /* Starts the shutdown process */
@@ -747,6 +753,9 @@ static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status
 
 static int s_increment_read_window(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+    if (secure_transport_handler->read_shutdown_completed) {
+        return;
+    }
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: increment read window message received %llu", (void *)handler, (unsigned long long)size);

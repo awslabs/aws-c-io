@@ -63,6 +63,7 @@ struct s2n_handler {
     bool is_shutting_down;
     int shutdown_error_code;
     struct aws_channel_task delayed_shutdown_task;
+    bool read_shutdown_completed;
 };
 
 struct s2n_ctx {
@@ -522,6 +523,10 @@ static int s_s2n_handler_process_read_message(
 
     struct s2n_handler *s2n_handler = handler->impl;
 
+    if (s2n_handler->read_shutdown_completed) {
+        return;
+    }
+
     if (AWS_UNLIKELY(s2n_handler->state == NEGOTIATION_FAILED)) {
         return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
     }
@@ -632,6 +637,7 @@ shutdown_channel:
             /* Propagate the original error code if it is set. */
             shutdown_error_code = s2n_handler->shutdown_error_code;
         }
+        s2n_handler->read_shutdown_completed = true;
         aws_channel_slot_on_handler_shutdown_complete(slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     } else {
         /* Starts the shutdown process */
@@ -1074,6 +1080,7 @@ static int s_s2n_handler_shutdown(
             s_initialize_read_delay_shutdown(handler, slot, error_code);
             return AWS_OP_SUCCESS;
         }
+        s2n_handler->read_shutdown_completed = true;
     } else {
         /* Shutdown in write direction */
         if (!abort_immediately && error_code != AWS_IO_SOCKET_CLOSED) {
@@ -1098,6 +1105,9 @@ static int s_s2n_handler_increment_read_window(
     size_t size) {
     (void)size;
     struct s2n_handler *s2n_handler = handler->impl;
+    if (s2n_handler->read_shutdown_completed) {
+        return;
+    }
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
     size_t current_window_size = slot->window_size;
@@ -1123,9 +1133,9 @@ static int s_s2n_handler_increment_read_window(
         /* TLS requires full records before it can decrypt anything. As a result we need to check everything we've
          * buffered instead of just waiting on a read from the socket, or we'll hit a deadlock.
          *
-         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have data
-         * to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can and we
-         * have no idea what's going on inside there. So we need to attempt another read.*/
+         * We have messages in a queue and they need to be run after the socket has popped (even if it didn't have
+         * data to read). Alternatively, s2n reads entire records at a time, so we'll need to grab whatever we can
+         * and we have no idea what's going on inside there. So we need to attempt another read.*/
         s2n_handler->read_task_pending = true;
         aws_channel_task_init(
             &s2n_handler->read_task, s_run_read, handler, "s2n_channel_handler_read_on_window_increment");
@@ -1514,7 +1524,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     switch (options->cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
-            /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set */
+            /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set
+             */
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             security_policy = "PQ-TLS-1-0-2021-05-26";
