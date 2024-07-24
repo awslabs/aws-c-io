@@ -19,7 +19,7 @@ struct aws_tls_channel_handler_shared {
     struct aws_crt_statistics_tls stats;
 };
 
-enum aws_tls_handler_state {
+enum aws_tls_handler_read_state {
     AWS_TLS_HANDLER_OPEN,
     AWS_TLS_HANDLER_READ_SHUTTING_DOWN,
     AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE,

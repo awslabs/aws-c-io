@@ -105,7 +105,7 @@ struct secure_channel_handler {
     bool verify_peer;
     struct aws_channel_task read_task;
     bool read_task_pending;
-    enum aws_tls_handler_state state;
+    enum aws_tls_handler_state read_state;
     int shutdown_error_code;
 };
 
@@ -1225,7 +1225,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
         sc_handler->state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         /* Continue the shutdown process delayed before. */
         aws_channel_slot_on_handler_shutdown_complete(
-            sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->delay_shutdown_error_code, false);
+            sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->shutdown_error_code, false);
     }
 
     return AWS_OP_SUCCESS;
@@ -1567,7 +1567,7 @@ static void s_initialize_read_delay_shutdown(
             (void *)handler);
     }
     sc_handler->state = AWS_TLS_HANDLER_READ_SHUTTING_DOWN;
-    sc_handler->delay_shutdown_error_code = error_code;
+    sc_handler->shutdown_error_code = error_code;
     if (!sc_handler->read_task_pending) {
         /* Kick off read, in case data arrives with TLS negotiation. Shutdown starts right after negotiation.
          * Nothing will kick off read in that case. */
