@@ -1549,8 +1549,8 @@ static void s_initialize_read_delay_shutdown(
     if (aws_channel_slot_downstream_read_window(slot) == 0) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
-            "id=%p: TLS handler have pending data but cannot delivered to downstream because of flow control. "
-            "It's possible to result in hanging without any further window update.",
+            "id=%p: TLS shutdown delayed. Pending data cannot be processed until the flow-control window opens. "
+            " Your application may hang if the read window never opens",
             (void *)handler);
     }
     sc_handler->delay_shutdown_scheduled = true;
@@ -1563,7 +1563,8 @@ static void s_initialize_read_delay_shutdown(
             &sc_handler->read_task,
             s_process_pending_output_task,
             handler,
-            "darwin_channel_handler_read_on_delay_shutdown");
+            "secure_channel_handler_read_on_delay_shutdown");
+
         aws_channel_schedule_task_now(slot->channel, &sc_handler->read_task);
     }
 }
