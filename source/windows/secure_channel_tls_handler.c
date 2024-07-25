@@ -1239,7 +1239,7 @@ done:
             shutdown_error_code = sc_handler->shutdown_error_code;
         }
         aws_channel_slot_on_handler_shutdown_complete(
-            sc_handler->slot, AWS_CHANNEL_DIR_READ, shutdown_error_code false);
+            sc_handler->slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     }
 
     return ret;
