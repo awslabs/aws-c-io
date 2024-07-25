@@ -159,6 +159,7 @@ if (USE_S2N)
     file(GLOB AWS_IO_TLS_SRC
             "source/s2n/*.c"
             )
+    aws_use_package(aws-lc)
     aws_use_package(s2n)
 endif()
 
