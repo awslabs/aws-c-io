@@ -1168,6 +1168,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     }
 
     size_t downstream_window = SIZE_MAX;
+    int shutdown_error_code = 0;
 
     if (sc_handler->slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
@@ -1207,6 +1208,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(read_out_msg->allocator, read_out_msg);
+                shutdown_error_code = aws_last_error();
                 goto done;
             }
 
@@ -1232,8 +1234,12 @@ done:
     if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
         sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         /* Continue the shutdown process delayed before. */
+        if (sc_handler->shutdown_error_code != 0) {
+            /* Propagate the original error code if it is set. */
+            shutdown_error_code = sc_handler->shutdown_error_code;
+        }
         aws_channel_slot_on_handler_shutdown_complete(
-            sc_handler->slot, AWS_CHANNEL_DIR_READ, sc_handler->shutdown_error_code, false);
+            sc_handler->slot, AWS_CHANNEL_DIR_READ, shutdown_error_code false);
     }
 
     return ret;
@@ -1299,62 +1305,71 @@ static int s_process_read_message(
 
             err = sc_handler->s_connection_state_fn(handler);
 
-            if (err && aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
-                if (sc_handler->buffered_read_in_data_buf.len == sc_handler->buffered_read_in_data_buf.capacity) {
-                    /* throw this one as a protocol error. */
-                    aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
+            if (!err) {
+                /* Decrypt succeed. Handle any left over extra data from the decrypt operation and continue. */
+                if (sc_handler->read_extra) {
+                    size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
+                    memmove(
+                        sc_handler->buffered_read_in_data_buf.buffer,
+                        sc_handler->buffered_read_in_data_buf.buffer + move_pos,
+                        sc_handler->read_extra);
+                    sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
+                    sc_handler->read_extra = 0;
                 } else {
-                    if (sc_handler->buffered_read_out_data_buf.len) {
-                        err = s_process_pending_output_messages(handler);
-                        if (err) {
-                            break;
-                        }
-                    }
+                    sc_handler->buffered_read_in_data_buf.len = 0;
+                }
 
-                    size_t downstream_window = SIZE_MAX;
-
-                    if (sc_handler->slot->adj_right) {
-                        downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
-                    }
-                    if (downstream_window > 0) {
-                        /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
-                           record, and the amount they're requesting is less than the size of a tls record. */
-                        size_t window_size = slot->window_size;
-                        if (!window_size &&
-                            aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
-                            err = AWS_OP_ERR;
-                        } else {
-                            sc_handler->estimated_incomplete_size = 0;
-                            err = AWS_OP_SUCCESS;
-                        }
+                if (sc_handler->buffered_read_out_data_buf.len) {
+                    err = s_process_pending_output_messages(handler);
+                    if (err) {
+                        break;
                     }
                 }
                 aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
-                continue;
-            } else if (err) {
-                break;
-            }
-
-            /* handle any left over extra data from the decrypt operation here. */
-            if (sc_handler->read_extra) {
-                size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
-                memmove(
-                    sc_handler->buffered_read_in_data_buf.buffer,
-                    sc_handler->buffered_read_in_data_buf.buffer + move_pos,
-                    sc_handler->read_extra);
-                sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
-                sc_handler->read_extra = 0;
             } else {
-                sc_handler->buffered_read_in_data_buf.len = 0;
-            }
+                /* Decrypt error out */
+                if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+                    /* Incomplete message received, need more data to decrypt. */
+                    if (sc_handler->buffered_read_in_data_buf.len == sc_handler->buffered_read_in_data_buf.capacity) {
+                        /* throw this one as a protocol error. */
+                        aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
+                        break;
+                    } else {
+                        if (sc_handler->buffered_read_out_data_buf.len) {
+                            err = s_process_pending_output_messages(handler);
+                            if (err) {
+                                break;
+                            }
+                        }
 
-            if (sc_handler->buffered_read_out_data_buf.len) {
-                err = s_process_pending_output_messages(handler);
-                if (err) {
+                        size_t downstream_window = SIZE_MAX;
+
+                        if (sc_handler->slot->adj_right) {
+                            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
+                        }
+                        if (downstream_window > 0) {
+                            /* prevent a deadlock due to downstream handlers wanting more data, but we have an
+                               incomplete record, and the amount they're requesting is less than the size of a tls
+                               record. */
+                            size_t window_size = slot->window_size;
+                            if (!window_size &&
+                                aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
+                                err = AWS_OP_ERR;
+                            } else {
+                                sc_handler->estimated_incomplete_size = 0;
+                                err = AWS_OP_SUCCESS;
+                            }
+                        } else {
+                            /* Reset error to continue. Until all the message been read. */
+                            err = AWS_OP_SUCCESS;
+                        }
+                    }
+                    aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
+                } else {
+                    /* Decrypt error, stop decrypting. */
                     break;
                 }
             }
-            aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
         }
 
         if (!err) {
