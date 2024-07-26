@@ -1349,7 +1349,7 @@ static int s_process_read_message(
     }
 
     aws_channel_shutdown(slot->channel, aws_last_error());
-    return err;
+    return AWS_OP_ERR;
 }
 
 static int s_process_write_message(
