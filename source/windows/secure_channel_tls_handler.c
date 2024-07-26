@@ -1302,7 +1302,7 @@ static int s_process_read_message(
             }
         }
 
-        /* if any data was decrypted, try to send it upstream */
+        /* if any data was decrypted, try to send it downstream */
         if (sc_handler->buffered_read_out_data_buf.len) {
             err = s_process_pending_output_messages(handler);
             if (err) {
@@ -1343,13 +1343,13 @@ static int s_process_read_message(
         }
     }
 
-    if (!err) {
-        aws_mem_release(message->allocator, message);
-        return AWS_OP_SUCCESS;
+    if (err) {
+        aws_channel_shutdown(slot->channel, aws_last_error());
+        return AWS_OP_ERR;
     }
 
-    aws_channel_shutdown(slot->channel, aws_last_error());
-    return AWS_OP_ERR;
+    aws_mem_release(message->allocator, message);
+    return AWS_OP_SUCCESS;
 }
 
 static int s_process_write_message(
