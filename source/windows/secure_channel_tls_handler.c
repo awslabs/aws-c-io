@@ -1168,12 +1168,11 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
     }
 
     size_t downstream_window = SIZE_MAX;
-    int shutdown_error_code = 0;
+    int error_code = 0;
 
     if (sc_handler->slot->adj_right) {
         downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
     }
-    int ret = AWS_OP_ERR;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
@@ -1208,7 +1207,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             }
             if (aws_channel_slot_send_message(sc_handler->slot, read_out_msg, AWS_CHANNEL_DIR_READ)) {
                 aws_mem_release(read_out_msg->allocator, read_out_msg);
-                shutdown_error_code = aws_last_error();
+                error_code = aws_last_error();
                 goto done;
             }
 
@@ -1224,25 +1223,26 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
             sc_handler->buffered_read_out_data_buf.len = 0;
         }
     }
-    ret = AWS_OP_SUCCESS;
+
     if (sc_handler->buffered_read_out_data_buf.len > 0) {
         /* Still have more data to be delivered */
-        return ret;
+        return AWS_OP_SUCCESS;
     }
 
 done:
     if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUTTING_DOWN) {
         sc_handler->read_state = AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE;
         /* Continue the shutdown process delayed before. */
-        if (sc_handler->shutdown_error_code != 0) {
-            /* Propagate the original error code if it is set. */
-            shutdown_error_code = sc_handler->shutdown_error_code;
-        }
+
+        /* Propagate the original error code if it is set. */
+        int shutdown_error_code = sc_handler->shutdown_error_code ? sc_handler->shutdown_error_code : error_code;
+
         aws_channel_slot_on_handler_shutdown_complete(
             sc_handler->slot, AWS_CHANNEL_DIR_READ, shutdown_error_code, false);
     }
 
-    return ret;
+    /* If there was an error, re-raise it, in case some other function call modified aws_last_error() */
+    return error_code ? aws_raise_error(error_code) : AWS_OP_SUCCESS;
 }
 
 static void s_process_pending_output_task(struct aws_channel_task *task, void *arg, enum aws_task_status status) {
@@ -1264,131 +1264,92 @@ static int s_process_read_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
+    AWS_ASSERT(message);
     struct secure_channel_handler *sc_handler = handler->impl;
+
     if (sc_handler->read_state == AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE) {
-        if (message) {
-            aws_mem_release(message->allocator, message);
-        }
+        aws_mem_release(message->allocator, message);
         return AWS_OP_SUCCESS;
     }
 
-    if (message) {
-        /* note, most of these functions log internally, so the log messages in this function are sparse. */
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS,
-            "id=%p: processing incoming message of size %zu",
-            (void *)handler,
-            message->message_data.len);
+    /* note, most of these functions log internally, so the log messages in this function are sparse. */
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS, "id=%p: processing incoming message of size %zu", (void *)handler, message->message_data.len);
 
-        struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
+    bool success = false;
+    struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
-        /* The SSPI interface forces us to manage incomplete records manually. So when we had extra after
-           the previous read, it needs to be shifted to the beginning of the current read, then the current
-           read data is appended to it. If we had an incomplete record, we don't need to shift anything but
-           we do need to append the current read data to the end of the incomplete record from the previous read.
-           Keep going until we've processed everything in the message we were just passed.
-         */
-        int err = AWS_OP_SUCCESS;
-        while (!err && message_cursor.len) {
+    /* The SSPI interface forces us to manage incomplete records manually. So when we had extra after
+        the previous read, it needs to be shifted to the beginning of the current read, then the current
+        read data is appended to it. If we had an incomplete record, we don't need to shift anything but
+        we do need to append the current read data to the end of the incomplete record from the previous read.
+        Keep going until we've processed everything in the message we were just passed.
+        */
+    int err = AWS_OP_SUCCESS;
+    while (!err && message_cursor.len) {
+        /* copy as much data as possible into buffered_read_in_data_buf */
+        aws_byte_buf_write_to_capacity(&sc_handler->buffered_read_in_data_buf, &message_cursor);
 
-            size_t available_buffer_space =
-                sc_handler->buffered_read_in_data_buf.capacity - sc_handler->buffered_read_in_data_buf.len;
-            size_t available_message_len = message_cursor.len;
-            size_t amount_to_move_to_buffer =
-                available_buffer_space > available_message_len ? available_message_len : available_buffer_space;
-
-            memcpy(
-                sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len,
-                message_cursor.ptr,
-                amount_to_move_to_buffer);
-            sc_handler->buffered_read_in_data_buf.len += amount_to_move_to_buffer;
-
-            err = sc_handler->s_connection_state_fn(handler);
-
-            if (!err) {
-                /* Decrypt succeed. Handle any left over extra data from the decrypt operation and continue. */
-                if (sc_handler->read_extra) {
-                    size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
-                    memmove(
-                        sc_handler->buffered_read_in_data_buf.buffer,
-                        sc_handler->buffered_read_in_data_buf.buffer + move_pos,
-                        sc_handler->read_extra);
-                    sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
-                    sc_handler->read_extra = 0;
-                } else {
-                    sc_handler->buffered_read_in_data_buf.len = 0;
-                }
-
-                if (sc_handler->buffered_read_out_data_buf.len) {
-                    err = s_process_pending_output_messages(handler);
-                    if (err) {
-                        break;
-                    }
-                }
-                aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
+        /* decrypt */
+        bool record_is_incomplete = false;
+        err = sc_handler->s_connection_state_fn(handler);
+        if (err) {
+            /* AWS_IO_READ_WOULD_BLOCK isn't fatal, it just means the record is incomplete */
+            if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+                err = AWS_OP_SUCCESS;
+                record_is_incomplete = true;
             } else {
-                /* Decrypt error out */
-                if (aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
-                    /* Incomplete message received, need more data to decrypt. */
-                    if (sc_handler->buffered_read_in_data_buf.len == sc_handler->buffered_read_in_data_buf.capacity) {
-                        /* throw this one as a protocol error. */
-                        aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
-                        break;
-                    } else {
-                        if (sc_handler->buffered_read_out_data_buf.len) {
-                            err = s_process_pending_output_messages(handler);
-                            if (err) {
-                                break;
-                            }
-                        }
-
-                        size_t downstream_window = SIZE_MAX;
-
-                        if (sc_handler->slot->adj_right) {
-                            downstream_window = aws_channel_slot_downstream_read_window(sc_handler->slot);
-                        }
-                        if (downstream_window > 0) {
-                            /* prevent a deadlock due to downstream handlers wanting more data, but we have an
-                               incomplete record, and the amount they're requesting is less than the size of a tls
-                               record. */
-                            size_t window_size = slot->window_size;
-                            if (!window_size &&
-                                aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size)) {
-                                err = AWS_OP_ERR;
-                            } else {
-                                sc_handler->estimated_incomplete_size = 0;
-                                err = AWS_OP_SUCCESS;
-                            }
-                        } else {
-                            /* Reset error to continue. Until all the message been read. */
-                            err = AWS_OP_SUCCESS;
-                        }
-                    }
-                    aws_byte_cursor_advance(&message_cursor, amount_to_move_to_buffer);
-                } else {
-                    /* Decrypt error, stop decrypting. */
-                    break;
-                }
+                break;
             }
         }
 
-        if (!err) {
-            aws_mem_release(message->allocator, message);
-            return AWS_OP_SUCCESS;
+        /* if any data was decrypted, try to send it upstream */
+        if (sc_handler->buffered_read_out_data_buf.len) {
+            err = s_process_pending_output_messages(handler);
+            if (err) {
+                break;
+            }
         }
 
+        if (record_is_incomplete) {
+            /* if our buffer is full, but the record is still incomplete ... throw this one as a protocol error. */
+            if (sc_handler->buffered_read_in_data_buf.len == sc_handler->buffered_read_in_data_buf.capacity) {
+                err = aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
+                break;
+            }
+
+            /* prevent a deadlock due to downstream handlers wanting more data, but we have an incomplete
+                record, and the amount they're requesting is less than the size of a tls record. */
+            size_t downstream_window =
+                sc_handler->slot->adj_right ? aws_channel_slot_downstream_read_window(sc_handler->slot) : SIZE_MAX;
+            if (downstream_window > 0 && slot->window_size == 0) {
+                err = aws_channel_slot_increment_read_window(slot, sc_handler->estimated_incomplete_size);
+                if (err) {
+                    break;
+                }
+            }
+        } else {
+            /* we had a complete record. handle any left over extra data from the decrypt operation here. */
+            if (sc_handler->read_extra) {
+                size_t move_pos = sc_handler->buffered_read_in_data_buf.len - sc_handler->read_extra;
+                memmove(
+                    sc_handler->buffered_read_in_data_buf.buffer,
+                    sc_handler->buffered_read_in_data_buf.buffer + move_pos,
+                    sc_handler->read_extra);
+                sc_handler->buffered_read_in_data_buf.len = sc_handler->read_extra;
+                sc_handler->read_extra = 0;
+            } else {
+                sc_handler->buffered_read_in_data_buf.len = 0;
+            }
+        }
+    }
+
+done:
+    aws_mem_release(message->allocator, message);
+    if (err) {
         aws_channel_shutdown(slot->channel, aws_last_error());
-        return AWS_OP_ERR;
     }
-
-    if (sc_handler->buffered_read_out_data_buf.len) {
-        if (s_process_pending_output_messages(handler)) {
-            return AWS_OP_ERR;
-        }
-        aws_mem_release(message->allocator, message);
-    }
-
-    return AWS_OP_SUCCESS;
+    return err;
 }
 
 static int s_process_write_message(
