@@ -1276,7 +1276,6 @@ static int s_process_read_message(
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: processing incoming message of size %zu", (void *)handler, message->message_data.len);
 
-    bool success = false;
     struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
     /* The SSPI interface forces us to manage incomplete records manually. So when we had extra after
@@ -1344,12 +1343,13 @@ static int s_process_read_message(
         }
     }
 
-done:
-    aws_mem_release(message->allocator, message);
-    if (err) {
-        aws_channel_shutdown(slot->channel, aws_last_error());
+    if (!err) {
+        aws_mem_release(message->allocator, message);
+        return AWS_OP_SUCCESS;
     }
-    return err;
+
+    aws_channel_shutdown(slot->channel, aws_last_error());
+    return AWS_OP_ERR;
 }
 
 static int s_process_write_message(
