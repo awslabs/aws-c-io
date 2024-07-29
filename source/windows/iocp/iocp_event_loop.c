@@ -137,13 +137,14 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
-    .connect_to_io_completion_port = s_connect_to_io_completion_port,
+    .register_style.connect_to_completion_port = s_connect_to_io_completion_port,
+    .event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
     .is_on_callers_thread = s_is_event_thread,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
 };
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_iocp_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
