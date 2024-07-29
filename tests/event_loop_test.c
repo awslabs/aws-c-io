@@ -48,50 +48,58 @@ static bool s_task_ran_predicate(void *args) {
 static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .mutex = AWS_MUTEX_INIT,
-        .invoked = false,
-        .was_in_thread = false,
-        .status = -1,
-        .loop = event_loop,
-        .thread_id = 0,
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
     };
 
-    struct aws_task task;
-    aws_task_init(&task, s_test_task, &task_args, "xthread_scheduled_tasks_execute");
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
-    /* Test "future" tasks */
-    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop *event_loop = group->configurations[i].event_loop_new_fn(allocator, &options);
 
-    uint64_t now;
-    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
-    aws_event_loop_schedule_task_future(event_loop, &task, now);
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_TRUE(task_args.invoked);
-    aws_mutex_unlock(&task_args.mutex);
+        struct task_args task_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = false,
+            .was_in_thread = false,
+            .status = -1,
+            .loop = event_loop,
+            .thread_id = 0,
+        };
 
-    ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
+        struct aws_task task;
+        aws_task_init(&task, s_test_task, &task_args, "xthread_scheduled_tasks_execute");
 
-    /* Test "now" tasks */
-    task_args.invoked = false;
-    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+        /* Test "future" tasks */
+        ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
-    aws_event_loop_schedule_task_now(event_loop, &task);
+        uint64_t now;
+        ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+        aws_event_loop_schedule_task_future(event_loop, &task, now);
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_TRUE(task_args.invoked);
-    aws_mutex_unlock(&task_args.mutex);
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+        ASSERT_TRUE(task_args.invoked);
+        aws_mutex_unlock(&task_args.mutex);
 
-    aws_event_loop_destroy(event_loop);
+        ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
+
+        /* Test "now" tasks */
+        task_args.invoked = false;
+        ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+
+        aws_event_loop_schedule_task_now(event_loop, &task);
+
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+        ASSERT_TRUE(task_args.invoked);
+        aws_mutex_unlock(&task_args.mutex);
+
+        aws_event_loop_destroy(event_loop);
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -108,64 +116,72 @@ static bool s_test_cancel_thread_task_predicate(void *args) {
 static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-
-    struct task_args task1_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .mutex = AWS_MUTEX_INIT,
-        .invoked = false,
-        .was_in_thread = false,
-        .status = -1,
-        .loop = event_loop,
-        .thread_id = 0,
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
     };
 
-    struct task_args task2_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .mutex = AWS_MUTEX_INIT,
-        .invoked = false,
-        .was_in_thread = false,
-        .status = -1,
-        .loop = event_loop,
-        .thread_id = 0,
-    };
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
-    struct aws_task task1;
-    aws_task_init(&task1, s_test_task, &task1_args, "canceled_tasks_run_in_el_thread1");
-    struct aws_task task2;
-    aws_task_init(&task2, s_test_task, &task2_args, "canceled_tasks_run_in_el_thread2");
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop *event_loop = group->configurations[i].event_loop_new_fn(allocator, &options);
 
-    aws_event_loop_schedule_task_now(event_loop, &task1);
-    uint64_t now;
-    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
-    aws_event_loop_schedule_task_future(event_loop, &task2, now + 10000000000);
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    ASSERT_FALSE(aws_event_loop_thread_is_callers_thread(event_loop));
+        struct task_args task1_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = false,
+            .was_in_thread = false,
+            .status = -1,
+            .loop = event_loop,
+            .thread_id = 0,
+        };
 
-    ASSERT_SUCCESS(aws_mutex_lock(&task1_args.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
-    ASSERT_TRUE(task1_args.invoked);
-    ASSERT_TRUE(task1_args.was_in_thread);
-    ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
-    ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
-    aws_mutex_unlock(&task1_args.mutex);
+        struct task_args task2_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = false,
+            .was_in_thread = false,
+            .status = -1,
+            .loop = event_loop,
+            .thread_id = 0,
+        };
 
-    aws_event_loop_destroy(event_loop);
+        struct aws_task task1;
+        aws_task_init(&task1, s_test_task, &task1_args, "canceled_tasks_run_in_el_thread1");
+        struct aws_task task2;
+        aws_task_init(&task2, s_test_task, &task2_args, "canceled_tasks_run_in_el_thread2");
 
-    aws_mutex_lock(&task2_args.mutex);
+        aws_event_loop_schedule_task_now(event_loop, &task1);
+        uint64_t now;
+        ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+        aws_event_loop_schedule_task_future(event_loop, &task2, now + 10000000000);
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task2_args.condition_variable, &task2_args.mutex, s_test_cancel_thread_task_predicate, &task2_args));
-    ASSERT_TRUE(task2_args.invoked);
-    aws_mutex_unlock(&task2_args.mutex);
+        ASSERT_FALSE(aws_event_loop_thread_is_callers_thread(event_loop));
 
-    ASSERT_TRUE(task2_args.was_in_thread);
-    ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
-    ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
+        ASSERT_SUCCESS(aws_mutex_lock(&task1_args.mutex));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
+        ASSERT_TRUE(task1_args.invoked);
+        ASSERT_TRUE(task1_args.was_in_thread);
+        ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
+        ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
+        aws_mutex_unlock(&task1_args.mutex);
+
+        aws_event_loop_destroy(event_loop);
+
+        aws_mutex_lock(&task2_args.mutex);
+
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task2_args.condition_variable, &task2_args.mutex, s_test_cancel_thread_task_predicate, &task2_args));
+        ASSERT_TRUE(task2_args.invoked);
+        aws_mutex_unlock(&task2_args.mutex);
+
+        ASSERT_TRUE(task2_args.was_in_thread);
+        ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
+        ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -975,44 +991,52 @@ AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
-
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-
-    struct task_args task_args = {
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .mutex = AWS_MUTEX_INIT,
-        .invoked = false,
-        .was_in_thread = false,
-        .status = -1,
-        .loop = event_loop,
-        .thread_id = 0,
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
     };
 
-    struct aws_task task;
-    aws_task_init(&task, s_test_task, &task_args, "stop_then_restart");
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
-    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop *event_loop = group->configurations[i].event_loop_new_fn(allocator, &options);
 
-    aws_event_loop_schedule_task_now(event_loop, &task);
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_TRUE(task_args.invoked);
+        struct task_args task_args = {
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .mutex = AWS_MUTEX_INIT,
+            .invoked = false,
+            .was_in_thread = false,
+            .status = -1,
+            .loop = event_loop,
+            .thread_id = 0,
+        };
 
-    ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
-    ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+        struct aws_task task;
+        aws_task_init(&task, s_test_task, &task_args, "stop_then_restart");
 
-    aws_event_loop_schedule_task_now(event_loop, &task);
+        ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
 
-    task_args.invoked = false;
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_TRUE(task_args.invoked);
+        aws_event_loop_schedule_task_now(event_loop, &task);
 
-    aws_event_loop_destroy(event_loop);
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+        ASSERT_TRUE(task_args.invoked);
+
+        ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
+        ASSERT_SUCCESS(aws_event_loop_wait_for_stop_completion(event_loop));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+
+        aws_event_loop_schedule_task_now(event_loop, &task);
+
+        task_args.invoked = false;
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+        ASSERT_TRUE(task_args.invoked);
+
+        aws_event_loop_destroy(event_loop);
+    }
 
     return AWS_OP_SUCCESS;
 }
@@ -1022,14 +1046,22 @@ AWS_TEST_CASE(event_loop_stop_then_restart, s_event_loop_test_stop_then_restart)
 static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
+    struct aws_event_loop_options options = {
+        .clock = aws_high_res_clock_get_ticks,
+    };
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
-    ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-    for (int i = 0; i < 8; ++i) {
-        ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
+
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop *event_loop = group->configurations[i].event_loop_new_fn(allocator, &options);
+
+        ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+        ASSERT_SUCCESS(aws_event_loop_run(event_loop));
+        for (int i = 0; i < 8; ++i) {
+            ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
+        }
+        aws_event_loop_destroy(event_loop);
     }
-    aws_event_loop_destroy(event_loop);
 
     return AWS_OP_SUCCESS;
 }
@@ -1041,23 +1073,28 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
-    size_t cpu_count = aws_system_info_processor_count();
-    size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop_group *event_loop_group =
+            aws_event_loop_group_new_from_config(allocator, &group->configurations[i], 0, NULL);
 
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
-    ASSERT_NOT_NULL(event_loop);
+        size_t cpu_count = aws_system_info_processor_count();
+        size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);
 
-    if (cpu_count > 1) {
-        ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+        struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+        ASSERT_NOT_NULL(event_loop);
+
+        if (cpu_count > 1) {
+            ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+        }
+
+        if (cpu_count > 1) {
+            ASSERT_INT_EQUALS(cpu_count / 2, el_count);
+        }
+
+        aws_event_loop_group_release(event_loop_group);
     }
-
-    if (cpu_count > 1) {
-        ASSERT_INT_EQUALS(cpu_count / 2, el_count);
-    }
-
-    aws_event_loop_group_release(event_loop_group);
 
     aws_io_library_clean_up();
 
@@ -1154,31 +1191,35 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     async_shutdown_options.shutdown_callback_user_data = &task_args;
     async_shutdown_options.shutdown_callback_fn = s_async_shutdown_complete_callback;
 
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new_default(allocator, 0, &async_shutdown_options);
+    const struct aws_event_loop_configuration_group *group = aws_event_loop_get_available_configurations();
 
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+    for (size_t i = 0; i < group->configuration_count; ++i) {
+        struct aws_event_loop_group *event_loop_group =
+            aws_event_loop_group_new_from_config(allocator, &group->configurations[i], 0, &async_shutdown_options);
 
-    task_args.loop = event_loop;
-    task_args.el_group = event_loop_group;
+        struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
 
-    struct aws_task task;
-    aws_task_init(
-        &task, s_async_shutdown_task, event_loop_group, "async elg shutdown invoked from an event loop thread");
+        task_args.loop = event_loop;
+        task_args.el_group = event_loop_group;
 
-    /* Test "future" tasks */
-    uint64_t now;
-    ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
-    aws_event_loop_schedule_task_future(event_loop, &task, now);
+        struct aws_task task;
+        aws_task_init(
+            &task, s_async_shutdown_task, event_loop_group, "async elg shutdown invoked from an event loop thread");
 
-    ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
-    ASSERT_TRUE(task_args.invoked);
-    aws_mutex_unlock(&task_args.mutex);
+        /* Test "future" tasks */
+        uint64_t now;
+        ASSERT_SUCCESS(aws_event_loop_current_clock_time(event_loop, &now));
+        aws_event_loop_schedule_task_future(event_loop, &task, now);
 
-    while (!aws_atomic_load_int(&task_args.thread_complete)) {
-        aws_thread_current_sleep(15);
+        ASSERT_SUCCESS(aws_mutex_lock(&task_args.mutex));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &task_args.condition_variable, &task_args.mutex, s_task_ran_predicate, &task_args));
+        ASSERT_TRUE(task_args.invoked);
+        aws_mutex_unlock(&task_args.mutex);
+
+        while (!aws_atomic_load_int(&task_args.thread_complete)) {
+            aws_thread_current_sleep(15);
+        }
     }
 
     aws_io_library_clean_up();
