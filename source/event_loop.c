@@ -10,8 +10,10 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+#ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific
 #include <TargetConditionals.h>
+#endif
 
 static const struct aws_event_loop_configuration s_available_configurations[] = {
 #ifdef AWS_USE_IO_COMPLETION_PORTS
