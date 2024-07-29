@@ -828,7 +828,7 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
 
     channel->window_update_scheduled = false;
 
-    if (status == AWS_TASK_STATUS_RUN_READY && channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+    if (status == AWS_TASK_STATUS_RUN_READY && channel->channel_state < AWS_CHANNEL_SHUT_DOWN) {
         /* get the right-most slot to start the updates. */
         struct aws_channel_slot *slot = channel->first;
         while (slot->adj_right) {
@@ -858,7 +858,7 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
 
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
-    if (slot->channel->read_back_pressure_enabled && slot->channel->channel_state < AWS_CHANNEL_SHUTTING_DOWN) {
+    if (slot->channel->read_back_pressure_enabled && slot->channel->channel_state < AWS_CHANNEL_SHUT_DOWN) {
         slot->current_window_update_batch_size =
             aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
