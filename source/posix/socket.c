@@ -961,7 +961,7 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
+static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
     if (socket->state != BOUND) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
