@@ -98,21 +98,6 @@ int aws_socket_init_completion_port_based(
 }
 #endif
 
-#if !AWS_USE_KQUEUE && !AWS_USE_EPOLL
-int aws_socket_init_poll_based(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options) {
-    (void)socket;
-    (void)alloc;
-    (void)options;
-
-    AWS_FATAL_ASSERT(!"This socket type is not implemented for this build configuration. You have selected a "
-                      "poll-based socket, but no poll-based implementation is available");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-}
-#endif
-
 void aws_socket_clean_up(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_close_fn);
     socket->vtable->socket_cleanup_fn(socket);
