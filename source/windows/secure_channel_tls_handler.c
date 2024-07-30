@@ -105,7 +105,7 @@ struct secure_channel_handler {
     bool verify_peer;
     struct aws_channel_task read_task;
     bool read_task_pending;
-    enum aws_tls_handler_state read_state;
+    enum aws_tls_handler_read_state read_state;
     int shutdown_error_code;
 };
 
