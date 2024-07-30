@@ -148,6 +148,7 @@ Simply call the `aws_client_bootstrap_new_socket_channel` `aws_server_bootstrap_
 ### Event Loop
 Core to Async-IO is the event-loop. We provide an implementation for most platforms out of the box:
 
+<!-- DEBUG WIP we need to insert Dispatch Queue here for iOS and specify kQueue is for macOS -->
 Platform | Implementation
 --- | ---
 Linux | Edge-Triggered Epoll

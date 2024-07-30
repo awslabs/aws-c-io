@@ -476,6 +476,7 @@ static int s_socket_connect_fn(
               }
           }
         });
+
     nw_connection_start(socket->io_handle.data.handle);
     nw_retain(socket->io_handle.data.handle);
 
