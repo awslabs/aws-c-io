@@ -24,14 +24,6 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
     },
 #endif
-#if AWS_USE_KQUEUE
-    {
-        .name = "BSD Edge-Triggered KQueue",
-        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
-        .is_default = true,
-    },
-#endif
 #if TARGET_OS_MAC
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
@@ -43,6 +35,14 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
 #    else
         .is_default = true,
 #    endif
+    },
+#endif
+#if AWS_USE_KQUEUE
+    {
+        .name = "BSD Edge-Triggered KQueue",
+        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+        .is_default = true,
     },
 #endif
 #if AWS_USE_EPOLL
