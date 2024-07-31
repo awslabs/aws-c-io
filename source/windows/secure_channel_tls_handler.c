@@ -53,7 +53,7 @@ struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
     SCHANNEL_CRED credentials;
-    PCERT_CONTEXT pcerts;
+    PCCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
     HCERTSTORE custom_trust_store;
     HCRYPTPROV crypto_provider;
@@ -192,7 +192,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     int result = AWS_OP_ERR;
     CERT_CONTEXT *peer_certificate = NULL;
     HCERTCHAINENGINE engine = NULL;
-    CERT_CHAIN_CONTEXT *cert_chain_ctx = NULL;
+    PCCERT_CHAIN_CONTEXT cert_chain_ctx = NULL;
 
     /* get the peer's certificate so we can validate it.*/
     SECURITY_STATUS status =
