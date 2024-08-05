@@ -80,6 +80,11 @@ typedef void(aws_event_loop_on_event_fn)(
 
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
+enum aws_event_loop_style {
+    AWS_EVENT_LOOP_STYLE_POLL_BASED = 1,
+    AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED = 2,
+};
+
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *event_loop);
     int (*run)(struct aws_event_loop *event_loop);
@@ -88,16 +93,16 @@ struct aws_event_loop_vtable {
     void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
     void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
     void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
-#if AWS_USE_IO_COMPLETION_PORTS
-    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-#else
-    int (*subscribe_to_io_events)(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        int events,
-        aws_event_loop_on_event_fn *on_event,
-        void *user_data);
-#endif
+    union {
+        int (*connect_to_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+        int (*subscribe_to_io_events)(
+            struct aws_event_loop *event_loop,
+            struct aws_io_handle *handle,
+            int events,
+            aws_event_loop_on_event_fn *on_event,
+            void *user_data);
+    } register_style;
+    enum aws_event_loop_style event_loop_style;
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     void (*free_io_event_resources)(void *user_data);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
@@ -140,6 +145,21 @@ struct aws_event_loop_group {
     struct aws_shutdown_callback_options shutdown_options;
 };
 
+typedef struct aws_event_loop *(
+    aws_new_system_event_loop_fn)(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
+
+struct aws_event_loop_configuration {
+    enum aws_event_loop_style style;
+    aws_new_system_event_loop_fn *event_loop_new_fn;
+    const char *name;
+    bool is_default;
+};
+
+struct aws_event_loop_configuration_group {
+    size_t configuration_count;
+    const struct aws_event_loop_configuration *configurations;
+};
+
 AWS_EXTERN_C_BEGIN
 
 #ifdef AWS_USE_IO_COMPLETION_PORTS
@@ -166,6 +186,10 @@ AWS_IO_API
 struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped);
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
+/* Get available event-loop configurations, this will return each available event-loop implementation for the current
+ * running system */
+AWS_IO_API const struct aws_event_loop_configuration_group *aws_event_loop_get_available_configurations(void);
+
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
@@ -180,6 +204,38 @@ AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
+
+// DEBUG WIP We should expose or condense all these def specific function APIs and not make them
+// defined specific. Consolidation of them should work and branched logic within due to all the
+// arguments being the same. Let's move away from different API based on framework and instead
+// raise an unsupported platform error or simply use branching in implementation.
+#ifdef AWS_USE_IO_COMPLETION_PORTS
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_iocp_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
+
+#ifdef AWS_USE_DISPATCH_QUEUE
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+#endif /* AWS_USE_DISPATCH_QUEUE */
+
+#ifdef AWS_USE_KQUEUE
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+#endif /* AWS_USE_KQUEUE */
+
+#ifdef AWS_USE_EPOLL
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_epoll_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+#endif /* AWS_USE_EPOLL */
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -319,8 +375,6 @@ void aws_event_loop_schedule_task_future(
 AWS_IO_API
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 
-#if AWS_USE_IO_COMPLETION_PORTS
-
 /**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
  *
@@ -332,11 +386,7 @@ void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_ta
  * A handle may only be connected to one event loop in its lifetime.
  */
 AWS_IO_API
-int aws_event_loop_connect_handle_to_io_completion_port(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle);
-
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+int aws_event_loop_connect_handle_to_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
 /**
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were
@@ -352,8 +402,6 @@ int aws_event_loop_subscribe_to_io_events(
     int events,
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
-
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 /**
  * Unsubscribes handle from event-loop notifications.
@@ -397,6 +445,13 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     uint16_t el_count,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data,
+    const struct aws_shutdown_callback_options *shutdown_options);
+
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_from_config(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_configuration *config,
+    uint16_t max_threads,
     const struct aws_shutdown_callback_options *shutdown_options);
 
 /** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
@@ -455,6 +510,9 @@ struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_
  */
 AWS_IO_API
 void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
+
+AWS_IO_API
+enum aws_event_loop_style aws_event_loop_group_get_style(struct aws_event_loop_group *el_group);
 
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
