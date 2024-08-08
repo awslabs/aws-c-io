@@ -73,7 +73,9 @@ enum socket_state {
     CLOSED,
 };
 
-struct io_operation_data {
+
+// DEBUG: IO OPERATION DATA, used for testing scheduling tasks
+struct io_operation_data_nw {
     struct aws_allocator *allocator;
     struct aws_socket *socket;
     struct aws_linked_list_node node;
@@ -89,20 +91,12 @@ struct nw_socket {
     struct aws_linked_list read_queue;
     int last_error;
     aws_socket_on_readable_fn *on_readable;
-    struct io_operation_data *read_io_data;
+    // DEBUG: IO OPERATION DATA, used for testing scheduling tasks
+    struct io_operation_data_nw *read_io_data;
     void *on_readable_user_data;
     bool setup_run;
     bool read_queued;
     bool is_listener;
-};
-
-struct io_operation_data_nw {
-    struct aws_allocator *allocator;
-    struct aws_socket *socket;
-    struct aws_linked_list_node node;
-    struct aws_task sequential_task_storage;
-    void* user_data;
-    bool in_use;
 };
 
 struct socket_address {
@@ -234,6 +228,7 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
 
 
+// DEBUG: test using tasks
 /* simply moves the connection_success notification into the event-loop's thread. */
 static void s_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
     (void)task;
@@ -269,6 +264,7 @@ static void s_clean_up_read_queue_node(struct read_queue_node *node) {
 }
 
 static void s_socket_impl_destroy(void *sock_ptr) {
+    // TODO: Design and figure out how to properly release nw_socket
     struct nw_socket *nw_socket = sock_ptr;
 
     printf("checking if nw_socket->socket_options_to_params=%p is null and releasing\n",
@@ -307,6 +303,8 @@ int aws_socket_init_completion_port_based(
 
     aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
 
+
+    // DEBUG: testing using read_io_data for io tasks
     if (!nw_socket->read_io_data) {
         nw_socket->read_io_data = aws_mem_calloc(alloc, 1, sizeof(struct io_operation_data_nw));
         if (!nw_socket->read_io_data) {
@@ -504,10 +502,10 @@ static int s_socket_connect_fn(
 
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               aws_ref_count_acquire(&nw_socket->ref_count);
+              // DEBUG: test using scheduling tasks
               // It is possible that the socket is closed in the connection callback
                 //    on_connection_result(socket, AWS_OP_SUCCESS, user_data);
                 //    nw_socket->setup_run = true;
-
              if (event_loop)
              {
                  nw_socket->read_io_data->socket = socket;
