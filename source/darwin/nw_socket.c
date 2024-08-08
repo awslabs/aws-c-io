@@ -73,16 +73,36 @@ enum socket_state {
     CLOSED,
 };
 
+struct io_operation_data {
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    struct aws_linked_list_node node;
+    struct aws_task sequential_task_storage;
+    void* user_data;
+    bool in_use;
+};
+
 struct nw_socket {
     struct aws_ref_count ref_count;
     nw_parameters_t socket_options_to_params;
     struct aws_linked_list read_queue;
     int last_error;
     aws_socket_on_readable_fn *on_readable;
+    struct io_operation_data *read_io_data;
+    struct aws_allocator *allocator;
     void *on_readable_user_data;
     bool setup_run;
     bool read_queued;
     bool is_listener;
+};
+
+struct io_operation_data_nw {
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    struct aws_linked_list_node node;
+    struct aws_task sequential_task_storage;
+    void* user_data;
+    bool in_use;
 };
 
 struct socket_address {
@@ -201,6 +221,30 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
     aws_ref_count_release(&nw_socket->ref_count);
 }
 
+
+
+/* simply moves the connection_success notification into the event-loop's thread. */
+static void s_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status task_status) {
+    (void)task;
+    (void)task_status;
+
+    struct io_operation_data_nw *io_data = arg;
+
+    if (!io_data->socket) {
+        aws_mem_release(io_data->allocator, io_data);
+        return;
+    }
+
+    io_data->sequential_task_storage.fn = NULL;
+    io_data->sequential_task_storage.arg = NULL;
+    io_data->in_use = false;
+
+    struct aws_socket *socket = io_data->socket;
+    struct nw_socket *socket_impl = socket->impl;
+    socket->connection_result_fn(socket, 0, io_data->user_data);
+}
+
+
 struct read_queue_node {
     struct aws_allocator *allocator;
     dispatch_data_t received_data;
@@ -214,22 +258,7 @@ static void s_clean_up_read_queue_node(struct read_queue_node *node) {
 }
 
 static void s_socket_impl_destroy(void *sock_ptr) {
-    struct aws_socket *socket = sock_ptr;
-    struct nw_socket *nw_socket = socket->impl;
-
-    if (aws_socket_is_open(socket)) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: is still open, closing...",
-            (void *)socket,
-            socket->io_handle.data.handle);
-        aws_socket_close(socket);
-    }
-
-    if (socket->io_handle.data.handle) {
-        nw_release(socket->io_handle.data.handle);
-        socket->io_handle.data.handle = NULL;
-    }
+    struct nw_socket *nw_socket = sock_ptr;
 
     if (nw_socket->socket_options_to_params) {
         nw_release(nw_socket->socket_options_to_params);
@@ -242,8 +271,8 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         s_clean_up_read_queue_node(read_queue_node);
     }
 
-    aws_mem_release(socket->allocator, nw_socket);
-    socket->impl = NULL;
+    aws_mem_release(nw_socket->allocator, nw_socket);
+
 }
 
 int aws_socket_init_completion_port_based(
@@ -258,8 +287,19 @@ int aws_socket_init_completion_port_based(
         }
     }
 
-    aws_ref_count_init(&nw_socket->ref_count, socket, s_socket_impl_destroy);
+    aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
 
+    if (!nw_socket->read_io_data) {
+        nw_socket->read_io_data = aws_mem_calloc(alloc, 1, sizeof(struct io_operation_data_nw));
+        if (!nw_socket->read_io_data) {
+            socket->state = ERROR;
+            return AWS_OP_ERR;
+        }
+        nw_socket->read_io_data->allocator = socket->allocator;
+        nw_socket->read_io_data->in_use = false;
+        nw_socket->read_io_data->socket = socket;
+    }
+    nw_socket->allocator = alloc;
     socket->vtable = &s_vtable;
     socket->allocator = alloc;
     socket->state = INIT;
@@ -402,6 +442,7 @@ static int s_socket_connect_fn(
         socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
           /* we're connected! */
           if (state == nw_connection_state_ready) {
+              socket->state = CONNECTED_WRITE | CONNECTED_READ;
               AWS_LOGF_INFO(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: connection success",
@@ -431,9 +472,20 @@ static int s_socket_connect_fn(
 
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               aws_ref_count_acquire(&nw_socket->ref_count);
-              on_connection_result(socket, AWS_OP_SUCCESS, user_data);
+              // It is possible that the socket is closed in the connection callback
+                //    on_connection_result(socket, AWS_OP_SUCCESS, user_data);
+                //    nw_socket->setup_run = true;
+
+             if (event_loop)
+             {
+                 nw_socket->read_io_data->socket = socket;
+                 nw_socket->read_io_data->sequential_task_storage.fn = s_connection_success_task;
+                 nw_socket->read_io_data->sequential_task_storage.arg = nw_socket->read_io_data;
+                 nw_socket->read_io_data->user_data = user_data;
+                 aws_event_loop_schedule_task_now(event_loop, &nw_socket->read_io_data->sequential_task_storage);
+             }
+
               aws_ref_count_release(&nw_socket->ref_count);
-              nw_socket->setup_run = true;
           } else if (error) {
               /* any error, including if closed remotely in error */
               int error_code = nw_error_get_error_code(error);
@@ -474,6 +526,7 @@ static int s_socket_connect_fn(
               } else if (socket->readable_fn) {
                   socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
               }
+              aws_ref_count_release(&nw_socket->ref_count);
           }
         });
 
@@ -700,8 +753,9 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
     /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
     if (nw_socket->is_listener) {
-        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_listener_cancel(socket->io_handle.data.handle);
+        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
+
     } else {
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_connection_cancel(socket->io_handle.data.handle);
