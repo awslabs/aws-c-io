@@ -19,7 +19,7 @@ struct aws_io_handle;
 #if AWS_USE_DISPATCH_QUEUE
 typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
 typedef void aws_io_clear_queue_on_handle_fn(struct aws_io_handle *handle);
-#endif
+#endif /* AWS_USE_DISPATCH_QUEUE */
 
 struct aws_io_handle {
     union {
@@ -31,7 +31,7 @@ struct aws_io_handle {
     #if AWS_USE_DISPATCH_QUEUE
     aws_io_set_queue_on_handle_fn *set_queue;
     aws_io_clear_queue_on_handle_fn *clear_queue;
-    #endif
+    #endif /* AWS_USE_DISPATCH_QUEUE */
 };
 
 enum aws_io_message_type {

@@ -6,6 +6,7 @@
  */
 
 #include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
@@ -44,6 +45,7 @@ struct aws_socket_options {
     /* If set, sets the number of keep alive probes allowed to fail before the connection is considered
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
+    enum aws_event_loop_style event_loop_style;
     bool keepalive;
 
     /**
@@ -114,7 +116,44 @@ struct aws_socket_endpoint {
     uint32_t port;
 };
 
+struct aws_socket;
+
+struct aws_socket_vtable {
+    void (*socket_cleanup_fn)(struct aws_socket *socket);
+    int (*socket_connect_fn)(
+        struct aws_socket *socket,
+        const struct aws_socket_endpoint *remote_endpoint,
+        struct aws_event_loop *event_loop,
+        aws_socket_on_connection_result_fn *on_connection_result,
+        void *user_data);
+    int (*socket_bind_fn)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+    int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
+    int (*socket_start_accept_fn)(
+        struct aws_socket *socket,
+        struct aws_event_loop *accept_loop,
+        aws_socket_on_accept_result_fn *on_accept_result,
+        void *user_data);
+    int (*socket_stop_accept_fn)(struct aws_socket *socket);
+    int (*socket_close_fn)(struct aws_socket *socket);
+    int (*socket_shutdown_dir_fn)(struct aws_socket *socket, enum aws_channel_direction dir);
+    int (*socket_set_options_fn)(struct aws_socket *socket, const struct aws_socket_options *options);
+    int (*socket_assign_to_event_loop_fn)(struct aws_socket *socket, struct aws_event_loop *event_loop);
+    int (*socket_subscribe_to_readable_events_fn)(
+        struct aws_socket *socket,
+        aws_socket_on_readable_fn *on_readable,
+        void *user_data);
+    int (*socket_read_fn)(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
+    int (*socket_write_fn)(
+        struct aws_socket *socket,
+        const struct aws_byte_cursor *cursor,
+        aws_socket_on_write_completed_fn *written_fn,
+        void *user_data);
+    int (*socket_get_error_fn)(struct aws_socket *socket);
+    bool (*socket_is_open_fn)(struct aws_socket *socket);
+};
+
 struct aws_socket {
+    struct aws_socket_vtable *vtable;
     struct aws_allocator *allocator;
     struct aws_socket_endpoint local_endpoint;
     struct aws_socket_endpoint remote_endpoint;
@@ -123,6 +162,7 @@ struct aws_socket {
     struct aws_event_loop *event_loop;
     struct aws_channel_handler *handler;
     int state;
+    enum aws_event_loop_style event_loop_style;
     aws_socket_on_readable_fn *readable_fn;
     void *readable_user_data;
     aws_socket_on_connection_result_fn *connection_result_fn;
@@ -146,6 +186,14 @@ aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
 
 AWS_EXTERN_C_BEGIN
+
+AWS_IO_API struct aws_socket_options aws_socket_options_default_tcp_ipv6(enum aws_event_loop_style el_style);
+AWS_IO_API struct aws_socket_options aws_socket_options_default_tcp_ipv4(enum aws_event_loop_style el_style);
+
+AWS_IO_API struct aws_socket_options aws_socket_options_default_udp_ipv6(enum aws_event_loop_style el_style);
+AWS_IO_API struct aws_socket_options aws_socket_options_default_udp_ipv4(enum aws_event_loop_style el_style);
+
+AWS_IO_API struct aws_socket_options aws_socket_options_default_local(enum aws_event_loop_style el_style);
 
 /**
  * Initializes a socket object with socket options. options will be copied.
@@ -260,7 +308,7 @@ AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct
 AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
 /**
- * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved
+ * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be received
  * in the callback.
  *
  * Note! This function is technically not thread safe, but we do not enforce which thread you call from.

@@ -813,8 +813,9 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     AWS_FATAL_ASSERT(options->shutdown_callback);
     AWS_FATAL_ASSERT(bootstrap);
 
-    const struct aws_socket_options *socket_options = options->socket_options;
+    struct aws_socket_options *socket_options = (struct aws_socket_options *)options->socket_options;
     AWS_FATAL_ASSERT(socket_options != NULL);
+    socket_options->event_loop_style = aws_event_loop_group_get_style(bootstrap->event_loop_group);
 
     const struct aws_tls_connection_options *tls_options = options->tls_options;
 
@@ -831,10 +832,6 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
 
     struct client_connection_args *client_connection_args =
         aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
-
-    if (!client_connection_args) {
-        return AWS_OP_ERR;
-    }
 
     const char *host_name = options->host_name;
     uint32_t port = options->port;
@@ -1361,9 +1358,7 @@ void s_on_server_connection_result(
             (void *)socket);
         struct server_channel_data *channel_data =
             aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct server_channel_data));
-        if (!channel_data) {
-            goto error_cleanup;
-        }
+
         channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
@@ -1378,6 +1373,7 @@ void s_on_server_connection_result(
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
         };
 
+        // DEBUG WIP this can probably be moved into the channel_args creation block above.
         channel_args.event_loop = event_loop;
         channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
 
@@ -1497,6 +1493,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     struct aws_event_loop *connection_loop =
         aws_event_loop_group_get_next_loop(bootstrap_options->bootstrap->event_loop_group);
 
+    ((struct aws_socket_options *)bootstrap_options->socket_options)->event_loop_style =
+        aws_event_loop_group_get_style(bootstrap_options->bootstrap->event_loop_group);
     if (aws_socket_init(
             &server_connection_args->listener,
             bootstrap_options->bootstrap->allocator,
