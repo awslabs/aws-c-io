@@ -261,10 +261,11 @@ static int s_test_socket_ex(
             ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
         }
 
-        struct local_outgoing_args outgoing_args = {.mutex = &mutex,
-                                                    .condition_variable = &condition_variable,
-                                                    .connect_invoked = false,
-                                                    .error_invoked = false};
+        struct local_outgoing_args outgoing_args = {
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+            .connect_invoked = false,
+            .error_invoked = false};
 
         struct aws_socket outgoing;
         ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
@@ -1334,10 +1335,11 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
         ASSERT_SUCCESS(
             aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming_destroy_listener, &listener_args));
 
-        struct local_outgoing_args outgoing_args = {.mutex = &mutex,
-                                                    .condition_variable = &condition_variable,
-                                                    .connect_invoked = false,
-                                                    .error_invoked = false};
+        struct local_outgoing_args outgoing_args = {
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+            .connect_invoked = false,
+            .error_invoked = false};
 
         struct aws_socket outgoing;
         ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
@@ -1468,10 +1470,11 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
 
-        struct local_outgoing_args outgoing_args = {.mutex = &mutex,
-                                                    .condition_variable = &condition_variable,
-                                                    .connect_invoked = false,
-                                                    .error_invoked = false};
+        struct local_outgoing_args outgoing_args = {
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+            .connect_invoked = false,
+            .error_invoked = false};
 
         struct aws_socket outgoing;
         ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
@@ -1722,7 +1725,6 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
         AWS_ZERO_STRUCT(endpoint);
         aws_socket_endpoint_init_local_address_for_test(&endpoint);
 
-
         struct aws_socket listener;
         ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
@@ -1730,10 +1732,11 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
 
-        struct local_outgoing_args outgoing_args = {.mutex = &mutex,
-                                                    .condition_variable = &condition_variable,
-                                                    .connect_invoked = false,
-                                                    .error_invoked = false};
+        struct local_outgoing_args outgoing_args = {
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+            .connect_invoked = false,
+            .error_invoked = false};
 
         struct aws_socket outgoing;
         ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
@@ -1959,4 +1962,3 @@ static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ct
     return 0;
 }
 AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)
-
