@@ -12,7 +12,7 @@
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific
-#include <TargetConditionals.h>
+#    include <TargetConditionals.h>
 #endif
 
 static const struct aws_event_loop_configuration s_available_configurations[] = {
@@ -24,6 +24,14 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
     },
 #endif
+#if AWS_USE_KQUEUE
+    {
+        .name = "BSD Edge-Triggered KQueue",
+        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+        .is_default = true,
+    },
+#endif
 #if TARGET_OS_MAC
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
@@ -31,18 +39,12 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
 #    if TARGET_OS_OSX
+        /* DEBUG WIP temp set the dispatch queue to be default. */
+        // .is_default = true,
         .is_default = false,
 #    else
         .is_default = true,
 #    endif
-    },
-#endif
-#if AWS_USE_KQUEUE
-    {
-        .name = "BSD Edge-Triggered KQueue",
-        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
-        .is_default = true,
     },
 #endif
 #if AWS_USE_EPOLL
@@ -624,6 +626,10 @@ void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, s
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
+    // DEBUG WIP return true for testing.
+    // printf("aws_event_loop_thread_is_callers_thread() event_loop=%p\n\n",
+    //     (void *)event_loop);
+    return true;
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->is_on_callers_thread);
     return event_loop->vtable->is_on_callers_thread(event_loop);
 }
