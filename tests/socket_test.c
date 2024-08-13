@@ -504,6 +504,18 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
 }
 AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
 
+static enum aws_event_loop_style get_event_loop_style() {
+    const struct aws_event_loop_configuration_group *default_configs = aws_event_loop_get_available_configurations();
+
+    for (size_t i = 0; i < default_configs->configuration_count; ++i) {
+        if (default_configs[i].configurations->is_default) {
+            return default_configs[i].configurations.style;
+        }
+    }
+
+    return AWS_EVENT_LOOP_STYLE_UNDEFINED;
+}
+
 static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_socket_options options;
@@ -514,6 +526,8 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
+    options.event_loop_style = get_event_loop_style();
+
     strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
     struct aws_socket outgoing;
 #if defined(AWS_OS_APPLE) || defined(AWS_OS_LINUX)
