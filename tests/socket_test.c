@@ -510,7 +510,7 @@ static enum aws_event_loop_style get_event_loop_style() {
 
     for (size_t i = 0; i < default_configs->configuration_count; ++i) {
         if (default_configs[i].configurations->is_default) {
-            return default_configs[i].configurations.style;
+            return default_configs.configurations[i].style;
         }
     }
 
