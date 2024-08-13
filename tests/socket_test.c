@@ -1959,3 +1959,4 @@ static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ct
     return 0;
 }
 AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)
+
