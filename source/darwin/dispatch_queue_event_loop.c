@@ -58,6 +58,17 @@ struct dispatch_loop {
     bool wakeup_schedule_needed;
 };
 
+static void s_finalize(void* context)
+{
+    struct aws_event_loop* event_loop = context;
+    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+
+    aws_mutex_clean_up(&dispatch_loop->sync_data.lock);
+    aws_mem_release(event_loop->alloc, dispatch_loop);
+    aws_event_loop_clean_up_base(event_loop);
+    aws_mem_release(event_loop->alloc, event_loop);
+}
+
 /* Setup a dispatch_queue with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
@@ -94,12 +105,17 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     dispatch_async_and_wait(dispatch_loop->dispatch_queue, ^{
          dispatch_loop->running_thread_id = aws_thread_current_thread_id();
     }); */
-    dispatch_block_t block = dispatch_block_create(0, ^{
-      dispatch_loop->running_thread_id = aws_thread_current_thread_id();
-    });
-    dispatch_async(dispatch_loop->dispatch_queue, block);
-    dispatch_block_wait(block, DISPATCH_TIME_FOREVER);
-    Block_release(block);
+    // dispatch_block_t block = dispatch_block_create(0, ^{
+      //   dispatch_loop->running_thread_id = aws_thread_current_thread_id();
+    // });
+    // dispatch_async(dispatch_loop->dispatch_queue, block);
+    // dispatch_block_wait(block, DISPATCH_TIME_FOREVER);
+    // Block_release(block);
+
+    dispatch_set_context(dispatch_loop->dispatch_queue, loop);
+    // Definalizer will be called on dispatch queue ref drop to 0
+    dispatch_set_finalizer_f(dispatch_loop->dispatch_queue, &s_finalize);
+
 
     return loop;
 
@@ -132,13 +148,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     });
 
     /* we don't want it stopped while shutting down. dispatch_release will fail on a suspended loop. */
-    aws_mutex_clean_up(&dispatch_loop->sync_data.lock);
-    aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
-    dispatch_release(dispatch_loop->dispatch_queue);
-    aws_mem_release(event_loop->alloc, dispatch_loop);
-    aws_event_loop_clean_up_base(event_loop);
-    aws_mem_release(event_loop->alloc, event_loop);
-}
+        dispatch_release(dispatch_loop->dispatch_queue);
+    }
 
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     (void)event_loop;
@@ -211,8 +222,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
           dispatch_after(next_task_time - now, dispatch_loop->dispatch_queue, ^{
             if (aws_task_scheduler_has_tasks(&dispatch_loop->scheduler, NULL)) {
                 aws_event_loop_register_tick_start(event_loop);
-                /* this ran on a timer, so next_task_time should be the current time when this block executes */
-                aws_task_scheduler_run_all(&dispatch_loop->scheduler, next_task_time);
+                                /* this ran on a timer, so next_task_time should be the current time when this block executes */
+                               aws_task_scheduler_run_all(&dispatch_loop->scheduler, next_task_time);
                 aws_event_loop_register_tick_end(event_loop);
             }
 
@@ -271,6 +282,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 }
 
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
+    return true;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     /* this will need to be updated, after we go through design discussion on it. */
