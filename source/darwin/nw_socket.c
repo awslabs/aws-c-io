@@ -208,10 +208,7 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     if (aws_socket_is_open(socket)) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p nw_socket=%p: is still open, closing...",
-            (void *)socket,
-            (void *)socket->impl);
+            AWS_LS_IO_SOCKET, "id=%p nw_socket=%p: is still open, closing...", (void *)socket, (void *)socket->impl);
         aws_socket_close(socket);
     }
 
