@@ -505,7 +505,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
 }
 AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
 
-static enum aws_event_loop_style get_event_loop_style() {
+static enum aws_event_loop_style get_event_loop_style(void) {
     const struct aws_event_loop_configuration_group *default_configs = aws_event_loop_get_available_configurations();
 
     for (size_t i = 0; i < default_configs->configuration_count; ++i) {
