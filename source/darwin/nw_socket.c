@@ -128,8 +128,16 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                   }
                 });
         } else if (options->domain == AWS_SOCKET_LOCAL) {
+            #if defined(TARGET_OS_OSX) && TARGET_OS_OSX
+
             nw_socket->socket_options_to_params =
                 nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+
+            #else
+            // DEBUG WIP TODO add creation of socket_options_to_params for local here.
+            // The macOS nw_parameters_create_custom_ip is not available on iOS
+
+            #endif
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->socket_options_to_params =
