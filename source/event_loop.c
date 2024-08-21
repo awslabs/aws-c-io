@@ -40,8 +40,8 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
 #    if TARGET_OS_OSX
         /* DEBUG WIP temp set the dispatch queue to be default. */
-        // .is_default = true,
-        .is_default = false,
+        .is_default = true,
+        // .is_default = false,
 #    else
         .is_default = true,
 #    endif
