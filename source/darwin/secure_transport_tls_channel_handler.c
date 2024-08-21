@@ -24,6 +24,8 @@
 #include <dlfcn.h>
 #include <math.h>
 
+#include <Network/Network.h>
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -779,6 +781,8 @@ struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
+    SecCertificateRef secitem_certificate;
+    SecKeyRef secitem_private_key;
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;
@@ -960,6 +964,14 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         aws_release_identity(secure_transport_ctx->certs);
     }
 
+    if (secure_transport_ctx->secitem_certificate) {
+        CFRelease(secure_transport_ctx->secitem_certificate);
+    }
+
+    if (secure_transport_ctx->secitem_private_key) {
+        CFRelease(secure_transport_ctx->secitem_private_key);
+    }
+
     if (secure_transport_ctx->ca_cert) {
         aws_release_certificates(secure_transport_ctx->ca_cert);
     }
@@ -1002,6 +1014,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
+    secure_transport_ctx->secitem_certificate = NULL;
+    secure_transport_ctx->secitem_private_key = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
@@ -1010,7 +1024,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
 
     if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
-#if !defined(AWS_OS_IOS)
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
 
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
@@ -1027,6 +1040,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
+#if !defined(AWS_OS_IOS)
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
@@ -1038,7 +1052,24 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif
+#endif /* !AWS_OS_IOS */
+// DEBUG WIP temp set this section to work with macOS for testing
+#if defined(AWS_OS_IOS)
+
+        if (aws_secitem_import_cert_and_key(
+                alloc,
+                secure_transport_ctx->wrapped_allocator,
+                &cert_chain_cur,
+                &private_key_cur,
+                &secure_transport_ctx->secitem_certificate,
+                &secure_transport_ctx->secitem_private_key,
+                options->secitem_options)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+            goto cleanup_wrapped_allocator;
+        }
+
+#endif /* AWS_OS_IOS */
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
@@ -1090,3 +1121,20 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
 }
 
 #pragma clang diagnostic pop
+
+/*
+ * Apple Network Framework TLS Implementation.
+ * Currently only supports iOS platforms.
+ */
+
+// DEBUG WIP
+static int wip_apple_network_tls_implementation(struct aws_tls_connection_options *options) {
+    int result = AWS_OP_ERR;
+
+    nw_endpoint_t endpoint = nw_endpoint_create_host(options->server_name, "8883");
+    nw_parameters_t parameters = nw_parameters_create_secure_tcp(NW_PARAMETERS_DEFAULT_CONFIGURATION, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+
+    nw_protocol_options_t tls_options = nw_tls_create_options();
+
+    return result;
+}

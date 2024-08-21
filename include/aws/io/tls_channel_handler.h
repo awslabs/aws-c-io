@@ -146,6 +146,37 @@ struct aws_tls_connection_options {
  */
 struct aws_tls_key_operation;
 
+#ifdef __APPLE__
+
+/**
+ * A struct containing parameters used during import of Certificate and Private Key into a
+ * data protection keychain using Apple's SecItem API.
+ */
+struct aws_secitem_options {
+    /**
+     * Human-Readable identifier tag for certificate being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *cert_label;
+
+    /**
+     * Human-Readable identifier tag for private key being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *key_label;
+
+    /**
+     * Human-Readable unique identifier tag for private key being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *application_label;
+};
+
+#endif /* __APPLE__ */
+
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
 
@@ -214,15 +245,22 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf pkcs12_password;
 
+/**
+     * When adding items to the keychain, SecItem allows the setting of attributes
+     * that control various options and settings related to access of the items. This
+     * struct contains the various attributes we currently support.
+     */
+    struct aws_secitem_options *secitem_options;
+
 #    if !defined(AWS_OS_IOS)
     /**
      * On Apple OS you can also use a custom keychain instead of
      * the default keychain of the account.
      */
     struct aws_string *keychain_path;
-#    endif
+#    endif /* !AWS_OS_IOS */
 
-#endif
+#endif /* __APPLE__ */
 
     /** max tls fragment size. Default is the value of g_aws_channel_max_fragment_size. */
     size_t max_fragment_size;

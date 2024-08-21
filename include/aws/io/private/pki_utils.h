@@ -15,6 +15,8 @@
 #ifdef AWS_OS_APPLE
 /* It's ok to include external headers because this is a PRIVATE header file */
 #    include <CoreFoundation/CFArray.h>
+#include <Security/Security.h>
+struct aws_secitem_options;
 #endif /* AWS_OS_APPLE */
 
 struct aws_string;
@@ -29,6 +31,7 @@ AWS_IO_API const char *aws_determine_default_pki_dir(void);
 AWS_IO_API const char *aws_determine_default_pki_ca_file(void);
 
 #ifdef AWS_OS_APPLE
+// DEBUG WIP Open up this API to iOS and return platform not supported errors
 #    if !defined(AWS_OS_IOS)
 /**
  * Imports a PEM armored PKCS#7 public/private key pair
@@ -41,7 +44,21 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_byte_cursor *private_key,
     CFArrayRef *identity,
     const struct aws_string *keychain_path);
-#    endif /* AWS_OS_IOS */
+#    endif /* !AWS_OS_IOS */
+
+/**
+ * Imports a PEM armored PKCS#7 public/private key pair
+ * into protected data keychain for use with Apple Network Framework.
+ * Currently only implemented for iOS.
+ */
+int aws_secitem_import_cert_and_key(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    SecCertificateRef *secitem_certificate,
+    SecKeyRef *secitem_private_key,
+    const struct aws_secitem_options *secitem_options);
 
 /**
  * Imports a PKCS#12 file into identity for use with

@@ -24,6 +24,15 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
+
+    #ifdef __APPLE__
+
+    options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
+    options->secitem_options->cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
+    options->secitem_options->key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
+    options->secitem_options->application_label = aws_string_new_from_c_str(allocator, "aws-crt-default-application-label");
+
+    #endif /* __APPLE__ */
 }
 
 void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
@@ -33,13 +42,20 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->private_key);
 
 #ifdef __APPLE__
+
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
-#    if !defined(AWS_OS_IOS)
+aws_string_destroy(options->secitem_options->cert_label);
+    aws_string_destroy(options->secitem_options->key_label);
+    aws_string_destroy(options->secitem_options->application_label);
+    aws_mem_release(options->allocator, options->secitem_options);
+
+#   if !defined(AWS_OS_IOS)
     aws_string_destroy(options->keychain_path);
-#    endif
-#endif
+#   endif /* !AWS_OS_IOS */
+
+#endif /* __APPLE__ */
 
     aws_string_destroy(options->alpn_list);
     aws_custom_key_op_handler_release(options->custom_key_op_handler);
@@ -52,8 +68,6 @@ int aws_tls_ctx_options_init_client_mtls(
     struct aws_allocator *allocator,
     const struct aws_byte_cursor *cert,
     const struct aws_byte_cursor *pkey) {
-
-#if !defined(AWS_OS_IOS)
 
     aws_tls_ctx_options_init_default_client(options, allocator);
 
@@ -79,15 +93,6 @@ int aws_tls_ctx_options_init_client_mtls(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
-
-#else
-    (void)allocator;
-    (void)cert;
-    (void)pkey;
-    AWS_ZERO_STRUCT(*options);
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_path(
@@ -95,8 +100,6 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_allocator *allocator,
     const char *cert_path,
     const char *pkey_path) {
-
-#if !defined(AWS_OS_IOS)
     aws_tls_ctx_options_init_default_client(options, allocator);
 
     if (aws_byte_buf_init_from_file(&options->certificate, allocator, cert_path)) {
@@ -121,15 +124,6 @@ int aws_tls_ctx_options_init_client_mtls_from_path(
 error:
     aws_tls_ctx_options_clean_up(options);
     return AWS_OP_ERR;
-
-#else
-    (void)allocator;
-    (void)cert_path;
-    (void)pkey_path;
-    AWS_ZERO_STRUCT(*options);
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: This platform does not support PEM certificates");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif
 }
 
 int aws_tls_ctx_options_init_client_mtls_with_custom_key_operations(
@@ -277,7 +271,7 @@ int aws_tls_ctx_options_set_keychain_path(
     (void)keychain_path_cursor;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif
+#endif /* __APPLE__ && !AWS_OS_IOS*/
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(
