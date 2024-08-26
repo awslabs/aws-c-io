@@ -116,6 +116,7 @@ struct handle_data {
     struct aws_task cleanup_task;
 
     struct aws_event_loop_io_op_result last_io_operation_result;
+    bool last_io_operation_is_updated;
 };
 
 enum {
@@ -740,6 +741,7 @@ static void s_feedback_io_result(
     AWS_ASSERT(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
     AWS_ASSERT(event_loop == handle_data->event_loop);
+    AWS_ASSERT(handle_data->last_io_operation_is_updated == 0);
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: got feedback on I/O operation for fd %d: status %s",
@@ -748,6 +750,7 @@ static void s_feedback_io_result(
         aws_error_str(io_op_result->error_code));
     handle_data->last_io_operation_result.read_bytes = io_op_result->read_bytes;
     handle_data->last_io_operation_result.error_code = io_op_result->error_code;
+    handle_data->last_io_operation_is_updated = 1;
 }
 
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
@@ -954,8 +957,14 @@ static void aws_event_loop_thread(void *user_data) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     handle_data->owner->data.fd);
+
+                // Reset last I/O operation result, so if a channel forgets to update its value, we can catch it.
+                handle_data->last_io_operation_is_updated = 0;
+
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
+
+                AWS_ASSERT(handle_data->last_io_operation_is_updated == 1);
                 AWS_LOGF_INFO(
                     AWS_LS_IO_EVENT_LOOP,
                     "id=%p: on_event completion status is %d (%s); read %lu bytes",

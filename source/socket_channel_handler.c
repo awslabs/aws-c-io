@@ -182,10 +182,11 @@ static void s_do_read(struct socket_handler *socket_handler) {
     if (total_read < max_to_read) {
         AWS_ASSERT(last_error != 0);
 
+        struct aws_event_loop_io_op_result io_op_result = {total_read, last_error};
+        aws_event_loop_feedback_io_op_result(
+            socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
+
         if (last_error != AWS_IO_READ_WOULD_BLOCK) {
-            struct aws_event_loop_io_op_result io_op_result = {total_read, last_error};
-            aws_event_loop_feedback_io_op_result(
-                socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
             aws_channel_shutdown(socket_handler->slot->channel, last_error);
         } else {
             AWS_LOGF_TRACE(
@@ -193,9 +194,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
                 "id=%p: out of data to read on socket. "
                 "Waiting on event-loop notification.",
                 (void *)socket_handler->slot->handler);
-            struct aws_event_loop_io_op_result io_op_result = {total_read, AWS_IO_READ_WOULD_BLOCK};
-            aws_event_loop_feedback_io_op_result(
-                socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
         }
         return;
     }
