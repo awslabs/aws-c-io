@@ -514,6 +514,15 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
     return event_loop->vtable->unsubscribe_from_io_events(event_loop, handle);
 }
 
+void aws_event_loop_feedback_io_op_result(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    const struct aws_event_loop_io_op_result *io_op_result) {
+    if (event_loop->vtable->feedback_io_result) {
+        event_loop->vtable->feedback_io_result(event_loop, handle, io_op_result);
+    }
+}
+
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     event_loop->vtable->free_io_event_resources(handle->additional_data);
