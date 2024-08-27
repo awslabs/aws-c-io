@@ -131,10 +131,32 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .is_on_callers_thread = s_is_event_thread,
 };
 
+static void s_update_io_result(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    const struct aws_io_handle_io_op_result *io_op_result) {
+    AWS_ASSERT(handle->additional_data);
+    struct handle_data *handle_data = handle->additional_data;
+    AWS_ASSERT(event_loop == handle_data->event_loop);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: got feedback on I/O operation for fd %d: read: status %d (%s), %lu bytes; write: status %d (%s), %lu "
+        "bytes",
+        (void *)event_loop,
+        handle->data.fd,
+        io_op_result->read_error_code,
+        aws_error_str(io_op_result->read_error_code),
+        io_op_result->read_bytes,
+        io_op_result->write_error_code,
+        aws_error_str(io_op_result->write_error_code),
+        io_op_result->written_bytes);
+}
+
 struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
+    // FIXME Remove this assert.
     AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
@@ -586,6 +608,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 
     /* Success */
     handle_data->state = HANDLE_STATE_SUBSCRIBED;
+    handle_data->owner->update_io_result = s_update_io_result;
     return;
 
 subscribe_failed:
@@ -931,6 +954,16 @@ static void aws_event_loop_thread(void *user_data) {
                     handle_data->owner->data.fd);
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
+
+                //                AWS_LOGF_INFO(
+                //                    AWS_LS_IO_EVENT_LOOP,
+                //                    "id=%p: on_event completion status: read: status %d (%s), %lu bytes; write: status
+                //                    %d (%s), %lu " "bytes", (void *)event_loop, io_op_result.read_error_code,
+                //                    aws_error_str(io_op_result.read_error_code),
+                //                    io_op_result.read_bytes,
+                //                    io_op_result.write_error_code,
+                //                    aws_error_str(io_op_result.write_error_code),
+                //                    io_op_result.written_bytes);
             }
 
             handle_data->events_this_loop = 0;

@@ -115,7 +115,8 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
-            "source/qnx/*.c"
+            "source/bsd/*.c"
+            "source/posix/*.c"
             "source/darwin/*.c"
             )
 
