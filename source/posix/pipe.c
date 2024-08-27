@@ -278,6 +278,12 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
     if (read_val < 0) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
         if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
+#if AWS_USE_ON_EVENT_WITH_RESULT
+            struct aws_io_handle_io_op_result io_op_result;
+            memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
+            io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+            read_impl->handle.update_io_result(read_impl->event_loop, &read_impl->handle, &io_op_result);
+#endif
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
         return s_raise_posix_error(errno_value);
@@ -441,9 +447,6 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
     AWS_ASSERT(write_impl);
     AWS_ASSERT(write_impl->handle.update_io_result);
 
-    struct aws_io_handle_io_op_result io_op_result;
-    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
-
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&write_impl->write_list);
         struct pipe_write_request *request = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
@@ -458,8 +461,15 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
                     /* The pipe is no longer writable. Bail out */
                     write_impl->is_writable = false;
-                    io_op_result.write_error_code = errno_value;
+
+#if AWS_USE_ON_EVENT_WITH_RESULT
+                    struct aws_io_handle_io_op_result io_op_result;
+                    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
+                    io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK;
+                    AWS_ASSERT(write_impl->handle.update_io_result);
                     write_impl->handle.update_io_result(write_impl->event_loop, &write_impl->handle, &io_op_result);
+#endif
+
                     return;
                 }
 
@@ -468,8 +478,6 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
 
             } else {
                 aws_byte_cursor_advance(&request->cursor, write_val);
-
-                io_op_result.written_bytes += (size_t)write_val;
 
                 if (request->cursor.len > 0) {
                     /* There was a partial write, loop again to try and write the rest. */
@@ -480,7 +488,6 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
 
         /* If we got this far in the loop, then the write request is complete.
          * Note that the callback may result in the pipe being cleaned up. */
-        // TODO Call update.
         bool write_end_cleaned_up = s_write_end_complete_front_write_request(write_end, completed_error_code);
         if (write_end_cleaned_up) {
             /* Bail out! Any remaining requests were canceled during clean_up() */
@@ -548,7 +555,6 @@ int aws_pipe_write(
     /* If the pipe is writable, process the request (unless pipe is already in the middle of processing, which could
      * happen if a this aws_pipe_write() call was made by another write's completion callback */
     if (write_impl->is_writable && !write_impl->currently_invoking_write_callback) {
-        struct aws_io_handle_io_op_result io_op_result;
         s_write_end_process_requests(write_end);
     }
 
