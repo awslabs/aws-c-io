@@ -279,10 +279,12 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
         int errno_value = errno; /* Always cache errno before potential side-effect */
         if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
 #if AWS_USE_ON_EVENT_WITH_RESULT
-            struct aws_io_handle_io_op_result io_op_result;
-            memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
-            io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
-            read_impl->handle.update_io_result(read_impl->event_loop, &read_impl->handle, &io_op_result);
+            if (read_impl->handle.update_io_result) {
+                struct aws_io_handle_io_op_result io_op_result;
+                memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
+                io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+                read_impl->handle.update_io_result(read_impl->event_loop, &read_impl->handle, &io_op_result);
+            }
 #endif
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
