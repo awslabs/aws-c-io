@@ -436,8 +436,7 @@ static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *
 }
 
 /* Process write requests as long as the pipe remains writable */
-static void s_write_end_process_requests(
-    struct aws_pipe_write_end *write_end) {
+static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
     struct write_end_impl *write_impl = write_end->impl_data;
     AWS_ASSERT(write_impl);
     AWS_ASSERT(write_impl->handle.update_io_result);

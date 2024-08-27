@@ -39,10 +39,6 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-static void s_feedback_io_result(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    const struct aws_event_loop_io_op_result *io_op_result);
 static void s_free_io_event_resources(void *user_data);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
 
@@ -114,9 +110,6 @@ struct handle_data {
 
     struct aws_task subscribe_task;
     struct aws_task cleanup_task;
-
-    struct aws_event_loop_io_op_result last_io_operation_result;
-    bool last_io_operation_is_updated;
 };
 
 enum {
@@ -134,7 +127,6 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .cancel_task = s_cancel_task,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
-    .feedback_io_result = s_feedback_io_result,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_event_thread,
 };
@@ -143,7 +135,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    // FIXME Remove this assert.
     AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
@@ -734,25 +725,6 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     return AWS_OP_SUCCESS;
 }
 
-static void s_feedback_io_result(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    const struct aws_event_loop_io_op_result *io_op_result) {
-    AWS_ASSERT(handle->additional_data);
-    struct handle_data *handle_data = handle->additional_data;
-    AWS_ASSERT(event_loop == handle_data->event_loop);
-    AWS_ASSERT(handle_data->last_io_operation_is_updated == 0);
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p: got feedback on I/O operation for fd %d: status %s",
-        (void *)event_loop,
-        handle->data.fd,
-        aws_error_str(io_op_result->error_code));
-    handle_data->last_io_operation_result.read_bytes = io_op_result->read_bytes;
-    handle_data->last_io_operation_result.error_code = io_op_result->error_code;
-    handle_data->last_io_operation_is_updated = 1;
-}
-
 static bool s_is_event_thread(struct aws_event_loop *event_loop) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
@@ -957,21 +929,8 @@ static void aws_event_loop_thread(void *user_data) {
                     "id=%p: activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     handle_data->owner->data.fd);
-
-                // Reset last I/O operation result, so if a channel forgets to update its value, we can catch it.
-                handle_data->last_io_operation_is_updated = 0;
-
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
-
-                AWS_ASSERT(handle_data->last_io_operation_is_updated == 1);
-                AWS_LOGF_INFO(
-                    AWS_LS_IO_EVENT_LOOP,
-                    "id=%p: on_event completion status is %d (%s); read %lu bytes",
-                    (void *)event_loop,
-                    handle_data->last_io_operation_result.error_code,
-                    aws_error_str(handle_data->last_io_operation_result.error_code),
-                    handle_data->last_io_operation_result.read_bytes);
             }
 
             handle_data->events_this_loop = 0;

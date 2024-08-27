@@ -18,6 +18,7 @@
 #include <aws/io/io.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h> /* Required when VSOCK is used */
 #include <net/if.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
