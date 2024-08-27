@@ -131,6 +131,9 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .is_on_callers_thread = s_is_event_thread,
 };
 
+/**
+ * FIXME kqueue is used for debugging/demonstration purposes. It's going to be reverted.
+ */
 static void s_update_io_result(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -150,13 +153,14 @@ static void s_update_io_result(
         io_op_result->write_error_code,
         aws_error_str(io_op_result->write_error_code),
         io_op_result->written_bytes);
+
+    /* Here a handle IO status should be updated. It'll be used from the event loop. */
 }
 
 struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    // FIXME Remove this assert.
     AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
@@ -955,15 +959,7 @@ static void aws_event_loop_thread(void *user_data) {
                 handle_data->on_event(
                     event_loop, handle_data->owner, handle_data->events_this_loop, handle_data->on_event_user_data);
 
-                //                AWS_LOGF_INFO(
-                //                    AWS_LS_IO_EVENT_LOOP,
-                //                    "id=%p: on_event completion status: read: status %d (%s), %lu bytes; write: status
-                //                    %d (%s), %lu " "bytes", (void *)event_loop, io_op_result.read_error_code,
-                //                    aws_error_str(io_op_result.read_error_code),
-                //                    io_op_result.read_bytes,
-                //                    io_op_result.write_error_code,
-                //                    aws_error_str(io_op_result.write_error_code),
-                //                    io_op_result.written_bytes);
+                /* It's possible to check for IO result here. */
             }
 
             handle_data->events_this_loop = 0;
