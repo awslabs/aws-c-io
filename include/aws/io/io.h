@@ -19,6 +19,9 @@ struct aws_io_handle;
 #if AWS_USE_ON_EVENT_WITH_RESULT
 struct aws_event_loop;
 
+/**
+ * Results of the I/O operation(s) performed on the aws_io_handle.
+ */
 struct aws_io_handle_io_op_result {
     size_t read_bytes;
     size_t written_bytes;

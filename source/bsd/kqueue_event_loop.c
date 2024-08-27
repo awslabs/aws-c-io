@@ -131,6 +131,7 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .is_on_callers_thread = s_is_event_thread,
 };
 
+#if AWS_USE_ON_EVENT_WITH_RESULT
 /**
  * FIXME kqueue is used for debugging/demonstration purposes. It's going to be reverted.
  */
@@ -140,6 +141,7 @@ static void s_update_io_result(
     const struct aws_io_handle_io_op_result *io_op_result) {
     AWS_ASSERT(handle->additional_data);
     struct handle_data *handle_data = handle->additional_data;
+    (void)handle_data;
     AWS_ASSERT(event_loop == handle_data->event_loop);
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
@@ -154,8 +156,9 @@ static void s_update_io_result(
         aws_error_str(io_op_result->write_error_code),
         io_op_result->written_bytes);
 
-    /* Here a handle IO status should be updated. It'll be used from the event loop. */
+    /* Here, the handle IO status should be updated. It'll be used in the event loop. */
 }
+#endif
 
 struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
@@ -612,7 +615,9 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 
     /* Success */
     handle_data->state = HANDLE_STATE_SUBSCRIBED;
+#if AWS_USE_ON_EVENT_WITH_RESULT
     handle_data->owner->update_io_result = s_update_io_result;
+#endif
     return;
 
 subscribe_failed:
