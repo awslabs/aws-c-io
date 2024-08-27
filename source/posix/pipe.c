@@ -445,7 +445,6 @@ static bool s_write_end_complete_front_write_request(struct aws_pipe_write_end *
 static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
     struct write_end_impl *write_impl = write_end->impl_data;
     AWS_ASSERT(write_impl);
-    AWS_ASSERT(write_impl->handle.update_io_result);
 
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&write_impl->write_list);

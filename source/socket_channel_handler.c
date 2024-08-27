@@ -138,7 +138,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
         (unsigned long long)max_to_read);
 
     if (max_to_read == 0) {
-        /* TODO Set to ewouldblock? */
         return;
     }
 #if AWS_USE_ON_EVENT_WITH_RESULT
@@ -159,12 +158,16 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
+#if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
+#endif
             break;
         }
 
         total_read += read;
+#if AWS_USE_ON_EVENT_WITH_RESULT
         io_op_result.read_bytes += read;
+#endif
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
             "id=%p: read %llu from socket",
@@ -174,7 +177,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
+#if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
+#endif
             break;
         }
     }
@@ -192,7 +197,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
         AWS_ASSERT(last_error != 0);
 
         if (last_error != AWS_IO_READ_WOULD_BLOCK) {
+#if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
+#endif
             aws_channel_shutdown(socket_handler->slot->channel, last_error);
         } else {
             AWS_LOGF_TRACE(
@@ -200,10 +207,14 @@ static void s_do_read(struct socket_handler *socket_handler) {
                 "id=%p: out of data to read on socket. "
                 "Waiting on event-loop notification.",
                 (void *)socket_handler->slot->handler);
+#if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+#endif
         }
+#if AWS_USE_ON_EVENT_WITH_RESULT
         socket_handler->socket->io_handle.update_io_result(
             socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
+#endif
         return;
     }
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read

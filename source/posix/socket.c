@@ -1809,9 +1809,6 @@ static void s_on_socket_io_event(
      * (e.g. peer sends last few bytes and immediately hangs up).
      * Notify user of READABLE|WRITABLE events first, so they try to read any remaining bytes. */
 
-    struct aws_io_handle_io_op_result io_op_result;
-    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
-
     if (socket_impl->currently_subscribed && events & AWS_IO_EVENT_TYPE_READABLE) {
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: is readable", (void *)socket, socket->io_handle.data.fd);
         if (socket->readable_fn) {
