@@ -138,8 +138,12 @@ static void s_do_read(struct socket_handler *socket_handler) {
         (unsigned long long)max_to_read);
 
     if (max_to_read == 0) {
+        // TODO Set to ewouldblock?
         return;
     }
+
+    struct aws_io_handle_io_op_result io_op_result;
+    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
 
     size_t total_read = 0;
     size_t read = 0;
@@ -153,10 +157,12 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
+            io_op_result.read_error_code = last_error;
             break;
         }
 
         total_read += read;
+        io_op_result.read_bytes += read;
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
             "id=%p: read %llu from socket",
@@ -166,6 +172,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
+            io_op_result.read_error_code = last_error;
             break;
         }
     }
@@ -182,11 +189,8 @@ static void s_do_read(struct socket_handler *socket_handler) {
     if (total_read < max_to_read) {
         AWS_ASSERT(last_error != 0);
 
-        struct aws_event_loop_io_op_result io_op_result = {total_read, last_error};
-        aws_event_loop_feedback_io_op_result(
-            socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
-
         if (last_error != AWS_IO_READ_WOULD_BLOCK) {
+            io_op_result.read_error_code = last_error;
             aws_channel_shutdown(socket_handler->slot->channel, last_error);
         } else {
             AWS_LOGF_TRACE(
@@ -194,7 +198,18 @@ static void s_do_read(struct socket_handler *socket_handler) {
                 "id=%p: out of data to read on socket. "
                 "Waiting on event-loop notification.",
                 (void *)socket_handler->slot->handler);
+            io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
         }
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET_HANDLER,
+            "=== s_do_read 1: %d %lu %d %lu",
+            io_op_result.read_error_code,
+            io_op_result.read_bytes,
+            io_op_result.write_error_code,
+            io_op_result.written_bytes);
+        AWS_ASSERT(socket_handler->socket->io_handle.update_io_result);
+        socket_handler->socket->io_handle.update_io_result(
+            socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
         return;
     }
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
@@ -211,12 +226,20 @@ static void s_do_read(struct socket_handler *socket_handler) {
         aws_channel_schedule_task_now(socket_handler->slot->channel, &socket_handler->read_task_storage);
     }
 
-    struct aws_event_loop_io_op_result io_op_result = {total_read, AWS_ERROR_SUCCESS};
-    aws_event_loop_feedback_io_op_result(
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET_HANDLER,
+        "id=%p: === s_do_read update I/O results: %d %lu %d %lu",
+        (void *)socket_handler->slot->handler,
+        io_op_result.read_error_code,
+        io_op_result.read_bytes,
+        io_op_result.write_error_code,
+        io_op_result.written_bytes);
+    socket_handler->socket->io_handle.update_io_result(
         socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
 }
 
-/* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing. */
+/* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing.
+ * If an error, start the channel shutdown process. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
     (void)socket;
 

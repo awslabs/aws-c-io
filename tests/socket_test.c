@@ -22,6 +22,8 @@
 #    include <linux/vm_sockets.h>
 #endif
 
+// #if AWS_USE_ON_EVENT_WITH_RESULT
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;

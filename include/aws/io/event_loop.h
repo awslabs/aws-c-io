@@ -25,7 +25,6 @@ enum aws_io_event_type {
 struct aws_event_loop;
 struct aws_task;
 struct aws_thread_options;
-struct aws_event_loop_io_op_result;
 
 #if AWS_USE_IO_COMPLETION_PORTS
 
@@ -100,10 +99,6 @@ struct aws_event_loop_vtable {
         void *user_data);
 #endif
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-    void (*feedback_io_result)(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        const struct aws_event_loop_io_op_result *io_op_result);
     void (*free_io_event_resources)(void *user_data);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
@@ -143,11 +138,6 @@ struct aws_event_loop_group {
     struct aws_array_list event_loops;
     struct aws_ref_count ref_count;
     struct aws_shutdown_callback_options shutdown_options;
-};
-
-struct aws_event_loop_io_op_result {
-    size_t read_bytes;
-    int error_code;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -375,15 +365,6 @@ int aws_event_loop_subscribe_to_io_events(
  */
 AWS_IO_API
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-
-/**
- * Update the I/O operation completion status on the given I/O handle.
- */
-AWS_IO_API
-void aws_event_loop_feedback_io_op_result(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    const struct aws_event_loop_io_op_result *io_op_result);
 
 /**
  * Cleans up resources (user_data) associated with the I/O eventing subsystem for a given handle. This should only

@@ -14,12 +14,33 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 #define AWS_C_IO_PACKAGE_ID 1
 
+struct aws_io_handle;
+
+#if AWS_USE_ON_EVENT_WITH_RESULT
+struct aws_event_loop;
+
+struct aws_io_handle_io_op_result {
+    size_t read_bytes;
+    size_t written_bytes;
+    int read_error_code;
+    int write_error_code;
+};
+
+typedef void(aws_io_handle_update_io_results_fn)(
+    struct aws_event_loop *,
+    struct aws_io_handle *,
+    const struct aws_io_handle_io_op_result *);
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
+
 struct aws_io_handle {
     union {
         int fd;
         void *handle;
     } data;
     void *additional_data;
+#if AWS_USE_ON_EVENT_WITH_RESULT
+    aws_io_handle_update_io_results_fn *update_io_result;
+#endif
 };
 
 enum aws_io_message_type {

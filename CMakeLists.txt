@@ -115,8 +115,7 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
-            "source/bsd/*.c"
-            "source/posix/*.c"
+            "source/qnx/*.c"
             "source/darwin/*.c"
             )
 
@@ -127,7 +126,7 @@ elseif (APPLE)
 
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security")
-    set(EVENT_LOOP_DEFINE "KQUEUE")
+    set(EVENT_LOOP_DEFINE "ON_EVENT_WITH_RESULT")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
@@ -141,6 +140,8 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
     set(EVENT_LOOP_DEFINE "KQUEUE")
     set(USE_S2N ON)
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
+    set(EVENT_LOOP_DEFINE "ON_EVENT_WITH_RESULT")
 endif()
 
 if (BYO_CRYPTO)
