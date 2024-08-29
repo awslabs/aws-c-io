@@ -99,7 +99,7 @@ int aws_socket_init_completion_port_based(
 #endif
 
 void aws_socket_clean_up(struct aws_socket *socket) {
-    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_close_fn);
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_cleanup_fn);
     socket->vtable->socket_cleanup_fn(socket);
 }
 
