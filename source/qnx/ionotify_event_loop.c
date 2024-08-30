@@ -323,6 +323,48 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, task);
 }
 
+static void s_update_io_result(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    const struct aws_io_handle_io_op_result *io_op_result) {
+
+    AWS_ASSERT(handle->additional_data);
+    struct ionotify_event_data *ionotify_event_data = handle->additional_data;
+    AWS_ASSERT(event_loop == ionotify_event_data->event_loop);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: got feedback on I/O operation for fd %d: read: status %d (%s), %lu bytes; write: status %d (%s), %lu "
+        "bytes",
+        (void *)event_loop,
+        handle->data.fd,
+        io_op_result->read_error_code,
+        aws_error_str(io_op_result->read_error_code),
+        io_op_result->read_bytes,
+        io_op_result->write_error_code,
+        aws_error_str(io_op_result->write_error_code),
+        io_op_result->written_bytes);
+    uint32_t event_mask = _NOTIFY_COND_OBAND;
+    if (io_op_result->read_error_code == AWS_IO_READ_WOULD_BLOCK) {
+        event_mask |= _NOTIFY_COND_INPUT;
+    }
+    if (io_op_result->write_error_code == AWS_IO_READ_WOULD_BLOCK) {
+        event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
+    int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
+    int errno_value = errno;
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Rearming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
+    if (rc < 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
+    }
+
+    /* Here, the handle IO status should be updated. It'll be used in the event loop. */
+}
+
+/* TODO Verify that it can be called safely from other threads. */
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -381,7 +423,7 @@ static int s_subscribe_to_io_events(
     /* Arm resource manager associated with a given file descriptor in edge-triggered mode. */
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
     int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Arming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
     if (rc < 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -397,6 +439,8 @@ static int s_subscribe_to_io_events(
     }
 
     /* TODO Handle writing available. */
+
+    handle->update_io_result = s_update_io_result;
 
     return AWS_OP_SUCCESS;
 }
@@ -431,7 +475,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     }
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
     int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: 2: ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Disarming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
     if (rc < 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to unsubscribe from events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -592,10 +636,15 @@ static void aws_event_loop_thread(void *args) {
                     "id=%p: Activity on fd %d, invoking handler.",
                     (void *)event_loop,
                     ionotify_event_data->handle->data.fd);
+                /* TODO Determine events. */
                 int event_mask = AWS_IO_EVENT_TYPE_READABLE;
                 __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
                 ionotify_event_data->on_event(event_loop, ionotify_event_data->handle, event_mask, ionotify_event_data->user_data);
                 __itt_task_end(io_tracing_domain);
+
+                /* TODO Check on_event I/O result. */
+                if (1) {
+                }
             } else {
                 AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got pulse for unsubscribed fd, ignoring it", (void *)event_loop);
             }
