@@ -75,6 +75,7 @@ struct ionotify_event_data {
     struct aws_allocator *alloc;
     struct aws_io_handle *handle;
     aws_event_loop_on_event_fn *on_event;
+    int events_subscribed;
     /* Connection opened on the pulse channel. */
     int pulse_connection_id;
     struct sigevent event;
@@ -344,6 +345,7 @@ static int s_subscribe_to_io_events(
     ionotify_event_data->user_data = user_data;
     ionotify_event_data->handle = handle;
     ionotify_event_data->on_event = on_event;
+    ionotify_event_data->events_subscribed = events;
     ionotify_event_data->is_subscribed = true;
 
     /* Everyone is always registered for out-of-band data and errors. */
@@ -417,20 +419,34 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
 
     AWS_ASSERT(handle->additional_data);
-    struct ionotify_event_data *additional_handle_data = handle->additional_data;
+    struct ionotify_event_data *ionotify_event_data = handle->additional_data;
 
-    /* TODO Disarm using ionotify. */
+    /* Disarm resource manager for a given fd. */
+    uint32_t event_mask = _NOTIFY_COND_OBAND;
+    if (ionotify_event_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
+        event_mask |= _NOTIFY_COND_INPUT;
+    }
+    if (ionotify_event_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
+        event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+    int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
+    int errno_value = errno;
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: 2: ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
+    if (rc < 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to unsubscribe from events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
+        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    }
 
     /* We can't clean up yet, because we have schedule tasks and more events to process,
      * mark it as unsubscribed and schedule a cleanup task. */
-    additional_handle_data->is_subscribed = false;
+    ionotify_event_data->is_subscribed = false;
 
     aws_task_init(
-        &additional_handle_data->cleanup_task,
+        &ionotify_event_data->cleanup_task,
         s_unsubscribe_cleanup_task,
-        additional_handle_data,
+        ionotify_event_data,
         "ionotify_event_loop_unsubscribe_cleanup");
-    s_schedule_task_now(event_loop, &additional_handle_data->cleanup_task);
+    s_schedule_task_now(event_loop, &ionotify_event_data->cleanup_task);
 
     handle->additional_data = NULL;
     return AWS_OP_SUCCESS;
