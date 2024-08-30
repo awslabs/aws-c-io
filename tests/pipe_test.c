@@ -289,6 +289,7 @@ static int s_wait_for_results(struct pipe_state *state) {
 }
 
 static void s_clean_up_read_end_task(struct pipe_state *state) {
+    AWS_LOGF_DEBUG(1, "=== s_clean_up_read_end_task");
     int err = aws_pipe_clean_up_read_end(&state->read_end);
     if (err) {
         goto error;
@@ -302,6 +303,8 @@ error:
 }
 
 static void s_clean_up_write_end_task(struct pipe_state *state) {
+    AWS_LOGF_DEBUG(1, "=== s_clean_up_write_end_task");
+
     int err = aws_pipe_clean_up_write_end(&state->write_end);
     if (err) {
         goto error;
