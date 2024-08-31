@@ -414,7 +414,7 @@ static int s_subscribe_to_io_events(
     ionotify_event_data->is_subscribed = true;
 
     /* Everyone is always registered for out-of-band data and errors. */
-    uint32_t event_mask = _NOTIFY_COND_OBAND;
+    uint32_t event_mask = _NOTIFY_COND_OBAND | _NOTIFY_COND_EXTEN;
 
     if (events & AWS_IO_EVENT_TYPE_READABLE) {
         event_mask |= _NOTIFY_COND_INPUT;
@@ -448,7 +448,7 @@ static int s_subscribe_to_io_events(
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
     int errno_value = errno;
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Arming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
-    if (rc < 0) {
+    if (rc == -1) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
@@ -463,7 +463,6 @@ static int s_subscribe_to_io_events(
             AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to send pulse for fd %d", (void *)event_loop, ionotify_event_data->handle->data.fd);
         }
     }
-    //ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
 
     /* TODO Handle writing available. */
     struct aws_hash_element *elem = NULL;
@@ -716,6 +715,7 @@ static void aws_event_loop_thread(void *args) {
                 }
                 if (pulse.value.sival_int & _NOTIFY_COND_EXTEN) {
                     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is doing something", (void *)event_loop);
+                    event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
                 }
 
                 ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
