@@ -5,6 +5,7 @@
 
 #include <aws/io/pipe.h>
 
+#include <aws/common/logging.h>
 #include <aws/io/event_loop.h>
 
 #ifdef __GLIBC__
@@ -563,6 +564,8 @@ int aws_pipe_write(
 }
 
 int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
+    AWS_LOGF_DEBUG(2, "aws_pipe_clean_up_write_end: at least I'm here");
+
     struct write_end_impl *write_impl = write_end->impl_data;
     if (!write_impl) {
         return aws_raise_error(AWS_IO_BROKEN_PIPE);
@@ -587,9 +590,11 @@ int aws_pipe_clean_up_write_end(struct aws_pipe_write_end *write_end) {
         write_impl->currently_invoking_write_callback->did_user_callback_clean_up_write_end = true;
     }
 
+    AWS_LOGF_DEBUG(2, "aws_pipe_clean_up_write_end: processing list");
     /* Force any outstanding write requests to complete with an error status. */
     while (!aws_linked_list_empty(&write_impl->write_list)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&write_impl->write_list);
+        AWS_LOGF_DEBUG(2, "aws_pipe_clean_up_write_end: processing node %p", (void *)node);
         struct pipe_write_request *request = AWS_CONTAINER_OF(node, struct pipe_write_request, list_node);
         if (request->user_callback) {
             request->user_callback(NULL, AWS_IO_BROKEN_PIPE, request->original_cursor, request->user_data);

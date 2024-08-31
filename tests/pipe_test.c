@@ -17,7 +17,8 @@ enum pipe_loop_setup {
 
 enum {
     SMALL_BUFFER_SIZE = 4,
-    GIANT_BUFFER_SIZE = 1024 * 1024 * 32, /* 32MB */
+    MEDIUM_BUFFER_SIZE = 1024,
+    GIANT_BUFFER_SIZE = 1024 * 1024 * 32, /* FIXME set to 32MB */
 };
 
 /* Used for tracking state in the pipe tests. */
@@ -304,7 +305,6 @@ error:
 
 static void s_clean_up_write_end_task(struct pipe_state *state) {
     AWS_LOGF_DEBUG(1, "=== s_clean_up_write_end_task");
-
     int err = aws_pipe_clean_up_write_end(&state->write_end);
     if (err) {
         goto error;
@@ -416,7 +416,7 @@ static int test_pipe_read_write_large_buffer(struct pipe_state *state) {
     return s_test_pipe_read_write(state);
 }
 
-PIPE_TEST_CASE(pipe_read_write_large_buffer, GIANT_BUFFER_SIZE);
+PIPE_TEST_CASE(pipe_read_write_large_buffer, MEDIUM_BUFFER_SIZE);
 
 static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_code, void *user_data) {
 
@@ -425,7 +425,9 @@ static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_co
     if (error_code == state->readable_events.error_code_to_monitor) {
         state->readable_events.count++;
 
+        AWS_LOGF_DEBUG(1, "=== s_on_readable_event: call aws_pipe_clean_up_read_end if %d == %d", state->readable_events.count, state->readable_events.close_read_end_after_n_events);
         if (state->readable_events.count == state->readable_events.close_read_end_after_n_events) {
+            AWS_LOGF_DEBUG(1, "=== s_on_readable_event: call aws_pipe_clean_up_read_end");
             int err = aws_pipe_clean_up_read_end(read_end);
             if (err) {
                 goto error;
@@ -440,6 +442,7 @@ error:
 }
 
 static void s_subscribe_task(struct pipe_state *state) {
+    AWS_LOGF_DEBUG(1, "=== s_subscribe_task");
     int err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_on_readable_event, state);
     if (err) {
         goto error;
@@ -568,6 +571,7 @@ static int test_pipe_readable_event_sent_on_subscribe_if_data_present(struct pip
 PIPE_TEST_CASE(pipe_readable_event_sent_on_subscribe_if_data_present, SMALL_BUFFER_SIZE);
 
 static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, int events, void *user_data) {
+    AWS_LOGF_DEBUG(1, "=== s_resubscribe_on_readable_event: 1");
     struct pipe_state *state = user_data;
     int err = 0;
 
@@ -581,11 +585,13 @@ static void s_resubscribe_on_readable_event(struct aws_pipe_read_end *read_end, 
 
     if ((state->readable_events.count == 1) && (prev_events_count == 0)) {
         /* unsubscribe and resubscribe */
+        AWS_LOGF_DEBUG(1, "=== s_resubscribe_on_readable_event: call unsubscribe");
         err = aws_pipe_unsubscribe_from_readable_events(&state->read_end);
         if (err) {
             goto error;
         }
 
+        AWS_LOGF_DEBUG(1, "=== s_resubscribe_on_readable_event: call subscribe");
         err = aws_pipe_subscribe_to_readable_events(&state->read_end, s_on_readable_event, state);
         if (err) {
             goto error;

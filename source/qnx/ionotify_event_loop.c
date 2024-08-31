@@ -447,18 +447,32 @@ static int s_subscribe_to_io_events(
     /* Arm resource manager associated with a given file descriptor in edge-triggered mode. */
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
     int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Arming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Arming ionotify returned %d (input %d; output %d; exten %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT, rc & _NOTIFY_COND_EXTEN);
     if (rc == -1) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
-    /* File descriptor is rlready eadable. Send notification kick-start the reading process. */
+    /* Chech if file descriptor already has desired conditions. */
+    int kick_start_event_mask = 0;
+    if ((rc & _NOTIFY_COND_OBAND) == _NOTIFY_COND_OBAND) {
+        kick_start_event_mask |= _NOTIFY_COND_OBAND;
+    }
     if ((rc & _NOTIFY_COND_INPUT) == _NOTIFY_COND_INPUT) {
+        kick_start_event_mask |= _NOTIFY_COND_INPUT;
+    }
+    if ((rc & _NOTIFY_COND_OUTPUT) == _NOTIFY_COND_OUTPUT) {
+        kick_start_event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+    if ((rc & _NOTIFY_COND_EXTEN) == _NOTIFY_COND_EXTEN) {
+        kick_start_event_mask |= _NOTIFY_COND_EXTEN;
+    }
+
+    /* Send notification to kick-start processing fd. */
+    if (kick_start_event_mask != 0) {
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Sending pulse for fd %d", (void *)event_loop, ionotify_event_data->handle->data.fd);
-        int val = ionotify_event_data->handle->data.fd;
-        val |= _NOTIFY_COND_INPUT;
-        int send_rc = MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_PULSE_SIGEV_CODE, val);
+        kick_start_event_mask |= ionotify_event_data->handle->data.fd;
+        int send_rc = MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_PULSE_SIGEV_CODE, kick_start_event_mask);
         if (send_rc < 0) {
             AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to send pulse for fd %d", (void *)event_loop, ionotify_event_data->handle->data.fd);
         }
