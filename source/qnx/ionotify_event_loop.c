@@ -697,7 +697,7 @@ static void aws_event_loop_thread(void *args) {
                         ionotify_event_data = elem->value;
                     }
 
-                    if (ionotify_event_data->is_subscribed) {
+                    if (ionotify_event_data != NULL && ionotify_event_data->is_subscribed) {
                         int event_mask = 0;
                         if (pulse.value.sival_int & _NOTIFY_COND_OBAND) {
                             AWS_LOGF_TRACE(
@@ -730,7 +730,8 @@ static void aws_event_loop_thread(void *args) {
                         __itt_task_end(io_tracing_domain);
                     }
                 } else {
-                    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for ");
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_EVENT_LOOP, "id=%p: Got I/O event pulse with empty fd", (void *)event_loop);
                 }
             } else {
                 AWS_LOGF_WARN(
