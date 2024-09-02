@@ -21,16 +21,6 @@
 #include <limits.h>
 #include <unistd.h>
 
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-    ((byte) & 0x80 ? '1' : '0'), \
-    ((byte) & 0x40 ? '1' : '0'), \
-    ((byte) & 0x20 ? '1' : '0'), \
-    ((byte) & 0x10 ? '1' : '0'), \
-    ((byte) & 0x08 ? '1' : '0'), \
-    ((byte) & 0x04 ? '1' : '0'), \
-    ((byte) & 0x02 ? '1' : '0'), \
-    ((byte) & 0x01 ? '1' : '0') 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
@@ -70,15 +60,21 @@ struct ionotify_loop {
     struct aws_thread_options thread_options;
     aws_thread_id_t thread_joined_to;
     struct aws_atomic_var running_thread_id;
-    /* Channel to receive pulses. */
-    int pulse_channel_id;
-    /* Connection opened on the pulse channel. */
+    /* Channel to receive I/O events. Resource managers open connections to this channel to send their events. */
+    int io_events_channel_id;
+    /* Connection opened by the event loop to the pulse channel. It's used by ionotify and cross-thread logic to send
+     * pulses to the pulse channel. */
     int pulse_connection_id;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
     struct aws_task stop_task;
     struct aws_atomic_var stop_task_ptr;
     bool should_continue;
+    /* ionotify forces to choose one of the following as user-provided data associated with each received event:
+     * 1. A pointer to user data. But events won't contain the triggered flags (e.g. _NOTIFY_COND_INPUT).
+     * 2. 28 bits of user data. Then QNX will use 4 bits to specify the types of triggered events.
+     * Since event loop must know the types of received I/O events, the second options is used. This hash table is used
+     * to map the received events and I/O handles. */
     struct aws_hash_table handles;
 };
 
@@ -87,7 +83,7 @@ struct ionotify_event_data {
     struct aws_io_handle *handle;
     aws_event_loop_on_event_fn *on_event;
     int events_subscribed;
-    /* Connection opened on the pulse channel. */
+    /* Connection opened on the pulse channel. Used to send pulses to the main event loop. */
     int pulse_connection_id;
     struct sigevent event;
     void *user_data;
@@ -97,21 +93,16 @@ struct ionotify_event_data {
     bool is_cross_thread;
 };
 
-/* default timeout is 100 seconds */
-uint64_t DEFAULT_TIMEOUT = 100ULL * 1000000000;
-int MAX_EVENTS = 100;
+/* Default timeout is 100 seconds. */
+static uint64_t DEFAULT_TIMEOUT = 100ULL * 1000000000;
 
-/**/
-short IO_EVENT_PULSE_SIGEV_CODE = SI_NOTIFY;
-short CROSS_THREAD_PULSE_SIGEV_CODE = SI_NOTIFY;
+/* TODO Use it. */
+static int MAX_EVENTS = 100;
 
-uint64_t s_ionotify_handles_hash(const void *key) {
-    return (int64_t) key;
-}
-
-bool s_ionotify_handles_hash_callback(const void *a, const void *b) {
-    return (int64_t)a == (int64_t)b;
-}
+/* SI_NOTIFY is a QNX special sigev code requesting resource managers to return active event type along with the event
+ * itself. */
+static short IO_EVENT_PULSE_SIGEV_CODE = SI_NOTIFY;
+static short CROSS_THREAD_PULSE_SIGEV_CODE = _PULSE_CODE_MINAVAIL;
 
 /* Setup edge triggered ionotify with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_default_with_options(
@@ -121,9 +112,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     AWS_PRECONDITION(options->clock);
 
     struct aws_event_loop *event_loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
-    if (!event_loop) {
-        return NULL;
-    }
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing edge-triggered ionotify", (void *)event_loop);
     if (aws_event_loop_init_base(event_loop, alloc, options->clock)) {
@@ -131,9 +119,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     }
 
     struct ionotify_loop *ionotify_loop = aws_mem_calloc(alloc, 1, sizeof(struct ionotify_loop));
-    if (!ionotify_loop) {
-        goto cleanup_base_loop;
-    }
 
     if (options->thread_options) {
         ionotify_loop->thread_options = *options->thread_options;
@@ -152,18 +137,23 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         goto clean_up_ionotify;
     }
 
-    /* Setup channel to receive resource manager and cross-thread pulses. */
-    ionotify_loop->pulse_channel_id = ChannelCreate(_NTO_CHF_INHERIT_RUNMASK);
-    if (ionotify_loop->pulse_channel_id < 0) {
-        printf("ChannelCreate failed: %d\n", ionotify_loop->pulse_channel_id);
-        goto clean_up_ionotify;
+    /* Setup channel to receive cross-thread pulses and pulses from resource managers. */
+    ionotify_loop->io_events_channel_id = ChannelCreate(0);
+    int errno_value = errno; /* Always cache errno before potential side-effect */
+    if (ionotify_loop->io_events_channel_id == -1) {
+        printf("ChannelCreate failed with errno %d (%s)\n", errno_value, strerror(errno_value));
+        goto clean_up_thread;
     }
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: Opened QNX channel with ID %d",
+        (void *)event_loop,
+        ionotify_loop->io_events_channel_id);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Opened channel with ID %d", (void *)event_loop, ionotify_loop->pulse_channel_id);
-
-    ionotify_loop->pulse_connection_id = ConnectAttach(0, 0, ionotify_loop->pulse_channel_id, _NTO_SIDE_CHANNEL, 0);
-    if (ionotify_loop->pulse_connection_id < 0) {
-        goto clean_up_ionotify;
+    /* Open connection over the QNX channel for pulses. */
+    ionotify_loop->pulse_connection_id = ConnectAttach(0, 0, ionotify_loop->io_events_channel_id, _NTO_SIDE_CHANNEL, 0);
+    if (ionotify_loop->pulse_connection_id == -1) {
+        goto clean_up_thread;
     }
 
     if (aws_task_scheduler_init(&ionotify_loop->scheduler, alloc)) {
@@ -175,7 +165,9 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     event_loop->impl_data = ionotify_loop;
     event_loop->vtable = &s_vtable;
 
-    aws_hash_table_init(&ionotify_loop->handles, alloc, 32, aws_hash_ptr, aws_ptr_eq, NULL, NULL);
+    if (aws_hash_table_init(&ionotify_loop->handles, alloc, 32, aws_hash_ptr, aws_ptr_eq, NULL, NULL)) {
+        goto clean_up_thread;
+    }
 
     return event_loop;
 
@@ -184,9 +176,6 @@ clean_up_thread:
 
 clean_up_ionotify:
     aws_mem_release(alloc, ionotify_loop);
-
-cleanup_base_loop:
-    aws_event_loop_clean_up_base(event_loop);
 
 clean_up_loop:
     aws_mem_release(alloc, event_loop);
@@ -244,7 +233,6 @@ static int s_run(struct aws_event_loop *event_loop) {
 }
 
 static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status status) {
-
     (void)task;
     struct aws_event_loop *event_loop = args;
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
@@ -252,9 +240,7 @@ static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status 
     /* now okay to reschedule stop tasks. */
     aws_atomic_store_ptr(&ionotify_loop->stop_task_ptr, NULL);
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        /*
-         * this allows the event loop to invoke the callback once the event loop has completed.
-         */
+        /* this allows the event loop to invoke the callback once the event loop has completed. */
         ionotify_loop->should_continue = false;
     }
 }
@@ -269,7 +255,7 @@ static int s_stop(struct aws_event_loop *event_loop) {
         /* the stop task is already scheduled. */
         return AWS_OP_SUCCESS;
     }
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
+    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread", (void *)event_loop);
     aws_task_init(&ionotify_loop->stop_task, s_stop_task, event_loop, "ionotify_event_loop_stop");
     s_schedule_task_now(event_loop, &ionotify_loop->stop_task);
 
@@ -283,7 +269,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return result;
 }
 
-static int s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
     /* if event loop and the caller are the same thread, just schedule and be done with it. */
@@ -300,7 +286,7 @@ static int s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_
         } else {
             aws_task_scheduler_schedule_future(&ionotify_loop->scheduler, task, run_at_nanos);
         }
-        return AWS_OP_SUCCESS;
+        return;
     }
 
     AWS_LOGF_TRACE(
@@ -316,20 +302,29 @@ static int s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_
 
     aws_linked_list_push_back(&ionotify_loop->task_pre_queue, &task->node);
 
-    /* if the list was not empty, we already have a pending read on the pipe/eventfd, no need to write again. */
+    /* if the list was not empty, we already sent a cross-thread pulse. No need to send it again. */
     if (is_first_task) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Waking up event-loop thread by sending pulse to connection ID %d", (void *)event_loop, ionotify_loop->pulse_connection_id);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Waking up event-loop thread by sending pulse to connection ID %d",
+            (void *)event_loop,
+            ionotify_loop->pulse_connection_id);
         int rc = MsgSendPulsePtr(ionotify_loop->pulse_connection_id, -1, CROSS_THREAD_PULSE_SIGEV_CODE, NULL);
         int errno_value = errno;
-        if (rc < 0) {
-            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to send cross-thread pulse: %d (%s)", (void *)event_loop, errno_value, strerror(errno_value));
-            aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
-            return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        if (rc == -1) {
+            /* The task was scheduled, but we couldn't notify the main loop about it. According to QNX docs, inability
+             * to send a pulse indicates that there is no available memory left for the process. Not notifying the loop
+             * is the minor thing is such a scenario. So, just log the error. */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: Failed to send cross-thread pulse: %d (%s)",
+                (void *)event_loop,
+                errno_value,
+                strerror(errno_value));
         }
     }
 
     aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
-    return AWS_OP_SUCCESS;
 }
 
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
@@ -341,7 +336,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Cancelling task %p", (void *)event_loop, (void *)task);
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, task);
 }
@@ -356,16 +351,13 @@ static void s_update_io_result(
     AWS_ASSERT(event_loop == ionotify_event_data->event_loop);
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: got feedback on I/O operation for fd %d: read: status %d (%s), %lu bytes; write: status %d (%s), %lu "
-        "bytes",
+        "id=%p: Got result for I/O operation for fd %d: read status %d (%s); write status %d (%s)",
         (void *)event_loop,
         handle->data.fd,
         io_op_result->read_error_code,
         aws_error_str(io_op_result->read_error_code),
-        io_op_result->read_bytes,
         io_op_result->write_error_code,
-        aws_error_str(io_op_result->write_error_code),
-        io_op_result->written_bytes);
+        aws_error_str(io_op_result->write_error_code));
     uint32_t event_mask = _NOTIFY_COND_OBAND;
     if (io_op_result->read_error_code == AWS_IO_READ_WOULD_BLOCK) {
         event_mask |= _NOTIFY_COND_INPUT;
@@ -374,20 +366,31 @@ static void s_update_io_result(
         event_mask |= _NOTIFY_COND_OUTPUT;
     }
 
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
-    int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
-    int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Rearming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
-    if (rc < 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
+    if (event_mask != 0) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
+        int rc = ionotify(
+            ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
+        int errno_value = errno;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Rearming ionotify returned %d (input %d; output %d)",
+            (void *)event_loop,
+            rc,
+            rc & _NOTIFY_COND_INPUT,
+            rc & _NOTIFY_COND_OUTPUT);
+        if (rc == -1) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: Failed to subscribe to events on fd %d: error %d (%s)",
+                (void *)event_loop,
+                ionotify_event_data->handle->data.fd,
+                errno_value,
+                strerror(errno_value));
+        }
     }
-
-    /* Here, the handle IO status should be updated. It'll be used in the event loop. */
 }
 
-/* TODO Verify that it can be called safely from other threads. */
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -397,7 +400,7 @@ static int s_subscribe_to_io_events(
 
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
     struct ionotify_event_data *ionotify_event_data =
         aws_mem_calloc(event_loop->alloc, 1, sizeof(struct ionotify_event_data));
     handle->additional_data = ionotify_event_data;
@@ -424,15 +427,19 @@ static int s_subscribe_to_io_events(
         event_mask |= _NOTIFY_COND_OUTPUT;
     }
 
-    /* I/O events from ionotify will be delivered as pulses with a user-defined pointer set to ionotify_event_data instance.
-     * SIGEV_PULSE_PRIO_INHERIT means the thread that receives the pulse will run at the initial priority of the process. */
-    /* TODO Consider using SI_NOTIFY. */
+    /* I/O events from ionotify will be delivered as pulses with a user-defined 28-bit ID.
+     * SIGEV_PULSE_PRIO_INHERIT means the thread that receives the pulse will run at the initial priority of the
+     * process. */
     short pulse_priority = SIGEV_PULSE_PRIO_INHERIT;
-    /* Additional code set in all pulses arriving from resource managers. Helps distinguish from pulses from other sources, like cross-treads. */
     short pulse_sigev_code = IO_EVENT_PULSE_SIGEV_CODE;
-    SIGEV_PULSE_INT_INIT(&ionotify_event_data->event, ionotify_event_data->pulse_connection_id, pulse_priority, pulse_sigev_code, ionotify_event_data->handle->data.fd);
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Use connection ID %d to receive pulses", (void *)event_loop, ionotify_event_data->pulse_connection_id);
+    SIGEV_PULSE_INT_INIT(
+        &ionotify_event_data->event,
+        ionotify_event_data->pulse_connection_id,
+        pulse_priority,
+        pulse_sigev_code,
+        ionotify_event_data->handle->data.fd);
     ionotify_event_data->event.sigev_code = SI_NOTIFY;
+    /* Set special bits in the event structure to allow resource managers set I/O event types. */
     SIGEV_MAKE_UPDATEABLE(&ionotify_event_data->event);
 
     /* The application must register the event by calling MsgRegisterEvent() with the fd processed in ionotify().
@@ -445,15 +452,21 @@ static int s_subscribe_to_io_events(
     MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
 
     /* Arm resource manager associated with a given file descriptor in edge-triggered mode. */
-    int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
+    int rc =
+        ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
     int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Arming ionotify returned %d (input %d; output %d; exten %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT, rc & _NOTIFY_COND_EXTEN);
     if (rc == -1) {
-        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to subscribe to events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Failed to subscribe to events on fd %d: error %d (%s)",
+            (void *)event_loop,
+            ionotify_event_data->handle->data.fd,
+            errno_value,
+            strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
-    /* Chech if file descriptor already has desired conditions. */
+    /* Check if file descriptor already has desired conditions. */
     int kick_start_event_mask = 0;
     if ((rc & _NOTIFY_COND_OBAND) == _NOTIFY_COND_OBAND) {
         kick_start_event_mask |= _NOTIFY_COND_OBAND;
@@ -470,15 +483,24 @@ static int s_subscribe_to_io_events(
 
     /* Send notification to kick-start processing fd. */
     if (kick_start_event_mask != 0) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Sending pulse for fd %d", (void *)event_loop, ionotify_event_data->handle->data.fd);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Sending pulse for fd %d because it has met I/O conditions",
+            (void *)event_loop,
+            ionotify_event_data->handle->data.fd);
         kick_start_event_mask |= ionotify_event_data->handle->data.fd;
-        int send_rc = MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_PULSE_SIGEV_CODE, kick_start_event_mask);
-        if (send_rc < 0) {
-            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to send pulse for fd %d", (void *)event_loop, ionotify_event_data->handle->data.fd);
+        int send_rc =
+            MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_PULSE_SIGEV_CODE, kick_start_event_mask);
+        if (send_rc == -1) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: Failed to send pulse for fd %d",
+                (void *)event_loop,
+                ionotify_event_data->handle->data.fd);
         }
     }
 
-    /* TODO Handle writing available. */
+    /* Map ionotify_event_data to ID returned in the I/O events. */
     struct aws_hash_element *elem = NULL;
     int was_created = 0;
     aws_hash_table_create(&ionotify_loop->handles, (void *)ionotify_event_data->handle->data.fd, &elem, &was_created);
@@ -522,9 +544,14 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     }
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
     int errno_value = errno;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Disarming ionotify returned %d (input %d; output %d)", (void *)event_loop, rc, rc & _NOTIFY_COND_INPUT, rc & _NOTIFY_COND_OUTPUT);
     if (rc < 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to unsubscribe from events on fd %d: error %d (%s)", (void *)event_loop, ionotify_event_data->handle->data.fd, errno_value, strerror(errno_value));
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Failed to unsubscribe from events on fd %d: error %d (%s)",
+            (void *)event_loop,
+            ionotify_event_data->handle->data.fd,
+            errno_value,
+            strerror(errno_value));
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
@@ -565,9 +592,6 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     aws_linked_list_swap_contents(&ionotify_loop->task_pre_queue, &task_pre_queue);
     aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
 
-
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Is cross-thread task list empty: %d", (void *)event_loop, aws_linked_list_empty(&task_pre_queue));
-
     while (!aws_linked_list_empty(&task_pre_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&task_pre_queue);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
@@ -594,27 +618,28 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
  * that it's doing nothing on purpose. It's waiting for events to happen...
  */
 AWS_NO_INLINE
-static rcvid_t aws_event_loop_listen_for_io_events(int pulse_channel_id, const uint64_t *timeout, struct _pulse *pulse, int *errno_value) {
+static rcvid_t aws_event_loop_listen_for_io_events(
+    int io_events_channel_id,
+    const uint64_t *timeout,
+    struct _pulse *pulse,
+    int *errno_value) {
     /* Event of type SIGEV_UNBLOCK makes the timed-out kernel call fail with an error of ETIMEDOUT. */
     struct sigevent notify;
     SIGEV_UNBLOCK_INIT(&notify);
     int rc = TimerTimeout(CLOCK_MONOTONIC, _NTO_TIMEOUT_RECEIVE, &notify, timeout, NULL);
-    if (rc < 0) {
+    if (rc == -1) {
         *errno_value = errno;
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "TimerTImeout failed");
         return rc;
     }
-    rcvid_t rcvid = MsgReceive(pulse_channel_id, pulse, sizeof(*pulse), NULL);
-    if (rcvid < 0) {
+    rcvid_t rcvid = MsgReceive(io_events_channel_id, pulse, sizeof(*pulse), NULL);
+    if (rcvid == -1) {
         *errno_value = errno;
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "MsgReceive failed");
     }
     return rcvid;
 }
 
 static void s_aws_ionotify_cleanup_aws_lc_thread_local_state(void *user_data) {
     (void)user_data;
-
     aws_cal_thread_clean_up();
 }
 
@@ -632,54 +657,87 @@ static void aws_event_loop_thread(void *args) {
 
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: default timeout %"PRIu64", and max events to process per tick %d",
+        "id=%p: default timeout %" PRIu64 ", and max events to process per tick %d",
         (void *)event_loop,
         timeout,
         MAX_EVENTS);
 
-    /*
-     * until stop is called,
-     * call MsgReceive, if a task is scheduled, or a file descriptor has activity, it will
-     * return.
-     *
-     * process all events,
-     *
-     * run all scheduled tasks.
-     *
-     * process queued subscription cleanups.
+    /* Until stop is called:
+     * - Call MsgReceive. If a task is scheduled, or a file descriptor has activity, it will return.
+     * - Process all I/O events.
+     * - Run all scheduled tasks.
+     * - Process queued subscription cleanups.
      */
     while (ionotify_loop->should_continue) {
-
         bool should_process_cross_thread_tasks = false;
 
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: waiting for a maximum of %"PRIu64" ms", (void *)event_loop, timeout);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Waiting for a maximum of %" PRIu64 " ns", (void *)event_loop, timeout);
         struct _pulse pulse;
         int errno_value;
-        rcvid_t rcvid = aws_event_loop_listen_for_io_events(ionotify_loop->pulse_channel_id, &timeout, &pulse, &errno_value);
+        rcvid_t rcvid =
+            aws_event_loop_listen_for_io_events(ionotify_loop->io_events_channel_id, &timeout, &pulse, &errno_value);
         aws_event_loop_register_tick_start(event_loop);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with rcvid %ld\n", (void *)event_loop, rcvid);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Wake up with rcvid %ld\n", (void *)event_loop, rcvid);
         struct ionotify_event_data *ionotify_event_data = NULL;
         if (rcvid == 0) {
-            int fd = pulse.value.sival_int & _NOTIFY_DATA_MASK;
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for fd %d\n", (void *)event_loop, fd);
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_EVENT_LOOP,
-                    "id=%p: Got pulse with sival_int ("BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN")",
-                    (void *)event_loop,
-                    BYTE_TO_BINARY(*(((char*)(&pulse.value.sival_int)) + 3)),
-                    BYTE_TO_BINARY(*(((char*)(&pulse.value.sival_int)) + 2)),
-                    BYTE_TO_BINARY(*(((char*)(&pulse.value.sival_int)) + 1)),
-                    BYTE_TO_BINARY(*(((char*)(&pulse.value.sival_int)) + 0))
-                    );
-            if (fd != 0) {
-                struct aws_hash_element *elem = NULL;
-                aws_hash_table_find(&ionotify_loop->handles, (void *)fd, &elem);
-                if (elem == NULL ) {
-                    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: No data found for fd %d", (void *)event_loop, fd);
+            if (pulse.code == CROSS_THREAD_PULSE_SIGEV_CODE) {
+                AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got cross-thread pulse", (void *)event_loop);
+                should_process_cross_thread_tasks = true;
+            } else if (pulse.code == IO_EVENT_PULSE_SIGEV_CODE) {
+                int fd = pulse.value.sival_int & _NOTIFY_DATA_MASK;
+                AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for fd %d\n", (void *)event_loop, fd);
+                if (fd != 0) {
+                    struct aws_hash_element *elem = NULL;
+                    aws_hash_table_find(&ionotify_loop->handles, (void *)fd, &elem);
+                    if (elem == NULL) {
+                        AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: No data found for fd %d", (void *)event_loop, fd);
+                    } else {
+                        ionotify_event_data = elem->value;
+                    }
+
+                    if (ionotify_event_data->is_subscribed) {
+                        int event_mask = 0;
+                        if (pulse.value.sival_int & _NOTIFY_COND_OBAND) {
+                            AWS_LOGF_TRACE(
+                                AWS_LS_IO_EVENT_LOOP,
+                                "id=%p: File descriptor got out-of-band data or is errored",
+                                (void *)event_loop);
+                            event_mask |= AWS_IO_EVENT_TYPE_ERROR;
+                        }
+                        if (pulse.value.sival_int & _NOTIFY_COND_INPUT) {
+                            AWS_LOGF_TRACE(
+                                AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is readable", (void *)event_loop);
+                            event_mask |= AWS_IO_EVENT_TYPE_READABLE;
+                        }
+                        if (pulse.value.sival_int & _NOTIFY_COND_OUTPUT) {
+                            AWS_LOGF_TRACE(
+                                AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is writable", (void *)event_loop);
+                            event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
+                        }
+                        if (pulse.value.sival_int & _NOTIFY_COND_EXTEN) {
+                            AWS_LOGF_TRACE(
+                                AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is doing something", (void *)event_loop);
+                            event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
+                        }
+
+                        ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
+
+                        __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
+                        ionotify_event_data->on_event(
+                            event_loop, ionotify_event_data->handle, event_mask, ionotify_event_data->user_data);
+                        __itt_task_end(io_tracing_domain);
+                    }
                 } else {
-                    ionotify_event_data = elem->value;
+                    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for ");
                 }
+            } else {
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_EVENT_LOOP,
+                    "id=%p: MsgReceived got pulse with unknown code %d, ignoring it",
+                    (void *)event_loop,
+                    pulse.code);
             }
         } else if (rcvid > 0) {
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Received message, ignoring\n", (void *)event_loop);
@@ -688,122 +746,14 @@ static void aws_event_loop_thread(void *args) {
             if (errno_value == ETIMEDOUT) {
                 AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Woke up by timeout\n", (void *)event_loop);
             } else {
-                AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Listening for I/O events failed with error %d (%s)", (void *)event_loop, errno_value, strerror(errno_value));
-            }
-        }
-
-        if (ionotify_event_data == NULL) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got cross-thread pulse", (void *)event_loop);
-            should_process_cross_thread_tasks = true;
-        } else {
-            if (ionotify_event_data->is_subscribed) {
-                AWS_LOGF_TRACE(
+                AWS_LOGF_ERROR(
                     AWS_LS_IO_EVENT_LOOP,
-                    "id=%p: Activity on fd %d, invoking handler ("BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN") %d %d",
+                    "id=%p: Listening for I/O events failed with error %d (%s)",
                     (void *)event_loop,
-                    ionotify_event_data->handle->data.fd,
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 3)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 2)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 1)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 0)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 3)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 2)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 1)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 0)),
-                    (ionotify_event_data->event.sigev_value.sival_int & 1),
-                    _NOTIFY_DATA_MASK
-                    );
-                /* TODO Determine events. */
-                int event_mask = 0;
-                if (pulse.value.sival_int & _NOTIFY_COND_OBAND) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor got out-of-band data or is errored", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_ERROR;
-                }
-                if (pulse.value.sival_int & _NOTIFY_COND_INPUT) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is readable", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_READABLE;
-                }
-                if (pulse.value.sival_int & _NOTIFY_COND_OUTPUT) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is writable", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
-                }
-                if (pulse.value.sival_int & _NOTIFY_COND_EXTEN) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is doing something", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
-                }
-
-                ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
-
-                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
-                ionotify_event_data->on_event(event_loop, ionotify_event_data->handle, event_mask, ionotify_event_data->user_data);
-                __itt_task_end(io_tracing_domain);
-
-                /* TODO Check on_event I/O result. */
-                if (1) {
-                }
+                    errno_value,
+                    strerror(errno_value));
             }
         }
-
-#if 0
-        if (pulse.code == CROSS_THREAD_PULSE_SIGEV_CODE) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got cross-thread pulse", (void *)event_loop);
-            should_process_cross_thread_tasks = true;
-        } else if (pulse.code == IO_EVENT_PULSE_SIGEV_CODE) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got I/O event pulse", (void *)event_loop);
-            if (ionotify_event_data == NULL) {
-                AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got empty ionotify_event_data, ignoring it", (void *)event_loop);
-            } else if (ionotify_event_data->is_subscribed) {
-                int kokoko = _NOTIFY_DATA_MASK;
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_EVENT_LOOP,
-                    "id=%p: Activity on fd %d, invoking handler ("BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN" "BYTE_TO_BINARY_PATTERN") %d %d",
-                    (void *)event_loop,
-                    ionotify_event_data->handle->data.fd,
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 3)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 2)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 1)),
-                    //BYTE_TO_BINARY(*(((char*)(&kokoko)) + 0)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 3)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 2)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 1)),
-                    BYTE_TO_BINARY(*(((char*)(&ionotify_event_data->event.sigev_value.sival_int)) + 0)),
-                    (ionotify_event_data->event.sigev_value.sival_int & 1),
-                    _NOTIFY_DATA_MASK
-                    );
-                /* TODO Determine events. */
-                int event_mask = 0;
-                if (ionotify_event_data->event.sigev_value.sival_int & _NOTIFY_COND_OBAND) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor got out-of-band data or is errored", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_ERROR;
-                }
-                if (ionotify_event_data->event.sigev_value.sival_int & _NOTIFY_COND_INPUT) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is readable", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_READABLE;
-                }
-                if (ionotify_event_data->event.sigev_value.sival_int & _NOTIFY_COND_OUTPUT) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is writable", (void *)event_loop);
-                    event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
-                }
-                if (ionotify_event_data->event.sigev_value.sival_int & _NOTIFY_COND_EXTEN) {
-                    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: File descriptor is doing something", (void *)event_loop);
-                }
-
-                //ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
-
-                __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_event);
-                ionotify_event_data->on_event(event_loop, ionotify_event_data->handle, event_mask, ionotify_event_data->user_data);
-                __itt_task_end(io_tracing_domain);
-
-                /* TODO Check on_event I/O result. */
-                if (1) {
-                }
-            } else {
-                AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got pulse for unsubscribed fd, ignoring it", (void *)event_loop);
-            }
-        } else {
-            AWS_LOGF_WARN(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got pulse with unknown code %d, ignoring it", (void *)event_loop, pulse.code);
-        }
-#endif
 
         __itt_task_end(io_tracing_domain);
 
@@ -846,7 +796,7 @@ static void aws_event_loop_thread(void *args) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p: detected more scheduled tasks with the next occurring at "
-                "%llu, using timeout of %"PRIu64,
+                "%llu, using timeout of %" PRIu64,
                 (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 timeout);
