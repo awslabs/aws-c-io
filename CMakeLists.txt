@@ -243,6 +243,8 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
         COMPONENT Development)
 
+if (NOT CMAKE_CROSSCOMPILING OR AWS_BUILD_QNX_TESTS)
     if (BUILD_TESTING)
        add_subdirectory(tests)
     endif()
+endif()
