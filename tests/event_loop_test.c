@@ -313,6 +313,7 @@ AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
 #else /* !AWS_USE_IO_COMPLETION_PORTS */
 
+#    include <errno.h>
 #    include <unistd.h>
 
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
@@ -633,8 +634,6 @@ static void s_thread_tester_update(struct thread_tester *tester) {
     while (true) {
         current_fn = tester->state_functions[tester->current_state];
 
-        AWS_LOGF_DEBUG(2, "============= Calling fn %ld", tester->current_state);
-
         if (!current_fn) {
             /* We've reached the final state, success */
             aws_mutex_lock(&tester->mutex);
@@ -752,7 +751,6 @@ static void s_io_event_counter(
 
     for (int flag = 1; flag <= AWS_IO_EVENT_TYPE_ERROR; flag <<= 1) {
         if (events & flag) {
-            AWS_LOGF_DEBUG(2, "==== increment for flag %d", flag);
             event_counts[flag] += 1;
         }
     }
@@ -780,18 +778,15 @@ static int s_state_unsubscribe(struct thread_tester *tester) {
 
 /* Remain in state until readable event fires, then reset readable event count and proceed to next state */
 static int s_state_on_readable(struct thread_tester *tester) {
-    AWS_LOGF_DEBUG(2, "============ s_state_on_readable");
     PRINT_STATE();
 
     if (tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE] == 0) {
-        AWS_LOGF_DEBUG(2, "============ s_state_on_readable: remain in state");
         return REMAIN_IN_STATE;
     }
 
     ASSERT_UINT_EQUALS(1, tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE]);
 
     tester->read_handle_event_counts[AWS_IO_EVENT_TYPE_READABLE] = 0;
-    AWS_LOGF_DEBUG(2, "============ s_state_on_readable: done");
     return AWS_OP_SUCCESS;
 }
 
@@ -842,14 +837,12 @@ static int s_state_read_until_blocked(struct thread_tester *tester) {
     while (simple_pipe_read(&tester->read_handle, buffer, sizeof(buffer)) > 0) {
     }
     if (errno == EAGAIN) {
-        AWS_LOGF_DEBUG(2, "=================================================== EAGAIN");
         if (tester->read_handle.update_io_result != NULL) {
             struct aws_io_handle_io_op_result io_op_result;
             AWS_ZERO_STRUCT(io_op_result);
             io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
             tester->read_handle.update_io_result(tester->event_loop, &tester->read_handle, &io_op_result);
         } else {
-            AWS_LOGF_DEBUG(2, "=================================================== NOOOOOOOOOO");
         }
     }
 
