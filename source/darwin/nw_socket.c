@@ -6,6 +6,8 @@
 #include <aws/io/private/socket.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/io/logging.h>
 
@@ -743,20 +745,86 @@ static int s_socket_stop_accept_fn(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 }
 
+struct nw_socket_close_args {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    struct aws_socket *socket;
+    bool invoked;
+    int ret_code;
+};
+
+static void s_close_task(struct aws_task *task, void *arg, enum aws_task_status status)
+{
+    (void)task;
+    (void)status;
+    struct nw_socket_close_args* args = arg;
+    aws_mutex_lock(&args->mutex);
+    struct nw_socket* nw_socket = args->socket->impl;
+
+    /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
+    if (nw_socket->is_listener) {
+        s_socket_stop_accept_fn(args->socket);
+    } else {
+        /* Setting to NULL removes previously set handler from nw_connection_t */
+        nw_connection_set_state_changed_handler(args->socket->io_handle.data.handle, NULL);
+        nw_connection_cancel(args->socket->io_handle.data.handle);
+    }
+    args->ret_code = AWS_OP_SUCCESS;
+
+    if (aws_socket_close(args->socket)) {
+        args->ret_code = aws_last_error();
+    }
+
+    args->invoked = true;
+    aws_condition_variable_notify_one(&args->condition_variable);
+    aws_mutex_unlock(&args->mutex);
+}
+
+static bool s_close_predicate(void *arg) {
+    struct nw_socket_close_args *close_args = arg;
+    return close_args->invoked;
+}
+
 static int s_socket_close_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket, socket->io_handle.data.handle);
 
-    /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
-    if (nw_socket->is_listener) {
-        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
-        nw_listener_cancel(socket->io_handle.data.handle);
-        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
-
-    } else {
-        /* Setting to NULL removes previously set handler from nw_connection_t */
-        nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
-        nw_connection_cancel(socket->io_handle.data.handle);
+    if (socket->event_loop)
+    {
+        
+        struct nw_socket_close_args args = {
+            .mutex = AWS_MUTEX_INIT,
+            .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+            .socket = socket,
+            .ret_code = AWS_OP_SUCCESS,
+            .invoked = false,
+        };
+        
+        struct aws_task close_task = {
+            .fn = s_close_task,
+            .arg = &args,
+            .type_tag = "SocketCloseTask"
+        };
+        
+        aws_mutex_lock(&args.mutex);
+        aws_event_loop_schedule_task_now(socket->event_loop, &close_task);
+        aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
+        aws_mutex_unlock(&args.mutex);
+        AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p: close task completed.", (void *)socket);
+        if (args.ret_code) {
+            return aws_raise_error(args.ret_code);
+        }
+    }
+    else
+    {
+        /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
+        if (nw_socket->is_listener) {
+            s_socket_stop_accept_fn(socket);
+        } else {
+            /* Setting to NULL removes previously set handler from nw_connection_t */
+            nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
+            nw_connection_cancel(socket->io_handle.data.handle);
+        }
     }
 
     return AWS_OP_SUCCESS;
@@ -869,8 +937,13 @@ static void s_schedule_next_read(struct aws_socket *socket) {
           }
           // DEBUG WIP these may or may not be necessary. release on error seems okay but
           // release on context or data here appears to double release.
-          // nw_release(context);
           nw_release(error);
+
+            if(is_complete)
+            {
+                nw_connection_cancel(socket->io_handle.data.handle);
+            }
+
         });
 }
 
