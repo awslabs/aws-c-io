@@ -397,337 +397,230 @@ void aws_release_certificates(CFArrayRef certs) {
 
 int aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
-    CFDataRef cert_data,
+    SecCertificateRef cert_ref,
     CFDataRef serial_data,
-    CFStringRef label,
-    SecCertificateRef *out_certificate) {
+    CFStringRef label) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
 
-    CFDictionaryRef attributes = NULL;
-    CFDictionaryRef update_query = NULL;
-    CFDictionaryRef update_attributes = NULL;
-    CFDictionaryRef copy_query = NULL;
+    CFDictionaryRef add_attributes = NULL;
+    CFDictionaryRef delete_query = NULL;
 
-    // We first attempt to add the certificate with all set attributes to the keychain.
-    const void *add_keys[] = {
-        kSecClass,
-        kSecAttrLabel,
-        kSecAttrSerialNumber,
-        kSecValueData,
-        kSecReturnRef };
-    const void *add_values[] = {
-        kSecClassCertificate,
-        label,
-        serial_data,
-        cert_data,
-        kCFBooleanTrue };
-    attributes = CFDictionaryCreate(
+    add_attributes = CFDictionaryCreateMutable(
         cf_alloc,
-        add_keys,
-        add_values,
-        5,
-        &kCFTypeDictionaryKeyCallBacks,
+        0, &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks);
-    if (attributes == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating CFDictionary of certificate attributes.");
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-    status = SecItemAdd(attributes, (CFTypeRef *)out_certificate);
+    CFDictionaryAddValue(add_attributes, kSecClass, kSecClassCertificate);
+    CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
+    CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
+    CFDictionaryAddValue(add_attributes, kSecValueRef, cert_ref);
+    status = SecItemAdd(add_attributes, NULL);
 
-    // We only handle a duplicate item error. All other errors fail the operation.
+    // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
         result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
-    // A duplicate item error suggests there is already a certificate that matches some or all of the
-    // attributes used when attempting to add the certificate to the keychain.
+    /* A duplicate item error indicates the certificate already exists in the keychain. We delete the
+     * existing certificate and re-add the certificate in case there are differences that need to be applied.
+     *
+     * query should be made up of primary keys only. Optional/non-unique attributes in the query
+     * can result in not finding the matching certificate and cause the update operation to fail.
+     *
+     * Certificate item primary keys we use for the query:
+     * kSecAttrSerialNumber: (CFStringRef) value indicates the item's serial number
+     *      - We explicity set this value, extracted from the certificate itself as our primary method of determining uniqueness
+     *        of the certificate.
+     *
+     * Certificate primary keys we do not use for the query:
+     * These can be added in the future if we require a more specified search query.
+     * kSecAttrCertificateType: (CFNumberRef) value indicates the item's certificate type
+     *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
+     *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value to be used.
+     *        If we decide to support other types of certificates, we should set and use this value explicitly.
+     * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
+     *      - default will try to extract issuer from the certificate itself.
+     *        We will not set this attribute and allow default value to be used.
+     */
     if (status == errSecDuplicateItem) {
         AWS_LOGF_INFO(
             AWS_LS_IO_PKI,
-            "static: keychain contains existing certificate that was previously imported into the Keychain.  "
-            "Updating certificate in keychain.");
+            "static: Keychain contains existing certificate that was previously imported into the Keychain.  "
+            "Deleting existing certificate in keychain.");
 
-        /*
-         * query should be made up of primary keys only. Optional/non-unique attributes in the query
-         * can result in not finding the matching certificate and cause the update operation to fail.
-         *
-         * Certificate item primary keys we use for the query:
-         * kSecAttrSerialNumber: (CFStringRef) value indicates the item's serial number
-         *      - We explicity set this value, extracted from the certificate itself as our primary method of determining uniqueness
-         *        of the certificate.
-         *
-         * Certificate primary keys we do not use for the query:
-         * These can be added in the future if we require a more specified search query.
-         * kSecAttrCertificateType: (CFNumberRef) value indicates the item's certificate type
-         *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
-         *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value to be used.
-         *        If we decide to support other types of certificates, we should set and use this value explicitly.
-         * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
-         *      - default will try to extract issuer from the certificate itself.
-         *        We will not set this attribute and allow default value to be used.
-         */
-        const void *update_query_keys[] = {
-            kSecClass,
-            kSecAttrSerialNumber };
-        const void *update_query_values[] = {
-            kSecClassCertificate,
-            serial_data };
-        update_query = CFDictionaryCreate(
+        delete_query = CFDictionaryCreateMutable(
             cf_alloc,
-            update_query_keys,
-            update_query_values,
-            2,
-            &kCFTypeDictionaryKeyCallBacks,
+            0, &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
+        CFDictionaryAddValue(delete_query, kSecClass, kSecClassCertificate);
+        CFDictionaryAddValue(delete_query, kSecAttrSerialNumber, serial_data);
 
-        // update_attributes should only contain non-unique attributes. All of these attributes will be
-        // updated to the latest provided or default settings along with the certificate data itself.
-        const void *update_keys[] = {
-            kSecValueData,
-            kSecAttrLabel };
-        const void *update_values[] = {
-            cert_data,
-            label };
-        update_attributes = CFDictionaryCreate(
-            cf_alloc,
-            update_keys,
-            update_values,
-            2,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
-
-        if (update_attributes == NULL || update_query == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed during update dictionary creation of certificate.");
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
-
-        // Update the existing certificate item
-        status = SecItemUpdate(update_query, update_attributes);
+        // delete the existing certificate from keychain
+        status = SecItemDelete(delete_query);
         if (status != errSecSuccess) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemUpdate certificate failed with OSStatus %d", (int)status);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemDelete certificate failed with OSStatus %d", (int)status);
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
 
-        // We now set out_certificate to the newly updated certificate in the keychain. The search query for
-        // the item will be the same we used during the update which only contains unique identifiers for the
-        // certificate.
-        const void *copy_query_keys[] = {
-            kSecClass,
-            kSecAttrSerialNumber,
-            kSecReturnRef };
-        const void *copy_query_values[] = {
-            kSecClassCertificate,
-            serial_data,
-            kCFBooleanTrue };
-        copy_query = CFDictionaryCreate(
-            cf_alloc,
-            copy_query_keys,
-            copy_query_values,
-            3,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
-        if (copy_query == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed during copy dictionary creation of certificate.");
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
-        status = SecItemCopyMatching(copy_query, (CFTypeRef *)out_certificate);
-        if (status != errSecSuccess){
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching certificate failed with OSStatus %d", (int)status);
+        // now try adding it again
+        status = SecItemAdd(add_attributes, NULL);
+        if (status != errSecSuccess) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_IO_PKI,
+        "static: Successfully imported certificate into SecItem keychain.");
+
     result = AWS_OP_SUCCESS;
 
 done:
     // cleanup
-    if (attributes) CFRelease(attributes);
-    if (update_query) CFRelease(update_query);
-    if (update_attributes) CFRelease(update_attributes);
-    if (copy_query) CFRelease(copy_query);
+    if (add_attributes) CFRelease(add_attributes);
+    if (delete_query) CFRelease(delete_query);
 
     return result;
 }
 
 int aws_secitem_add_private_key_to_keychain(
     CFAllocatorRef cf_alloc,
-    CFDataRef key_data,
-    CFStringRef key_type,
+    SecKeyRef key_ref,
     CFStringRef label,
-    CFStringRef application_label,
-    SecKeyRef *out_private_key) {
+    CFDataRef application_label) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
 
-    CFDictionaryRef attributes = NULL;
-    CFDictionaryRef update_query = NULL;
-    CFDictionaryRef update_attributes = NULL;
-    CFDictionaryRef copy_query = NULL;
+    CFDictionaryRef add_attributes = NULL;
+    CFDictionaryRef delete_query = NULL;
 
-    // We first attempt to add the private key with all set attributes to the keychain.
-    const void *add_keys[] = {
-        kSecClass,
-        kSecAttrKeyClass,
-        kSecAttrKeyType,
-        kSecAttrApplicationLabel,
-        kSecAttrLabel,
-        kSecValueData,
-        kSecReturnRef };
-    const void *add_values[] = {
-        kSecClassKey,
-        kSecAttrKeyClassPrivate,
-        key_type,
-        application_label,
-        label,
-        key_data,
-        kCFBooleanTrue };
-    attributes = CFDictionaryCreate(
+    add_attributes = CFDictionaryCreateMutable(
         cf_alloc,
-        add_keys,
-        add_values,
-        7,
-        &kCFTypeDictionaryKeyCallBacks,
+        0, &kCFTypeDictionaryKeyCallBacks,
         &kCFTypeDictionaryValueCallBacks);
-    if (attributes == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating CFDictionary of private key attributes.");
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-    status = SecItemAdd(attributes, (CFTypeRef *)out_private_key);
+    CFDictionaryAddValue(add_attributes, kSecClass, kSecClassKey);
+    CFDictionaryAddValue(add_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
+    CFDictionaryAddValue(add_attributes, kSecAttrApplicationLabel, application_label);
+    CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
+    CFDictionaryAddValue(add_attributes, kSecValueRef, key_ref);
+    status = SecItemAdd(add_attributes, NULL);
 
-    // We only handle a duplicate item error. All other errors fail the operation.
+    // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
         result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
-    // A duplicate item error suggests there is already a private key that matches some or all of the
-    // attributes used when attempting to add the private key to the keychain.
+    /* A duplicate item error indicates the private key already exists in the keychain. We delete the
+     * existing private key and re-add the private-key in case there are differences that need to be applied.
+     *
+     * query should be made up of primary keys only. Optional/non-unique attributes in the query
+     * can result in not finding the matching private key and cause the update operation to fail.
+     *
+     * Private Key item primary keys we use for the query:
+     * kSecAttrKeyClass: (CFTypeRef) value indicates item's cryptographic key class
+     *      - We explicitly set this value to kSecAttrKeyClassPrivate
+     * kSecAttrApplicationLabel: (CFStringRef) value indicates item's application label.
+     *      - We pull this value out of the SecKeyRef. It's the hash of the public key stored within.
+     *
+     * Private Key primary keys we do not use for the query:
+     * These can be added in the future if we require a more specified search query.
+     * kSecAttrApplicationTag: (CFDataRef) value indicates the item's private tag.
+     * kSecAttrKeySizeInBits: (CFNumberRef) value indicates the number of bits in a cryptographic key.
+     * kSecAttrEffectiveKeySize: (CFNumberRef) value indicates the effective number of bits in a crytographic key.
+     */
+
     if (status == errSecDuplicateItem) {
         AWS_LOGF_INFO(
             AWS_LS_IO_PKI,
-            "static: keychain contains existing private key that was previously imported into the Keychain.  "
-            "Updating private key in keychain.");
+            "static: Keychain contains existing private key that was previously imported into the Keychain.  "
+            "Deleting private key in keychain.");
 
-        /*
-         * query should be made up of primary keys only. Optional/non-unique attributes in the query
-         * can result in not finding the matching private key and cause the update operation to fail.
-         *
-         * Private Key item primary keys we use for the query:
-         * kSecAttrKeyType: (CFNumberRef) value indicates the item's algorithm.
-         *      - supported algorithms: kSecAttrKeyTypeRSA, kSecAttrKeyTypeEC
-         * kSecAttrKeyClass: (CFTypeRef) value indicates item's cryptographic key class
-         *      - We explicitly set this value to kSecAttrKeyClassPrivate
-         * kSecAttrApplicationLabel: (CFStringRef) value indicates item's application label.
-         *      - We currently set this to a default value but can expose it to be user defined in the future.
-         *
-         * Private Key primary keys we do not use for the query:
-         * These can be added in the future if we require a more specified search query.
-         * kSecAttrApplicationTag: (CFDataRef) value indicates the item's private tag.
-         * kSecAttrKeySizeInBits: (CFNumberRef) value indicates the number of bits in a cryptographic key.
-         * kSecAttrEffectiveKeySize: (CFNumberRef) value indicates the effective number of bits in a crytographic key.
-         */
-        const void *update_query_keys[] = {
-            kSecClass,
-            kSecAttrKeyClass,
-            kSecAttrKeyType,
-            kSecAttrApplicationLabel };
-        const void *update_query_values[] = {
-            kSecClassKey,
-            kSecAttrKeyClassPrivate,
-            key_type,
-            application_label };
-        update_query = CFDictionaryCreate(
+        delete_query = CFDictionaryCreateMutable(
             cf_alloc,
-            update_query_keys,
-            update_query_values,
-            4,
-            &kCFTypeDictionaryKeyCallBacks,
+            0, &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks);
+        CFDictionaryAddValue(delete_query, kSecClass, kSecClassKey);
+        CFDictionaryAddValue(delete_query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
+        CFDictionaryAddValue(delete_query, kSecAttrApplicationLabel, application_label);
 
-        // update_attributes should only contain non-unique attributes. All of these attributes will be
-        // updated to the latest provided or default settings along with the private key data itself.
-        const void *update_keys[] = {
-            kSecValueData,
-            kSecAttrLabel };
-        const void *update_values[] = {
-            key_data,
-            label };
-        update_attributes = CFDictionaryCreate(
-            cf_alloc,
-            update_keys,
-            update_values,
-            2,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
-
-        if (update_attributes == NULL || update_query == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed during update dictionary creation of private key.");
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
-
-        // Update the existing private key item
-        status = SecItemUpdate(update_query, update_attributes);
+        // delete the existing private key from keychain
+        status = SecItemDelete(delete_query);
         if (status != errSecSuccess) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemUpdate certificate failed with OSStatus %d", (int)status);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemDelete private key failed with OSStatus %d", (int)status);
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
 
-        // We now set out_private_key to the newly updated certificate in the keychain. The search query for
-        // the item will be the same we used during the update which only contains unique identifiers for the
-        // private key.
-        const void *copy_query_keys[] = {
-            kSecClass,
-            kSecAttrKeyClass,
-            kSecAttrKeyType,
-            kSecAttrApplicationLabel,
-            kSecReturnRef };
-        const void *copy_query_values[] = {
-            kSecClassKey,
-            kSecAttrKeyClassPrivate,
-            key_type,
-            application_label,
-            kCFBooleanTrue };
-        copy_query = CFDictionaryCreate(
-            cf_alloc,
-            copy_query_keys,
-            copy_query_values,
-            4,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
-        if (copy_query == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed during copy dictionary creation of certificate.");
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
-        status = SecItemCopyMatching(copy_query, (CFTypeRef *)out_private_key);
-        if (status != errSecSuccess){
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching private key failed with OSStatus %d", (int)status);
+        // now try adding it again
+        status = SecItemAdd(add_attributes, NULL);
+        if (status != errSecSuccess) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_IO_PKI,
+        "static: Successfully imported private key into SecItem keychain.");
+
     result = AWS_OP_SUCCESS;
 done:
     // cleanup
-    if (attributes) CFRelease(attributes);
-    if (update_query) CFRelease(update_query);
-    if (update_attributes) CFRelease(update_attributes);
-    if (copy_query) CFRelease(copy_query);
+    if (add_attributes) CFRelease(add_attributes);
+    if (delete_query) CFRelease(delete_query);
+
+    return result;
+}
+
+int aws_secitem_get_identity(
+    CFAllocatorRef cf_alloc,
+    CFDataRef serial_data,
+    SecIdentityRef *out_identity) {
+    int result = AWS_OP_ERR;
+    OSStatus status;
+    CFDictionaryRef search_query = NULL;
+
+    /*
+     * SecItem identity is created when a certificate matches a private key in the keychain.
+     * Since a private key may be associated with multiple certificates, searching for the
+     * identity using a unique attribute of the certificate is required. This is why we use
+     * the serial_data from the certificate as the search parameter.
+     */
+    search_query = CFDictionaryCreateMutable(
+        cf_alloc,
+        0, &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks);
+    CFDictionaryAddValue(search_query, kSecClass, kSecClassIdentity);
+    CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
+    CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
+
+    status = SecItemCopyMatching(search_query, (CFTypeRef *)out_identity);
+
+    if (status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching identity failed with OSStatus %d", (int)status);
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+    }
+
+    AWS_LOGF_INFO(
+        AWS_LS_IO_PKI,
+        "static: Successfully retrieved identity from keychain.");
+
+    result = AWS_OP_SUCCESS;
+
+done:
+    // cleanup
+    if (search_query) CFRelease(search_query);
 
     return result;
 }
@@ -737,8 +630,7 @@ int aws_secitem_import_cert_and_key(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    SecCertificateRef *secitem_certificate,
-    SecKeyRef *secitem_private_key,
+    SecIdentityRef *secitem_identity,
     const struct aws_secitem_options *secitem_options) {
 
     // We currently only support Apple's network framework and SecItem keychain API on iOS.
@@ -753,25 +645,32 @@ int aws_secitem_import_cert_and_key(
     int result = AWS_OP_ERR;
 
     CFErrorRef error = NULL;
+
     CFDataRef cert_data = NULL;
     SecCertificateRef cert_ref = NULL;
     CFDataRef cert_serial_data = NULL;
-
-    CFDataRef key_data = NULL;
-    CFStringRef key_type = NULL;
     CFStringRef cert_label_ref = NULL;
+
+    CFDictionaryRef key_attributes = NULL;
+    CFDictionaryRef key_copied_attributes;
+    CFDataRef key_data = NULL;
+    SecKeyRef key_ref = NULL;
+    CFStringRef key_type = NULL;
     CFStringRef key_label_ref = NULL;
-    CFStringRef application_label_ref = NULL;
+    CFDataRef application_label_ref = NULL;
+    // We do not currently support rootca for iOS.
+    CFDataRef root_cert_data = NULL;
+
     struct aws_array_list decoded_cert_buffer_list;
     AWS_ZERO_STRUCT(decoded_cert_buffer_list);
     struct aws_array_list decoded_key_buffer_list;
     AWS_ZERO_STRUCT(decoded_key_buffer_list);
 
-    // STEVE DEBUG not implemented yet
-    CFDataRef root_cert_data = NULL;
-
-    // iOS SecItem requires DER encoded files so we first convert the provided PEM encoded cert and key
-    // into a list of aws_pem_object that strips headers/footers and Base64 decodes the data into a byte buf.
+    /*
+     * iOS SecItem requires DER encoded files so we first convert the provided PEM encoded
+     * cert and key into a list of aws_pem_object that strips headers/footers and Base64 decodes
+     * the data into a byte buf.
+     */
     if (aws_pem_objects_init_from_file_contents(&decoded_cert_buffer_list, alloc, *public_cert_chain)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM certificate to DER format.");
         goto done;
@@ -784,16 +683,21 @@ int aws_secitem_import_cert_and_key(
     }
     AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
-    // A PEM certificate file could contains multiple PEM data sections. We currently decode and use the first
-    // certificate data only. Certificate chaining support could be added for iOS in the future.
+    /*
+     * A PEM certificate file could contains multiple PEM data sections. We currently decode and
+     * use the first certificate data only. Certificate chaining support could be added for iOS
+     * in the future.
+     * */
     if (aws_array_list_length(&decoded_cert_buffer_list) > 1) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Certificate chains not currently supported on iOS.");
         result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
     }
 
-    // The aws_pem_object preserves the type of encoding found in the PEM file. We can use the type_string
-    // member to set the appropriate attribute on storage.
+    /*
+     * The aws_pem_object preserves the type of encoding found in the PEM file. We can use the
+     * type_string member to set the appropriate attribute on storage.
+     */
     struct aws_pem_object *pem_cert_ptr = NULL;
     aws_array_list_get_at_ptr(&decoded_cert_buffer_list, (void **)&pem_cert_ptr, 0);
     AWS_ASSERT(pem_cert_ptr);
@@ -802,7 +706,7 @@ int aws_secitem_import_cert_and_key(
     aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_key_ptr, 0);
     AWS_ASSERT(pem_key_ptr);
 
-    // CFDataRef is the expected format from SecItem API for storing or updating items on the keychain
+    /* CFDataRef is used to generate the value to pair with kSecValueRef in the SecItemAdd */
     cert_data = CFDataCreate(cf_alloc, pem_cert_ptr->data.buffer, pem_cert_ptr->data.len);
     if (!cert_data) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating certificate data system call.");
@@ -817,7 +721,7 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    // Set the format of the key
+    /* Set the format of the key */
     switch(pem_key_ptr->type) {
         case AWS_PEM_TYPE_PRIVATE_RSA_PKCS1:
             key_type = kSecAttrKeyTypeRSA;
@@ -833,10 +737,14 @@ int aws_secitem_import_cert_and_key(
             goto done;
     }
 
-    // Attributes
+    /* Attributes used for query and adding of cert/key SecItems */
 
-    // We create a SecCertificateRef here to extract the serial number for use as a
-    // unique identifier when storing and updating a certificate in the keychain.
+    /*
+     * We create a SecCertificateRef here to use with the kSecValueRef key as well as to
+     * extract the serial number for use as a unique identifier when storing the
+     * certificate in the keychain. The serial number is also used as the identifier
+     * when retrieving the identity
+     */
     cert_ref = SecCertificateCreateWithData(cf_alloc, cert_data);
     if (!cert_ref) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating SecCertificateRef from cert_data.");
@@ -863,6 +771,25 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    /*
+     * We create a SecKeyRef here to use with the kSecValueRef key as well as to extract
+     * the application label for use as a unique identifier when storing the private key
+     * in the keychain.
+     */
+    key_attributes = CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
+    CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
+    key_ref = SecKeyCreateWithData(key_data, key_attributes, error);
+
+    // Get the hash of the public key stored within the private key
+    key_copied_attributes = SecKeyCopyAttributes(key_ref);
+    // application_label_ref gets released when key_copied_attributes is released.
+    application_label_ref = (CFDataRef)CFDictionaryGetValue(key_copied_attributes, kSecAttrApplicationLabel);
+    if (!application_label_ref) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    }
+
     key_label_ref = CFStringCreateWithBytes(
         cf_alloc,
         (const UInt8 *)aws_string_bytes(secitem_options->key_label),
@@ -875,37 +802,31 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    application_label_ref = CFStringCreateWithBytes(
-        cf_alloc,
-        (const UInt8 *)aws_string_bytes(secitem_options->application_label),
-        secitem_options->application_label->len,
-        kCFStringEncodingUTF8,
-        false);
-    if (!application_label_ref) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    // Add certificate and key to keychain
+    // Add the certificate and private key to keychain then retrieve identity
 #if !defined(AWS_OS_IOS)
     aws_mutex_lock(&s_sec_mutex);
 #endif /* !AWS_OS_IOS */
 
     if (aws_secitem_add_certificate_to_keychain(
         cf_alloc,
-        cert_data,
+        cert_ref,
         cert_serial_data,
-        cert_label_ref,
-        secitem_certificate)) {
+        cert_label_ref)) {
         goto done;
     }
 
     if (aws_secitem_add_private_key_to_keychain(
-        cf_alloc, key_data, key_type,
+        cf_alloc,
+        key_ref,
         key_label_ref,
-        application_label_ref,
-        secitem_private_key)) {
+        application_label_ref)) {
+        goto done;
+    }
+
+    if(aws_secitem_get_identity(
+        cf_alloc,
+        cert_serial_data,
+        secitem_identity)){
         goto done;
     }
 
@@ -921,11 +842,13 @@ done:
     if (cert_data != NULL) CFRelease(cert_data);
     if (cert_ref != NULL) CFRelease(cert_ref);
     if (cert_serial_data != NULL) CFRelease(cert_serial_data);
-    if (key_data != NULL) CFRelease(key_data);
-    if (key_type != NULL) CFRelease(key_type);
     if (cert_label_ref) CFRelease(cert_label_ref);
+    if (key_attributes) CFRelease(key_attributes);
+    if (key_copied_attributes) CFRelease(key_copied_attributes);
+    if (key_data != NULL) CFRelease(key_data);
+    if (key_ref != NULL) CFRelease(key_ref);
+    if (key_type != NULL) CFRelease(key_type);
     if (key_label_ref) CFRelease(key_label_ref);
-    if (application_label_ref) CFRelease(application_label_ref);
     if (root_cert_data != NULL) CFRelease(root_cert_data);
 
     // Zero out the array list and release it

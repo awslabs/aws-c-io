@@ -10,6 +10,8 @@
 #include <aws/io/channel.h>
 #include <aws/io/statistics.h>
 
+#include <Security/Security.h>
+
 struct aws_tls_connection_options;
 
 struct aws_tls_channel_handler_shared {
@@ -17,6 +19,17 @@ struct aws_tls_channel_handler_shared {
     struct aws_channel_handler *handler;
     struct aws_channel_task timeout_task;
     struct aws_crt_statistics_tls stats;
+};
+
+struct secure_transport_ctx {
+    struct aws_tls_ctx ctx;
+    CFAllocatorRef wrapped_allocator;
+    CFArrayRef certs;
+    SecIdentityRef secitem_identity;
+    CFArrayRef ca_cert;
+    enum aws_tls_versions minimum_version;
+    struct aws_string *alpn_list;
+    bool veriify_peer;
 };
 
 AWS_EXTERN_C_BEGIN

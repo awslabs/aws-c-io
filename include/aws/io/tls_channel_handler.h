@@ -166,13 +166,6 @@ struct aws_secitem_options {
      * If one is not provided, we generate it ourselves.
      */
     struct aws_string *key_label;
-
-    /**
-     * Human-Readable unique identifier tag for private key being used in keychain.
-     * Value will be used with kSecAttrLabel Key in SecItem functions.
-     * If one is not provided, we generate it ourselves.
-     */
-    struct aws_string *application_label;
 };
 
 #endif /* __APPLE__ */

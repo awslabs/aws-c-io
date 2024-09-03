@@ -30,7 +30,6 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
     options->secitem_options->cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
     options->secitem_options->key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
-    options->secitem_options->application_label = aws_string_new_from_c_str(allocator, "aws-crt-default-application-label");
 
     #endif /* __APPLE__ */
 }
@@ -46,9 +45,8 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
-aws_string_destroy(options->secitem_options->cert_label);
+    aws_string_destroy(options->secitem_options->cert_label);
     aws_string_destroy(options->secitem_options->key_label);
-    aws_string_destroy(options->secitem_options->application_label);
     aws_mem_release(options->allocator, options->secitem_options);
 
 #   if !defined(AWS_OS_IOS)

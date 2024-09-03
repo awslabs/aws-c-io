@@ -777,18 +777,6 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .gather_statistics = s_gather_statistics,
 };
 
-struct secure_transport_ctx {
-    struct aws_tls_ctx ctx;
-    CFAllocatorRef wrapped_allocator;
-    CFArrayRef certs;
-    SecCertificateRef secitem_certificate;
-    SecKeyRef secitem_private_key;
-    CFArrayRef ca_cert;
-    enum aws_tls_versions minimum_version;
-    struct aws_string *alpn_list;
-    bool veriify_peer;
-};
-
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
@@ -964,12 +952,8 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         aws_release_identity(secure_transport_ctx->certs);
     }
 
-    if (secure_transport_ctx->secitem_certificate) {
-        CFRelease(secure_transport_ctx->secitem_certificate);
-    }
-
-    if (secure_transport_ctx->secitem_private_key) {
-        CFRelease(secure_transport_ctx->secitem_private_key);
+    if (secure_transport_ctx->secitem_identity) {
+        CFRelease(secure_transport_ctx->secitem_identity);
     }
 
     if (secure_transport_ctx->ca_cert) {
@@ -1014,8 +998,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->veriify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
-    secure_transport_ctx->secitem_certificate = NULL;
-    secure_transport_ctx->secitem_private_key = NULL;
+    secure_transport_ctx->secitem_identity = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
@@ -1061,8 +1044,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 secure_transport_ctx->wrapped_allocator,
                 &cert_chain_cur,
                 &private_key_cur,
-                &secure_transport_ctx->secitem_certificate,
-                &secure_transport_ctx->secitem_private_key,
+                &secure_transport_ctx->secitem_identity,
                 options->secitem_options)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
@@ -1121,20 +1103,3 @@ struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const st
 }
 
 #pragma clang diagnostic pop
-
-/*
- * Apple Network Framework TLS Implementation.
- * Currently only supports iOS platforms.
- */
-
-// DEBUG WIP
-static int wip_apple_network_tls_implementation(struct aws_tls_connection_options *options) {
-    int result = AWS_OP_ERR;
-
-    nw_endpoint_t endpoint = nw_endpoint_create_host(options->server_name, "8883");
-    nw_parameters_t parameters = nw_parameters_create_secure_tcp(NW_PARAMETERS_DEFAULT_CONFIGURATION, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-
-    nw_protocol_options_t tls_options = nw_tls_create_options();
-
-    return result;
-}

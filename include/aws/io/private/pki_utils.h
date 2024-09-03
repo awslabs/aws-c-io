@@ -56,8 +56,7 @@ int aws_secitem_import_cert_and_key(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    SecCertificateRef *secitem_certificate,
-    SecKeyRef *secitem_private_key,
+    SecIdentityRef *secitem_identity,
     const struct aws_secitem_options *secitem_options);
 
 /**
