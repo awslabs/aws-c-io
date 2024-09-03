@@ -81,6 +81,7 @@ typedef void(aws_event_loop_on_event_fn)(
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 enum aws_event_loop_style {
+    AWS_EVENT_LOOP_STYLE_UNDEFINED = 0,
     AWS_EVENT_LOOP_STYLE_POLL_BASED = 1,
     AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED = 2,
 };
@@ -145,8 +146,8 @@ struct aws_event_loop_group {
     struct aws_shutdown_callback_options shutdown_options;
 };
 
-typedef struct aws_event_loop *(
-    aws_new_system_event_loop_fn)(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
+typedef struct aws_event_loop *(aws_new_system_event_loop_fn)(struct aws_allocator *alloc,
+                                                              const struct aws_event_loop_options *options);
 
 struct aws_event_loop_configuration {
     enum aws_event_loop_style style;

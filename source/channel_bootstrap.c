@@ -523,6 +523,10 @@ static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
     return domain == AWS_SOCKET_IPV4 || domain == AWS_SOCKET_IPV6;
 }
 
+/* Called when a socket connection attempt task completes. First socket to successfully open
+ * assigns itself to connection_args->channel_data.socket and flips connection_args->connection_chosen
+ * to true. Subsequent successful sockets will be released and cleaned up
+ */
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -565,7 +569,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             (void *)connection_args->bootstrap,
             (void *)socket);
         aws_socket_close(socket);
-
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
 
