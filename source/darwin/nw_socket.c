@@ -574,10 +574,10 @@ static int s_socket_connect_fn(
                   port);
 
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
+              nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
               on_connection_result(socket, AWS_OP_SUCCESS, user_data);
               aws_ref_count_release(&nw_socket->ref_count);
-              nw_socket->setup_run = true;
           } else if (error) {
               /* any error, including if closed remotely in error */
               int error_code = nw_error_get_error_code(error);
@@ -597,8 +597,8 @@ static int s_socket_connect_fn(
               socket->state = ERROR;
               aws_ref_count_acquire(&nw_socket->ref_count);
               if (!nw_socket->setup_run) {
-                  on_connection_result(socket, error_code, user_data);
                   nw_socket->setup_run = true;
+                  on_connection_result(socket, error_code, user_data);
               } else if (socket->readable_fn) {
                   socket->readable_fn(socket, nw_socket->last_error, socket->readable_user_data);
               }
@@ -613,8 +613,8 @@ static int s_socket_connect_fn(
               aws_ref_count_acquire(&nw_socket->ref_count);
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
               if (!nw_socket->setup_run) {
-                  on_connection_result(socket, AWS_IO_SOCKET_CLOSED, user_data);
                   nw_socket->setup_run = true;
+                  on_connection_result(socket, AWS_IO_SOCKET_CLOSED, user_data);
               } else if (socket->readable_fn) {
                   socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
               }
