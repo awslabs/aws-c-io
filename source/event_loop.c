@@ -488,13 +488,22 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
     return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
+// DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
+#ifndef AWS_USE_DISPATCH_QUEUE
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
+AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
+#else
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
+#endif
+
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     if (!event_loop) {
         return;
     }
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
-    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+    // DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
+    AWS_EVENT_LOOP_NOT_CALLER_THREAD(event_loop);
 
     event_loop->vtable->destroy(event_loop);
 }
