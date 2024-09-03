@@ -12,7 +12,7 @@
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific
-#include <TargetConditionals.h>
+#    include <TargetConditionals.h>
 #endif
 
 static const struct aws_event_loop_configuration s_available_configurations[] = {
@@ -488,10 +488,10 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
 
 // DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
 #ifndef AWS_USE_DISPATCH_QUEUE
-#define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...)
-    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...)
+AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
 #else
-#define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...) 
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...)
 #endif
 
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
