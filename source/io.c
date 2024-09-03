@@ -306,6 +306,50 @@ static struct aws_error_info s_errors[] = {
         "Failure during TLS read."),
     AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED, "Malformed PEM object encountered."),
 
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE,
+        "Channel shutdown due to tls unknown root certificate."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND,
+        "Channel shutdown due to tls no root certificate found."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CERTIFICATE_EXPIRED,
+        "Channel shutdown due to tls certificate expired."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID,
+        "Channel shutdown due to tls certificate not yet valid."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_BAD_CERTIFICATE,
+        "Channel shutdown due to tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED,
+        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_BAD_PEER_CERTIFICATE,
+        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_REVOKED,
+        "Channel shutdown due to peer tls certificate has been revoked."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN,
+        "Channel shutdown due to peer tls certificate is unknown."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_INTERNAL_ERROR,
+        "Channel shutdown due to internal SSL error."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CLOSED_GRACEFUL,
+        "Channel shutdown due to connection closed gracefully."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CLOSED_ABORT,
+        "Channel shutdown due to connection closed due to an error."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
+        "Channel shutdown due to invalid certificate chain."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_HOST_NAME_MISSMATCH,
+        "Channel shutdown due to certificate's host name does not match the endpoint host name."),
+
+
 };
 /* clang-format on */
 
