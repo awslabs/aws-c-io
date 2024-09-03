@@ -492,7 +492,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         ionotify_event_data->pulse_connection_id,
         pulse_priority,
         pulse_sigev_code,
-        handle_id);
+        ionotify_event_data->handle_id);
     /* Set special bits in the event structure to allow resource managers set I/O event types in the sigev_code field */
     SIGEV_MAKE_UPDATEABLE(&ionotify_event_data->event);
 
