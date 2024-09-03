@@ -432,6 +432,7 @@ struct ionotify_event_data *s_find_handle(
     struct ionotify_loop *ionotify_loop,
     uint32_t handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
+    (void)event_loop;
     struct ionotify_event_data *ionotify_event_data = NULL;
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&ionotify_loop->handles, (void *)handle_id, &elem);
@@ -446,12 +447,18 @@ static void s_remove_handle(
     struct ionotify_loop *ionotify_loop,
     uint32_t handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
+    (void)event_loop;
     aws_hash_table_remove(&ionotify_loop->handles, (void *)handle_id, NULL, NULL);
 }
 
 /* Scheduled task that connects aws_io_handle with the kqueue */
 static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     (void)task;
+
+    /* if task was cancelled, nothing to do */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        return;
+    }
 
     struct ionotify_event_data *ionotify_event_data = user_data;
     struct aws_event_loop *event_loop = ionotify_event_data->event_loop;
@@ -565,6 +572,7 @@ static int s_subscribe_to_io_events(
 
     aws_task_init(
         &ionotify_event_data->subscribe_task, s_subscribe_task, ionotify_event_data, "ionotify_event_loop_subscribe");
+    s_schedule_task_now(event_loop, &ionotify_event_data->subscribe_task);
 
     return AWS_OP_SUCCESS;
 }
