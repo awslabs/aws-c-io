@@ -62,7 +62,7 @@ struct dispatch_scheduling_state {
 struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
-    struct aws_linked_list node;
+    struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
 };
 
@@ -130,7 +130,7 @@ static void s_finalize(void* context)
 }
 
 
-static void* s_dispatch_event_loop_destroy(void* context){
+static void s_dispatch_event_loop_destroy(void* context){
     // release dispatch loop
     struct aws_event_loop * event_loop = context;
     struct dispatch_loop* dispatch_loop = event_loop->impl_data;
@@ -139,6 +139,8 @@ static void* s_dispatch_event_loop_destroy(void* context){
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
+
+    aws_thread_decrement_unjoined_count();
 }
 
 /* Setup a dispatch_queue with a scheduler. */
@@ -201,6 +203,8 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     dispatch_set_context(dispatch_loop->dispatch_queue, loop);
     // Definalizer will be called on dispatch queue ref drop to 0
     dispatch_set_finalizer_f(dispatch_loop->dispatch_queue, &s_finalize);
+
+    aws_thread_increment_unjoined_count();
 
 
     return loop;
