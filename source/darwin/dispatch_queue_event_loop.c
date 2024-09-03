@@ -198,7 +198,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     dispatch_set_context(dispatch_loop->dispatch_queue, loop);
     // Definalizer will be called on dispatch queue ref drop to 0
     dispatch_set_finalizer_f(dispatch_loop->dispatch_queue, &s_finalize);
-
+    
     aws_thread_increment_unjoined_count();
 
     return loop;
@@ -464,10 +464,7 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
-
-    dispatch_async(dispatch_loop->dispatch_queue, ^{
-      aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
-    });
+    aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
 }
 
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {

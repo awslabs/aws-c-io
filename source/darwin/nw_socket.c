@@ -825,7 +825,9 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
     struct aws_allocator *allocator = socket->allocator;
     struct aws_linked_list *list = &nw_socket->read_queue;
-
+    // DEBUG: Try acquire socket when connection receive
+    aws_ref_count_acquire(&nw_socket->ref_count);
+    
     /* read and let me know when you've done it. */
     nw_connection_receive(
         socket->io_handle.data.handle,
@@ -836,6 +838,7 @@ static void s_schedule_next_read(struct aws_socket *socket) {
           AWS_LOGF_TRACE(
               AWS_LS_IO_SOCKET, "id=%p handle=%p: read cb invoked", (void *)socket, socket->io_handle.data.handle);
 
+            
           if (!error || nw_error_get_error_code(error) == 0) {
               if (data) {
                   struct read_queue_node *node = aws_mem_calloc(allocator, 1, sizeof(struct read_queue_node));
@@ -870,7 +873,9 @@ static void s_schedule_next_read(struct aws_socket *socket) {
           // DEBUG WIP these may or may not be necessary. release on error seems okay but
           // release on context or data here appears to double release.
           // nw_release(context);
-          nw_release(error);
+            nw_release(error);
+              // DEBUG: Try release socket when connection receive
+            aws_ref_count_release(&nw_socket->ref_count);
         });
 }
 

@@ -424,7 +424,8 @@ void aws_socket_clean_up(struct aws_socket *socket) {
         aws_mem_release(socket->allocator, socket_impl->read_io_data);
     }
 
-    aws_mem_release(socket->allocator, socket->impl);
+    // DEBUG: socket impl is released in the impl functions
+    //aws_mem_release(socket->allocator, socket->impl);
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
 }
