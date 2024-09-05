@@ -96,7 +96,7 @@ struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loo
 
 // may only be called when the dispatch event loop synced data lock is held
 void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy service entry.", (void *)entry->loop);
+    // AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy service entry.", (void *)entry->loop);
     if (aws_linked_list_node_is_in_list(&entry->node)) {
         aws_linked_list_remove(&entry->node);
     }
@@ -314,7 +314,7 @@ bool begin_iteration(struct scheduled_service_entry *entry) {
 
     // mark us as running an iteration and remove from the pending list
     dispatch_loop->synced_data.scheduling_state.is_executing_iteration = true;
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Remove poped service entry node.", (void *)entry->loop);
+    // AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Remove poped service entry node.", (void *)entry->loop);
     aws_linked_list_remove(&entry->node);
 
     should_execute_iteration = true;
@@ -354,8 +354,8 @@ void end_iteration(struct scheduled_service_entry *entry) {
     }
 
 done:
-    AWS_LOGF_INFO(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: End of Iteration, start to destroy service entry.", (void *)entry->loop);
+    // AWS_LOGF_INFO(
+    //     AWS_LS_IO_EVENT_LOOP, "id=%p: End of Iteration, start to destroy service entry.", (void *)entry->loop);
     aws_mutex_unlock(&loop->synced_data.lock);
 
     scheduled_service_entry_destroy(entry);

@@ -29,7 +29,7 @@ struct secure_transport_ctx {
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;
-    bool veriify_peer;
+    bool verify_peer;
 };
 
 AWS_EXTERN_C_BEGIN

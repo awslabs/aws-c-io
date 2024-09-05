@@ -604,6 +604,10 @@ int aws_secitem_get_identity(
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
 
+    /*
+     * Copied or created CF items must have CFRelease called on them or you leak memory. This identity needs to
+     * have CFRelease called on it at some point or it will leak.
+     */
     status = SecItemCopyMatching(search_query, (CFTypeRef *)out_identity);
 
     if (status != errSecSuccess) {
