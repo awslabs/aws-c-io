@@ -861,3 +861,64 @@ done:
 
     return result;
 }
+
+int aws_secitem_import_pkcs12(
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
+    SecIdentityRef *secitem_identity) {
+
+    int result = AWS_OP_ERR;
+    CFArrayRef items = NULL;
+    CFDataRef pkcs12_data = NULL;
+    pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
+    CFStringRef password_ref = NULL;
+    if (password->len) {
+        password_ref = CFStringCreateWithBytes(
+            cf_alloc,
+            password->ptr,
+            password->len,
+            kCFStringEncodingUTF8,
+            false);
+    } else {
+        password_ref = CFSTR("");
+    }
+
+    CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
+    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
+
+    OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+
+    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Extract the identity from the first item in the array
+    // identity_and_trust does not need to be released as it is not a copy or created CF object.
+    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
+    *secitem_identity = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
+
+    // Retain the identity for use outside this function
+    if (*secitem_identity != NULL) {
+        CFRetain(*secitem_identity);
+        AWS_LOGF_INFO(
+        AWS_LS_IO_PKI,
+        "static: Successfully imported identity into SecItem keychain.");
+    } else {
+        status = errSecItemNotFound;
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
+        goto done;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+done:
+    //cleanup
+    if (pkcs12_data) CFRelease(pkcs12_data);
+    if (dictionary) CFRelease(dictionary);
+    if (password_ref) CFRelease(password_ref);
+    if (items) CFRelease(items);
+    return result;
+}

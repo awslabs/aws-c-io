@@ -60,6 +60,17 @@ int aws_secitem_import_cert_and_key(
     const struct aws_secitem_options *secitem_options);
 
 /**
+ * Imports a PKCS#12 file into protected data keychain for use with
+ * Apple Network Framework.
+ * Currently only implemented for iOS.
+ */
+int aws_secitem_import_pkcs12(
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
+    SecIdentityRef *secitem_identity);
+
+/**
  * Imports a PKCS#12 file into identity for use with
  * SecurityFramework
  */
