@@ -404,8 +404,8 @@ int aws_secitem_add_certificate_to_keychain(
     int result = AWS_OP_ERR;
     OSStatus status;
 
-    CFDictionaryRef add_attributes = NULL;
-    CFDictionaryRef delete_query = NULL;
+    CFMutableDictionaryRef add_attributes = NULL;
+    CFMutableDictionaryRef delete_query = NULL;
 
     add_attributes = CFDictionaryCreateMutable(
         cf_alloc,
@@ -498,8 +498,8 @@ int aws_secitem_add_private_key_to_keychain(
     int result = AWS_OP_ERR;
     OSStatus status;
 
-    CFDictionaryRef add_attributes = NULL;
-    CFDictionaryRef delete_query = NULL;
+    CFMutableDictionaryRef add_attributes = NULL;
+    CFMutableDictionaryRef delete_query = NULL;
 
     add_attributes = CFDictionaryCreateMutable(
         cf_alloc,
@@ -588,7 +588,7 @@ int aws_secitem_get_identity(
     SecIdentityRef *out_identity) {
     int result = AWS_OP_ERR;
     OSStatus status;
-    CFDictionaryRef search_query = NULL;
+    CFMutableDictionaryRef search_query = NULL;
 
     /*
      * SecItem identity is created when a certificate matches a private key in the keychain.
@@ -655,7 +655,7 @@ int aws_secitem_import_cert_and_key(
     CFDataRef cert_serial_data = NULL;
     CFStringRef cert_label_ref = NULL;
 
-    CFDictionaryRef key_attributes = NULL;
+    CFMutableDictionaryRef key_attributes = NULL;
     CFDictionaryRef key_copied_attributes;
     CFDataRef key_data = NULL;
     SecKeyRef key_ref = NULL;
