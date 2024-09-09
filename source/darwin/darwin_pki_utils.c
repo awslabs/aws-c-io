@@ -783,7 +783,7 @@ int aws_secitem_import_cert_and_key(
     key_attributes = CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
-    key_ref = SecKeyCreateWithData(key_data, key_attributes, error);
+    key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
 
     // Get the hash of the public key stored within the private key
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
