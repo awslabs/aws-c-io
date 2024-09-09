@@ -70,6 +70,7 @@ enum socket_state {
     LISTENING = 0x20,
     TIMEDOUT = 0x40,
     ERROR = 0x80,
+    CLOSING,
     CLOSED,
 };
 
@@ -98,6 +99,8 @@ struct nw_socket {
     bool setup_run;
     bool read_queued;
     bool is_listener;
+    // Duplicate the socket state 
+    int state;
 };
 
 struct socket_address {
@@ -311,6 +314,7 @@ int aws_socket_init_completion_port_based(
 
     socket->allocator = alloc;
     socket->state = INIT;
+    nw_socket->state = INIT;
     socket->options = *options;
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
@@ -414,6 +418,7 @@ static int s_socket_connect_fn(
         (int)remote_endpoint->port);
 
     socket->state = CONNECTING;
+    nw_socket->state = CONNECTING;
     socket->remote_endpoint = *remote_endpoint;
     socket->connect_accept_user_data = user_data;
     socket->connection_result_fn = on_connection_result;
@@ -449,7 +454,7 @@ static int s_socket_connect_fn(
 
     aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
-
+    
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
     nw_connection_set_state_changed_handler(
@@ -483,6 +488,7 @@ static int s_socket_connect_fn(
                   socket->local_endpoint.address,
                   port);
 
+              nw_socket->state = CONNECTED_WRITE | CONNECTED_READ;
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               aws_ref_count_acquire(&nw_socket->ref_count);
               on_connection_result(socket, AWS_OP_SUCCESS, user_data);
@@ -504,6 +510,7 @@ static int s_socket_connect_fn(
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
               socket->state = ERROR;
+              nw_socket->state = ERROR;
               aws_ref_count_acquire(&nw_socket->ref_count);
               if (!nw_socket->setup_run) {
                   on_connection_result(socket, error_code, user_data);
@@ -519,6 +526,7 @@ static int s_socket_connect_fn(
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
               socket->state = CLOSED;
+              nw_socket->state = CLOSED;
               aws_ref_count_acquire(&nw_socket->ref_count);
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
               if (!nw_socket->setup_run) {
@@ -596,10 +604,12 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
 
     if (socket->options.type == AWS_SOCKET_STREAM) {
         socket->state = BOUND;
+        nw_socket->state = BOUND;
     } else {
         /* e.g. UDP is now readable (sort, of, we'll have to lazily init it in the first read call if connect isn't
          * called.) */
         socket->state = CONNECTED_READ;
+        nw_socket->state = CONNECTED_READ;
     }
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
@@ -635,6 +645,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     if (!socket->io_handle.data.handle) {
         AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p:  listen failed with error code %d", (void *)socket, aws_last_error());
         socket->state = ERROR;
+        nw_socket->state = ERROR;
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
@@ -644,6 +655,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: successfully listening", (void *)socket, socket->io_handle.data.handle);
     socket->state = LISTENING;
+    nw_socket->state = LISTENING;
     return AWS_OP_SUCCESS;
 }
 
@@ -740,6 +752,8 @@ static int s_socket_stop_accept_fn(struct aws_socket *socket) {
     nw_listener_cancel(socket->io_handle.data.handle);
     aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
     socket->state = CLOSED;
+    struct nw_socket* nw_socket = socket->impl;
+    nw_socket->state = CLOSED;
     return AWS_OP_SUCCESS;
 }
 
@@ -758,6 +772,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_connection_cancel(socket->io_handle.data.handle);
     }
+    nw_socket->state = CLOSING;
 
     return AWS_OP_SUCCESS;
 }
@@ -825,6 +840,16 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
     struct aws_allocator *allocator = socket->allocator;
     struct aws_linked_list *list = &nw_socket->read_queue;
+    
+    if (!(socket->state & CONNECTED_READ)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: cannot read to because it is not connected",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+    }
+    
     // DEBUG: Try acquire socket when connection receive
     aws_ref_count_acquire(&nw_socket->ref_count);
     
@@ -838,8 +863,17 @@ static void s_schedule_next_read(struct aws_socket *socket) {
           AWS_LOGF_TRACE(
               AWS_LS_IO_SOCKET, "id=%p handle=%p: read cb invoked", (void *)socket, socket->io_handle.data.handle);
 
-            
-          if (!error || nw_error_get_error_code(error) == 0) {
+           if (nw_socket->state == CLOSING)
+           {
+               AWS_LOGF_TRACE(
+                   AWS_LS_IO_SOCKET,
+                   "id=%p handle=%p: socket closed",
+                   (void *)socket,
+                   socket->io_handle.data.handle);
+                   aws_raise_error(AWS_IO_SOCKET_CLOSED);
+           }
+         else 
+            if (!error || nw_error_get_error_code(error) == 0 ) {
               if (data) {
                   struct read_queue_node *node = aws_mem_calloc(allocator, 1, sizeof(struct read_queue_node));
                   node->allocator = allocator;
@@ -854,7 +888,7 @@ static void s_schedule_next_read(struct aws_socket *socket) {
                       (int)dispatch_data_get_size(data));
                   nw_socket->on_readable(socket, AWS_ERROR_SUCCESS, nw_socket->on_readable_user_data);
               }
-              if (!is_complete) {
+              if (!is_complete && nw_socket->state != CLOSING) {
                   s_schedule_next_read(socket);
               }
           } else {
@@ -870,11 +904,12 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
               nw_socket->on_readable(socket, error_code, nw_socket->on_readable_user_data);
           }
-          // DEBUG WIP these may or may not be necessary. release on error seems okay but
-          // release on context or data here appears to double release.
-          // nw_release(context);
-            nw_release(error);
-              // DEBUG: Try release socket when connection receive
+            // DEBUG WIP these may or may not be necessary. release on error seems okay but
+            // release on context or data here appears to double release.
+            // nw_release(context);
+            // nw_release(error);
+            
+            // DEBUG: Try release socket when connection receive
             aws_ref_count_release(&nw_socket->ref_count);
         });
 }
@@ -994,6 +1029,7 @@ static int s_socket_write_fn(
             socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
+    struct nw_socket *nw_socket = socket->impl;
 
     AWS_ASSERT(written_fn);
 
@@ -1009,8 +1045,8 @@ static int s_socket_write_fn(
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
 
-          if (error_code) {
-              struct nw_socket *nw_socket = socket->impl;
+          if (error_code || nw_socket->state == CLOSING) {
+             
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
               AWS_LOGF_ERROR(
@@ -1019,6 +1055,7 @@ static int s_socket_write_fn(
                   (void *)socket,
                   socket->io_handle.data.handle,
                   error_code);
+              return;
           }
 
           size_t written_size = dispatch_data_get_size(data);
