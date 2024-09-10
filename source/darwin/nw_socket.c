@@ -85,6 +85,12 @@ struct io_operation_data_nw {
     bool in_use;
 };
 
+struct nw_socket_connect_args {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+};
+
 struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
@@ -99,7 +105,10 @@ struct nw_socket {
     bool setup_run;
     bool read_queued;
     bool is_listener;
-    // Duplicate the socket state 
+    struct nw_socket_connect_args* connect_args;
+    aws_socket_on_connection_result_fn* on_connection_result_fn;
+    void *connect_accept_user_data;
+    // Duplicate the socket state
     int state;
 };
 
@@ -110,6 +119,7 @@ struct socket_address {
         struct sockaddr_un un_addr;
     } sock_addr_types;
 };
+
 
 static size_t KB_16 = 16 * 1024;
 
@@ -339,6 +349,40 @@ static void s_client_clear_dispatch_queue(struct aws_io_handle *handle) {
     nw_connection_set_state_changed_handler(handle->data.handle, NULL);
 }
 
+
+
+static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    struct nw_socket_connect_args *socket_args = args;
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
+    /* successful connection will have nulled out connect_args->socket */
+    if (socket_args->socket) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: timed out, shutting down.",
+            (void *)socket_args->socket,
+            socket_args->socket->io_handle.data.fd);
+
+        socket_args->socket->state = TIMEDOUT;
+        int error_code = AWS_IO_SOCKET_TIMEOUT;
+
+        // socket_args->socket->event_loop = NULL;
+        struct nw_socket *socket_impl = socket_args->socket->impl;
+        
+        aws_raise_error(error_code);
+        struct aws_socket *socket = socket_args->socket;
+        /*socket close sets socket_args->socket to NULL and
+         * socket_impl->connect_args to NULL. */
+        aws_socket_close(socket);
+        socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
+    }
+
+    aws_mem_release(socket_args->allocator, socket_args);
+}
+
 static int s_socket_connect_fn(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
@@ -455,10 +499,48 @@ static int s_socket_connect_fn(
     aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
     
+    nw_socket->on_connection_result_fn = on_connection_result;
+    nw_socket->connect_accept_user_data = user_data;
+    
+    
+    struct posix_socket *socket_impl = socket->impl;
+
+    nw_socket->connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_connect_args));
+    if (!nw_socket->connect_args) {
+        return AWS_OP_ERR;
+    }
+
+    nw_socket->connect_args->socket = socket;
+    nw_socket->connect_args->allocator = socket->allocator;
+
+    nw_socket->connect_args->task.fn = s_handle_socket_timeout;
+    nw_socket->connect_args->task.arg = nw_socket->connect_args;
+
+    
+    /* schedule a task to run at the connect timeout interval, if this task runs before the connect
+     * happens, we consider that a timeout. */
+    uint64_t timeout = 0;
+    aws_event_loop_current_clock_time(event_loop, &timeout);
+    timeout += aws_timestamp_convert(
+        socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: scheduling timeout task for %llu.",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        (unsigned long long)timeout);
+    aws_event_loop_schedule_task_future(event_loop, &nw_socket->connect_args->task, timeout);
+
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
     nw_connection_set_state_changed_handler(
         socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
+            AWS_LOGF_INFO(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: connection state changed hanlder, state: %d",
+                (void *)socket,
+                socket->io_handle.data.handle,
+                state);
           /* we're connected! */
           if (state == nw_connection_state_ready) {
               AWS_LOGF_INFO(
@@ -487,6 +569,9 @@ static int s_socket_connect_fn(
                   socket->io_handle.data.handle,
                   socket->local_endpoint.address,
                   port);
+              
+              // Cancel the connection timeout task
+              aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
 
               nw_socket->state = CONNECTED_WRITE | CONNECTED_READ;
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
@@ -540,9 +625,11 @@ static int s_socket_connect_fn(
 
     nw_connection_start(socket->io_handle.data.handle);
     nw_retain(socket->io_handle.data.handle);
-
+   
     return AWS_OP_SUCCESS;
 }
+
+
 
 static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct nw_socket *nw_socket = socket->impl;
@@ -765,7 +852,6 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     if (nw_socket->is_listener) {
         nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_listener_cancel(socket->io_handle.data.handle);
-        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
 
     } else {
         /* Setting to NULL removes previously set handler from nw_connection_t */
