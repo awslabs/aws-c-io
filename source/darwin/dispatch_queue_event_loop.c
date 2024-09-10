@@ -480,10 +480,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     bool is_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
 
+    // We dont have control to dispatch queue thread, threat all tasks as cross thread tasks
     aws_linked_list_push_back(&dispatch_loop->synced_data.cross_thread_tasks, &task->node);
     if (is_empty) {
         if (!dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-            if (should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, 0)) {
+            if (should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos)) {
                 should_schedule = true;
             }
         }
