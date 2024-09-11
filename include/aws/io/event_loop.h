@@ -81,6 +81,7 @@ typedef void(aws_event_loop_on_event_fn)(
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 enum aws_event_loop_style {
+    AWS_EVENT_LOOP_STYLE_UNDEFINED = 0,
     AWS_EVENT_LOOP_STYLE_POLL_BASED = 1,
     AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED = 2,
 };
