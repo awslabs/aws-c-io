@@ -467,6 +467,10 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     return AWS_OP_SUCCESS;
 }
 
+// The dispatch queue will assign the task block to threads, we will threat all
+// tasks as cross thread tasks. Ignore the caller thread verification for apple
+// dispatch queue.
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
+    (void)event_loop;
     return true;
 }

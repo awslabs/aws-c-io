@@ -146,8 +146,8 @@ struct aws_event_loop_group {
     struct aws_shutdown_callback_options shutdown_options;
 };
 
-typedef struct aws_event_loop *(
-    aws_new_system_event_loop_fn)(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
+typedef struct aws_event_loop *(aws_new_system_event_loop_fn)(struct aws_allocator *alloc,
+                                                              const struct aws_event_loop_options *options);
 
 struct aws_event_loop_configuration {
     enum aws_event_loop_style style;
