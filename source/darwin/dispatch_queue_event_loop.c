@@ -128,13 +128,11 @@ static void s_finalize(void *context) {
 
 static void s_dispatch_event_loop_destroy(void *context) {
     // release dispatch loop
-    
+
     struct aws_event_loop *event_loop = context;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Destroy Dispatch Queue Event Loop.", (void*) event_loop);
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy Dispatch Queue Event Loop.", (void *)event_loop);
 
     aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
@@ -242,9 +240,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
           struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
           scheduled_service_entry_destroy(entry);
       }
-        
-        dispatch_loop->synced_data.suspended = true;        
-        aws_mutex_unlock(&dispatch_loop->synced_data.lock);
+
+      dispatch_loop->synced_data.suspended = true;
+      aws_mutex_unlock(&dispatch_loop->synced_data.lock);
     });
 
     /* we don't want it stopped while shutting down. dispatch_release will fail on a suspended loop. */
@@ -349,9 +347,7 @@ void end_iteration(struct scheduled_service_entry *entry) {
         }
     }
 
-done:
     aws_mutex_unlock(&loop->synced_data.lock);
-
     scheduled_service_entry_destroy(entry);
 }
 
@@ -419,7 +415,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     aws_linked_list_push_back(&dispatch_loop->synced_data.cross_thread_tasks, &task->node);
     if (is_empty) {
         if (!dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-            if (should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos)) {
+            if (should_schedule_iteration(
+                    &dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos)) {
                 should_schedule = true;
             }
         }
