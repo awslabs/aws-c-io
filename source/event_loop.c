@@ -24,27 +24,21 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
     },
 #endif
+#if TARGET_OS_IOS || AWS_USE_DISPATCH_QUEUE
+    /* use kqueue on OSX and dispatch_queues everywhere else */
+    {
+        .name = "Apple Dispatch Queue",
+        .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
+        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+        .is_default = true,
+    },
+#endif
 #if AWS_USE_KQUEUE
     {
         .name = "BSD Edge-Triggered KQueue",
         .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
         .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
         .is_default = true,
-    },
-#endif
-#if TARGET_OS_MAC
-    /* use kqueue on OSX and dispatch_queues everywhere else */
-    {
-        .name = "Apple Dispatch Queue",
-        .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
-#    if TARGET_OS_OSX
-        /* DEBUG WIP temp set the dispatch queue to be default. */
-        .is_default = true,
-        // .is_default = false,
-#    else
-        .is_default = true,
-#    endif
     },
 #endif
 #if AWS_USE_EPOLL
@@ -488,10 +482,10 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
     return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
-// DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
+// As dispatch queue has ARC support, we could directly release the dispatch queue event loop. Disable the
+// caller thread validation on dispatch queue.
 #ifndef AWS_USE_DISPATCH_QUEUE
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
-AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop) AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
 #else
 #    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
 #endif
@@ -502,7 +496,6 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     }
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
-    // DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
     AWS_EVENT_LOOP_NOT_CALLER_THREAD(event_loop);
 
     event_loop->vtable->destroy(event_loop);
