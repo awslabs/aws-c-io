@@ -32,7 +32,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .is_default = true,
     },
 #endif
-#if TARGET_OS_MAC
+#if TARGET_OS_MAC && AWS_USE_DISPATCH_QUEUE
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
         .name = "Apple Dispatch Queue",
@@ -490,8 +490,7 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
 
 // DEBUG: TODO: WORKAROUND THE CALLER THREAD VALIDATION ON DISPATCH QUEUE.
 #ifndef AWS_USE_DISPATCH_QUEUE
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...)
-AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
+#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...) AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
 #else
 #    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop, ...)
 #endif

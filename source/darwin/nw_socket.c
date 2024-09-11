@@ -94,7 +94,7 @@ struct nw_socket_connect_args {
 struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
-    nw_connection_t *nw_connection;
+    nw_connection_t nw_connection;
     nw_parameters_t socket_options_to_params;
     struct aws_linked_list read_queue;
     int last_error;
@@ -299,7 +299,6 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     }
 
     /* Network Framework cleanup */
-
     if (nw_socket->socket_options_to_params) {
         nw_release(nw_socket->socket_options_to_params);
         nw_socket->socket_options_to_params = NULL;
@@ -506,7 +505,6 @@ static int s_socket_connect_fn(
     nw_socket->on_connection_result_fn = on_connection_result;
     nw_socket->connect_accept_user_data = user_data;
     
-    
     struct nw_socket *socket_impl = socket->impl;
 
     nw_socket->connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_connect_args));
@@ -516,30 +514,26 @@ static int s_socket_connect_fn(
 
     nw_socket->connect_args->socket = socket;
     nw_socket->connect_args->allocator = socket->allocator;
-
-    nw_socket->connect_args->task.fn = s_handle_socket_timeout;
-    nw_socket->connect_args->task.arg  = nw_socket->connect_args;
-    nw_socket->connect_args->task.type_tag = "SocketConnectionTimeoutTask";
+    
+    aws_task_init(&nw_socket->connect_args->task,s_handle_socket_timeout, nw_socket->connect_args, "NWSocketConnectionTimeoutTask");
 
     nw_connection_t handle = socket->io_handle.data.handle;
     
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
-    nw_connection_set_state_changed_handler(
-        socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: connection state changed hanlder, state: %d",
-                (void *)socket,
-                handle,
-                state);
+    nw_connection_set_state_changed_handler(handle, ^(nw_connection_state_t state, nw_error_t error) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: connection state changed hanlder, state: %d",
+            (void *)socket,
+            handle,
+            state);
           /* we're connected! */
           if (state == nw_connection_state_ready) {
               AWS_LOGF_INFO(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: connection success",
-                  (void *)socket,
-                  socket->io_handle.data.handle);
+                  (void *)socket, handle);
               
               // Cancel the connection timeout task
               aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
@@ -599,7 +593,7 @@ static int s_socket_connect_fn(
                   socket->readable_fn(socket, nw_socket->last_error, socket->readable_user_data);
               }
               aws_ref_count_release(&nw_socket->ref_count);
-          } else if (state == nw_connection_state_cancelled) {
+          } else if (state == nw_connection_state_cancelled || state == nw_connection_state_failed) {
               /* this should only hit when the socket was closed by not us. Note,
                * we uninstall this handler right before calling close on the socket so this shouldn't
                * get hit unless it was triggered remotely */
@@ -619,6 +613,7 @@ static int s_socket_connect_fn(
               } else if (socket->readable_fn) {
                   socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
               }
+              aws_ref_count_release(&nw_socket->ref_count);
           }
         });
 
@@ -1015,10 +1010,6 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
               nw_socket->on_readable(socket, error_code, nw_socket->on_readable_user_data);
           }
-            // DEBUG WIP these may or may not be necessary. release on error seems okay but
-            // release on context or data here appears to double release.
-            // nw_release(context);
-            // nw_release(error);
             
             // DEBUG: Try release socket when connection receive
             aws_ref_count_release(&nw_socket->ref_count);
@@ -1152,12 +1143,28 @@ static int s_socket_write_fn(
               "id=%p handle=%p: processing write requests, called from aws_socket_write",
               (void *)socket,
               socket->io_handle.data.handle);
+            
+            if (nw_socket->state == CLOSING)
+            {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: socket closed",
+                    (void *)socket,
+                    socket->io_handle.data.handle);
+                written_fn(socket, 0, 0, user_data);
+                return;
+            }
+            
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: DEBUG:: callback writing message: %p",
+                (void *)socket,
+                socket->io_handle.data.handle, user_data);
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
 
-          if (error_code || nw_socket->state == CLOSING) {
-             
+          if (error_code) {
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
               AWS_LOGF_ERROR(
@@ -1166,6 +1173,7 @@ static int s_socket_write_fn(
                   (void *)socket,
                   socket->io_handle.data.handle,
                   error_code);
+              written_fn(socket, error_code, 0, user_data);
               return;
           }
 
