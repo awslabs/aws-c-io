@@ -153,6 +153,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
             )
     set(EVENT_LOOP_DEFINE "ON_EVENT_WITH_RESULT")
     set(USE_S2N ON)
+    list(APPEND PLATFORM_LIBS "socket")
 endif()
 
 if (BYO_CRYPTO)

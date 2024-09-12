@@ -25,7 +25,11 @@ struct aws_event_loop;
 struct aws_io_handle_io_op_result {
     size_t read_bytes;
     size_t written_bytes;
+    /** Error codes representing generic errors happening on I/O handles. */
+    int error_code;
+    /** Error codes specific to reading operations. */
     int read_error_code;
+    /** Error codes specific to writing operations. */
     int write_error_code;
 };
 
