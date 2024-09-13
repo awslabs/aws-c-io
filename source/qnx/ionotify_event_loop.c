@@ -11,9 +11,8 @@
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/private/tracing.h>
-
 #include <aws/io/logging.h>
+#include <aws/io/private/tracing.h>
 
 #include <sys/iomsg.h>
 
@@ -103,7 +102,7 @@ struct ionotify_event_data {
 static uint64_t DEFAULT_TIMEOUT = 100ULL * 1000000000;
 /* Special constant, _NOTIFY_COND_MASK, limits the maximum value that can be used as user data in I/O events.
  * For example, it's 28-bit wide on QNX 8.0. */
- // TODO Use unsugned int?
+// TODO Use unsigned int?
 static uint32_t MAX_HANDLE_ID = _NOTIFY_COND_MASK;
 
 /* SI_NOTIFY is a QNX special sigev code requesting resource managers to return active event type along with the event
@@ -441,12 +440,13 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         short pulse_priority = SIGEV_PULSE_PRIO_INHERIT;
         short pulse_sigev_code = IO_EVENT_PULSE_SIGEV_CODE;
         SIGEV_PULSE_INT_INIT(
-                &ionotify_event_data->event,
-                ionotify_event_data->pulse_connection_id,
-                pulse_priority,
-                pulse_sigev_code,
-                ionotify_event_data->handle_id);
-        /* Set special bits in the event structure to allow resource managers set I/O event types in the sigev_code field */
+            &ionotify_event_data->event,
+            ionotify_event_data->pulse_connection_id,
+            pulse_priority,
+            pulse_sigev_code,
+            ionotify_event_data->handle_id);
+        /* Set special bits in the event structure to allow resource managers set I/O event types in the sigev_code
+         * field */
         ionotify_event_data->event.sigev_notify |= SIGEV_FLAG_CODE_UPDATEABLE;
         SIGEV_MAKE_UPDATEABLE(&ionotify_event_data->event);
 
@@ -456,7 +456,8 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          * https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/m/msgregisterevent.html
          *
          * It's enough to register an event only once and then reuse it on followup ionotify rearming calls.
-         * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register it. */
+         * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
+         * it. */
         MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
     }
 
@@ -493,14 +494,17 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         return;
     }
 
-    /* ionotify returns active conditions if there are any. Send notification to kick-start processing fd if it has desired conditions. */
+    /* ionotify returns active conditions if there are any. Send notification to kick-start processing fd if it has
+     * desired conditions. */
     int kick_start_event_mask = rc & _NOTIFY_COND_MASK;
     if (kick_start_event_mask != 0) {
         // TODO Handle HUP and its friends.
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Sending pulse for fd %d because it has desired I/O conditions (rc is %d)",
-            (void *)event_loop, ionotify_event_data->handle->data.fd, rc);
+            (void *)event_loop,
+            ionotify_event_data->handle->data.fd,
+            rc);
         /* Set _NOTIFY_COND_MASK low bits to ID that will be  */
         kick_start_event_mask |= ionotify_event_data->handle_id;
         int send_rc =
@@ -567,10 +571,11 @@ static void s_update_io_result(
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: fd errored, sending pulse for fd %d",
-            (void *)event_loop, ionotify_event_data->handle->data.fd);
+            (void *)event_loop,
+            ionotify_event_data->handle->data.fd);
         struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-        int send_rc =
-            MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_UPDATE_ERROR_SIGEV_CODE, ionotify_event_data->handle_id);
+        int send_rc = MsgSendPulse(
+            ionotify_loop->pulse_connection_id, -1, IO_EVENT_UPDATE_ERROR_SIGEV_CODE, ionotify_event_data->handle_id);
         int errno_value = errno;
         if (send_rc == -1) {
             AWS_LOGF_ERROR(
@@ -746,7 +751,10 @@ static void s_aws_ionotify_cleanup_aws_lc_thread_local_state(void *user_data) {
     aws_cal_thread_clean_up();
 }
 
-static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pulse *pulse, bool *should_process_cross_thread_tasks ) {
+static void s_process_pulse(
+    struct aws_event_loop *event_loop,
+    const struct _pulse *pulse,
+    bool *should_process_cross_thread_tasks) {
     if (pulse->code == CROSS_THREAD_PULSE_SIGEV_CODE) {
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got cross-thread pulse", (void *)event_loop);
         *should_process_cross_thread_tasks = true;
@@ -768,10 +776,10 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
     if (ionotify_event_data == NULL) {
         /* This situation is totally OK when the corresponding fd is already unsubscribed. */
         AWS_LOGF_DEBUG(
-                AWS_LS_IO_EVENT_LOOP,
-                "id=%p: No mapped data found for handle ID %d, fd must be already unsubscribed",
-                (void *)event_loop,
-                handle_id);
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: No mapped data found for handle ID %d, fd must be already unsubscribed",
+            (void *)event_loop,
+            handle_id);
         return;
     }
 
@@ -779,7 +787,12 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
         return;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Processing fd %d: pulse code %d", (void *)event_loop, ionotify_event_data->handle->data.fd, pulse->code);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: Processing fd %d: pulse code %d",
+        (void *)event_loop,
+        ionotify_event_data->handle->data.fd,
+        pulse->code);
     int event_mask = 0;
     if (pulse->value.sival_int & _NOTIFY_COND_OBAND) {
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: fd got out-of-band data", (void *)event_loop);
@@ -794,15 +807,23 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
         event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
     }
     if (pulse->value.sival_int & _NOTIFY_COND_EXTEN) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: fd has extended condition: %d %d", (void *)event_loop, pulse->code, ionotify_event_data->event.sigev_code);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: fd has extended condition: %d %d",
+            (void *)event_loop,
+            pulse->code,
+            ionotify_event_data->event.sigev_code);
         // TODO
         if (pulse->code != IO_EVENT_PULSE_SIGEV_CODE) {
-            //event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
+            // event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
         }
     }
 
     if (ionotify_event_data->latest_io_operation_error_code == AWS_IO_EVENT_TYPE_CLOSED) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: latest_io_operation_error_code is AWS_IO_EVENT_TYPE_CLOSED", (void *)event_loop);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: latest_io_operation_error_code is AWS_IO_EVENT_TYPE_CLOSED",
+            (void *)event_loop);
         event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
     }
 

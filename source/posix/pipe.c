@@ -6,7 +6,6 @@
 #include <aws/io/pipe.h>
 
 #include <aws/io/event_loop.h>
-#include <aws/common/logging.h>
 
 #ifdef __GLIBC__
 #    define __USE_GNU
@@ -320,8 +319,6 @@ static void s_read_end_on_event(
 
     (void)event_loop;
     (void)handle;
-
-    AWS_LOGF_TRACE(12, "=== s_read_end_on_event is called");
 
     /* Note that it should be impossible for this to run after read-end has been unsubscribed or cleaned up */
     struct aws_pipe_read_end *read_end = user_data;
