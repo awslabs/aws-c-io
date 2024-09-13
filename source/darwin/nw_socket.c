@@ -73,18 +73,28 @@ enum socket_state {
     CLOSED,
 };
 
+struct nw_socket_connect_args {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+};
+
 struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
-    nw_connection_t *nw_connection;
+    nw_connection_t nw_connection;
     nw_parameters_t socket_options_to_params;
     struct aws_linked_list read_queue;
     int last_error;
     aws_socket_on_readable_fn *on_readable;
     void *on_readable_user_data;
     bool setup_run;
+    bool setup_closing;
     bool read_queued;
     bool is_listener;
+    struct nw_socket_connect_args *connect_args;
+    aws_socket_on_connection_result_fn *on_connection_result_fn;
+    void *connect_accept_user_data;
 };
 
 struct socket_address {
@@ -259,6 +269,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_connection = NULL;
     }
 
+    aws_mem_release(nw_socket->allocator, nw_socket->connect_args);
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
 }
@@ -295,6 +306,40 @@ static void s_client_set_dispatch_queue(struct aws_io_handle *handle, void *queu
 static void s_client_clear_dispatch_queue(struct aws_io_handle *handle) {
     /* Setting to NULL removes previously set handler from nw_connection_t */
     nw_connection_set_state_changed_handler(handle->data.handle, NULL);
+}
+
+static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
+    (void)task;
+    (void)status;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        // We will clean up the task and args on socket destory.
+        return;
+    }
+    struct nw_socket_connect_args *socket_args = args;
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
+    /* successful connection will have nulled out connect_args->socket */
+    if (socket_args->socket) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: timed out, shutting down.",
+            (void *)socket_args->socket,
+            socket_args->socket->io_handle.data.handle);
+
+        socket_args->socket->state = TIMEDOUT;
+        int error_code = AWS_IO_SOCKET_TIMEOUT;
+
+        // socket_args->socket->event_loop = NULL;
+        struct nw_socket *socket_impl = socket_args->socket->impl;
+
+        aws_raise_error(error_code);
+        struct aws_socket *socket = socket_args->socket;
+        /*socket close sets socket_args->socket to NULL and
+         * socket_impl->connect_args to NULL. */
+        aws_socket_close(socket);
+        socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
+    }
 }
 
 static int s_socket_connect_fn(
@@ -412,88 +457,141 @@ static int s_socket_connect_fn(
     aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
 
+    nw_socket->on_connection_result_fn = on_connection_result;
+    nw_socket->connect_accept_user_data = user_data;
+
+    struct nw_socket *socket_impl = socket->impl;
+
+    nw_socket->connect_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_connect_args));
+    if (!nw_socket->connect_args) {
+        return AWS_OP_ERR;
+    }
+
+    nw_socket->connect_args->socket = socket;
+    nw_socket->connect_args->allocator = socket->allocator;
+
+    aws_task_init(
+        &nw_socket->connect_args->task,
+        s_handle_socket_timeout,
+        nw_socket->connect_args,
+        "NWSocketConnectionTimeoutTask");
+
+    nw_connection_t handle = socket->io_handle.data.handle;
+
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
-    nw_connection_set_state_changed_handler(
-        socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
-          /* we're connected! */
-          if (state == nw_connection_state_ready) {
-              AWS_LOGF_INFO(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: connection success",
-                  (void *)socket,
-                  socket->io_handle.data.handle);
+    nw_connection_set_state_changed_handler(handle, ^(nw_connection_state_t state, nw_error_t error) {
+      AWS_LOGF_DEBUG(
+          AWS_LS_IO_SOCKET,
+          "id=%p handle=%p: connection state changed hanlder, state: %d",
+          (void *)socket,
+          handle,
+          state);
+      /* we're connected! */
+      if (state == nw_connection_state_ready) {
+          AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p handle=%p: connection success", (void *)socket, handle);
 
-              nw_path_t path = nw_connection_copy_current_path(socket->io_handle.data.handle);
-              nw_endpoint_t local_endpoint = nw_path_copy_effective_local_endpoint(path);
-              nw_release(path);
-              const char *hostname = nw_endpoint_get_hostname(local_endpoint);
-              uint16_t port = nw_endpoint_get_port(local_endpoint);
+          nw_path_t path = nw_connection_copy_current_path(handle);
+          nw_endpoint_t local_endpoint = nw_path_copy_effective_local_endpoint(path);
+          nw_release(path);
+          const char *hostname = nw_endpoint_get_hostname(local_endpoint);
+          uint16_t port = nw_endpoint_get_port(local_endpoint);
 
-              size_t hostname_len = strlen(hostname);
-              size_t buffer_size = AWS_ARRAY_SIZE(socket->local_endpoint.address);
-              size_t to_copy = aws_min_size(hostname_len, buffer_size);
-              memcpy(socket->local_endpoint.address, hostname, to_copy);
-              socket->local_endpoint.port = port;
-              nw_release(local_endpoint);
+          size_t hostname_len = strlen(hostname);
+          size_t buffer_size = AWS_ARRAY_SIZE(socket->local_endpoint.address);
+          size_t to_copy = aws_min_size(hostname_len, buffer_size);
+          memcpy(socket->local_endpoint.address, hostname, to_copy);
+          socket->local_endpoint.port = port;
+          nw_release(local_endpoint);
 
-              AWS_LOGF_DEBUG(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: local endpoint %s:%d",
-                  (void *)socket,
-                  socket->io_handle.data.handle,
-                  socket->local_endpoint.address,
-                  port);
+          // Cancel the connection timeout task
+          aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
 
-              socket->state = CONNECTED_WRITE | CONNECTED_READ;
-              aws_ref_count_acquire(&nw_socket->ref_count);
-              on_connection_result(socket, AWS_OP_SUCCESS, user_data);
-              aws_ref_count_release(&nw_socket->ref_count);
+          AWS_LOGF_DEBUG(
+              AWS_LS_IO_SOCKET,
+              "id=%p handle=%p: local endpoint %s:%d",
+              (void *)socket,
+              handle,
+              socket->local_endpoint.address,
+              port);
+
+          socket->state = CONNECTED_WRITE | CONNECTED_READ;
+          aws_ref_count_acquire(&nw_socket->ref_count);
+          on_connection_result(socket, AWS_OP_SUCCESS, user_data);
+          aws_ref_count_release(&nw_socket->ref_count);
+          nw_socket->setup_run = true;
+      } else if (error) {
+          /* any error, including if closed remotely in error */
+          int error_code = nw_error_get_error_code(error);
+          AWS_LOGF_ERROR(
+              AWS_LS_IO_SOCKET,
+              "id=%p handle=%p: connection error %d",
+              (void *)socket,
+              socket->io_handle.data.handle,
+              error_code);
+          // Cancel the connection timeout task
+          aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
+          /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
+          AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
+          error_code = s_determine_socket_error(error_code);
+          nw_socket->last_error = error_code;
+          aws_raise_error(error_code);
+          socket->state = ERROR;
+          aws_ref_count_acquire(&nw_socket->ref_count);
+          if (!nw_socket->setup_run) {
+              on_connection_result(socket, error_code, user_data);
               nw_socket->setup_run = true;
-          } else if (error) {
-              /* any error, including if closed remotely in error */
-              int error_code = nw_error_get_error_code(error);
-              AWS_LOGF_ERROR(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: connection error %d",
-                  (void *)socket,
-                  socket->io_handle.data.handle,
-                  error_code);
-
-              /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
-              AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
-              error_code = s_determine_socket_error(error_code);
-              nw_socket->last_error = error_code;
-              aws_raise_error(error_code);
-              socket->state = ERROR;
-              aws_ref_count_acquire(&nw_socket->ref_count);
-              if (!nw_socket->setup_run) {
-                  on_connection_result(socket, error_code, user_data);
-                  nw_socket->setup_run = true;
-              } else if (socket->readable_fn) {
-                  socket->readable_fn(socket, nw_socket->last_error, socket->readable_user_data);
-              }
-              aws_ref_count_release(&nw_socket->ref_count);
-          } else if (state == nw_connection_state_cancelled) {
-              /* this should only hit when the socket was closed by not us. Note,
-               * we uninstall this handler right before calling close on the socket so this shouldn't
-               * get hit unless it was triggered remotely */
-              AWS_LOGF_DEBUG(
-                  AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
-              socket->state = CLOSED;
-              aws_ref_count_acquire(&nw_socket->ref_count);
-              aws_raise_error(AWS_IO_SOCKET_CLOSED);
-              if (!nw_socket->setup_run) {
-                  on_connection_result(socket, AWS_IO_SOCKET_CLOSED, user_data);
-                  nw_socket->setup_run = true;
-              } else if (socket->readable_fn) {
-                  socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
-              }
+          } else if (socket->readable_fn) {
+              socket->readable_fn(socket, nw_socket->last_error, socket->readable_user_data);
           }
-        });
+
+          aws_ref_count_release(&nw_socket->ref_count);
+      } else if (state == nw_connection_state_cancelled || state == nw_connection_state_failed) {
+          /* this should only hit when the socket was closed by not us. Note,
+           * we uninstall this handler right before calling close on the socket so this shouldn't
+           * get hit unless it was triggered remotely */
+          // Cancel the connection timeout task
+          aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
+          AWS_LOGF_DEBUG(
+              AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
+          socket->state = CLOSED;
+          aws_ref_count_acquire(&nw_socket->ref_count);
+          aws_raise_error(AWS_IO_SOCKET_CLOSED);
+          if (!nw_socket->setup_run) {
+              on_connection_result(socket, AWS_IO_SOCKET_CLOSED, user_data);
+              nw_socket->setup_run = true;
+          } else if (socket->readable_fn) {
+              socket->readable_fn(socket, AWS_IO_SOCKET_CLOSED, socket->readable_user_data);
+          }
+          aws_ref_count_release(&nw_socket->ref_count);
+      }
+
+    });
 
     nw_connection_start(socket->io_handle.data.handle);
     nw_retain(socket->io_handle.data.handle);
+
+    /* schedule a task to run at the connect timeout interval, if this task runs before the connect
+     * happens, we consider that a timeout. */
+
+    uint64_t timeout = 0;
+    aws_event_loop_current_clock_time(event_loop, &timeout);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: start connection at %llu.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (unsigned long long)timeout);
+    timeout +=
+        aws_timestamp_convert(socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p hanlde=%p: scheduling timeout task for %llu.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (unsigned long long)timeout);
+    nw_socket->connect_args->task.timestamp = timeout;
+    aws_event_loop_schedule_task_future(event_loop, &nw_socket->connect_args->task, timeout);
 
     return AWS_OP_SUCCESS;
 }
@@ -713,11 +811,13 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     if (nw_socket->is_listener) {
         nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_listener_cancel(socket->io_handle.data.handle);
+
     } else {
         /* Setting to NULL removes previously set handler from nw_connection_t */
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_connection_cancel(socket->io_handle.data.handle);
     }
+    nw_socket->setup_closing = true;
 
     return AWS_OP_SUCCESS;
 }
@@ -786,6 +886,18 @@ static void s_schedule_next_read(struct aws_socket *socket) {
     struct aws_allocator *allocator = socket->allocator;
     struct aws_linked_list *list = &nw_socket->read_queue;
 
+    if (!(socket->state & CONNECTED_READ)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: cannot read to because it is not connected",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+    }
+
+    // Acquire nw_socket after we call connection receive, and released it when handler is called. 
+    aws_ref_count_acquire(&nw_socket->ref_count);
+
     /* read and let me know when you've done it. */
     nw_connection_receive(
         socket->io_handle.data.handle,
@@ -796,7 +908,11 @@ static void s_schedule_next_read(struct aws_socket *socket) {
           AWS_LOGF_TRACE(
               AWS_LS_IO_SOCKET, "id=%p handle=%p: read cb invoked", (void *)socket, socket->io_handle.data.handle);
 
-          if (!error || nw_error_get_error_code(error) == 0) {
+          if (nw_socket->setup_closing) {
+              AWS_LOGF_TRACE(
+                  AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
+              aws_raise_error(AWS_IO_SOCKET_CLOSED);
+          } else if (!error || nw_error_get_error_code(error) == 0) {
               if (data) {
                   struct read_queue_node *node = aws_mem_calloc(allocator, 1, sizeof(struct read_queue_node));
                   node->allocator = allocator;
@@ -827,10 +943,7 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
               nw_socket->on_readable(socket, error_code, nw_socket->on_readable_user_data);
           }
-          // DEBUG WIP these may or may not be necessary. release on error seems okay but
-          // release on context or data here appears to double release.
-          // nw_release(context);
-          nw_release(error);
+          aws_ref_count_release(&nw_socket->ref_count);
         });
 }
 
@@ -949,30 +1062,49 @@ static int s_socket_write_fn(
             socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
+    
+    struct nw_socket *nw_socket = socket->impl;
+    aws_ref_count_acquire(&nw_socket->ref_count);
+    nw_connection_t handle = socket->io_handle.data.handle;
 
     AWS_ASSERT(written_fn);
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
     nw_connection_send(
-        socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
+        handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           AWS_LOGF_TRACE(
               AWS_LS_IO_SOCKET,
               "id=%p handle=%p: processing write requests, called from aws_socket_write",
               (void *)socket,
-              socket->io_handle.data.handle);
+              handle);
+            
+            if (nw_socket->setup_closing) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: socket closed",
+                    (void *)socket,
+                    handle);
+                written_fn(socket, 0, 0, user_data);
+                goto nw_socket_release;
+            }
+            
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: DEBUG:: callback writing message: %p",
+                (void *)socket,
+                handle, user_data);
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
 
           if (error_code) {
-              struct nw_socket *nw_socket = socket->impl;
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
               AWS_LOGF_ERROR(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: error during write %d",
                   (void *)socket,
-                  socket->io_handle.data.handle,
+                  handle,
                   error_code);
           }
 
@@ -981,9 +1113,11 @@ static int s_socket_write_fn(
               AWS_LS_IO_SOCKET,
               "id=%p handle=%p: send written size %d",
               (void *)socket,
-              socket->io_handle.data.handle,
+              handle,
               (int)written_size);
           written_fn(socket, error_code, !error_code ? written_size : 0, user_data);
+nw_socket_release:
+          aws_ref_count_release(&nw_socket->ref_count);
         });
 
     return AWS_OP_SUCCESS;
