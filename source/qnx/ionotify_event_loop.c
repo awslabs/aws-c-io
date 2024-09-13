@@ -559,7 +559,7 @@ static void s_update_io_result(
             AWS_LS_IO_EVENT_LOOP, "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
         /* We're on the event loop thread, just run the subscribing task. */
         ionotify_event_data->events_subscribed = event_mask;
-        s_subscribe_task(NULL, ionotify_event_data, AWS_TASK_STATUS_CANCELED);
+        s_subscribe_task(NULL, ionotify_event_data, AWS_TASK_STATUS_RUN_READY);
     }
 
     /* Notify event loop of error condition. */
