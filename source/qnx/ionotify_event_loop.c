@@ -61,8 +61,8 @@ struct ionotify_loop {
     struct aws_atomic_var running_thread_id;
     /* Channel to receive I/O events. Resource managers open connections to this channel to send their events. */
     int io_events_channel_id;
-    /* Connection opened by the event loop to the pulse channel. It's used by ionotify and cross-thread logic to send
-     * pulses to the pulse channel. */
+    /* Connection to the events channel opened by the event loop. It's used by ionotify and some event loop logic (e.g.
+     * cross-thread and I/O results notifications) to send pulses to the pulse channel. */
     int pulse_connection_id;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
@@ -70,12 +70,16 @@ struct ionotify_loop {
     struct aws_atomic_var stop_task_ptr;
     bool should_continue;
     /* ionotify forces to choose one of the following as user-provided data associated with each received event:
-     * 1. A pointer to user data. But events won't contain the triggered flags (e.g. _NOTIFY_COND_INPUT).
-     * 2. 28 bits of user data. Then QNX will use 4 bits to specify the types of triggered events.
-     * Since event loop must know the types of received I/O events, the second options is used. This hash table is used
-     * to map the received events and I/O handles. */
+     * 1. A pointer. But events won't contain the triggered flags (i.e. your code has to figure out itself if it was
+     * _NOTIFY_COND_INPUT or _NOTIFY_COND_HUP).
+     * 2. Some bits of a special field of type int (28 bits on x86_64). QNX will use the remaining bits (4 bits in
+     * QNX 8.0) in this field to specify the types of the triggered events.
+     *
+     * Since event loop must know the types of received I/O events, the second options is used. 28-bit IDs are mapped to
+     * each subscribed aws_io_handle. This mapping is stored in this hash table.
+     */
     struct aws_hash_table handles;
-    uint32_t last_handle_id;
+    int last_handle_id;
 };
 
 /* Data associated with a subscribed I/O handle. */
@@ -86,24 +90,18 @@ struct ionotify_event_data {
     aws_event_loop_on_event_fn *on_event;
     int events_subscribed;
     int latest_io_operation_error_code;
-    /* Connection opened on the pulse channel. Used to send pulses to the main event loop. */
+    /* Connection opened on the events channel. Used to send pulses to the main event loop. */
     int pulse_connection_id;
+    /* TODO Remove? */
     struct sigevent event;
     void *user_data;
     struct aws_task subscribe_task;
     struct aws_task cleanup_task;
-    /* ID that can fit into pulse user data (only _NOTIFY_COND_MASK bits in this field can be used). */
-    uint32_t handle_id;
+    /* ID with a value that can fit into pulse user data field (only _NOTIFY_COND_MASK bits can be used). */
+    int handle_id;
     /* False when handle is unsubscribed, but this struct hasn't been cleaned up yet. */
     bool is_subscribed;
 };
-
-/* Default timeout is 100 seconds. */
-static uint64_t DEFAULT_TIMEOUT = 100ULL * 1000000000;
-/* Special constant, _NOTIFY_COND_MASK, limits the maximum value that can be used as user data in I/O events.
- * For example, it's 28-bit wide on QNX 8.0. */
-// TODO Use unsigned int?
-static uint32_t MAX_HANDLE_ID = _NOTIFY_COND_MASK;
 
 /* SI_NOTIFY is a QNX special sigev code requesting resource managers to return active event type along with the event
  * itself. */
@@ -284,7 +282,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_on_callers_thread(event_loop)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            "id=%p: Scheduling task %p in-thread for timestamp %llu",
             (void *)event_loop,
             (void *)task,
             (unsigned long long)run_at_nanos);
@@ -304,11 +302,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         (void *)task,
         (unsigned long long)run_at_nanos);
     task->timestamp = run_at_nanos;
+
     aws_mutex_lock(&ionotify_loop->task_pre_queue_mutex);
-
     bool is_first_task = aws_linked_list_empty(&ionotify_loop->task_pre_queue);
-
     aws_linked_list_push_back(&ionotify_loop->task_pre_queue, &task->node);
+    aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
 
     /* if the list was not empty, we already sent a cross-thread pulse. No need to send it again. */
     if (is_first_task) {
@@ -322,7 +320,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         if (rc == -1) {
             /* The task was scheduled, but we couldn't notify the main loop about it. According to QNX docs, inability
              * to send a pulse indicates that there is no available memory left for the process. Not notifying the loop
-             * is the minor thing is such a scenario. So, just log the error. */
+             * is the minor thing in such a scenario. So, just log the error. */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p: Failed to send cross-thread pulse: %d (%s)",
@@ -331,8 +329,6 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
                 strerror(errno_value));
         }
     }
-
-    aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
 }
 
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
@@ -349,22 +345,27 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, task);
 }
 
-/* Map ionotify_event_data to internal ID limited by MAX_HANDLE_ID value. */
+/* Map ionotify_event_data to internal ID. */
 static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_event_data *ionotify_event_data) {
     AWS_ASSERT(s_is_on_callers_thread(ionotify_event_data->event_loop));
 
-    if (AWS_UNLIKELY(aws_hash_table_get_entry_count(&ionotify_loop->handles) == MAX_HANDLE_ID)) {
+    /* Special constant, _NOTIFY_COND_MASK, limits the maximum value that can be used as user data in I/O events. */
+    int max_handle_id = _NOTIFY_COND_MASK;
+
+    if (AWS_UNLIKELY(aws_hash_table_get_entry_count(&ionotify_loop->handles) == (size_t)max_handle_id)) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: Maximum number of handles reached", (void *)ionotify_event_data->event_loop);
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Maximum number of registered handles reached",
+            (void *)ionotify_event_data->event_loop);
         return AWS_OP_ERR;
     }
 
     struct aws_hash_element *elem = NULL;
-    uint32_t next_handle_id = ionotify_loop->last_handle_id;
+    int next_handle_id = ionotify_loop->last_handle_id;
     int was_created = 0;
     do {
         ++next_handle_id;
-        if (next_handle_id > MAX_HANDLE_ID) {
+        if (next_handle_id > max_handle_id) {
             next_handle_id = 1;
         }
         aws_hash_table_create(&ionotify_loop->handles, (void *)next_handle_id, &elem, &was_created);
@@ -384,7 +385,7 @@ static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_eve
 struct ionotify_event_data *s_find_handle(
     struct aws_event_loop *event_loop,
     struct ionotify_loop *ionotify_loop,
-    uint32_t handle_id) {
+    int handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
     struct ionotify_event_data *ionotify_event_data = NULL;
@@ -396,10 +397,7 @@ struct ionotify_event_data *s_find_handle(
     return ionotify_event_data;
 }
 
-static void s_remove_handle(
-    struct aws_event_loop *event_loop,
-    struct ionotify_loop *ionotify_loop,
-    uint32_t handle_id) {
+static void s_remove_handle(struct aws_event_loop *event_loop, struct ionotify_loop *ionotify_loop, int handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
     aws_hash_table_remove(&ionotify_loop->handles, (void *)handle_id, NULL, NULL);
@@ -445,8 +443,12 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
             pulse_priority,
             pulse_sigev_code,
             ionotify_event_data->handle_id);
-        /* Set special bits in the event structure to allow resource managers set I/O event types in the sigev_code
-         * field */
+
+        /* From the iomgr.h header:
+         *   If extended conditions are requested, and they need to be returned in an armed event, the negative of the
+         *   satisfied conditions are returned in (io_notify_t).i.event.sigev_code.
+         * Extended conditions are the ones starting with _NOTIFY_CONDE_.
+         * For that feature to work, special bits in the event structure must be set. */
         ionotify_event_data->event.sigev_notify |= SIGEV_FLAG_CODE_UPDATEABLE;
         SIGEV_MAKE_UPDATEABLE(&ionotify_event_data->event);
 
@@ -457,22 +459,20 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          *
          * It's enough to register an event only once and then reuse it on followup ionotify rearming calls.
          * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
-         * it. */
+         * it again. */
         MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
     }
 
     ionotify_event_data->is_subscribed = true;
 
     /* Everyone is always registered for errors. */
-    uint32_t event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
+    int event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
     if (ionotify_event_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
         event_mask |= _NOTIFY_COND_INPUT;
-        event_mask |= _NOTIFY_CONDE_RDNORM;
         event_mask |= _NOTIFY_COND_OBAND;
     }
     if (ionotify_event_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
         event_mask |= _NOTIFY_COND_OUTPUT;
-        event_mask |= _NOTIFY_CONDE_WRNORM;
     }
 
     /* Arm resource manager associated with a given file descriptor in edge-triggered mode.
@@ -480,7 +480,6 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     int rc =
         ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_event_data->event);
     int errno_value = errno;
-
     if (rc == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
@@ -494,18 +493,18 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         return;
     }
 
-    /* ionotify returns active conditions if there are any. Send notification to kick-start processing fd if it has
-     * desired conditions. */
-    int kick_start_event_mask = rc & _NOTIFY_COND_MASK;
-    if (kick_start_event_mask != 0) {
-        // TODO Handle HUP and its friends.
+    /* ionotify returns active conditions if there are any. If the returned conditions are data-related, they can be
+     * specified in user-provided field. Send notification to kick-start processing fd if it has desired conditions. */
+    if (rc & (_NOTIFY_COND_OBAND | _NOTIFY_COND_INPUT | _NOTIFY_COND_OUTPUT)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Sending pulse for fd %d because it has desired I/O conditions (rc is %d)",
             (void *)event_loop,
             ionotify_event_data->handle->data.fd,
             rc);
-        /* Set _NOTIFY_COND_MASK low bits to ID that will be  */
+        /* Set _NOTIFY_COND_MASK low bits to ID, the same as ionotify does, so the main loop can process all pulses in
+         * unified manner. */
+        int kick_start_event_mask = rc & _NOTIFY_COND_MASK;
         kick_start_event_mask |= ionotify_event_data->handle_id;
         int send_rc =
             MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_KICKSTART_SIGEV_CODE, kick_start_event_mask);
@@ -516,6 +515,11 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
                 (void *)event_loop,
                 ionotify_event_data->handle->data.fd);
         }
+    }
+
+    /* fd is in error state. We cannot send it in pulse */
+    if (rc & (_NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL)) {
+        // TODO
     }
 }
 
@@ -546,7 +550,7 @@ static void s_update_io_result(
         io_op_result->write_error_code,
         aws_error_str(io_op_result->write_error_code));
 
-    uint32_t event_mask = 0;
+    int event_mask = 0;
     if (io_op_result->error_code == AWS_IO_SOCKET_CLOSED) {
         ionotify_event_data->latest_io_operation_error_code = AWS_IO_EVENT_TYPE_CLOSED;
     }
@@ -642,7 +646,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct ionotify_event_data *ionotify_event_data = handle->additional_data;
 
     /* Disarm resource manager for a given fd. */
-    uint32_t event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
+    int event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
     event_mask |= _NOTIFY_COND_INPUT | _NOTIFY_CONDE_RDNORM | _NOTIFY_COND_OBAND;
     event_mask |= _NOTIFY_COND_OUTPUT | _NOTIFY_CONDE_WRNORM;
     int rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
@@ -691,7 +695,7 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
 static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: processing cross-thread tasks", (void *)event_loop);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Processing cross-thread tasks", (void *)event_loop);
 
     struct aws_linked_list task_pre_queue;
     aws_linked_list_init(&task_pre_queue);
@@ -763,7 +767,7 @@ static void s_process_pulse(
 
     int user_data = pulse->value.sival_int;
 
-    uint32_t handle_id = user_data & _NOTIFY_DATA_MASK;
+    int handle_id = user_data & _NOTIFY_DATA_MASK;
     if (handle_id == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse with empty handle ID, ignoring it", (void *)event_loop);
         return;
@@ -830,11 +834,6 @@ static void s_process_pulse(
     /* Reset the I/O operation code to not process it twice. */
     ionotify_event_data->latest_io_operation_error_code = 0;
 
-    /* QNX docs says the event types bits should be cleared after receiving a new I/O event. Even
-     * though on QNX 8.0 only pulse struct sets these bits, clear the bits on sigevent struct
-     * anyway, in case it's different on other QNX versions. */
-    ionotify_event_data->event.sigev_value.sival_int &= _NOTIFY_DATA_MASK;
-
     // TODO remove
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Calling on_event with event mask %d", (void *)event_loop, event_mask);
 
@@ -851,7 +850,10 @@ static void aws_event_loop_thread(void *args) {
 
     aws_thread_current_at_exit(s_aws_ionotify_cleanup_aws_lc_thread_local_state, NULL);
 
-    uint64_t timeout = DEFAULT_TIMEOUT;
+    /* Default timeout is 100 seconds. */
+    static uint64_t DEFAULT_TIMEOUT_NS = 100ULL * AWS_TIMESTAMP_NANOS;
+
+    uint64_t timeout = DEFAULT_TIMEOUT_NS;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: default timeout %" PRIu64, (void *)event_loop, timeout);
 
@@ -917,18 +919,15 @@ static void aws_event_loop_thread(void *args) {
         if (use_default_timeout) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", (void *)event_loop);
-            timeout = DEFAULT_TIMEOUT;
+            timeout = DEFAULT_TIMEOUT_NS;
         } else {
-            /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
-            uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
-            uint64_t timeout_ms64 = aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
-            timeout = timeout_ms64 > INT_MAX ? INT_MAX : (int)timeout_ms64;
+            timeout = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p: detected more scheduled tasks with the next occurring at "
-                "%llu, using timeout of %" PRIu64,
+                "id=%p: detected more scheduled tasks with the next occurring at %" PRIu64
+                ", using timeout of %" PRIu64,
                 (void *)event_loop,
-                (unsigned long long)timeout_ns,
+                next_run_time_ns,
                 timeout);
         }
 

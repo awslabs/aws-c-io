@@ -47,7 +47,7 @@ struct aws_io_handle {
     void *additional_data;
 #if AWS_USE_ON_EVENT_WITH_RESULT
     aws_io_handle_update_io_results_fn *update_io_result;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 };
 
 enum aws_io_message_type {

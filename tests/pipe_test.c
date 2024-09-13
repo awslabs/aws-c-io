@@ -417,8 +417,6 @@ PIPE_TEST_CASE(pipe_read_write_large_buffer, GIANT_BUFFER_SIZE);
 
 static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_code, void *user_data) {
 
-    AWS_LOGF_TRACE(12, "=== s_on_readable_event in tests is called");
-
     struct pipe_state *state = user_data;
 
     if (error_code == state->readable_events.error_code_to_monitor) {
@@ -432,6 +430,9 @@ static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_co
             s_signal_done_on_read_end_closed(state);
         }
     } else {
+        /* Some event loop implementations (only QNX, to be fair) can't detect pipe closing one of its ends without
+         * performing operation on the other end. So, this read operation should notify event loop that the writing end
+         * is closed. */
         aws_pipe_read(&state->read_end, &state->buffers.dst, NULL);
     }
 
