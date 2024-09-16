@@ -286,7 +286,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(s_async_pipe_init(&read_handle, &write_handle));
 
     /* Connect to event-loop */
-    ASSERT_SUCCESS(aws_event_loop_connect_handle_to_io_completion_port(event_loop, &write_handle));
+    ASSERT_SUCCESS(aws_event_loop_connect_handle_to_completion_port(event_loop, &write_handle));
 
     /* Set up an async (overlapped) write that will result in s_on_overlapped_operation_complete() getting run
      * and filling out `completion_data` */
