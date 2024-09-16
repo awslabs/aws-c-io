@@ -94,7 +94,7 @@ struct aws_event_loop_vtable {
     void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
     void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
     void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
-    struct {
+    union {
         int (*connect_to_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
         int (*subscribe_to_io_events)(
             struct aws_event_loop *event_loop,
