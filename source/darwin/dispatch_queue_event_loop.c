@@ -24,7 +24,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
-static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle, aws_event_loop_on_event_fn *on_event);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data) {
     (void)user_data;
@@ -443,7 +443,8 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
 }
 
-static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle, aws_event_loop_on_event_fn *on_event) {
+    (void)on_event;
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
