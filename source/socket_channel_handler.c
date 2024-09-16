@@ -150,11 +150,6 @@ static void s_do_read(struct socket_handler *socket_handler) {
         struct aws_io_message *message = aws_channel_acquire_message_from_pool(
             socket_handler->slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, iter_max_read);
 
-        if (!message) {
-            last_error = aws_last_error();
-            break;
-        }
-
         if (aws_socket_read(socket_handler->socket, &message->message_data, &read)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
@@ -213,8 +208,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     }
 }
 
-/* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing.
- * If an error, start the channel shutdown process. */
+/* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing. */
 static void s_on_readable_notification(struct aws_socket *socket, int error_code, void *user_data) {
     (void)socket;
 
