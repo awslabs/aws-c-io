@@ -600,7 +600,7 @@ int aws_event_loop_connect_handle_to_completion_port(struct aws_event_loop *even
     AWS_ASSERT(
         event_loop->vtable && event_loop->vtable->event_loop_style == AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED &&
         event_loop->vtable->register_style.connect_to_completion_port);
-    return event_loop->vtable->register_style.connect_to_completion_port(event_loop, handle, NULL);
+    return event_loop->vtable->register_style.connect_to_completion_port(event_loop, handle);
 }
 
 int aws_event_loop_subscribe_to_io_events(
