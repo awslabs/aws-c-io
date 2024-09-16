@@ -478,11 +478,12 @@ static void s_socket_connect_event(
                 handle->data.fd);
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
-            struct aws_io_handle_io_op_result io_op_result;
-            memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
-            io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
-            AWS_ASSERT(handle->update_io_result);
-            handle->update_io_result(event_loop, handle, &io_op_result);
+            if (handle->update_io_result) {
+                struct aws_io_handle_io_op_result io_op_result;
+                AWS_ZERO_STRUCT(io_op_result);
+                io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+                handle->update_io_result(event_loop, handle, &io_op_result);
+            }
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
             return;
@@ -966,7 +967,7 @@ static void s_socket_accept_event(
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
     struct aws_io_handle_io_op_result io_op_result;
-    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
+    AWS_ZERO_STRUCT(io_op_result);
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     if (socket_impl->continue_accept && events & AWS_IO_EVENT_TYPE_READABLE) {
@@ -1085,8 +1086,9 @@ static void s_socket_accept_event(
     }
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
-    AWS_ASSERT(handle->update_io_result);
-    handle->update_io_result(event_loop, handle, &io_op_result);
+    if (handle->update_io_result) {
+        handle->update_io_result(event_loop, handle, &io_op_result);
+    }
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     AWS_LOGF_TRACE(
@@ -1659,7 +1661,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
     struct aws_io_handle_io_op_result io_op_result;
-    memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
+    AWS_ZERO_STRUCT(io_op_result);
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
@@ -1776,8 +1778,9 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
     }
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
-    AWS_ASSERT(socket->io_handle.update_io_result);
-    socket->io_handle.update_io_result(socket->event_loop, &socket->io_handle, &io_op_result);
+    if (socket->io_handle.update_io_result) {
+        socket->io_handle.update_io_result(socket->event_loop, &socket->io_handle, &io_op_result);
+    }
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     /* Only report error if aws_socket_write() invoked this function and its write_request failed */
