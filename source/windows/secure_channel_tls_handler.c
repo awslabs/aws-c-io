@@ -65,7 +65,6 @@ struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
     struct common_credential_params schannel_creds;
-    PCERT_CONTEXT pcerts;
     SCHANNEL_CRED credentials;
     PCCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
