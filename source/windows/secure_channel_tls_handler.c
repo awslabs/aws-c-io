@@ -618,7 +618,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     if (!(status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: error during processing of the ClientHello. SECURITY_STATUS is %lu",
+            "id=%p: error during processing of the ClientHello. SECURITY_STATUS is %d",
             (void *)handler,
             (int)status);
         aws_error = s_determine_sspi_error(status);
@@ -792,7 +792,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
-                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %lu",
+                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
                     (int)status);
                 aws_error = s_determine_sspi_error(status);
@@ -901,7 +901,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
     if (status != SEC_I_CONTINUE_NEEDED) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: Error sending client/receiving server handshake data. SECURITY_STATUS is %lu",
+            "id=%p: Error sending client/receiving server handshake data. SECURITY_STATUS is %d",
             (void *)handler,
             (int)status);
         aws_error = s_determine_sspi_error(status);
@@ -1083,7 +1083,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
-                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %lu",
+                    "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
                     (int)status);
                 aws_error = s_determine_sspi_error(status);
