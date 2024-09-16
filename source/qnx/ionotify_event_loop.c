@@ -531,15 +531,12 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 }
 
 /* This callback is called by I/O operations to notify about their results. */
-static void s_update_io_result(
+static void s_process_io_result(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     const struct aws_io_handle_io_op_result *io_op_result) {
 
-    if (!s_is_on_callers_thread(event_loop)) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got I/O operation result from another thread", (void *)event_loop);
-        return;
-    }
+    AWS_ASSERT(!s_is_on_callers_thread(event_loop));
 
     AWS_ASSERT(handle->additional_data);
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
@@ -547,7 +544,7 @@ static void s_update_io_result(
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Got result for I/O operation for fd %d: status %d (%s); read status %d (%s); write status %d (%s)",
+        "id=%p: Processing I/O operation result for fd %d: status %d (%s); read status %d (%s); write status %d (%s)",
         (void *)event_loop,
         handle->data.fd,
         io_op_result->error_code,
@@ -574,12 +571,7 @@ static void s_update_io_result(
             AWS_LS_IO_EVENT_LOOP, "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
         /* We're on the event loop thread, just schedule subscribing task. */
         ionotify_event_data->events_subscribed = event_types;
-        aws_task_init(
-            &ionotify_event_data->subscribe_task,
-            s_subscribe_task,
-            ionotify_event_data,
-            "ionotify_event_loop_resubscribe");
-        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, &ionotify_event_data->subscribe_task);
+        s_subscribe_task(NULL, ionotify_event_data, AWS_TASK_STATUS_RUN_READY);
     }
 
     /* Notify event loop of error conditions. */
@@ -603,6 +595,54 @@ static void s_update_io_result(
                 strerror(errno_value));
         }
     }
+}
+
+struct ionotify_io_op_results {
+    struct aws_io_handle_io_op_result io_op_result;
+    struct aws_event_loop *event_loop;
+    struct aws_io_handle *handle;
+};
+
+static void s_update_io_result_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    struct ionotify_io_op_results *ionotify_io_op_results = user_data;
+    struct aws_event_loop *event_loop = ionotify_io_op_results->event_loop;
+    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+
+    aws_mem_release(event_loop->alloc, task);
+
+    /* If task was cancelled, nothing to do. */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        aws_mem_release(event_loop->alloc, ionotify_io_op_results);
+        return;
+    }
+
+    s_process_io_result(event_loop, ionotify_io_op_results->handle, &ionotify_io_op_results->io_op_result);
+
+    aws_mem_release(event_loop->alloc, ionotify_io_op_results);
+}
+
+/* This callback is called by I/O operations to notify about their results. */
+static void s_update_io_result(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    const struct aws_io_handle_io_op_result *io_op_result) {
+
+    if (!s_is_on_callers_thread(event_loop)) {
+        /* Move processing I/O operation results to the epoll thread if the operation is performed in another thread.*/
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got I/O operation result from another thread", (void *)event_loop);
+        struct aws_task *task = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct aws_task));
+        struct ionotify_io_op_results *ionotify_io_op_results =
+            aws_mem_calloc(event_loop->alloc, 1, sizeof(struct ionotify_io_op_results));
+        ionotify_io_op_results->event_loop = event_loop;
+        ionotify_io_op_results->handle = handle;
+        memcpy(&ionotify_io_op_results->io_op_result, io_op_result, sizeof(struct aws_io_handle_io_op_result));
+        aws_task_init(task, s_update_io_result_task, ionotify_io_op_results, "ionotify_event_loop_resubscribe_ct");
+        struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, task);
+        return;
+    }
+
+    s_process_io_result(event_loop, handle, io_op_result);
 }
 
 static int s_subscribe_to_io_events(
