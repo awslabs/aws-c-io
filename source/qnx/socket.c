@@ -476,6 +476,15 @@ static void s_socket_connect_event(
                 "id=%p fd=%d: spurious event, waiting for another notification.",
                 (void *)socket_args->socket,
                 handle->data.fd);
+
+            // Return results back to event loop.
+            if (handle->update_io_result) {
+                struct aws_io_handle_io_op_result io_op_result;
+                AWS_ZERO_STRUCT(io_op_result);
+                io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+                handle->update_io_result(event_loop, handle, &io_op_result);
+            }
+
             return;
         }
 
@@ -955,6 +964,9 @@ static void s_socket_accept_event(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p fd=%d: listening event received", (void *)socket, socket->io_handle.data.fd);
 
+    struct aws_io_handle_io_op_result io_op_result;
+    AWS_ZERO_STRUCT(io_op_result);
+
     if (socket_impl->continue_accept && events & AWS_IO_EVENT_TYPE_READABLE) {
         int in_fd = 0;
         while (socket_impl->continue_accept && in_fd != -1) {
@@ -966,12 +978,14 @@ static void s_socket_accept_event(
                 int errno_value = errno; /* Always cache errno before potential side-effect */
 
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
+                    io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
                     break;
                 }
 
                 int aws_error = aws_socket_get_error(socket);
                 aws_raise_error(aws_error);
                 s_on_connection_error(socket, aws_error);
+                io_op_result.read_error_code = aws_error;
                 break;
             }
 
@@ -1062,6 +1076,11 @@ static void s_socket_accept_event(
 
             socket_impl->close_happened = NULL;
         }
+    }
+
+    // Return results back to event loop.
+    if (handle->update_io_result) {
+        handle->update_io_result(event_loop, handle, &io_op_result);
     }
 
     AWS_LOGF_TRACE(
@@ -1632,6 +1651,9 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
     bool parent_request_failed = false;
     bool pushed_to_written_queue = false;
 
+    struct aws_io_handle_io_op_result io_op_result;
+    AWS_ZERO_STRUCT(io_op_result);
+
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
     while (!aws_linked_list_empty(&socket_impl->write_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_front(&socket_impl->write_queue);
@@ -1660,6 +1682,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
             if (errno_value == EAGAIN) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET, "id=%p fd=%d: returned would block", (void *)socket, socket->io_handle.data.fd);
+                io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK;
                 break;
             }
 
@@ -1672,6 +1695,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
                 aws_error = AWS_IO_SOCKET_CLOSED;
                 aws_raise_error(aws_error);
                 purge = true;
+                io_op_result.write_error_code = aws_error;
                 break;
             }
 
@@ -1684,8 +1708,11 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
                 errno_value);
             aws_error = s_determine_socket_error(errno_value);
             aws_raise_error(aws_error);
+            io_op_result.write_error_code = aws_error;
             break;
         }
+
+        io_op_result.written_bytes += (size_t)written;
 
         size_t remaining_to_write = write_request->cursor_cpy.len;
 
@@ -1730,6 +1757,11 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
         socket_impl->written_task_scheduled = true;
         aws_task_init(&socket_impl->written_task, s_written_task, socket, "socket_written_task");
         aws_event_loop_schedule_task_now(socket->event_loop, &socket_impl->written_task);
+    }
+
+    // Return results back to event loop.
+    if (socket->io_handle.update_io_result) {
+        socket->io_handle.update_io_result(socket->event_loop, &socket->io_handle, &io_op_result);
     }
 
     /* Only report error if aws_socket_write() invoked this function and its write_request failed */
@@ -2005,5 +2037,5 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     char uuid_str[AWS_UUID_STR_LEN] = {0};
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
+    snprintf(endpoint->address, sizeof(endpoint->address), "/tmp/testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
