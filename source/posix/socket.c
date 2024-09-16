@@ -1691,7 +1691,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET, "id=%p fd=%d: returned would block", (void *)socket, socket->io_handle.data.fd);
 #if AWS_USE_ON_EVENT_WITH_RESULT
-                io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK; /* TODO Add AWS_IO_WRITE_EAGAIN code. */
+                io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK;
 #endif /* AWS_USE_ON_EVENT_WITH_RESULT */
                 break;
             }
