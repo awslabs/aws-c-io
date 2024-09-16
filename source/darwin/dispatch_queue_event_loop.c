@@ -8,6 +8,7 @@
 #include <aws/common/atomics.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
+#include <aws/common/uuid.h>
 
 #include <aws/io/logging.h>
 
@@ -46,17 +47,17 @@ static struct aws_event_loop_vtable s_vtable = {
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
-struct dispatch_scheduling_state {
-    // Let's us skip processing an iteration task if one is already in the middle
-    // of executing
-    bool is_executing_iteration;
-
-    // List<scheduled_service_entry> in sorted order by timestamp
-    //
-    // When we go to schedule a new iteration, we check here first to see
-    // if our scheduling attempt is redundant
-    struct aws_linked_list scheduled_services;
-};
+// struct dispatch_scheduling_state {
+//     // Let's us skip processing an iteration task if one is already in the middle
+//     // of executing
+//     bool is_executing_iteration;
+//
+//     // List<scheduled_service_entry> in sorted order by timestamp
+//     //
+//     // When we go to schedule a new iteration, we check here first to see
+//     // if our scheduling attempt is redundant
+//     struct aws_linked_list scheduled_services;
+// };
 
 struct scheduled_service_entry {
     struct aws_allocator *allocator;
@@ -65,22 +66,22 @@ struct scheduled_service_entry {
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
 };
 
-struct dispatch_loop {
-    struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
-    dispatch_queue_t dispatch_queue;
-    struct aws_task_scheduler scheduler;
-    struct aws_linked_list local_cross_thread_tasks;
-
-    struct {
-        struct dispatch_scheduling_state scheduling_state;
-        struct aws_linked_list cross_thread_tasks;
-        struct aws_mutex lock;
-        bool suspended;
-    } synced_data;
-
-    bool wakeup_schedule_needed;
-};
+// struct dispatch_loop {
+//     struct aws_allocator *allocator;
+//     struct aws_ref_count ref_count;
+//     dispatch_queue_t dispatch_queue;
+//     struct aws_task_scheduler scheduler;
+//     struct aws_linked_list local_cross_thread_tasks;
+//
+//     struct {
+//         struct dispatch_scheduling_state scheduling_state;
+//         struct aws_linked_list cross_thread_tasks;
+//         struct aws_mutex lock;
+//         bool suspended;
+//     } synced_data;
+//
+//     bool wakeup_schedule_needed;
+// };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
     struct scheduled_service_entry *entry = aws_mem_calloc(loop->alloc, 1, sizeof(struct scheduled_service_entry));
@@ -152,8 +153,24 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct dispatch_loop *dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     aws_ref_count_init(&dispatch_loop->ref_count, loop, s_dispatch_event_loop_destroy);
 
-    dispatch_loop->dispatch_queue =
-        dispatch_queue_create("com.amazonaws.commonruntime.eventloop", DISPATCH_QUEUE_SERIAL);
+    struct aws_uuid uuid;
+    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
+
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    struct aws_byte_cursor uuid_cursor = aws_byte_cursor_from_buf(&uuid_buf);
+
+    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "[DEBUG DISPATCH QUEUE uuID ] : %s", uuid_cursor.ptr);
+
+    struct aws_byte_buf dispatch_queue_id = aws_byte_buf_from_c_str("com.amazonaws.commonruntime.eventloop.");
+    dispatch_queue_id.allocator = alloc;
+    //    aws_byte_buf_append_dynamic(&dispatch_queue_id, &uuid_cursor);
+
+    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "[DEBUG DISPATCH QUEUE ID ] : %s", dispatch_queue_id.buffer);
+
+    dispatch_loop->dispatch_queue = dispatch_queue_create((char *)uuid_cursor.ptr, DISPATCH_QUEUE_SERIAL);
     if (!dispatch_loop->dispatch_queue) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to create dispatch queue.", (void *)loop);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -234,10 +251,13 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
     });
 
-    /* we don't want it stopped while shutting down. dispatch_release will fail on a suspended loop. */
-    dispatch_release(dispatch_loop->dispatch_queue);
-
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: [DEBUG] Releasing Dispatch Queue. queue = %p",
+        (void *)event_loop,
+        dispatch_loop->dispatch_queue);
     aws_ref_count_release(&dispatch_loop->ref_count);
 }
 
@@ -411,11 +431,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         }
     }
 
-    aws_mutex_unlock(&dispatch_loop->synced_data.lock);
-
     if (should_schedule) {
         try_schedule_new_iteration(event_loop, 0);
     }
+
+    aws_mutex_unlock(&dispatch_loop->synced_data.lock);
 }
 
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {

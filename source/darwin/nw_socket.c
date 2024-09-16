@@ -265,6 +265,11 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     }
 
     if (nw_socket->nw_connection) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: timed out, [DEBUG] releasing handle.",
+            (void *)nw_socket,
+            nw_socket->nw_connection);
         nw_release(nw_socket->nw_connection);
         nw_socket->nw_connection = NULL;
     }
@@ -504,9 +509,6 @@ static int s_socket_connect_fn(
           socket->local_endpoint.port = port;
           nw_release(local_endpoint);
 
-          // Cancel the connection timeout task
-          aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
-
           AWS_LOGF_DEBUG(
               AWS_LS_IO_SOCKET,
               "id=%p handle=%p: local endpoint %s:%d",
@@ -516,6 +518,10 @@ static int s_socket_connect_fn(
               port);
 
           socket->state = CONNECTED_WRITE | CONNECTED_READ;
+
+          // Cancel the connection timeout task
+          aws_event_loop_cancel_task(event_loop, &nw_socket->connect_args->task);
+
           aws_ref_count_acquire(&nw_socket->ref_count);
           on_connection_result(socket, AWS_OP_SUCCESS, user_data);
           aws_ref_count_release(&nw_socket->ref_count);
@@ -1065,34 +1071,49 @@ static int s_socket_write_fn(
     
     struct nw_socket *nw_socket = socket->impl;
     aws_ref_count_acquire(&nw_socket->ref_count);
-    nw_connection_t handle = socket->io_handle.data.handle;
 
     AWS_ASSERT(written_fn);
 
-    dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
+    nw_connection_t handle = nw_socket->nw_connection;
+    struct dispatch_loop *dispath_event_loop = socket->event_loop->impl_data;
+
+    dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, dispath_event_loop->dispatch_queue, ^{
+      AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id= %p: dispatch data destructor ", (void *)cursor);
+    });
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "[DEBUG]id=%p, handle=%p, BEFORE call, data=%p, cursor ptr =%p(%s), dispatch_queue = %p",
+        (void *)socket,
+        handle,
+        data,
+        cursor->ptr,
+        cursor->ptr,
+        dispath_event_loop->dispatch_queue);
+
     nw_connection_send(
-        handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
-          AWS_LOGF_TRACE(
+        handle, data, NW_CONNECTION_DEFAULT_MESSAGE_CONTEXT, false, ^(nw_error_t error) {
+          if (nw_socket->setup_closing) {
+              AWS_LOGF_TRACE(
+                  AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
+              written_fn(socket, 0, 0, user_data);
+              dispatch_release(data);
+              aws_ref_count_release(&nw_socket->ref_count);
+              AWS_LOGF_ERROR(
+                  AWS_LS_IO_SOCKET,
+                  "[DEBUG]id=%p, handle=%p, [DEBUG] releasing data call, data=%p",
+                  (void *)socket,
+                  handle,
+                  data);
+              return;
+          }
+
+          AWS_LOGF_ERROR(
               AWS_LS_IO_SOCKET,
-              "id=%p handle=%p: processing write requests, called from aws_socket_write",
+              "id=%p handle=%p: DEBUG:: callback writing message: %p",
               (void *)socket,
-              handle);
-            
-            if (nw_socket->setup_closing) {
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: socket closed",
-                    (void *)socket,
-                    handle);
-                written_fn(socket, 0, 0, user_data);
-                goto nw_socket_release;
-            }
-            
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: DEBUG:: callback writing message: %p",
-                (void *)socket,
-                handle, user_data);
+              socket->io_handle.data.handle,
+              user_data);
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
@@ -1116,9 +1137,17 @@ static int s_socket_write_fn(
               handle,
               (int)written_size);
           written_fn(socket, error_code, !error_code ? written_size : 0, user_data);
-nw_socket_release:
+          AWS_LOGF_ERROR(
+              AWS_LS_IO_SOCKET,
+              "[DEBUG]id=%p, handle=%p, [DEBUG] releasing data call, data=%p",
+              (void *)socket,
+              handle,
+              data);
+          dispatch_release(data);
           aws_ref_count_release(&nw_socket->ref_count);
         });
+
+    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "[DEBUG]id=%p, handle=%p, After call ", (void *)socket, handle);
 
     return AWS_OP_SUCCESS;
 }

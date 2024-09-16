@@ -72,6 +72,11 @@ static void s_on_socket_write_complete(
             socket_handler->stats.bytes_written += amount_written;
         }
 
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "message=%p: [DEBUG] : clean up message data message: %p",
+            (void *)message,
+            message->message_data.buffer);
         aws_mem_release(message->allocator, message);
 
         if (error_code) {
@@ -97,6 +102,13 @@ static int s_socket_process_write_message(
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET_HANDLER,
+        "id=%p: [DEBUG]writing message of size %llu, message=%p, message_data: %p",
+        (void *)handler,
+        (unsigned long long)message->message_data.len,
+        message,
+        message->message_data.buffer);
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&message->message_data);
     if (aws_socket_write(socket_handler->socket, &cursor, s_on_socket_write_complete, message)) {
         return AWS_OP_ERR;
