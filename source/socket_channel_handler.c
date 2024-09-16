@@ -144,7 +144,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     struct aws_io_handle_io_op_result io_op_result;
     memset(&io_op_result, 0, sizeof(struct aws_io_handle_io_op_result));
     AWS_ASSERT(socket_handler->socket->io_handle.update_io_result);
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     size_t total_read = 0;
     size_t read = 0;
@@ -160,14 +160,14 @@ static void s_do_read(struct socket_handler *socket_handler) {
             aws_mem_release(message->allocator, message);
 #if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
             break;
         }
 
         total_read += read;
 #if AWS_USE_ON_EVENT_WITH_RESULT
         io_op_result.read_bytes += read;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
             "id=%p: read %llu from socket",
@@ -179,7 +179,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
             aws_mem_release(message->allocator, message);
 #if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
             break;
         }
     }
@@ -199,7 +199,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
         if (last_error != AWS_IO_READ_WOULD_BLOCK) {
 #if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = last_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
             aws_channel_shutdown(socket_handler->slot->channel, last_error);
         } else {
             AWS_LOGF_TRACE(
@@ -209,12 +209,12 @@ static void s_do_read(struct socket_handler *socket_handler) {
                 (void *)socket_handler->slot->handler);
 #if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
         }
 #if AWS_USE_ON_EVENT_WITH_RESULT
         socket_handler->socket->io_handle.update_io_result(
             socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
         return;
     }
     /* in this case, everything was fine, but there's still pending reads. We need to schedule a task to do the read
@@ -234,7 +234,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
 #if AWS_USE_ON_EVENT_WITH_RESULT
     socket_handler->socket->io_handle.update_io_result(
         socket_handler->socket->event_loop, &socket_handler->socket->io_handle, &io_op_result);
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 }
 
 /* the socket is either readable or errored out. If it's readable, kick off s_do_read() to do its thing. */

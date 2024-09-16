@@ -484,7 +484,8 @@ static void s_socket_connect_event(
                 io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
                 handle->update_io_result(event_loop, handle, &io_op_result);
             }
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
+
             return;
         }
 
@@ -967,7 +968,7 @@ static void s_socket_accept_event(
 #if AWS_USE_ON_EVENT_WITH_RESULT
     struct aws_io_handle_io_op_result io_op_result;
     AWS_ZERO_STRUCT(io_op_result);
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     if (socket_impl->continue_accept && events & AWS_IO_EVENT_TYPE_READABLE) {
         int in_fd = 0;
@@ -982,7 +983,7 @@ static void s_socket_accept_event(
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
 #if AWS_USE_ON_EVENT_WITH_RESULT
                     io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
                     break;
                 }
 
@@ -991,7 +992,7 @@ static void s_socket_accept_event(
                 s_on_connection_error(socket, aws_error);
 #if AWS_USE_ON_EVENT_WITH_RESULT
                 io_op_result.read_error_code = aws_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
                 break;
             }
 
@@ -1088,7 +1089,7 @@ static void s_socket_accept_event(
     if (handle->update_io_result) {
         handle->update_io_result(event_loop, handle, &io_op_result);
     }
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
@@ -1661,7 +1662,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
 #if AWS_USE_ON_EVENT_WITH_RESULT
     struct aws_io_handle_io_op_result io_op_result;
     AWS_ZERO_STRUCT(io_op_result);
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     /* if a close call happens in the middle, this queue will have been cleaned out from under us. */
     while (!aws_linked_list_empty(&socket_impl->write_queue)) {
@@ -1692,8 +1693,8 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET, "id=%p fd=%d: returned would block", (void *)socket, socket->io_handle.data.fd);
 #if AWS_USE_ON_EVENT_WITH_RESULT
-                io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK; /* TODO Add AWS_IO_WRITE_EAGAIN code. */
-#endif
+                io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK;
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
                 break;
             }
 
@@ -1708,7 +1709,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
                 purge = true;
 #if AWS_USE_ON_EVENT_WITH_RESULT
                 io_op_result.write_error_code = aws_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
                 break;
             }
 
@@ -1723,13 +1724,13 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
             aws_raise_error(aws_error);
 #if AWS_USE_ON_EVENT_WITH_RESULT
             io_op_result.write_error_code = aws_error;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
             break;
         }
 
 #if AWS_USE_ON_EVENT_WITH_RESULT
         io_op_result.written_bytes += (size_t)written;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
         size_t remaining_to_write = write_request->cursor_cpy.len;
 
@@ -1780,7 +1781,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
     if (socket->io_handle.update_io_result) {
         socket->io_handle.update_io_result(socket->event_loop, &socket->io_handle, &io_op_result);
     }
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
     /* Only report error if aws_socket_write() invoked this function and its write_request failed */
     if (!parent_request_failed) {
@@ -2055,5 +2056,6 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     char uuid_str[AWS_UUID_STR_LEN] = {0};
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
+    /* TODO QNX allows creating a socket file only in /tmp directory. */
+    snprintf(endpoint->address, sizeof(endpoint->address), "/tmp/testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }

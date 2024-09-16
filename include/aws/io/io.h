@@ -25,7 +25,11 @@ struct aws_event_loop;
 struct aws_io_handle_io_op_result {
     size_t read_bytes;
     size_t written_bytes;
+    /** Error codes representing generic errors happening on I/O handles. */
+    int error_code;
+    /** Error codes specific to reading operations. */
     int read_error_code;
+    /** Error codes specific to writing operations. */
     int write_error_code;
 };
 
@@ -43,7 +47,7 @@ struct aws_io_handle {
     void *additional_data;
 #if AWS_USE_ON_EVENT_WITH_RESULT
     aws_io_handle_update_io_results_fn *update_io_result;
-#endif
+#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 };
 
 enum aws_io_message_type {
