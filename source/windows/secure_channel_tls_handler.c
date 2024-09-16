@@ -137,7 +137,10 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
-static bool s_is_windows_equal_or_above_10(void) {
+/* Checks whether current system is running Windows 10 version 1809 (build 17_763) or later. This check is used
+   to determin availability of TLS 1.3. This will continue to be a valid check in Windows 11 and later as the
+   build number continues to increment upwards. e.g. Windows 11 starts at version 21H2 (build 22_000) */
+static bool s_is_windows_equal_or_above_version_1809(void) {
     ULONGLONG dwlConditionMask = 0;
     BYTE op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
@@ -146,7 +149,7 @@ static bool s_is_windows_equal_or_above_10(void) {
 
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    osvi.dwBuildNumber = 1809; /* Windows 10 */
+    osvi.dwBuildNumber = 1809; /* Windows 10 build 1809 */
 
     dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
@@ -2212,7 +2215,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if (s_is_windows_equal_or_above_10()) {
+    if (s_is_windows_equal_or_above_version_1809()) {
         if (s_is_testing_deprecated_schannel_creds_defined()) {
             return s_tls_handler_new(allocator, options, slot, true);
         }
@@ -2227,7 +2230,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if (s_is_windows_equal_or_above_10()) {
+    if (s_is_windows_equal_or_above_version_1809()) {
         if (s_is_testing_deprecated_schannel_creds_defined()) {
             return s_tls_handler_new(allocator, options, slot, false);
         }
