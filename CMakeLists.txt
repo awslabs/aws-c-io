@@ -128,8 +128,6 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security")
     set(EVENT_LOOP_DEFINE "KQUEUE")
-    # FIXME For debugging.
-    set(EVENT_LOOP_DEFINE "ON_EVENT_WITH_RESULT")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
