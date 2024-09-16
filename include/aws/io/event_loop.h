@@ -70,15 +70,13 @@ struct aws_overlapped {
     void *user_data;
 };
 
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 typedef void(aws_event_loop_on_event_fn)(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
     void *user_data);
-
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 enum aws_event_loop_style {
     AWS_EVENT_LOOP_STYLE_UNDEFINED = 0,
