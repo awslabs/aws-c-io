@@ -1155,18 +1155,19 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
                 AWS_FATAL_ASSERT(!append_failed);
+            }
 
-                /* if we have extra we have to move the pointer and do another Decrypt operation. */
-                if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
-                    if (input_buffers[3].cbBuffer < read_len) {
-                        memmove(
-                            sc_handler->buffered_read_in_data_buf.buffer,
-                            (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
-                            input_buffers[3].cbBuffer);
-                        sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
-                    }
-                    if (status != SEC_I_RENEGOTIATE) {
-                    sc_handler->read_extra = input_buffers[3].cbBuffer;
+            /* if we have extra we have to move the pointer and do another Decrypt operation. */
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
+                if (input_buffers[3].cbBuffer < read_len) {
+                    memmove(
+                        sc_handler->buffered_read_in_data_buf.buffer,
+                        (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
+                        input_buffers[3].cbBuffer);
+                    sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
+                }
+                if (status != SEC_I_RENEGOTIATE) {
+                sc_handler->read_extra = input_buffers[3].cbBuffer;
                 //     AWS_LOGF_TRACE(
                 //         AWS_LS_IO_TLS,
                 //         "id=%p: Extra (incomplete) message received with length %zu.",
