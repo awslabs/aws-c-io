@@ -1057,7 +1057,7 @@ static int s_event_loop_test_multiple_stops(struct aws_allocator *allocator, voi
 
         ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
         ASSERT_SUCCESS(aws_event_loop_run(event_loop));
-        for (int i = 0; i < 8; ++i) {
+        for (int j = 0; j < 8; ++j) {
             ASSERT_SUCCESS(aws_event_loop_stop(event_loop));
         }
         aws_event_loop_destroy(event_loop);
