@@ -843,7 +843,6 @@ static int s_state_read_until_blocked(struct thread_tester *tester) {
             AWS_ZERO_STRUCT(io_op_result);
             io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
             tester->read_handle.update_io_result(tester->event_loop, &tester->read_handle, &io_op_result);
-        } else {
         }
     }
 #    endif

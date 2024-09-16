@@ -142,9 +142,6 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
     set(USE_S2N ON)
 
 elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
-    file(GLOB AWS_IO_OS_HEADERS
-            )
-
     file(GLOB AWS_IO_OS_SRC
             "source/posix/*.c"
             "source/qnx/*.c"
