@@ -539,7 +539,6 @@ static void s_process_io_result(
     AWS_ASSERT(!s_is_on_callers_thread(event_loop));
 
     AWS_ASSERT(handle->additional_data);
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
     struct ionotify_event_data *ionotify_event_data = handle->additional_data;
 
     AWS_LOGF_TRACE(
@@ -606,7 +605,6 @@ struct ionotify_io_op_results {
 static void s_update_io_result_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
     struct ionotify_io_op_results *ionotify_io_op_results = user_data;
     struct aws_event_loop *event_loop = ionotify_io_op_results->event_loop;
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
     aws_mem_release(event_loop->alloc, task);
 
