@@ -39,6 +39,8 @@ option(BUILD_RELOCATABLE_BINARIES
         OFF)
 option(BYO_CRYPTO "Don't build a tls implementation or link against a crypto interface. This feature is only for unix builds currently."
         OFF)
+# DEBUG: directly set AWS_USE_DISPATCH_QUEUE
+set (AWS_USE_DISPATCH_QUEUE ON)
 
 file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
@@ -116,7 +118,8 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/*.c"
+            "source/darwin/darwin_pki_utils.c"
+            "source/darwin/secure_transport_tls_channel_handler.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -132,8 +135,16 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-    # DEBUG WIP We will add a check here to use kqueue queue for macOS and dispatch queue for iOS
-    set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_KQUEUE")
+     if(AWS_USE_DISPATCH_QUEUE OR IOS)
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
+        message("use dispatch queue")
+        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+        "source/darwin/dispatch_queue_event_loop.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
+     else ()
+         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
