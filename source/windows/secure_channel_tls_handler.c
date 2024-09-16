@@ -252,9 +252,9 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     if (status != SEC_E_OK || !peer_certificate) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: failed to load peer's certificate with SECURITY_STATUS %lu",
+            "id=%p: failed to load peer's certificate with SECURITY_STATUS %d",
             (void *)handler,
-            (unsigned long)status);
+            (int)status);
         return AWS_OP_ERR;
     }
 
@@ -268,10 +268,10 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     if (!CertCreateCertificateChainEngine(&engine_config, &engine)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: failed to load a certificate chain engine with SECURITY_STATUS %lu. "
+            "id=%p: failed to load a certificate chain engine with SECURITY_STATUS %d. "
             "Most likely, the configured CA is corrupted.",
             (void *)handler,
-            (unsigned long)status);
+            (int)status);
         goto done;
     }
 
@@ -305,9 +305,9 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
             &cert_chain_ctx)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: unable to find certificate in chain with SECURITY_STATUS %lu.",
+            "id=%p: unable to find certificate in chain with SECURITY_STATUS %d.",
             (void *)handler,
-            (unsigned long)status);
+            (int)status);
         goto done;
     }
 
@@ -1218,9 +1218,9 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         else if (status == SEC_I_CONTEXT_EXPIRED) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %lu.",
+                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
                 (void *)handler,
-                (unsigned long)status);
+                (int)status);
 
             struct aws_channel_slot *slot = handler->slot;
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
@@ -1231,9 +1231,9 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         if (status == SEC_I_RENEGOTIATE) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: Renegotiation received. SECURITY_STATUS is %lu.",
+                "id=%p: Renegotiation received. SECURITY_STATUS is %d.",
                 (void *)handler,
-                (unsigned long)status);
+                (int)status);
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                 if (input_buffers[3].cbBuffer < read_len) {
                     AWS_LOGF_TRACE(
@@ -1311,18 +1311,18 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             } else {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
-                    "id=%p: Error InitializeSecurityContext after renegotiation. status %lu",
+                    "id=%p: Error InitializeSecurityContext after renegotiation. status %d",
                     (void *)handler,
-                    (unsigned long)status);
+                    (int)status);
                 error = AWS_OP_ERR;
                 break;
             }
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: Error decrypting message. SECURITY_STATUS is %lu.",
+                "id=%p: Error decrypting message. SECURITY_STATUS is %d.",
                 (void *)handler,
-                (unsigned long)status);
+                (int)status);
             aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
@@ -1619,9 +1619,9 @@ static int s_process_write_message(
             } else {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_TLS,
-                    "id=%p: Error encrypting message. SECURITY_STATUS is %lu",
+                    "id=%p: Error encrypting message. SECURITY_STATUS is %d",
                     (void *)handler,
-                    (unsigned long)status);
+                    (int)status);
                 return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
             }
         }
@@ -1649,9 +1649,9 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
         if (status != SEC_E_OK) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: QueryContextAttributes failed with error %lu",
+                "id=%p: QueryContextAttributes failed with error %d",
                 (void *)handler,
-                (unsigned long)status);
+                (int)status);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             aws_channel_shutdown(slot->channel, AWS_ERROR_SYS_CALL_FAILURE);
             return AWS_OP_ERR;
@@ -2124,7 +2124,7 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
 
     if (status != SEC_E_OK) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
+            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
@@ -2181,7 +2181,7 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     if (status != SEC_E_OK) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %lu", (unsigned long)status);
+            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
