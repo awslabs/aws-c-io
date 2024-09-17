@@ -429,6 +429,8 @@ static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_co
             }
             s_signal_done_on_read_end_closed(state);
         }
+    } else if (error_code == AWS_ERROR_SUCCESS) {
+        aws_pipe_read(&state->read_end, &state->buffers.dst, NULL);
     }
 
     return;
