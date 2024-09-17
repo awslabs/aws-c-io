@@ -527,6 +527,38 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
                 (void *)event_loop,
                 ionotify_event_data->handle->data.fd);
         }
+
+        /* QNX resource manager for POSIX pipes has a bug/undocumented behavior when under specific conditions it stops
+         * sending requested events. Below are more details.
+         *
+         * First, a quote from the ionotify docs for _NOTIFY_ACTION_EDGEARM:
+         *   Conditions are considered as met only if a change occurs since the last call to
+         *   ionotify(..., _NOTIFY_ACTION_EDGEARM, ...). Met conditions are returned; a notification is armed for unmet
+         *   conditions.
+         *
+         * Now, the issue. If ionotify arms the writing end of the pipe when it has a buffer for data, the returning
+         * code contains _NOTIFY_COND_OBAND event. This is expected and correct behavior. According to the docs, the
+         * writing end of the pipe should not be armed in the resource manager in such a case. However, after that, the
+         * resource manager stops returning _NOTIFY_COND_OBAND for the writing end altogether (i.e. the followup
+         * ionotify calls does not return _NOTIFY_COND_OBAND). It seems, the resource manager actually arms the writing
+         * end, but does it incorrectly.
+         *
+         * Disarming the met conditions fixes the issue.
+         *
+         * NOTE: Sockets are not affected by this issue. Since disarming non-armed conditions shouldn't cause any side
+         * effects, perform it for everyone.
+         */
+        int active_events = rc & (_NOTIFY_COND_OBAND | _NOTIFY_COND_INPUT | _NOTIFY_COND_OUTPUT);
+        if (active_events) {
+            rc = ionotify(ionotify_event_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, active_events, NULL);
+            if (rc == -1) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_EVENT_LOOP,
+                    "id=%p: Failed to disarm events for fd %d",
+                    (void *)event_loop,
+                    ionotify_event_data->handle->data.fd);
+            }
+        }
     }
 }
 
