@@ -418,10 +418,6 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     struct aws_event_loop *event_loop = ionotify_event_data->event_loop;
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
-    if (!ionotify_event_data->is_subscribed) {
-        return;
-    }
-
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Subscribing to events on fd %d for events %d",
@@ -467,6 +463,9 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
          * it again. */
         MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
+    } else if (!ionotify_event_data->is_subscribed) {
+        /* This is a resubscribing task, but unsubscribe happened, so ignore it. */
+        return;
     }
 
     ionotify_event_data->is_subscribed = true;
