@@ -288,8 +288,7 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
         return s_raise_posix_error(errno_value);
-    }
-    else if (read_val == 0) {
+    } else if (read_val == 0) {
         // Return results back to event loop.
         if (read_impl->handle.update_io_result) {
             struct aws_io_handle_io_op_result io_op_result;

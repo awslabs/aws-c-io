@@ -536,7 +536,7 @@ static void s_process_io_result(
     struct aws_io_handle *handle,
     const struct aws_io_handle_io_op_result *io_op_result) {
 
-    AWS_ASSERT(!s_is_on_callers_thread(event_loop));
+    AWS_ASSERT(s_is_on_callers_thread(event_loop));
 
     AWS_ASSERT(handle->additional_data);
     struct ionotify_event_data *ionotify_event_data = handle->additional_data;
@@ -570,7 +570,8 @@ static void s_process_io_result(
             AWS_LS_IO_EVENT_LOOP, "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
         /* We're on the event loop thread, just schedule subscribing task. */
         ionotify_event_data->events_subscribed = event_types;
-        s_subscribe_task(NULL, ionotify_event_data, AWS_TASK_STATUS_RUN_READY);
+        struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, &ionotify_event_data->subscribe_task);
     }
 
     /* Notify event loop of error conditions. */
