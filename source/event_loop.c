@@ -24,7 +24,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
     },
 #endif
-#if TARGET_OS_IOS || AWS_USE_DISPATCH_QUEUE
+#if AWS_USE_DISPATCH_QUEUE
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
         .name = "Apple Dispatch Queue",

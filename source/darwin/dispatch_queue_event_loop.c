@@ -119,13 +119,6 @@ bool should_schedule_iteration(struct aws_linked_list *scheduled_iterations, uin
     return entry->timestamp > proposed_iteration_time;
 }
 
-static void s_finalize(void *context) {
-    struct aws_event_loop *event_loop = context;
-    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
-    AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Dispatch Queue Finalized", (void *)event_loop);
-    aws_ref_count_release(&dispatch_loop->ref_count);
-}
-
 static void s_dispatch_event_loop_destroy(void *context) {
     // release dispatch loop
 
@@ -185,10 +178,6 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
 
     loop->impl_data = dispatch_loop;
     loop->vtable = &s_vtable;
-
-    dispatch_set_context(dispatch_loop->dispatch_queue, loop);
-    // Definalizer will be called on dispatch queue ref drop to 0
-    dispatch_set_finalizer_f(dispatch_loop->dispatch_queue, &s_finalize);
 
     // manually increament the thread count, so the library will wait for dispatch queue releasing
     aws_thread_increment_unjoined_count();
@@ -410,6 +399,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     bool should_schedule = false;
 
     bool is_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
+    task->timestamp = run_at_nanos;
 
     // We dont have control to dispatch queue thread, threat all tasks are threated as cross thread tasks
     aws_linked_list_push_back(&dispatch_loop->synced_data.cross_thread_tasks, &task->node);
