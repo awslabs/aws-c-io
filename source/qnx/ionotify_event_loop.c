@@ -418,6 +418,10 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     struct aws_event_loop *event_loop = ionotify_event_data->event_loop;
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
+    if (!ionotify_event_data->is_subscribed) {
+        return;
+    }
+
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Subscribing to events on fd %d for events %d",
@@ -573,6 +577,10 @@ static void s_process_io_result(
     AWS_ASSERT(handle->additional_data);
     struct ionotify_event_data *ionotify_event_data = handle->additional_data;
 
+    if (!ionotify_event_data->is_subscribed) {
+        return;
+    }
+
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Processing I/O operation result for fd %d: status %d (%s); read status %d (%s); write status %d (%s)",
@@ -712,9 +720,16 @@ static void s_free_io_event_resources(void *user_data) {
     aws_mem_release(event_data->alloc, (void *)event_data);
 }
 
+static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct ionotify_event_data *ionotify_event_data = (struct ionotify_event_data *)arg;
+    s_free_io_event_resources(ionotify_event_data);
+}
+
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: un-subscribing from events on fd %d", (void *)event_loop, handle->data.fd);
+        AWS_LS_IO_EVENT_LOOP, "id=%p: Unsubscribing from events on fd %d", (void *)event_loop, handle->data.fd);
 
     struct ionotify_loop *ionotify_loop = event_loop->impl_data;
 
@@ -752,8 +767,13 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     handle->additional_data = NULL;
     handle->update_io_result = NULL;
 
-    /* Main loop obtains ionotify_event_data instance from hash map, so it's safe to release it right here. */
-    s_free_io_event_resources(ionotify_event_data);
+    /* There might be pending tasks for ionotify_event_data, so put a cleanup task. */
+    aws_task_init(
+        &ionotify_event_data->cleanup_task,
+        s_unsubscribe_cleanup_task,
+        ionotify_event_data,
+        "ionotify_event_loop_unsubscribe_cleanup");
+    s_schedule_task_now(event_loop, &ionotify_event_data->cleanup_task);
 
     return AWS_OP_SUCCESS;
 }
