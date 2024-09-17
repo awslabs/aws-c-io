@@ -97,7 +97,7 @@ struct ionotify_event_data {
     void *user_data;
     struct aws_task subscribe_task;
     struct aws_task cleanup_task;
-    /* ID with a value that can fit into pulse user data field (only _NOTIFY_COND_MASK bits can be used). */
+    /* ID with a value that can fit into pulse user data field (only _NOTIFY_DATA_MASK bits can be used). */
     int handle_id;
     /* False when handle is unsubscribed, but this struct hasn't been cleaned up yet. */
     bool is_subscribed;
@@ -351,8 +351,8 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_event_data *ionotify_event_data) {
     AWS_ASSERT(s_is_on_callers_thread(ionotify_event_data->event_loop));
 
-    /* Special constant, _NOTIFY_COND_MASK, limits the maximum value that can be used as user data in I/O events. */
-    int max_handle_id = _NOTIFY_COND_MASK;
+    /* Special constant, _NOTIFY_DATA_MASK, limits the maximum value that can be used as user data in I/O events. */
+    int max_handle_id = _NOTIFY_DATA_MASK;
 
     if (AWS_UNLIKELY(aws_hash_table_get_entry_count(&ionotify_loop->handles) == (size_t)max_handle_id)) {
         AWS_LOGF_ERROR(
