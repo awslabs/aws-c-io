@@ -134,20 +134,17 @@ static size_t KB_16 = 16 * 1024;
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
     if (options->type == AWS_SOCKET_STREAM) {
-        /* if TCP, setup all the tcp options */
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
-            /* options->user_data will contain the tls_ctx if it was initialized */
+            /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
             if (options->user_data) {
                 struct aws_tls_ctx *tls_ctx = options->user_data;
                 struct secure_transport_ctx *transport_ctx = tls_ctx->impl;
                 SecIdentityRef secitem_identity = transport_ctx->secitem_identity;
-                // Retain the secitem_identity till we use it in the TLS options block
-                CFRetain(secitem_identity);
+                SecCertificateRef secitem_root_ca = NULL;
+                if(transport_ctx->secitem_ca_cert != NULL) {
+                    secitem_root_ca = transport_ctx->secitem_ca_cert;
+                }
 
-                /*
-                 * If using TLS, NW_PARAMETERS_DEFAULT_CONFIGURATION should not be used for the configure_tls block.
-                 * TLS should be configured using the tls_ctx that was in the user_data.
-                 */
                 nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
                 // TLS options block
                 ^(nw_protocol_options_t tls_options) {
@@ -157,14 +154,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                      * to the copy will impact the protocol options within the tls_options
                      */
                     sec_protocol_options_t sec_options = nw_tls_copy_sec_protocol_options(tls_options);
-
-                    // The identity provides cert/key for TLS handshake.
-                    sec_protocol_options_set_local_identity(sec_options, secitem_identity);
-                    /*
-                     * sec_protocol_options_set_local_identity() will retain its own copy of SecIdentityRef.
-                     * We release the ref we acquired outside this block.
-                     */
-                    CFRelease(secitem_identity);
+                    sec_identity_t sec_ident = sec_identity_create(secitem_identity);
+                    sec_protocol_options_set_local_identity(sec_options, sec_ident);
 
                     // Set the minimum TLS version to TLS 1.2
                     sec_protocol_options_set_min_tls_protocol_version(sec_options, tls_protocol_version_TLSv12);
@@ -174,6 +165,91 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                     // Enable/Disable peer authentication.
                     sec_protocol_options_set_peer_authentication_required(sec_options, transport_ctx->verify_peer);
 
+                    /*
+                     * If a root_ca was set, we must manually handle the verification of the certificate presented
+                     * by the remote connection.
+                     *
+                     * We may need to ALWAYS handle the verification in the event that even an Amazon root CA
+                     * results in a negative confirmation due to the need to explicitly set a policy with the
+                     * host address.
+                     */
+                    if (secitem_root_ca != NULL) {
+                        sec_protocol_options_set_verify_block(sec_options,
+                            ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
+                                printf("\nverify block hit\n\n");
+
+                                SecTrustRef trust_ref = sec_trust_copy_ref(trust);
+                                OSStatus status;
+
+                                if (secitem_root_ca != NULL) {
+                                    printf("\n");
+                                    CFShow(secitem_root_ca);
+                                    printf("\nchecking against root_ca\n\n");
+                                    CFArrayRef root_ca_array = CFArrayCreate(
+                                        NULL,
+                                        (const void **)&secitem_root_ca,
+                                        1,
+                                        &kCFTypeArrayCallBacks);
+                                    status = SecTrustSetAnchorCertificates(trust_ref, root_ca_array);
+                                    CFRelease(root_ca_array);
+                                } else {
+                                    printf("\nno root_ca set\n\n");
+                                }
+
+                                // DEBUG WIP add the actual name of the host to the policy
+                                // This block will need to be edited to handle all hosts. We also
+                                // need to figure out a way to pull in the set host name here.
+                                SecPolicyRef policy = NULL;
+                                CFStringRef server_name = CFStringCreateWithCString(
+                                    NULL,
+                                    "a2yvr5l8sc9814-ats.iot.us-east-1.amazonaws.com",
+                                    kCFStringEncodingUTF8);
+                                policy = SecPolicyCreateSSL(true, server_name);
+                                CFRelease(server_name);
+                                status = SecTrustSetPolicies(trust_ref, policy);
+
+
+
+                                SecTrustResultType trust_result;
+                                status = SecTrustEvaluate(trust_ref, &trust_result);
+                                if (status == errSecSuccess) {
+                                    if (trust_result == kSecTrustResultProceed || trust_result == kSecTrustResultUnspecified) {
+                                        printf("\nTrust Accepted\n\n");
+                                        complete(true);
+                                    } else if (trust_result == kSecTrustResultRecoverableTrustFailure) {
+                                        printf("\nRcoverable trust failure. Proceeding anyway\n\n");
+
+                                        SecCertificateRef serverCert = SecTrustGetCertificateAtIndex(trust_ref, 0);
+                                        CFStringRef serverHostname = SecCertificateCopySubjectSummary(serverCert);
+                                        printf("\nserver host name:");
+                                        CFShow(serverHostname);
+                                        CFRelease(serverHostname);
+
+                                        // Get properties to determine the cause of the failure
+                                        CFArrayRef trustProperties = SecTrustCopyProperties(trust_ref);
+                                        CFShow(trustProperties); // Prints detailed properties about the failure
+
+                                        // Optional: Get more information about the trust evaluation
+                                        CFDictionaryRef trustResultDict = SecTrustCopyResult(trust_ref);
+                                        CFShow(trustResultDict);  // Prints additional key-value pairs about the evaluation
+
+                                        CFRelease(trustProperties);
+                                        CFRelease(trustResultDict);
+
+                                        complete(true);
+                                    } else {
+                                        printf("\nTrust Rejected\n\n");
+                                        complete(false);
+                                    }
+                            } else {
+                                    printf("\nTrust evaluation failed with OSStatus: %d\n\n", (int)status);
+                                    complete(false);
+                                }
+
+                                CFRelease(trust_ref);
+
+                            }, dispatch_get_main_queue());
+                        }
                     },
                 // TCP options block
                 ^(nw_protocol_options_t tcp_options) {
@@ -238,22 +314,24 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 });
             }
         } else if (options->domain == AWS_SOCKET_LOCAL) {
-            #if defined(TARGET_OS_OSX) && TARGET_OS_OSX
+#if defined(TARGET_OS_OSX) && TARGET_OS_OSX
 
             nw_socket->socket_options_to_params =
                 nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
 
-            #else
-            // AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead.
+#else /* TARGET_OS_OSX */
+            /* AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead. */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p options=%p: failed to create nw_parameters_t for nw_socket. AF_LOCAL is not supported on iOS.",
                 (void *)nw_socket,
                 (void *)options);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-            #endif
+#endif /* !TARGET_OS_OSX */
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
+        // DEBUG WIP We should setup the TCP options in this case too. Maybe we can setup TCP options to  be used
+        // across all types of parameters once and use them for all of these.
         nw_socket->socket_options_to_params =
             nw_parameters_create_secure_udp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
     }
@@ -1032,6 +1110,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
     /* loop over the read queue, take the data and copy it over, and do so til we're either out of data
      * and need to schedule another read, or we've read entirely into the requested buffer. */
     while (!aws_linked_list_empty(&nw_socket->read_queue) && max_to_read) {
+        printf("\n READING FROM SOCKET\n\n");
         struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
         struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
@@ -1092,6 +1171,8 @@ static int s_socket_write_fn(
     AWS_ASSERT(written_fn);
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
+
+    printf("\nWriting to SOCKET\n\n");
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           AWS_LOGF_TRACE(

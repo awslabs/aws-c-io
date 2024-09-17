@@ -26,6 +26,7 @@ struct secure_transport_ctx {
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
     SecIdentityRef secitem_identity;
+    SecCertificateRef secitem_ca_cert;
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;

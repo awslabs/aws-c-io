@@ -956,6 +956,10 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         CFRelease(secure_transport_ctx->secitem_identity);
     }
 
+    if (secure_transport_ctx->secitem_ca_cert) {
+        CFRelease(secure_transport_ctx->secitem_ca_cert);
+    }
+
     if (secure_transport_ctx->ca_cert) {
         aws_release_certificates(secure_transport_ctx->ca_cert);
     }
@@ -999,6 +1003,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->secitem_identity = NULL;
+    secure_transport_ctx->secitem_ca_cert = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
@@ -1050,13 +1055,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-
 #endif /* AWS_OS_IOS */
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
+#if !defined(AWS_OS_IOS)
         if (aws_import_pkcs12_to_identity(
                 secure_transport_ctx->wrapped_allocator,
                 &pkcs12_blob_cur,
@@ -1066,21 +1071,39 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
+#endif /* !AWS_OS_IOS */
+#if defined(AWS_OS_IOS)
+        if (aws_secitem_import_pkcs12(
+                secure_transport_ctx->wrapped_allocator,
+                &pkcs12_blob_cur,
+                &password_cur,
+                &secure_transport_ctx->secitem_identity)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
+            goto cleanup_wrapped_allocator;
+        }
+#endif /* AWS_OS_IOS */
     }
 
-// WIP DEBUG iOS currently doesn't support root ca file
-#if !defined(AWS_OS_IOS)
     if (aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
 
         struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);
+#if !defined(AWS_OS_IOS)
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-    }
 #endif /* !AWS_OS_IOS */
+#if defined(AWS_OS_IOS)
+        if (aws_secitem_import_trusted_certificates(
+            alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->secitem_ca_cert)) {
+                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
+                goto cleanup_wrapped_allocator;
+            }
+#endif /* AWS_OS_IOS */
+    }
 
     return &secure_transport_ctx->ctx;
 

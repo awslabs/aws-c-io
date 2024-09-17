@@ -71,6 +71,16 @@ int aws_secitem_import_pkcs12(
     SecIdentityRef *secitem_identity);
 
 /**
+ * Converts and stores PRM armored PKCS#7 certificates into sec_root_ca for use as
+ * custom CA during verification block of a Apple Network Framework TLS handshake.
+ */
+int aws_secitem_import_trusted_certificates(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *certificates_blob,
+    SecCertificateRef *sec_root_ca);
+
+/**
  * Imports a PKCS#12 file into identity for use with
  * SecurityFramework
  */
