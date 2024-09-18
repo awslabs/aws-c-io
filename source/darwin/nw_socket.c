@@ -1279,7 +1279,7 @@ static int s_socket_write_fn(
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
 
-    printf("\nWriting to SOCKET\n\n");
+    printf("\nWriting %zu to SOCKET\n\n", cursor->len);
     nw_connection_send(
         handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           AWS_LOGF_TRACE(
@@ -1298,11 +1298,12 @@ static int s_socket_write_fn(
                 goto nw_socket_release;
             }
 
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: DEBUG:: callback writing message: %p",
-                (void *)socket,
-                handle, user_data);
+            if (error != NULL) {
+                printf("\nError sending data. error code:%d\n\n", nw_error_get_error_code(error));
+            } else {
+                printf("\nData sent successfully\n\n");
+            }
+
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));

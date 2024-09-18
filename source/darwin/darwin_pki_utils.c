@@ -446,14 +446,6 @@ int aws_secitem_import_trusted_certificates(
         goto done;
     }
 
-    // Redone with conversion to DER format above
-    // cert_data = CFDataCreate(cf_alloc, certificates_blob->ptr, certificates_blob->len);
-    // if (!cert_data) {
-    //     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating root ca data system call.");
-    //     result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-    //     goto done;
-    // }
-
     certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_data);
     if (!certificate_ref) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating root ca SecCertificateRef from cert_data.");
