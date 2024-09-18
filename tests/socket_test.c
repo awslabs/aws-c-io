@@ -498,14 +498,14 @@ AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bin
 
 static int s_test_is_network_interface_name_valid(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    (void) allocator;
+    (void)allocator;
 
     ASSERT_FALSE(aws_is_network_interface_name_valid("invalid_name"));
-    #if defined(AWS_OS_APPLE)
-        ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
-    #elif !defined(AWS_OS_WINDOWS)
-        ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
-    #endif
+#if defined(AWS_OS_APPLE)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
+#elif !defined(AWS_OS_WINDOWS)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
+#endif
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_is_network_interface_name_valid, s_test_is_network_interface_name_valid)

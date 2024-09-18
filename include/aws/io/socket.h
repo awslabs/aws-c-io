@@ -338,8 +338,8 @@ AWS_IO_API int aws_socket_validate_port_for_bind(uint32_t port, enum aws_socket_
 AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint);
 
 /**
- * Assigns a random address (UUID) for use with AWS_SOCKET_LOCAL (Unix Domain Sockets).
- * For use in internal tests only.
+ * Validates whether the network interface name is valid. On Windows, it will always return false since network
+ * interface names are not supported on Windows
  */
 AWS_IO_API bool aws_is_network_interface_name_valid(char *interface_name);
 
