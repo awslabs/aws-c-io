@@ -3274,7 +3274,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
 }
 
 bool aws_is_network_interface_name_valid(char *interface_name) {
-    (void) interface_name;
+    (void)interface_name;
     AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_names are not supported on Windows");
     return false;
 }
