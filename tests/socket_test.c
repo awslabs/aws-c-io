@@ -501,10 +501,10 @@ static int s_test_is_network_interface_name_valid(struct aws_allocator *allocato
     (void)allocator;
 
     ASSERT_FALSE(aws_is_network_interface_name_valid("invalid_name"));
-#if defined(AWS_OS_APPLE)
-    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
-#elif !defined(AWS_OS_WINDOWS)
+#if defined(AWS_OS_LINUX)
     ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
+#elif !defined(AWS_OS_WINDOWS)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
 #endif
     return AWS_OP_SUCCESS;
 }
