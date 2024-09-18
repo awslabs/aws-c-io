@@ -16,7 +16,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_io_handle;
 
-#if AWS_USE_DISPATCH_QUEUE
+#ifdef AWS_USE_DISPATCH_QUEUE
 typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
 typedef void aws_io_clear_queue_on_handle_fn(struct aws_io_handle *handle);
 #endif /* AWS_USE_DISPATCH_QUEUE */
