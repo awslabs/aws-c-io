@@ -873,6 +873,7 @@ int aws_secitem_import_pkcs12(
     int result = AWS_OP_ERR;
     CFArrayRef items = NULL;
     CFDataRef pkcs12_data = NULL;
+    CFMutableDictionaryRef dictionary = NULL;
     SecIdentityRef sec_identity_ref = NULL;
     CFStringRef password_ref = NULL;
     bool should_release_password = true;
@@ -890,7 +891,7 @@ int aws_secitem_import_pkcs12(
         password_ref = CFSTR("");
     }
 
-    CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
+    dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
 
     OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
@@ -906,11 +907,8 @@ int aws_secitem_import_pkcs12(
     CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
     sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
 
-    // Retain the identity for use outside this function
     if (sec_identity_ref != NULL) {
-        AWS_LOGF_INFO(
-        AWS_LS_IO_PKI,
-        "static: Successfully imported identity into SecItem keychain.");
+        AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported identity into SecItem keychain.");
     } else {
         status = errSecItemNotFound;
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
@@ -927,6 +925,5 @@ done:
     if (dictionary) CFRelease(dictionary);
     if (should_release_password) CFRelease(password_ref);
     if (items) CFRelease(items);
-    // if (sec_identity_ref) CFRelease(sec_identity_ref);
     return result;
 }
