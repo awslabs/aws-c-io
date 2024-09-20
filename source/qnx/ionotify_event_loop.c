@@ -675,8 +675,7 @@ static void s_update_io_result(
         ionotify_io_op_results->handle = handle;
         memcpy(&ionotify_io_op_results->io_op_result, io_op_result, sizeof(struct aws_io_handle_io_op_result));
         aws_task_init(task, s_update_io_result_task, ionotify_io_op_results, "ionotify_event_loop_resubscribe_ct");
-        struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, task);
+        s_schedule_task_now(event_loop, task);
         return;
     }
 
@@ -909,9 +908,6 @@ static void s_process_pulse(
             (void *)event_loop,
             pulse->code,
             ionotify_event_data->event.sigev_code);
-        if (pulse->code != IO_EVENT_PULSE_SIGEV_CODE) {
-            event_mask |= AWS_IO_EVENT_TYPE_ERROR;
-        }
     }
 
     if (ionotify_event_data->latest_io_event_types == AWS_IO_EVENT_TYPE_CLOSED) {
