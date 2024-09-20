@@ -1027,10 +1027,6 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         CFRelease(secure_transport_ctx->secitem_identity);
     }
 
-    if (secure_transport_ctx->secitem_ca_cert) {
-        CFRelease(secure_transport_ctx->secitem_ca_cert);
-    }
-
     if (secure_transport_ctx->ca_cert) {
         aws_release_certificates(secure_transport_ctx->ca_cert);
     }
@@ -1074,7 +1070,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->secitem_identity = NULL;
-    secure_transport_ctx->secitem_ca_cert = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
@@ -1160,20 +1155,11 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
 
         struct aws_byte_cursor ca_cursor = aws_byte_cursor_from_buf(&options->ca_file);
-#if !defined(AWS_OS_IOS)
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif /* !AWS_OS_IOS */
-#if defined(AWS_OS_IOS)
-        if (aws_secitem_import_trusted_certificates(
-            alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->secitem_ca_cert)) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
-                goto cleanup_wrapped_allocator;
-            }
-#endif /* AWS_OS_IOS */
     }
 
     return &secure_transport_ctx->ctx;

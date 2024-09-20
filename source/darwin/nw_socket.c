@@ -241,19 +241,13 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             OSStatus status;
 
                             /* Use root ca if provided. */
-                            if (transport_ctx->secitem_ca_cert != NULL) {
+                            if (transport_ctx->ca_cert != NULL) {
                                 AWS_LOGF_DEBUG(
                                     AWS_LS_IO_TLS,
                                     "id=%p: nw_socket verify block applying provided root CA for remote verification.",
                                     (void *)nw_socket);
                                 // We add the ca certificate as a anchor certificate in the trust_ref
-                                CFArrayRef root_ca_array = CFArrayCreate(
-                                    NULL,
-                                    (const void **)&transport_ctx->secitem_ca_cert,
-                                    1,
-                                    &kCFTypeArrayCallBacks);
-                                status = SecTrustSetAnchorCertificates(trust_ref, root_ca_array);
-                                CFRelease(root_ca_array);
+                                status = SecTrustSetAnchorCertificates(trust_ref, transport_ctx->ca_cert);
                                 if (status != errSecSuccess) {
                                     AWS_LOGF_DEBUG(
                                         AWS_LS_IO_TLS,
