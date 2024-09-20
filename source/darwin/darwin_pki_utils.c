@@ -656,10 +656,12 @@ done:
 int aws_secitem_get_identity(
     CFAllocatorRef cf_alloc,
     CFDataRef serial_data,
-    SecIdentityRef *out_identity) {
+    sec_identity_t *out_identity) {
+
     int result = AWS_OP_ERR;
     OSStatus status;
     CFMutableDictionaryRef search_query = NULL;
+    SecIdentityRef sec_identity_ref = NULL;
 
     /*
      * SecItem identity is created when a certificate matches a private key in the keychain.
@@ -679,13 +681,15 @@ int aws_secitem_get_identity(
      * Copied or created CF items must have CFRelease called on them or you leak memory. This identity needs to
      * have CFRelease called on it at some point or it will leak.
      */
-    status = SecItemCopyMatching(search_query, (CFTypeRef *)out_identity);
+    status = SecItemCopyMatching(search_query, (CFTypeRef *)&sec_identity_ref);
 
     if (status != errSecSuccess) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching identity failed with OSStatus %d", (int)status);
             result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
     }
+
+    *out_identity = sec_identity_create(sec_identity_ref);
 
     AWS_LOGF_INFO(
         AWS_LS_IO_PKI,
@@ -696,6 +700,7 @@ int aws_secitem_get_identity(
 done:
     // cleanup
     if (search_query) CFRelease(search_query);
+    if (sec_identity_ref) CFRelease(sec_identity_ref);
 
     return result;
 }
@@ -705,7 +710,7 @@ int aws_secitem_import_cert_and_key(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    SecIdentityRef *secitem_identity,
+    sec_identity_t *secitem_identity,
     const struct aws_secitem_options *secitem_options) {
 
     // We currently only support Apple's network framework and SecItem keychain API on iOS.
@@ -934,13 +939,16 @@ int aws_secitem_import_pkcs12(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *pkcs12_cursor,
     const struct aws_byte_cursor *password,
-    SecIdentityRef *secitem_identity) {
+    sec_identity_t *out_identity) {
 
     int result = AWS_OP_ERR;
     CFArrayRef items = NULL;
     CFDataRef pkcs12_data = NULL;
-    pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
+    SecIdentityRef sec_identity_ref = NULL;
     CFStringRef password_ref = NULL;
+    bool should_release_password = true;
+
+    pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
     if (password->len) {
         password_ref = CFStringCreateWithBytes(
             cf_alloc,
@@ -949,6 +957,7 @@ int aws_secitem_import_pkcs12(
             kCFStringEncodingUTF8,
             false);
     } else {
+        should_release_password = false;
         password_ref = CFSTR("");
     }
 
@@ -966,11 +975,10 @@ int aws_secitem_import_pkcs12(
     // Extract the identity from the first item in the array
     // identity_and_trust does not need to be released as it is not a copy or created CF object.
     CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
-    *secitem_identity = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
+    sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
 
     // Retain the identity for use outside this function
-    if (*secitem_identity != NULL) {
-        CFRetain(*secitem_identity);
+    if (sec_identity_ref != NULL) {
         AWS_LOGF_INFO(
         AWS_LS_IO_PKI,
         "static: Successfully imported identity into SecItem keychain.");
@@ -980,13 +988,16 @@ int aws_secitem_import_pkcs12(
         goto done;
     }
 
+    *out_identity = sec_identity_create(sec_identity_ref);
+
     result = AWS_OP_SUCCESS;
 
 done:
     //cleanup
     if (pkcs12_data) CFRelease(pkcs12_data);
     if (dictionary) CFRelease(dictionary);
-    if (password_ref) CFRelease(password_ref);
+    if (should_release_password) CFRelease(password_ref);
     if (items) CFRelease(items);
+    // if (sec_identity_ref) CFRelease(sec_identity_ref);
     return result;
 }

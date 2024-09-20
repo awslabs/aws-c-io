@@ -56,7 +56,7 @@ int aws_secitem_import_cert_and_key(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    SecIdentityRef *secitem_identity,
+    sec_identity_t *secitem_identity,
     const struct aws_secitem_options *secitem_options);
 
 /**
@@ -68,7 +68,7 @@ int aws_secitem_import_pkcs12(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *pkcs12_cursor,
     const struct aws_byte_cursor *password,
-    SecIdentityRef *secitem_identity);
+    sec_identity_t *out_identity);
 
 /**
  * Converts and stores PRM armored PKCS#7 certificates into sec_root_ca for use as

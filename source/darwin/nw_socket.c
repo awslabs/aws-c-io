@@ -15,6 +15,29 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+const char *aws_sec_trust_result_type_to_string(SecTrustResultType trust_result) {
+    switch(trust_result) {
+        case kSecTrustResultInvalid:
+            return "kSecTrustResultInvalid";
+        case kSecTrustResultProceed:
+            return "kSecTrustResultProceed";
+        case kSecTrustResultConfirm:
+            return "kSecTrustResultConfirm";
+        case kSecTrustResultDeny:
+            return "kSecTrustResultDeny";
+        case kSecTrustResultUnspecified:
+            return "kSecTrustResultUnspecified";
+        case kSecTrustResultRecoverableTrustFailure:
+            return "kSecTrustResultRecoverableTrustFailure";
+        case kSecTrustResultFatalTrustFailure:
+            return "kSecTrustResultFatalTrustFailure";
+        case kSecTrustResultOtherError:
+            return "kSecTrustResultOtherError";
+        default:
+            return "Unknown SecTrustResultType";
+    }
+}
+
 static int s_determine_socket_error(int error) {
     switch (error) {
         /* POSIX Errors */
@@ -142,193 +165,167 @@ struct socket_address {
 
 static size_t KB_16 = 16 * 1024;
 
+/* setup the TCP options Block for use in socket parameters */
+static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
+    if (options->connect_timeout_ms) {
+        /* this value gets set in seconds. */
+        nw_tcp_options_set_connection_timeout(
+            tcp_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
+    }
+
+    /* Only change default keepalive values if keepalive is true and both interval and timeout
+     * are not zero. */
+    if (options->keepalive && options->keep_alive_interval_sec != 0 &&
+        options->keep_alive_timeout_sec != 0) {
+        nw_tcp_options_set_enable_keepalive(tcp_options, options->keepalive);
+        nw_tcp_options_set_keepalive_idle_time(tcp_options, options->keep_alive_timeout_sec);
+        nw_tcp_options_set_keepalive_interval(tcp_options, options->keep_alive_interval_sec);
+    }
+
+    if (options->keep_alive_max_failed_probes) {
+        nw_tcp_options_set_keepalive_count(
+            tcp_options, options->keep_alive_max_failed_probes);
+    }
+
+    if (g_aws_channel_max_fragment_size < KB_16) {
+        nw_tcp_options_set_maximum_segment_size(
+            tcp_options, g_aws_channel_max_fragment_size);
+    }
+}
+
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
     if (options->type == AWS_SOCKET_STREAM) {
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
-            if (options->user_data) {
-                struct aws_tls_ctx *tls_ctx = options->user_data;
+            if (options->tls_ctx) {
+                struct aws_tls_ctx *tls_ctx = options->tls_ctx;
                 struct secure_transport_ctx *transport_ctx = tls_ctx->impl;
-                SecIdentityRef secitem_identity = transport_ctx->secitem_identity;
-                SecCertificateRef secitem_root_ca = NULL;
-                if(transport_ctx->secitem_ca_cert != NULL) {
-                    secitem_root_ca = transport_ctx->secitem_ca_cert;
-                }
 
                 nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
                 // TLS options block
                 ^(nw_protocol_options_t tls_options) {
-
-                    /*
-                     * Obtain the security protocol options from the tls_options. Changes made directly
-                     * to the copy will impact the protocol options within the tls_options
-                     */
+                    /* Obtain the security protocol options from the tls_options. Changes made directly
+                     * to the copy will impact the protocol options within the tls_options */
                     sec_protocol_options_t sec_options = nw_tls_copy_sec_protocol_options(tls_options);
-                    sec_identity_t sec_ident = sec_identity_create(secitem_identity);
-                    sec_protocol_options_set_local_identity(sec_options, sec_ident);
+
+                    sec_protocol_options_set_local_identity(sec_options, transport_ctx->secitem_identity);
 
                     // Set the minimum TLS version to TLS 1.2
                     sec_protocol_options_set_min_tls_protocol_version(sec_options, tls_protocol_version_TLSv12);
                     // Set the maximum TLS version to TLS 1.3
                     sec_protocol_options_set_max_tls_protocol_version(sec_options, tls_protocol_version_TLSv13);
 
-                    // Enable/Disable peer authentication.
+                    /* Enable/Disable peer authentication. This setting is ignored by network framework due to our
+                     * implementation of the verification block below but we set it in case anything else checks this
+                     * value and/or in case we decide to remove the verify block in the future. */
                     sec_protocol_options_set_peer_authentication_required(sec_options, transport_ctx->verify_peer);
 
-                    /*
-                     * If a root_ca was set, we must manually handle the verification of the certificate presented
-                     * by the remote connection.
-                     *
-                     * We may need to ALWAYS handle the verification in the event that even an Amazon root CA
-                     * results in a negative confirmation due to the need to explicitly set a policy with the
-                     * host address.
-                     */
-                    if (secitem_root_ca != NULL) {
-                        sec_protocol_options_set_verify_block(sec_options,
-                            ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
-                                printf("\nverify block hit\n\n");
+                    /* We handle the verification of the remote end here. */
+                    sec_protocol_options_set_verify_block(
+                        sec_options,
+                        ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
+                            printf("\nverify block hit\n\n");
 
-                                SecTrustRef trust_ref = sec_trust_copy_ref(trust);
-                                OSStatus status;
+                            /* Since we manually handle the verification of the peer, the value set using
+                             * sec_protocol_options_set_peer_authentication_required is ignored and this block is
+                             * run instead. We must manually skip the verification at this point if verify_peer is false. */
+                            if (!transport_ctx->verify_peer) {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket instructed not to verify peer. Accepting peer credentials without evaluation against CA.",
+                                    (void *)nw_socket);
+                                complete(true);
+                            }
 
-                                if (secitem_root_ca != NULL) {
-                                    printf("\n");
-                                    CFShow(secitem_root_ca);
-                                    printf("\nchecking against root_ca\n\n");
-                                    CFArrayRef root_ca_array = CFArrayCreate(
-                                        NULL,
-                                        (const void **)&secitem_root_ca,
-                                        1,
-                                        &kCFTypeArrayCallBacks);
-                                    status = SecTrustSetAnchorCertificates(trust_ref, root_ca_array);
-                                    CFRelease(root_ca_array);
-                                } else {
-                                    printf("\nno root_ca set\n\n");
-                                }
+                            SecTrustRef trust_ref = sec_trust_copy_ref(trust);
+                            OSStatus status;
 
-                                // DEBUG WIP add the actual name of the host to the policy
-                                // This block will need to be edited to handle all hosts. We also
-                                // need to figure out a way to pull in the set host name here.
-                                SecPolicyRef policy = NULL;
-                                CFStringRef server_name = CFStringCreateWithCString(
+                            /* Use root ca if provided. */
+                            if (transport_ctx->secitem_ca_cert != NULL) {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket verify block applying provided root CA for remote verification.",
+                                    (void *)nw_socket);
+                                // We add the ca certificate as a anchor certificate in the trust_ref
+                                CFArrayRef root_ca_array = CFArrayCreate(
                                     NULL,
-                                    "a2yvr5l8sc9814-ats.iot.us-east-1.amazonaws.com",
-                                    kCFStringEncodingUTF8);
+                                    (const void **)&transport_ctx->secitem_ca_cert,
+                                    1,
+                                    &kCFTypeArrayCallBacks);
+                                status = SecTrustSetAnchorCertificates(trust_ref, root_ca_array);
+                                CFRelease(root_ca_array);
+                                if (status != errSecSuccess) {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket verify block SecTrustSetAnchorCertificates failed with OSStatus: %d",
+                                        (void *)nw_socket,
+                                        (int)status);
+                                    goto verification_done;
+                                }
+                            }
+
+                            /* Add the host name to be checked against the available Certificate Authorities */
+                            if (options->host_name != NULL) {
+                                SecPolicyRef policy = NULL;
+                                CFStringRef server_name = CFStringCreateWithBytes(
+                                    NULL,
+                                    options->host_name->bytes,
+                                    (CFIndex)options->host_name->len,
+                                    kCFStringEncodingUTF8,
+                                    false);
                                 policy = SecPolicyCreateSSL(true, server_name);
                                 CFRelease(server_name);
                                 status = SecTrustSetPolicies(trust_ref, policy);
+                            }
 
+                            SecTrustResultType trust_result;
+                            status = SecTrustEvaluate(trust_ref, &trust_result);
+                            if (status == errSecSuccess) {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket verify block SecTrustEvaluate trust result: %s",
+                                    (void *)nw_socket,
+                                    aws_sec_trust_result_type_to_string(trust_result));
 
-
-                                SecTrustResultType trust_result;
-                                status = SecTrustEvaluate(trust_ref, &trust_result);
-                                if (status == errSecSuccess) {
-                                    if (trust_result == kSecTrustResultProceed || trust_result == kSecTrustResultUnspecified) {
-                                        printf("\nTrust Accepted\n\n");
-                                        complete(true);
-                                    } else if (trust_result == kSecTrustResultRecoverableTrustFailure) {
-                                        printf("\nRcoverable trust failure. Proceeding anyway\n\n");
-
-                                        SecCertificateRef serverCert = SecTrustGetCertificateAtIndex(trust_ref, 0);
-                                        CFStringRef serverHostname = SecCertificateCopySubjectSummary(serverCert);
-                                        printf("\nserver host name:");
-                                        CFShow(serverHostname);
-                                        CFRelease(serverHostname);
-
-                                        // Get properties to determine the cause of the failure
-                                        CFArrayRef trustProperties = SecTrustCopyProperties(trust_ref);
-                                        CFShow(trustProperties); // Prints detailed properties about the failure
-
-                                        // Optional: Get more information about the trust evaluation
-                                        CFDictionaryRef trustResultDict = SecTrustCopyResult(trust_ref);
-                                        CFShow(trustResultDict);  // Prints additional key-value pairs about the evaluation
-
-                                        CFRelease(trustProperties);
-                                        CFRelease(trustResultDict);
-
-                                        complete(true);
-                                    } else {
-                                        printf("\nTrust Rejected\n\n");
-                                        complete(false);
-                                    }
-                            } else {
-                                    printf("\nTrust evaluation failed with OSStatus: %d\n\n", (int)status);
+                                if (trust_result == kSecTrustResultProceed || trust_result == kSecTrustResultUnspecified) {
+                                    complete(true);
+                                } else {
                                     complete(false);
                                 }
+                            } else {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket SecTrustEvaluate failed with OSStatus: %d",
+                                    (void *)nw_socket,
+                                    (int)status);
+                                complete(false);
+                            }
+verification_done:
+                            CFRelease(trust_ref);
 
-                                CFRelease(trust_ref);
-
-                            }, dispatch_get_main_queue());
-                        }
+                        },
+                        // DEBUG WIP replace main_queue with event loop queue.
+                        dispatch_get_main_queue());
                     },
+
                 // TCP options block
                 ^(nw_protocol_options_t tcp_options) {
-                    if (options->connect_timeout_ms) {
-                        /* this value gets set in seconds. */
-                        nw_tcp_options_set_connection_timeout(
-                            tcp_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
-                    }
-
-                    /* Only change default keepalive values if keepalive is true and both interval and timeout
-                     * are not zero. */
-                    if (options->keepalive && options->keep_alive_interval_sec != 0 &&
-                        options->keep_alive_timeout_sec != 0) {
-                        nw_tcp_options_set_enable_keepalive(
-                            tcp_options, options->keepalive);
-                        nw_tcp_options_set_keepalive_idle_time(
-                            tcp_options, options->keep_alive_timeout_sec);
-                        nw_tcp_options_set_keepalive_interval(
-                            tcp_options, options->keep_alive_interval_sec);
-                    }
-
-                    if (options->keep_alive_max_failed_probes) {
-                        nw_tcp_options_set_keepalive_count(
-                            tcp_options, options->keep_alive_max_failed_probes);
-                    }
-
-                    if (g_aws_channel_max_fragment_size < KB_16) {
-                        nw_tcp_options_set_maximum_segment_size(
-                            tcp_options, g_aws_channel_max_fragment_size);
-                    }
+                    s_setup_tcp_options(tcp_options, options);
                 });
             } else {
                 // TLS options are not set and the TLS options block should be disabled.
-                nw_socket->socket_options_to_params =
-                nw_parameters_create_secure_tcp(
+                nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
                 // TLS options Block disabled
                 NW_PARAMETERS_DISABLE_PROTOCOL,
                 // TCP options Block
-                ^(nw_protocol_options_t nw_options) {
-                    if (options->connect_timeout_ms) {
-                        /* this value gets set in seconds. */
-                        nw_tcp_options_set_connection_timeout(
-                            nw_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
-                  }
-
-                  // Only change default keepalive values if keepalive is true and both interval and timeout
-                  // are not zero.
-                  if (options->keepalive && options->keep_alive_interval_sec != 0 &&
-                      options->keep_alive_timeout_sec != 0) {
-                      nw_tcp_options_set_enable_keepalive(nw_options, options->keepalive);
-                      nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_timeout_sec);
-                      nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_interval_sec);
-                  }
-
-                  if (options->keep_alive_max_failed_probes) {
-                      nw_tcp_options_set_keepalive_count(nw_options, options->keep_alive_max_failed_probes);
-                  }
-
-                  if (g_aws_channel_max_fragment_size < KB_16) {
-                      nw_tcp_options_set_maximum_segment_size(nw_options, g_aws_channel_max_fragment_size);
-                  }
+                ^(nw_protocol_options_t tcp_options) {
+                    s_setup_tcp_options(tcp_options, options);
                 });
             }
         } else if (options->domain == AWS_SOCKET_LOCAL) {
 #if defined(TARGET_OS_OSX) && TARGET_OS_OSX
-
             nw_socket->socket_options_to_params =
                 nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-
 #else /* TARGET_OS_OSX */
             /* AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead. */
             AWS_LOGF_ERROR(
@@ -343,7 +340,11 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         // DEBUG WIP We should setup the TCP options in this case too. Maybe we can setup TCP options to  be used
         // across all types of parameters once and use them for all of these.
         nw_socket->socket_options_to_params =
-            nw_parameters_create_secure_udp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+            nw_parameters_create_secure_udp(NW_PARAMETERS_DISABLE_PROTOCOL,
+            // TCP options Block
+            ^(nw_protocol_options_t tcp_options) {
+                s_setup_tcp_options(tcp_options, options);
+            });
     }
 
     if (!nw_socket->socket_options_to_params) {

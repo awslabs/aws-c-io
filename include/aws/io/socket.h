@@ -47,8 +47,8 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     enum aws_event_loop_style event_loop_style;
     bool keepalive;
-    // DEBUG WIP store tls_ctx
-    void *user_data;
+    void *tls_ctx;
+    struct aws_string *host_name;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API

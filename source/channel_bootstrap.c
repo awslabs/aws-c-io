@@ -651,9 +651,13 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
         goto socket_init_failed;
     }
-    /* SecItem TLS negotiation requires access to stored SecItem identity during connect call. */
+
+    /* SecItem TLS negotiation requires access to stored SecItem identity during connect call
+     * and host_name for server verification. We make shallow copies here that will outlive
+     * usage of the underlying data. */
     if (task_data->args->channel_data.use_tls) {
-        outgoing_socket->options.user_data = task_data->args->channel_data.tls_options.ctx;
+        outgoing_socket->options.tls_ctx = task_data->args->channel_data.tls_options.ctx;
+        outgoing_socket->options.host_name = task_data->args->host_name;
     }
 
     if (aws_socket_connect(
