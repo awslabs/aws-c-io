@@ -101,6 +101,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_rhel_path, "/etc/pki/tls/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
+AWS_STATIC_STRING_FROM_LITERAL(s_qnx_path, "/usr/ssl/certs");
 
 AWS_IO_API const char *aws_determine_default_pki_dir(void) {
     /* debian variants; OpenBSD (although the directory doesn't exist by default) */
@@ -128,6 +129,11 @@ AWS_IO_API const char *aws_determine_default_pki_dir(void) {
         return aws_string_c_str(s_net_bsd_path);
     }
 
+    /* QNX */
+    if (aws_path_exists(s_qnx_path)) {
+        return aws_string_c_str(s_qnx_path);
+    }
+
     return NULL;
 }
 
@@ -137,6 +143,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_open_suse_ca_file_path, "/etc/ssl/ca-bundle.pem
 AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
+AWS_STATIC_STRING_FROM_LITERAL(s_qnx_ca_file_path, "/usr/ssl/certs/cacert.pem");
 
 AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     /* debian variants */
@@ -167,6 +174,11 @@ AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
     /* OpenBSD */
     if (aws_path_exists(s_openbsd_ca_file_path)) {
         return aws_string_c_str(s_openbsd_ca_file_path);
+    }
+
+    /* QNX */
+    if (aws_path_exists(s_qnx_ca_file_path)) {
+        return aws_string_c_str(s_qnx_ca_file_path);
     }
 
     return NULL;
