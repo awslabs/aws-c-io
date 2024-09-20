@@ -96,6 +96,7 @@ struct ionotify_event_data {
     struct sigevent event;
     void *user_data;
     struct aws_task subscribe_task;
+    struct aws_task resubscribe_task;
     struct aws_task cleanup_task;
     /* ID with a value that can fit into pulse user data field (only _NOTIFY_DATA_MASK bits can be used). */
     int handle_id;
@@ -610,7 +611,8 @@ static void s_process_io_result(
         /* We're on the event loop thread, just schedule subscribing task. */
         ionotify_event_data->events_subscribed = event_types;
         struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, &ionotify_event_data->subscribe_task);
+        aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, &ionotify_event_data->resubscribe_task);
+        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, &ionotify_event_data->resubscribe_task);
     }
 
     /* Notify event loop of error conditions. */
@@ -704,6 +706,12 @@ static int s_subscribe_to_io_events(
     ionotify_event_data->pulse_connection_id = ionotify_loop->pulse_connection_id;
     ionotify_event_data->user_data = user_data;
     ionotify_event_data->handle->update_io_result = s_update_io_result;
+
+    aws_task_init(
+        &ionotify_event_data->resubscribe_task,
+        s_subscribe_task,
+        ionotify_event_data,
+        "ionotify_event_loop_resubscribe");
 
     aws_task_init(
         &ionotify_event_data->subscribe_task, s_subscribe_task, ionotify_event_data, "ionotify_event_loop_subscribe");
