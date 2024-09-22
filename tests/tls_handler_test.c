@@ -1718,16 +1718,14 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
-    DWORD ret;
-    ret = SetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", "true");
+    
+    // Force using SCHANNEL_CREDS for testing
+    aws_use_schannel_creds(true);
     if (ret == 0) {
         ASSERT_TRUE(0);
     }
     s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
-    ret = SetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", NULL);
-    if (ret == 0) {
-        ASSERT_TRUE(0);
-    }
+    aws_use_schannel_creds(false);  // reset
     return AWS_OP_SUCCESS;
 }
 

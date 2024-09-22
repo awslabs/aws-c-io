@@ -51,6 +51,16 @@ AWS_IO_API void aws_on_tls_negotiation_completed(
  */
 AWS_IO_API bool aws_tls_options_buf_is_set(const struct aws_byte_buf *buf);
 
+
+#ifdef _WIN32
+/**
+ * Set to use schannel creds. Default to false.
+ * For windows build above WINDOWS_BUILD_1809, we have deprecated CHANNEL_CREDS. 
+ * Set the value to true to force to use CHANNEL_CREDS. 
+ */
+AWS_IO_API void aws_use_schannel_creds(bool use_schannel_creds);
+#endif
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_TLS_CHANNEL_HANDLER_SHARED_H */

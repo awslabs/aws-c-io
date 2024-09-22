@@ -44,8 +44,11 @@
 #define READ_OUT_SIZE (16 * KB_1)
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
+#define WINDOWS_BUILD_1809 1809
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+
+static s_use_schannel_creds = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
@@ -137,10 +140,10 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
-/* Checks whether current system is running Windows 10 version 1809 (build 17_763) or later. This check is used
+/* Checks whether current system is running Windows 10 version `build_number` or later. This check is used
    to determin availability of TLS 1.3. This will continue to be a valid check in Windows 11 and later as the
    build number continues to increment upwards. e.g. Windows 11 starts at version 21H2 (build 22_000) */
-static bool s_is_windows_equal_or_above_version_1809(void) {
+static bool s_is_windows_equal_or_above_version(DWORD build_number) {
     ULONGLONG dwlConditionMask = 0;
     BYTE op = VER_GREATER_EQUAL;
     OSVERSIONINFOEX osvi;
@@ -149,7 +152,7 @@ static bool s_is_windows_equal_or_above_version_1809(void) {
 
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
-    osvi.dwBuildNumber = 1809; /* Windows 10 build 1809 */
+    osvi.dwBuildNumber = build_number;
 
     dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
@@ -162,14 +165,19 @@ static bool s_is_windows_equal_or_above_version_1809(void) {
         status = f(&osvi, VER_BUILDNUMBER, dwlConditionMask);
     } else {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Could not load ntdll: Falling back to windows 10 build 1088 or earlier schannel version");
+            AWS_LS_IO_TLS,
+            "Could not load ntdll: Falling back to earlier windows 10 schannel version before build %d",
+            build_number);
         status = STATUS_DLL_NOT_FOUND;
     }
     if (status == STATUS_SUCCESS) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build 1809 or later");
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build %u or later", build_number);
         return true;
     } else if (status != STATUS_DLL_NOT_FOUND) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: Running windows 10 build 1088 or earlier");
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "Checking Windows Version: Running earlier windows 10 version before build %u",
+            build_number);
         return false;
     }
     return false;
@@ -1169,12 +1177,12 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                     sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
                 }
                 if (status != SEC_I_RENEGOTIATE) {
-                sc_handler->read_extra = input_buffers[3].cbBuffer;
-                //     AWS_LOGF_TRACE(
-                //         AWS_LS_IO_TLS,
-                //         "id=%p: Extra (incomplete) message received with length %zu.",
-                //         (void *)handler,
-                //         sc_handler->read_extra);
+                    sc_handler->read_extra = input_buffers[3].cbBuffer;
+                    //     AWS_LOGF_TRACE(
+                    //         AWS_LS_IO_TLS,
+                    //         "id=%p: Extra (incomplete) message received with length %zu.",
+                    //         (void *)handler,
+                    //         sc_handler->read_extra);
                 } else {
                     error = AWS_OP_SUCCESS;
                     /* this means we processed everything in the buffer. */
@@ -1183,9 +1191,6 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         AWS_LS_IO_TLS,
                         "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
                         (void *)handler);
-                }
-                if (status != SEC_I_RENEGOTIATE) {
-                    sc_handler->read_extra = input_buffers[3].cbBuffer;
                 }
             } else {
                 error = AWS_OP_SUCCESS;
@@ -1230,10 +1235,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
          * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
         if (status == SEC_I_RENEGOTIATE) {
             AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: Renegotiation received. SECURITY_STATUS is %d.",
-                (void *)handler,
-                (int)status);
+                AWS_LS_IO_TLS, "id=%p: Renegotiation received. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                 if (input_buffers[3].cbBuffer < read_len) {
                     AWS_LOGF_TRACE(
@@ -1319,10 +1321,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             }
         } else {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "id=%p: Error decrypting message. SECURITY_STATUS is %d.",
-                (void *)handler,
-                (int)status);
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
             aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
@@ -1648,10 +1647,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 
         if (status != SEC_E_OK) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS,
-                "id=%p: QueryContextAttributes failed with error %d",
-                (void *)handler,
-                (int)status);
+                AWS_LS_IO_TLS, "id=%p: QueryContextAttributes failed with error %d", (void *)handler, (int)status);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             aws_channel_shutdown(slot->channel, AWS_ERROR_SYS_CALL_FAILURE);
             return AWS_OP_ERR;
@@ -2070,7 +2066,7 @@ static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bo
     return bit_enabled_protocols;
 }
 
-static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
+static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
 
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
@@ -2123,8 +2119,7 @@ static struct aws_channel_handler *s_tls_handler_support_sch_credentials(
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
@@ -2139,7 +2134,7 @@ on_error:
     return NULL;
 }
 
-static struct aws_channel_handler *s_tls_handler_new(
+static struct aws_channel_handler *s_tls_handler_schannel_cred_new(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
@@ -2180,8 +2175,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
@@ -2196,18 +2190,22 @@ on_error:
     return NULL;
 }
 
-static bool s_is_testing_deprecated_schannel_creds_defined() {
-    DWORD ret;
-    char buffer[10];
 
-    /* Used for testing: if defined to any value, we run the deprecarted SCHANNEL_CREDS on newer windows versions */
-    ret = GetEnvironmentVariable("TEST_DEPRECATED_SCHANNEL_CREDS", buffer, 10);
-    if (ret != 0) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "Variable TEST_DEPRECATED_SCHANNEL_CREDS is defined testing deprecated structure");
-        return true;
+void aws_use_schannel_creds(bool use_schannel_creds) {
+    s_use_schannel_creds = use_schannel_creds;
+}
+
+static struct aws_channel_handler *s_tls_handler_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+        
+     /* check if run on Windows 10 build 1809, (build 17_763) */
+    if (s_is_windows_equal_or_above_version(WINDOWS_BUILD_1809) && !s_use_schannel_creds) {
+        return s_tls_handler_sch_credentials_new(allocator, options, slot, true);
     }
-    return false;
+    return s_tls_handler_schannel_cred_new(allocator, options, slot, true);
 }
 
 struct aws_channel_handler *aws_tls_client_handler_new(
@@ -2215,14 +2213,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if (s_is_windows_equal_or_above_version_1809()) {
-        if (s_is_testing_deprecated_schannel_creds_defined()) {
-            return s_tls_handler_new(allocator, options, slot, true);
-        }
-        return s_tls_handler_support_sch_credentials(allocator, options, slot, true);
-    } else {
-        return s_tls_handler_new(allocator, options, slot, true);
-    }
+    s_tls_handler_new(allocator, options, slot, true);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
@@ -2230,14 +2221,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    if (s_is_windows_equal_or_above_version_1809()) {
-        if (s_is_testing_deprecated_schannel_creds_defined()) {
-            return s_tls_handler_new(allocator, options, slot, false);
-        }
-        return s_tls_handler_support_sch_credentials(allocator, options, slot, false);
-    } else {
-        return s_tls_handler_new(allocator, options, slot, false);
-    }
+    s_tls_handler_new(allocator, options, slot, false);
 }
 
 static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_channel_ctx) {
