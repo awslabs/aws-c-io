@@ -11,6 +11,7 @@
 
 #include <Network/Network.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/private/dispatch_queue.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -153,6 +154,7 @@ struct nw_socket {
     struct nw_socket_timeout_args *timeout_args;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
+    struct aws_event_loop *event_loop;
 };
 
 struct socket_address {
@@ -200,6 +202,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
             if (options->tls_ctx) {
                 struct aws_tls_ctx *tls_ctx = options->tls_ctx;
                 struct secure_transport_ctx *transport_ctx = tls_ctx->impl;
+                struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
 
                 nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
                 // TLS options block
@@ -262,7 +265,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             if (options->host_name != NULL) {
                                 SecPolicyRef policy = NULL;
                                 CFStringRef server_name = CFStringCreateWithBytes(
-                                    NULL,
+                                    transport_ctx->wrapped_allocator,
                                     options->host_name->bytes,
                                     (CFIndex)options->host_name->len,
                                     kCFStringEncodingUTF8,
@@ -298,8 +301,7 @@ verification_done:
                             CFRelease(trust_ref);
 
                         },
-                        // DEBUG WIP replace main_queue with event loop queue.
-                        dispatch_get_main_queue());
+                        dispatch_loop->dispatch_queue);
                     },
 
                 // TCP options block
@@ -548,6 +550,7 @@ static int s_socket_connect_fn(
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
 
+    nw_socket->event_loop = event_loop;
     if (s_setup_socket_params(nw_socket, &socket->options)) {
         return AWS_OP_ERR;
     }
