@@ -10,8 +10,6 @@
 #include <aws/io/channel.h>
 #include <aws/io/statistics.h>
 
-#include <Security/Security.h>
-
 struct aws_tls_connection_options;
 
 struct aws_tls_channel_handler_shared {
