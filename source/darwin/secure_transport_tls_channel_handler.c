@@ -8,6 +8,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/private/dispatch_queue.h>
 #include <aws/io/statistics.h>
 
 #include <aws/io/logging.h>

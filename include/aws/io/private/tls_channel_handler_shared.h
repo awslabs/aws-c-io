@@ -21,17 +21,6 @@ struct aws_tls_channel_handler_shared {
     struct aws_crt_statistics_tls stats;
 };
 
-struct secure_transport_ctx {
-    struct aws_tls_ctx ctx;
-    CFAllocatorRef wrapped_allocator;
-    CFArrayRef certs;
-    SecIdentityRef secitem_identity;
-    CFArrayRef ca_cert;
-    enum aws_tls_versions minimum_version;
-    struct aws_string *alpn_list;
-    bool verify_peer;
-};
-
 enum aws_tls_handler_read_state {
     AWS_TLS_HANDLER_OPEN,
     AWS_TLS_HANDLER_READ_SHUTTING_DOWN,

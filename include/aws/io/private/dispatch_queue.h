@@ -6,6 +6,19 @@
  */
 
 #include <dispatch/dispatch.h>
+#include <Security/Security.h>
+#include <aws/io/tls_channel_handler.h>
+
+struct secure_transport_ctx {
+    struct aws_tls_ctx ctx;
+    CFAllocatorRef wrapped_allocator;
+    CFArrayRef certs;
+    SecIdentityRef secitem_identity;
+    CFArrayRef ca_cert;
+    enum aws_tls_versions minimum_version;
+    struct aws_string *alpn_list;
+    bool verify_peer;
+};
 
 struct dispatch_scheduling_state {
     // Let's us skip processing an iteration task if one is already in the middle
