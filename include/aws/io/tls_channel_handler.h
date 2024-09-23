@@ -235,9 +235,8 @@ struct aws_tls_ctx_options {
     struct aws_byte_buf pkcs12_password;
 
     /**
-     * When adding items to the keychain, SecItem allows the setting of attributes
-     * that control various options and settings related to access of the items. This
-     * struct contains the various attributes we currently support.
+     * The settings we expose controls to when adding items to the keychain using
+     * SecItem are contained within this struct.
      */
     struct aws_secitem_options *secitem_options;
 
