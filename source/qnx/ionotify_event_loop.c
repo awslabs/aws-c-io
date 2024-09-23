@@ -62,7 +62,7 @@ struct ionotify_loop {
     /* Channel to receive I/O events. Resource managers open connections to this channel to send their events. */
     int io_events_channel_id;
     /* Connection to the events channel opened by the event loop. It's used by ionotify and some event loop logic (e.g.
-     * cross-thread and I/O results notifications) to send pulses to the pulse channel. */
+     * cross-thread and I/O results notifications) to send pulses to the events channel. */
     int pulse_connection_id;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
@@ -76,8 +76,7 @@ struct ionotify_loop {
      * QNX 8.0) in this field to specify the types of the triggered events.
      *
      * Since event loop must know the types of received I/O events, the second options is used. 28-bit IDs are mapped to
-     * each subscribed aws_io_handle. The mapping is stored in this hash table.
-     */
+     * each subscribed aws_io_handle. The mapping is stored in this hash table. */
     struct aws_hash_table handles;
     int last_handle_id;
 };
@@ -89,7 +88,9 @@ struct ionotify_event_data {
     struct aws_event_loop *event_loop;
     aws_event_loop_on_event_fn *on_event;
     int events_subscribed;
-    /* enum aws_io_event_type */
+    /* A QNX event notification can use only 4 bits for I/O event types (input data, output data, out-of-band data, and
+     * extended flag indicating that additional events happened). So, the latest_io_event_types field contains these
+     * additional event types converted to CRT event loop domain (enum aws_io_event_type). */
     int latest_io_event_types;
     /* Connection opened on the events channel. Used to send pulses to the main event loop. */
     int pulse_connection_id;
@@ -144,11 +145,16 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         goto clean_up_ionotify;
     }
 
-    /* Setup channel to receive cross-thread pulses and pulses from resource managers. */
+    /* Setup channel to receive events from resource managers. */
     ionotify_loop->io_events_channel_id = ChannelCreate(0);
     int errno_value = errno; /* Always cache errno before potential side-effect */
     if (ionotify_loop->io_events_channel_id == -1) {
-        printf("ChannelCreate failed with errno %d (%s)\n", errno_value, strerror(errno_value));
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: ChannelCreate failed with errno %d (%s)\n",
+            (void *)event_loop,
+            errno_value,
+            strerror(errno_value));
         goto clean_up_thread;
     }
     AWS_LOGF_DEBUG(
@@ -159,11 +165,19 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
 
     /* Open connection over the QNX channel for pulses. */
     ionotify_loop->pulse_connection_id = ConnectAttach(0, 0, ionotify_loop->io_events_channel_id, _NTO_SIDE_CHANNEL, 0);
+    errno_value = errno; /* Always cache errno before potential side-effect */
     if (ionotify_loop->pulse_connection_id == -1) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: ConnectAttach failed with errno %d (%s)\n",
+            (void *)event_loop,
+            errno_value,
+            strerror(errno_value));
         goto clean_up_thread;
     }
 
     if (aws_task_scheduler_init(&ionotify_loop->scheduler, alloc)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: aws_task_scheduler_init failed\n", (void *)event_loop);
         goto clean_up_thread;
     }
 
@@ -859,7 +873,7 @@ static void s_process_pulse(
     const struct _pulse *pulse,
     bool *should_process_cross_thread_tasks) {
     if (pulse->code == CROSS_THREAD_PULSE_SIGEV_CODE) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceived got cross-thread pulse", (void *)event_loop);
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: MsgReceive got cross-thread pulse", (void *)event_loop);
         *should_process_cross_thread_tasks = true;
         return;
     }
