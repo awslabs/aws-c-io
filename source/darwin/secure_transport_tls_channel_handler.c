@@ -1020,7 +1020,7 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
     }
 
     if (secure_transport_ctx->certs) {
-        aws_release_identity(secure_transport_ctx->certs);
+        CFRelease(secure_transport_ctx->certs);
     }
 
     if (secure_transport_ctx->secitem_identity) {
@@ -1028,7 +1028,7 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
     }
 
     if (secure_transport_ctx->ca_cert) {
-        aws_release_certificates(secure_transport_ctx->ca_cert);
+        CFRelease(secure_transport_ctx->ca_cert);
     }
 
     if (secure_transport_ctx->alpn_list) {
@@ -1107,7 +1107,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
             goto cleanup_wrapped_allocator;
         }
 #endif /* !AWS_OS_IOS */
-// DEBUG WIP temp set this section to work with macOS for testing
 #if defined(AWS_OS_IOS)
 
         if (aws_secitem_import_cert_and_key(
