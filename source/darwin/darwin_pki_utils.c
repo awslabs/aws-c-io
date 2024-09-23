@@ -376,19 +376,11 @@ int aws_import_trusted_certificates(
     return err;
 }
 
-void aws_release_identity(CFArrayRef identity) {
-    CFRelease(identity);
-}
-
-void aws_release_certificates(CFArrayRef certs) {
-    CFRelease(certs);
-}
-
 /*
  * Apple's Network framework and SecItem API use of the data protection keychain is currently only implemented
- * on iOS. We may add support for macOS at a later date.
+ * on iOS and tvOS. We may add support for MacOS at a later date.
  *
- * macOS migration from currently deprecated Secure Transport API and file based keychain to
+ * MacOS migration from currently deprecated Secure Transport API and file based keychain to
  * Network framework will require it we also migrate from BSD Sockets to Apple's Network Framework.
  *
  * From a breaking existing users perspective, we must also find a way to continue support for the
