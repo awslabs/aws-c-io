@@ -15,8 +15,8 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/pki_utils.h>
-#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/private/tls_channel_handler_private.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
 /* To use the SCH_CREDENTIALS structure, define SCHANNEL_USE_BLACKLISTS  */
@@ -2271,7 +2271,7 @@ struct aws_tls_ctx *s_ctx_new(
 
     DWORD dw_flags = 0;
     PCCERT_CONTEXT *pa_cred = NULL;
-    DWORD creds = 1;
+    DWORD creds = 0;
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
