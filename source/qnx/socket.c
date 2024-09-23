@@ -1504,8 +1504,8 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
             (unsigned long long)write_request->original_buffer_len,
             (unsigned long long)write_request->cursor_cpy.len);
 
-        ssize_t written = send(
-            socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, MSG_NOSIGNAL);
+        ssize_t written =
+            send(socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, MSG_NOSIGNAL);
         int errno_value = errno; /* Always cache errno before potential side-effect */
 
         AWS_LOGF_TRACE(
