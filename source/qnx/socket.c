@@ -18,42 +18,11 @@
 #include <aws/io/io.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h> /* Required when VSOCK is used */
 #include <net/if.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
-/*
- * On OsX, suppress NoPipe signals via flags to setsockopt()
- * On Linux, suppress NoPipe signals via flags to send()
- */
-#if defined(__MACH__)
-#    define NO_SIGNAL_SOCK_OPT SO_NOSIGPIPE
-#    define NO_SIGNAL_SEND 0
-#    define TCP_KEEPIDLE TCP_KEEPALIVE
-#else
-#    define NO_SIGNAL_SEND MSG_NOSIGNAL
-#endif
-
-/* This isn't defined on ancient linux distros (breaking the builds).
- * However, if this is a prebuild, we purposely build on an ancient system, but
- * we want the kernel calls to still be the same as a modern build since that's likely the target of the application
- * calling this code. Just define this if it isn't there already. GlibC and the kernel don't really care how the flag
- * gets passed as long as it does.
- */
-#ifndef O_CLOEXEC
-#    define O_CLOEXEC 02000000
-#endif
-
-#ifdef USE_VSOCK
-#    if defined(__linux__) && defined(AF_VSOCK)
-#        include <linux/vm_sockets.h>
-#    else
-#        error "USE_VSOCK not supported on current platform"
-#    endif
-#endif
 
 /* other than CONNECTED_READ | CONNECTED_WRITE
  * a socket is only in one of these states at a time. */
@@ -77,10 +46,6 @@ static int s_convert_domain(enum aws_socket_domain domain) {
             return AF_INET6;
         case AWS_SOCKET_LOCAL:
             return AF_UNIX;
-#ifdef USE_VSOCK
-        case AWS_SOCKET_VSOCK:
-            return AF_VSOCK;
-#endif
         default:
             AWS_ASSERT(0);
             return AF_INET;
@@ -337,15 +302,6 @@ static int s_update_local_endpoint(struct aws_socket *socket) {
             return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
         }
         memcpy(tmp_endpoint.address, s->sun_path, sun_len);
-#if USE_VSOCK
-    } else if (address.ss_family == AF_VSOCK) {
-        struct sockaddr_vm *s = (struct sockaddr_vm *)&address;
-
-        tmp_endpoint.port = s->svm_port;
-
-        snprintf(tmp_endpoint.address, sizeof(tmp_endpoint.address), "%" PRIu32, s->svm_cid);
-        return AWS_OP_SUCCESS;
-#endif /* USE_VSOCK */
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -569,45 +525,8 @@ struct socket_address {
         struct sockaddr_in addr_in;
         struct sockaddr_in6 addr_in6;
         struct sockaddr_un un_addr;
-#ifdef USE_VSOCK
-        struct sockaddr_vm vm_addr;
-#endif
     } sock_addr_types;
 };
-
-#ifdef USE_VSOCK
-/** Convert a string to a VSOCK CID. Respects the calling convetion of inet_pton:
- * 0 on error, 1 on success. */
-static int parse_cid(const char *cid_str, unsigned int *value) {
-    if (cid_str == NULL || value == NULL) {
-        errno = EINVAL;
-        return 0;
-    }
-    /* strtoll returns 0 as both error and correct value */
-    errno = 0;
-    /* unsigned long long to handle edge cases in convention explicitly */
-    long long cid = strtoll(cid_str, NULL, 10);
-    if (errno != 0) {
-        return 0;
-    }
-
-    /* -1U means any, so it's a valid value, but it needs to be converted to
-     * unsigned int. */
-    if (cid == -1) {
-        *value = VMADDR_CID_ANY;
-        return 1;
-    }
-
-    if (cid < 0 || cid > UINT_MAX) {
-        errno = ERANGE;
-        return 0;
-    }
-
-    /* cast is safe here, edge cases already checked */
-    *value = (unsigned int)cid;
-    return 1;
-}
-#endif
 
 int aws_socket_connect(
     struct aws_socket *socket,
@@ -663,13 +582,6 @@ int aws_socket_connect(
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
-#ifdef USE_VSOCK
-    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
-        pton_err = parse_cid(remote_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
-        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
-        address.sock_addr_types.vm_addr.svm_port = remote_endpoint->port;
-        sock_size = sizeof(address.sock_addr_types.vm_addr);
-#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -839,13 +751,6 @@ int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint 
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
         sock_size = sizeof(address.sock_addr_types.un_addr);
-#ifdef USE_VSOCK
-    } else if (socket->options.domain == AWS_SOCKET_VSOCK) {
-        pton_err = parse_cid(local_endpoint->address, &address.sock_addr_types.vm_addr.svm_cid);
-        address.sock_addr_types.vm_addr.svm_family = AF_VSOCK;
-        address.sock_addr_types.vm_addr.svm_port = local_endpoint->port;
-        sock_size = sizeof(address.sock_addr_types.vm_addr);
-#endif
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -1250,20 +1155,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     socket->options = *options;
 
-#ifdef NO_SIGNAL_SOCK_OPT
-    int option_value = 1;
-    if (AWS_UNLIKELY(setsockopt(
-            socket->io_handle.data.fd, SOL_SOCKET, NO_SIGNAL_SOCK_OPT, &option_value, sizeof(option_value)))) {
-        int errno_value = errno; /* Always cache errno before potential side-effect */
-        AWS_LOGF_WARN(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: setsockopt() for NO_SIGNAL_SOCK_OPT failed with errno %d.",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            errno_value);
-    }
-#endif /* NO_SIGNAL_SOCK_OPT */
-
     int reuse = 1;
     if (AWS_UNLIKELY(setsockopt(socket->io_handle.data.fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)))) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
@@ -1302,58 +1193,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                 errno_value);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         }
-#elif defined(IP_BOUND_IF)
-        /*
-         * If SO_BINDTODEVICE is not supported, the alternative is IP_BOUND_IF which requires an index instead
-         * of a name. We are not using this everywhere because this requires 2 system calls instead of 1, and is
-         * dependent upon the type of sockets, which doesn't support AWS_SOCKET_LOCAL. As a future optimization, we can
-         * look into caching the result of if_nametoindex.
-         */
-        uint network_interface_index = if_nametoindex(options->network_interface_name);
-        if (network_interface_index == 0) {
-            int errno_value = errno; /* Always cache errno before potential side-effect */
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: network_interface_name \"%s\" not found. if_nametoindex() failed with errno %d.",
-                (void *)socket,
-                socket->io_handle.data.fd,
-                options->network_interface_name,
-                errno_value);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
-        if (options->domain == AWS_SOCKET_IPV6) {
-            if (setsockopt(
-                    socket->io_handle.data.fd,
-                    IPPROTO_IPV6,
-                    IPV6_BOUND_IF,
-                    &network_interface_index,
-                    sizeof(network_interface_index))) {
-                int errno_value = errno; /* Always cache errno before potential side-effect */
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p fd=%d: setsockopt() with IPV6_BOUND_IF for \"%s\" failed with errno %d.",
-                    (void *)socket,
-                    socket->io_handle.data.fd,
-                    options->network_interface_name,
-                    errno_value);
-                return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-            }
-        } else if (setsockopt(
-                       socket->io_handle.data.fd,
-                       IPPROTO_IP,
-                       IP_BOUND_IF,
-                       &network_interface_index,
-                       sizeof(network_interface_index))) {
-            int errno_value = errno; /* Always cache errno before potential side-effect */
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p fd=%d: setsockopt() with IP_BOUND_IF for \"%s\" failed with errno %d.",
-                (void *)socket,
-                socket->io_handle.data.fd,
-                options->network_interface_name,
-                errno_value);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
 #else
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -1378,7 +1217,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             }
         }
 
-#if !defined(__OpenBSD__)
         if (socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec) {
             int ival_in_secs = socket->options.keep_alive_interval_sec;
             if (AWS_UNLIKELY(setsockopt(
@@ -1418,7 +1256,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
                     errno_value);
             }
         }
-#endif /* __OpenBSD__ */
     }
 
     return AWS_OP_SUCCESS;
@@ -1668,7 +1505,7 @@ static int s_process_socket_write_requests(struct aws_socket *socket, struct soc
             (unsigned long long)write_request->cursor_cpy.len);
 
         ssize_t written = send(
-            socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, NO_SIGNAL_SEND);
+            socket->io_handle.data.fd, write_request->cursor_cpy.ptr, write_request->cursor_cpy.len, MSG_NOSIGNAL);
         int errno_value = errno; /* Always cache errno before potential side-effect */
 
         AWS_LOGF_TRACE(
@@ -1948,11 +1785,7 @@ int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size
         return AWS_OP_SUCCESS;
     }
 
-#if defined(EWOULDBLOCK)
     if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
-#else
-    if (errno_value == EAGAIN) {
-#endif
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p fd=%d: read would block", (void *)socket, socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }

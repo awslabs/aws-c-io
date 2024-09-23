@@ -7,30 +7,12 @@
 
 #include <aws/io/event_loop.h>
 
-#ifdef __GLIBC__
-#    define __USE_GNU
-#endif
-
-/* TODO: move this detection to CMAKE and a config header */
-#if !defined(COMPAT_MODE) && defined(__GLIBC__) && ((__GLIBC__ == 2 && __GLIBC_MINOR__ >= 9) || __GLIBC__ > 2)
-#    define HAVE_PIPE2 1
-#else
-#    define HAVE_PIPE2 0
-#endif
+/* TODO Verified for QNX 8.0 only. */
+#define HAVE_PIPE2 1
 
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-/* This isn't defined on ancient linux distros (breaking the builds).
- * However, if this is a prebuild, we purposely build on an ancient system, but
- * we want the kernel calls to still be the same as a modern build since that's likely the target of the application
- * calling this code. Just define this if it isn't there already. GlibC and the kernel don't really care how the flag
- * gets passed as long as it does.
- */
-#ifndef O_CLOEXEC
-#    define O_CLOEXEC 02000000
-#endif
 
 struct read_end_impl {
     struct aws_allocator *alloc;
