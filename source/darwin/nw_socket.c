@@ -227,8 +227,6 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                     sec_protocol_options_set_verify_block(
                         sec_options,
                         ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
-                            printf("\nverify block hit\n\n");
-
                             /* Since we manually handle the verification of the peer, the value set using
                              * sec_protocol_options_set_peer_authentication_required is ignored and this block is
                              * run instead. We must manually skip the verification at this point if verify_peer is false. */
@@ -1213,7 +1211,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
     /* loop over the read queue, take the data and copy it over, and do so til we're either out of data
      * and need to schedule another read, or we've read entirely into the requested buffer. */
     while (!aws_linked_list_empty(&nw_socket->read_queue) && max_to_read) {
-        printf("\n READING FROM SOCKET\n\n");
         struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
         struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
@@ -1278,8 +1275,6 @@ static int s_socket_write_fn(
     AWS_ASSERT(written_fn);
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_FREE);
-
-    printf("\nWriting %zu to SOCKET\n\n", cursor->len);
     nw_connection_send(
         handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           AWS_LOGF_TRACE(
