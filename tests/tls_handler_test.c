@@ -24,6 +24,7 @@
 #    include <statistics_handler_test.h>
 
 #    include <aws/io/private/pki_utils.h>
+#    include <aws/io/private/tls_channel_handler_private.h>
 
 /* badssl.com has occasional lags, make this timeout longer so we have a
  * higher chance of actually testing something. */
@@ -1718,14 +1719,11 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
-    
+
     // Force using SCHANNEL_CREDS for testing
-    aws_use_schannel_creds(true);
-    if (ret == 0) {
-        ASSERT_TRUE(0);
-    }
+    aws_windows_force_schannel_creds(true);
     s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
-    aws_use_schannel_creds(false);  // reset
+    aws_windows_force_schannel_creds(false); // reset
     return AWS_OP_SUCCESS;
 }
 

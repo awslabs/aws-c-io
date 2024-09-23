@@ -16,6 +16,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/private/tls_channel_handler_private.h>
 #include <aws/io/statistics.h>
 
 /* To use the SCH_CREDENTIALS structure, define SCHANNEL_USE_BLACKLISTS  */
@@ -48,7 +49,7 @@
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 
-static s_use_schannel_creds = false;
+static bool s_use_schannel_creds = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
@@ -2190,8 +2191,7 @@ on_error:
     return NULL;
 }
 
-
-void aws_use_schannel_creds(bool use_schannel_creds) {
+void aws_windows_force_schannel_creds(bool use_schannel_creds) {
     s_use_schannel_creds = use_schannel_creds;
 }
 
@@ -2200,12 +2200,12 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
     bool is_client_mode) {
-        
-     /* check if run on Windows 10 build 1809, (build 17_763) */
+
+    /* check if run on Windows 10 build 1809, (build 17_763) */
     if (s_is_windows_equal_or_above_version(WINDOWS_BUILD_1809) && !s_use_schannel_creds) {
-        return s_tls_handler_sch_credentials_new(allocator, options, slot, true);
+        return s_tls_handler_sch_credentials_new(alloc, options, slot, is_client_mode);
     }
-    return s_tls_handler_schannel_cred_new(allocator, options, slot, true);
+    return s_tls_handler_schannel_cred_new(alloc, options, slot, is_client_mode);
 }
 
 struct aws_channel_handler *aws_tls_client_handler_new(
@@ -2213,7 +2213,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    s_tls_handler_new(allocator, options, slot, true);
+    return s_tls_handler_new(allocator, options, slot, true);
 }
 
 struct aws_channel_handler *aws_tls_server_handler_new(
@@ -2221,7 +2221,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
 
-    s_tls_handler_new(allocator, options, slot, false);
+    return s_tls_handler_new(allocator, options, slot, false);
 }
 
 static void s_secure_channel_ctx_destroy(struct secure_channel_ctx *secure_channel_ctx) {
