@@ -48,10 +48,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_string_destroy(options->secitem_options->cert_label);
     aws_string_destroy(options->secitem_options->key_label);
     aws_mem_release(options->allocator, options->secitem_options);
-
-#   if !defined(AWS_OS_IOS)
     aws_string_destroy(options->keychain_path);
-#   endif /* !AWS_OS_IOS */
 
 #endif /* __APPLE__ */
 

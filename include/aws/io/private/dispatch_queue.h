@@ -5,6 +5,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <dispatch/dispatch.h>
+
 struct dispatch_scheduling_state {
     // Let's us skip processing an iteration task if one is already in the middle
     // of executing
