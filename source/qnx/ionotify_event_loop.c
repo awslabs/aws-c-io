@@ -932,14 +932,12 @@ static void s_process_pulse(
             ionotify_event_data->event.sigev_code);
     }
 
-    if (ionotify_event_data->latest_io_event_types == AWS_IO_EVENT_TYPE_CLOSED) {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: latest_io_event_types is AWS_IO_EVENT_TYPE_CLOSED", (void *)event_loop);
-        event_mask |= AWS_IO_EVENT_TYPE_CLOSED;
+    if (ionotify_event_data->latest_io_event_types) {
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: latest_io_event_types is non-empty", (void *)event_loop);
+        event_mask |= ionotify_event_data->latest_io_event_types;
+        /* Reset additional I/O event types to not process them twice. */
+        ionotify_event_data->latest_io_event_types = 0;
     }
-
-    /* Reset the I/O operation code to not process it twice. */
-    ionotify_event_data->latest_io_event_types = 0;
 
     ionotify_event_data->on_event(event_loop, ionotify_event_data->handle, event_mask, ionotify_event_data->user_data);
 }
