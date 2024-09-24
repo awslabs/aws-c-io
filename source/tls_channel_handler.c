@@ -261,12 +261,12 @@ int aws_tls_ctx_options_set_keychain_path(
     }
 
     return AWS_OP_SUCCESS;
-#else
+#endif /* __APPLE__ || AWS_OS_IOS */
+
     (void)options;
     (void)keychain_path_cursor;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path can only be set on MacOS.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif /* __APPLE__ && !AWS_OS_IOS*/
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(

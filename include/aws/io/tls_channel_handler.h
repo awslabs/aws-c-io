@@ -235,8 +235,8 @@ struct aws_tls_ctx_options {
     struct aws_byte_buf pkcs12_password;
 
     /**
-     * The settings we expose controls to when adding items to the keychain using
-     * SecItem are contained within this struct.
+     * On iOS/tvOS the available settings when adding items to the keychain using
+     * SecItem are contained within this struct. This is NOT supported on MacOS.
      */
     struct aws_secitem_options *secitem_options;
 
