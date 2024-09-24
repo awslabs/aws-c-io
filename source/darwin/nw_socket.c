@@ -665,6 +665,7 @@ static int s_socket_connect_fn(
     nw_socket->timeout_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_timeout_args));
     nw_socket->timeout_args->socket = socket;
     nw_socket->timeout_args->allocator = socket->allocator;
+
     aws_task_init(
         &nw_socket->timeout_args->task,
         s_handle_socket_timeout,
@@ -1295,6 +1296,11 @@ static int s_socket_write_fn(
                 goto nw_socket_release;
             }
 
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: DEBUG:: callback writing message: %p",
+                (void *)socket,
+                handle, user_data);
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
