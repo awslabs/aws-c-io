@@ -419,6 +419,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     bool should_schedule = false;
 
     bool is_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
+    task->timestamp = run_at_nanos;
 
     // We dont have control to dispatch queue thread, threat all tasks are threated as cross thread tasks
     aws_linked_list_push_back(&dispatch_loop->synced_data.cross_thread_tasks, &task->node);
