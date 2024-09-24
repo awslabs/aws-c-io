@@ -820,9 +820,12 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         nw_listener_cancel(socket->io_handle.data.handle);
 
     } else {
+        if (nw_socket->socket_open) {
+            nw_connection_cancel(socket->io_handle.data.handle);
+        }
+
         /* Setting to NULL removes previously set handler from nw_connection_t */
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
-        nw_connection_cancel(socket->io_handle.data.handle);
     }
     nw_socket->socket_open = false;
 
