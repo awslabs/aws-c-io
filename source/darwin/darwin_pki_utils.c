@@ -399,10 +399,8 @@ int aws_secitem_add_certificate_to_keychain(
     CFMutableDictionaryRef add_attributes = NULL;
     CFMutableDictionaryRef delete_query = NULL;
 
-    add_attributes = CFDictionaryCreateMutable(
-        cf_alloc,
-        0, &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks);
+    add_attributes =
+        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(add_attributes, kSecClass, kSecClassCertificate);
     CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
@@ -424,15 +422,16 @@ int aws_secitem_add_certificate_to_keychain(
      *
      * Certificate item primary keys we use for the query:
      * kSecAttrSerialNumber: (CFStringRef) value indicates the item's serial number
-     *      - We explicity set this value, extracted from the certificate itself as our primary method of determining uniqueness
-     *        of the certificate.
+     *      - We explicity set this value, extracted from the certificate itself as our primary method of determining
+     * uniqueness of the certificate.
      *
      * Certificate primary keys we do not use for the query:
      * These can be added in the future if we require a more specified search query.
      * kSecAttrCertificateType: (CFNumberRef) value indicates the item's certificate type
-     *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
-     *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value to be used.
-     *        If we decide to support other types of certificates, we should set and use this value explicitly.
+     *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h
+     * https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
+     *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value
+     * to be used. If we decide to support other types of certificates, we should set and use this value explicitly.
      * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
      *      - default will try to extract issuer from the certificate itself.
      *        We will not set this attribute and allow default value to be used.
@@ -443,10 +442,8 @@ int aws_secitem_add_certificate_to_keychain(
             "static: Keychain contains existing certificate that was previously imported into the Keychain.  "
             "Deleting existing certificate in keychain.");
 
-        delete_query = CFDictionaryCreateMutable(
-            cf_alloc,
-            0, &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
+        delete_query =
+            CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassCertificate);
         CFDictionaryAddValue(delete_query, kSecAttrSerialNumber, serial_data);
 
@@ -467,16 +464,16 @@ int aws_secitem_add_certificate_to_keychain(
         }
     }
 
-    AWS_LOGF_INFO(
-        AWS_LS_IO_PKI,
-        "static: Successfully imported certificate into SecItem keychain.");
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported certificate into SecItem keychain.");
 
     result = AWS_OP_SUCCESS;
 
 done:
     // cleanup
-    if (add_attributes) CFRelease(add_attributes);
-    if (delete_query) CFRelease(delete_query);
+    if (add_attributes)
+        CFRelease(add_attributes);
+    if (delete_query)
+        CFRelease(delete_query);
 
     return result;
 }
@@ -493,10 +490,8 @@ int aws_secitem_add_private_key_to_keychain(
     CFMutableDictionaryRef add_attributes = NULL;
     CFMutableDictionaryRef delete_query = NULL;
 
-    add_attributes = CFDictionaryCreateMutable(
-        cf_alloc,
-        0, &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks);
+    add_attributes =
+        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(add_attributes, kSecClass, kSecClassKey);
     CFDictionaryAddValue(add_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(add_attributes, kSecAttrApplicationLabel, application_label);
@@ -536,10 +531,8 @@ int aws_secitem_add_private_key_to_keychain(
             "static: Keychain contains existing private key that was previously imported into the Keychain.  "
             "Deleting private key in keychain.");
 
-        delete_query = CFDictionaryCreateMutable(
-            cf_alloc,
-            0, &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks);
+        delete_query =
+            CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassKey);
         CFDictionaryAddValue(delete_query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
         CFDictionaryAddValue(delete_query, kSecAttrApplicationLabel, application_label);
@@ -561,23 +554,20 @@ int aws_secitem_add_private_key_to_keychain(
         }
     }
 
-    AWS_LOGF_INFO(
-        AWS_LS_IO_PKI,
-        "static: Successfully imported private key into SecItem keychain.");
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported private key into SecItem keychain.");
 
     result = AWS_OP_SUCCESS;
 done:
     // cleanup
-    if (add_attributes) CFRelease(add_attributes);
-    if (delete_query) CFRelease(delete_query);
+    if (add_attributes)
+        CFRelease(add_attributes);
+    if (delete_query)
+        CFRelease(delete_query);
 
     return result;
 }
 
-int aws_secitem_get_identity(
-    CFAllocatorRef cf_alloc,
-    CFDataRef serial_data,
-    sec_identity_t *out_identity) {
+int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec_identity_t *out_identity) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -590,10 +580,8 @@ int aws_secitem_get_identity(
      * identity using a unique attribute of the certificate is required. This is why we use
      * the serial_data from the certificate as the search parameter.
      */
-    search_query = CFDictionaryCreateMutable(
-        cf_alloc,
-        0, &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks);
+    search_query =
+        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(search_query, kSecClass, kSecClassIdentity);
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
@@ -606,22 +594,22 @@ int aws_secitem_get_identity(
 
     if (status != errSecSuccess) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching identity failed with OSStatus %d", (int)status);
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
     }
 
     *out_identity = sec_identity_create(sec_identity_ref);
 
-    AWS_LOGF_INFO(
-        AWS_LS_IO_PKI,
-        "static: Successfully retrieved identity from keychain.");
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully retrieved identity from keychain.");
 
     result = AWS_OP_SUCCESS;
 
 done:
     // cleanup
-    if (search_query) CFRelease(search_query);
-    if (sec_identity_ref) CFRelease(sec_identity_ref);
+    if (search_query)
+        CFRelease(search_query);
+    if (sec_identity_ref)
+        CFRelease(sec_identity_ref);
 
     return result;
 }
@@ -634,11 +622,11 @@ int aws_secitem_import_cert_and_key(
     sec_identity_t *secitem_identity,
     const struct aws_secitem_options *secitem_options) {
 
-    // We currently only support Apple's network framework and SecItem keychain API on iOS.
-    #if !defined(AWS_OS_IOS)
+// We currently only support Apple's network framework and SecItem keychain API on iOS.
+#if !defined(AWS_OS_IOS)
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-    #endif /* !AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
 
     AWS_PRECONDITION(public_cert_chain != NULL);
     AWS_PRECONDITION(private_key != NULL);
@@ -721,14 +709,14 @@ int aws_secitem_import_cert_and_key(
     }
 
     /* Set the format of the key */
-    switch(pem_key_ptr->type) {
+    switch (pem_key_ptr->type) {
         case AWS_PEM_TYPE_PRIVATE_RSA_PKCS1:
             key_type = kSecAttrKeyTypeRSA;
-        break;
+            break;
 
         case AWS_PEM_TYPE_EC_PRIVATE:
             key_type = kSecAttrKeyTypeEC;
-        break;
+            break;
 
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Unsupported private key format.");
@@ -775,7 +763,8 @@ int aws_secitem_import_cert_and_key(
      * the application label for use as a unique identifier when storing the private key
      * in the keychain.
      */
-    key_attributes = CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    key_attributes =
+        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
@@ -806,26 +795,15 @@ int aws_secitem_import_cert_and_key(
     aws_mutex_lock(&s_sec_mutex);
 #endif /* !AWS_OS_IOS */
 
-    if (aws_secitem_add_certificate_to_keychain(
-        cf_alloc,
-        cert_ref,
-        cert_serial_data,
-        cert_label_ref)) {
+    if (aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
     }
 
-    if (aws_secitem_add_private_key_to_keychain(
-        cf_alloc,
-        key_ref,
-        key_label_ref,
-        application_label_ref)) {
+    if (aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
         goto done;
     }
 
-    if(aws_secitem_get_identity(
-        cf_alloc,
-        cert_serial_data,
-        secitem_identity)){
+    if (aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
         goto done;
     }
 
@@ -836,18 +814,29 @@ done:
     aws_mutex_unlock(&s_sec_mutex);
 #endif /* !AWS_OS_IOS */
 
-    //cleanup
-    if (error != NULL) CFRelease(error);
-    if (cert_data != NULL) CFRelease(cert_data);
-    if (cert_ref != NULL) CFRelease(cert_ref);
-    if (cert_serial_data != NULL) CFRelease(cert_serial_data);
-    if (cert_label_ref) CFRelease(cert_label_ref);
-    if (key_attributes) CFRelease(key_attributes);
-    if (key_copied_attributes) CFRelease(key_copied_attributes);
-    if (key_data != NULL) CFRelease(key_data);
-    if (key_ref != NULL) CFRelease(key_ref);
-    if (key_type != NULL) CFRelease(key_type);
-    if (key_label_ref) CFRelease(key_label_ref);
+    // cleanup
+    if (error != NULL)
+        CFRelease(error);
+    if (cert_data != NULL)
+        CFRelease(cert_data);
+    if (cert_ref != NULL)
+        CFRelease(cert_ref);
+    if (cert_serial_data != NULL)
+        CFRelease(cert_serial_data);
+    if (cert_label_ref)
+        CFRelease(cert_label_ref);
+    if (key_attributes)
+        CFRelease(key_attributes);
+    if (key_copied_attributes)
+        CFRelease(key_copied_attributes);
+    if (key_data != NULL)
+        CFRelease(key_data);
+    if (key_ref != NULL)
+        CFRelease(key_ref);
+    if (key_type != NULL)
+        CFRelease(key_type);
+    if (key_label_ref)
+        CFRelease(key_label_ref);
 
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
@@ -872,12 +861,7 @@ int aws_secitem_import_pkcs12(
 
     pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
     if (password->len) {
-        password_ref = CFStringCreateWithBytes(
-            cf_alloc,
-            password->ptr,
-            password->len,
-            kCFStringEncodingUTF8,
-            false);
+        password_ref = CFStringCreateWithBytes(cf_alloc, password->ptr, password->len, kCFStringEncodingUTF8, false);
     } else {
         should_release_password = false;
         password_ref = CFSTR("");
@@ -912,10 +896,14 @@ int aws_secitem_import_pkcs12(
     result = AWS_OP_SUCCESS;
 
 done:
-    //cleanup
-    if (pkcs12_data) CFRelease(pkcs12_data);
-    if (dictionary) CFRelease(dictionary);
-    if (should_release_password) CFRelease(password_ref);
-    if (items) CFRelease(items);
+    // cleanup
+    if (pkcs12_data)
+        CFRelease(pkcs12_data);
+    if (dictionary)
+        CFRelease(dictionary);
+    if (should_release_password)
+        CFRelease(password_ref);
+    if (items)
+        CFRelease(items);
     return result;
 }

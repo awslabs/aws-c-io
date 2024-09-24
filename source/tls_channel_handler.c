@@ -25,13 +25,13 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     options->verify_peer = true;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
-    #ifdef __APPLE__
+#ifdef __APPLE__
 
     options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
     options->secitem_options->cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
     options->secitem_options->key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
 
-    #endif /* __APPLE__ */
+#endif /* __APPLE__ */
 }
 
 void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {

@@ -14,8 +14,8 @@
 
 #ifdef AWS_OS_APPLE
 /* It's ok to include external headers because this is a PRIVATE header file */
-#include <CoreFoundation/CFArray.h>
-#include <Security/Security.h>
+#    include <CoreFoundation/CFArray.h>
+#    include <Security/Security.h>
 #endif /* AWS_OS_APPLE */
 
 struct aws_secitem_options;
