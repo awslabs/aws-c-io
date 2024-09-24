@@ -14,9 +14,9 @@
 #include <unistd.h>
 
 #include <Block.h>
+#include <aws/io/private/dispatch_queue.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
-#include <aws/io/private/dispatch_queue.h>
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);

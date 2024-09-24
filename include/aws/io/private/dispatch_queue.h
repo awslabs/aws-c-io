@@ -5,9 +5,9 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <dispatch/dispatch.h>
 #include <Security/Security.h>
 #include <aws/io/tls_channel_handler.h>
+#include <dispatch/dispatch.h>
 
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
