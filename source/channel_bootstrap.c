@@ -1387,11 +1387,9 @@ void s_on_server_connection_result(
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
+            .event_loop = event_loop,
+            .enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure,
         };
-
-        // DEBUG WIP this can probably be moved into the channel_args creation block above.
-        channel_args.event_loop = event_loop;
-        channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
 
         if (aws_socket_assign_to_event_loop(new_socket, event_loop)) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
