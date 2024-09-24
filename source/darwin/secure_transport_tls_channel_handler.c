@@ -854,7 +854,7 @@ struct secure_transport_ctx {
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_version;
     struct aws_string *alpn_list;
-    bool veriify_peer;
+    bool verify_peer;
 };
 
 static struct aws_channel_handler *s_tls_handler_new(
@@ -942,9 +942,9 @@ static struct aws_channel_handler *s_tls_handler_new(
     }
 
     OSStatus status = noErr;
-    secure_transport_handler->verify_peer = secure_transport_ctx->veriify_peer;
+    secure_transport_handler->verify_peer = secure_transport_ctx->verify_peer;
 
-    if (!secure_transport_ctx->veriify_peer && protocol_side == kSSLClientSide) {
+    if (!secure_transport_ctx->verify_peer && protocol_side == kSSLClientSide) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
             "id=%p: x.509 validation has been disabled. "
@@ -960,9 +960,9 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->ca_certs = NULL;
     if (secure_transport_ctx->ca_cert) {
         secure_transport_handler->ca_certs = secure_transport_ctx->ca_cert;
-        if (protocol_side == kSSLServerSide && secure_transport_ctx->veriify_peer) {
+        if (protocol_side == kSSLServerSide && secure_transport_ctx->verify_peer) {
             SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnClientAuth, true);
-        } else if (secure_transport_ctx->veriify_peer) {
+        } else if (secure_transport_ctx->verify_peer) {
             SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
         }
     }
@@ -1071,7 +1071,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         }
     }
 
-    secure_transport_ctx->veriify_peer = options->verify_peer;
+    secure_transport_ctx->verify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
