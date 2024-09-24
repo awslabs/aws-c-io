@@ -10,6 +10,8 @@
 #include <aws/io/logging.h>
 
 #include <Network/Network.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/private/dispatch_queue.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
