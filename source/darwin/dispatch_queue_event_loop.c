@@ -219,6 +219,8 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
 
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+    dispatch_loop->m_current_thread_id = aws_thread_current_thread_id();
+    dispatch_loop->processing = true;
 
     /* make sure the loop is running so we can schedule a last task. */
     s_run(event_loop);
@@ -249,6 +251,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
       dispatch_loop->synced_data.suspended = true;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
+        
+        dispatch_loop->m_current_thread_id = aws_thread_current_thread_id();
+        dispatch_loop->processing = false;
     });
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
@@ -386,7 +391,10 @@ void run_iteration(void *context) {
             aws_task_scheduler_schedule_future(&dispatch_loop->scheduler, task, task->timestamp);
         }
     }
-
+    
+    dispatch_loop->m_current_thread_id = aws_thread_current_thread_id();
+    dispatch_loop->processing = true;
+    
     // run all scheduled tasks
     uint64_t now_ns = 0;
     aws_event_loop_current_clock_time(event_loop, &now_ns);
@@ -394,6 +402,9 @@ void run_iteration(void *context) {
     aws_event_loop_register_tick_end(event_loop);
 
     end_iteration(entry);
+    
+    dispatch_loop->m_current_thread_id = aws_thread_current_thread_id();
+    dispatch_loop->processing = false;
 }
 
 // Checks if a new iteration task needs to be scheduled, given a target timestamp
@@ -481,6 +492,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 // tasks as cross thread tasks. Ignore the caller thread verification for apple
 // dispatch queue.
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
-    (void)event_loop;
-    return true;
+    struct dispatch_loop* dispatch_queue = event_loop->impl_data;
+    bool result = dispatch_queue->processing && aws_thread_thread_id_equal(dispatch_queue->m_current_thread_id, aws_thread_current_thread_id());
+    return result;
 }

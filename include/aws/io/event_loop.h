@@ -141,6 +141,8 @@ struct dispatch_loop {
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
+    aws_thread_id_t m_current_thread_id;
+    bool processing;
 
     struct {
         struct dispatch_scheduling_state scheduling_state;
