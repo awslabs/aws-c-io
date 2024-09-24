@@ -16,7 +16,6 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_io_handle;
 
-#if AWS_USE_ON_EVENT_WITH_RESULT
 struct aws_event_loop;
 
 /**
@@ -37,7 +36,6 @@ typedef void(aws_io_handle_update_io_results_fn)(
     struct aws_event_loop *,
     struct aws_io_handle *,
     const struct aws_io_handle_io_op_result *);
-#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 
 struct aws_io_handle {
     union {
@@ -45,9 +43,8 @@ struct aws_io_handle {
         void *handle;
     } data;
     void *additional_data;
-#if AWS_USE_ON_EVENT_WITH_RESULT
+    /* Optional callback to return results of I/O operations performed on this handle. */
     aws_io_handle_update_io_results_fn *update_io_result;
-#endif /* AWS_USE_ON_EVENT_WITH_RESULT */
 };
 
 enum aws_io_message_type {

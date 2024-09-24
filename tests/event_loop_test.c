@@ -836,7 +836,6 @@ static int s_state_read_until_blocked(struct thread_tester *tester) {
     uint8_t buffer[512];
     while (simple_pipe_read(&tester->read_handle, buffer, sizeof(buffer)) > 0) {
     }
-#    if AWS_USE_ON_EVENT_WITH_RESULT
     if (errno == EAGAIN) {
         if (tester->read_handle.update_io_result != NULL) {
             struct aws_io_handle_io_op_result io_op_result;
@@ -845,7 +844,6 @@ static int s_state_read_until_blocked(struct thread_tester *tester) {
             tester->read_handle.update_io_result(tester->event_loop, &tester->read_handle, &io_op_result);
         }
     }
-#    endif
 
     return AWS_OP_SUCCESS;
 }

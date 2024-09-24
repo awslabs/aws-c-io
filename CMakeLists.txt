@@ -144,6 +144,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
     file(GLOB AWS_IO_OS_SRC
             "source/qnx/*.c"
+            "source/posix/*.c"
             )
     set(EVENT_LOOP_DEFINE "ON_EVENT_WITH_RESULT")
     set(USE_S2N ON)
