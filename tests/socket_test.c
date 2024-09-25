@@ -693,7 +693,8 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
         ASSERT_TRUE(host_callback_data.has_a_address);
 
         struct aws_socket_endpoint endpoint = {.port = 81};
-        snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
+        snprintf(
+            endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
         aws_string_destroy((void *)host_name);
         aws_host_address_clean_up(&host_callback_data.a_address);
@@ -780,7 +781,8 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
         ASSERT_TRUE(host_callback_data.has_a_address);
 
         struct aws_socket_endpoint endpoint = {.port = 81};
-        snprintf(endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
+        snprintf(
+            endpoint.address, sizeof(endpoint.address), "%s", aws_string_bytes(host_callback_data.a_address.address));
 
         aws_string_destroy((void *)host_name);
         aws_host_address_clean_up(&host_callback_data.a_address);
