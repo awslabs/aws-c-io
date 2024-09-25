@@ -430,6 +430,9 @@ static void s_on_readable_event(struct aws_pipe_read_end *read_end, int error_co
             s_signal_done_on_read_end_closed(state);
         }
     } else if (error_code == AWS_ERROR_SUCCESS) {
+        /* Some event loop implementations (only QNX, to be fair) can't detect a pipe closed one of its ends without
+         * performing operation on the other end. So, this read operation should notify event loop that the writing end
+         * is closed. */
         aws_pipe_read(&state->read_end, &state->buffers.dst, NULL);
     }
 

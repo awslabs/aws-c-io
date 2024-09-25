@@ -53,7 +53,9 @@ static struct aws_event_loop_vtable s_vtable = {
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
-struct ionotify_loop {
+struct ionotify_event_loop {
+    struct aws_allocator *allocator;
+    struct aws_event_loop base;
     struct aws_task_scheduler scheduler;
     struct aws_thread thread_created_on;
     struct aws_thread_options thread_options;
@@ -126,29 +128,29 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         goto clean_up_loop;
     }
 
-    struct ionotify_loop *ionotify_loop = aws_mem_calloc(alloc, 1, sizeof(struct ionotify_loop));
+    struct ionotify_event_loop *ionotify_event_loop = aws_mem_calloc(alloc, 1, sizeof(struct ionotify_event_loop));
 
     if (options->thread_options) {
-        ionotify_loop->thread_options = *options->thread_options;
+        ionotify_event_loop->thread_options = *options->thread_options;
     } else {
-        ionotify_loop->thread_options = *aws_default_thread_options();
+        ionotify_event_loop->thread_options = *aws_default_thread_options();
     }
 
     /* initialize thread id to NULL, it should be updated when the event loop thread starts. */
-    aws_atomic_init_ptr(&ionotify_loop->running_thread_id, NULL);
+    aws_atomic_init_ptr(&ionotify_event_loop->running_thread_id, NULL);
 
-    aws_linked_list_init(&ionotify_loop->task_pre_queue);
-    ionotify_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
-    aws_atomic_init_ptr(&ionotify_loop->stop_task_ptr, NULL);
+    aws_linked_list_init(&ionotify_event_loop->task_pre_queue);
+    ionotify_event_loop->task_pre_queue_mutex = (struct aws_mutex)AWS_MUTEX_INIT;
+    aws_atomic_init_ptr(&ionotify_event_loop->stop_task_ptr, NULL);
 
-    if (aws_thread_init(&ionotify_loop->thread_created_on, alloc)) {
+    if (aws_thread_init(&ionotify_event_loop->thread_created_on, alloc)) {
         goto clean_up_ionotify;
     }
 
     /* Setup channel to receive events from resource managers. */
-    ionotify_loop->io_events_channel_id = ChannelCreate(0);
+    ionotify_event_loop->io_events_channel_id = ChannelCreate(0);
     int errno_value = errno; /* Always cache errno before potential side-effect */
-    if (ionotify_loop->io_events_channel_id == -1) {
+    if (ionotify_event_loop->io_events_channel_id == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: ChannelCreate failed with errno %d (%s)\n",
@@ -161,12 +163,13 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: Opened QNX channel with ID %d",
         (void *)event_loop,
-        ionotify_loop->io_events_channel_id);
+        ionotify_event_loop->io_events_channel_id);
 
     /* Open connection over the QNX channel for pulses. */
-    ionotify_loop->pulse_connection_id = ConnectAttach(0, 0, ionotify_loop->io_events_channel_id, _NTO_SIDE_CHANNEL, 0);
+    ionotify_event_loop->pulse_connection_id =
+        ConnectAttach(0, 0, ionotify_event_loop->io_events_channel_id, _NTO_SIDE_CHANNEL, 0);
     errno_value = errno; /* Always cache errno before potential side-effect */
-    if (ionotify_loop->pulse_connection_id == -1) {
+    if (ionotify_event_loop->pulse_connection_id == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: ConnectAttach failed with errno %d (%s)\n",
@@ -176,27 +179,27 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
         goto clean_up_thread;
     }
 
-    if (aws_task_scheduler_init(&ionotify_loop->scheduler, alloc)) {
+    if (aws_task_scheduler_init(&ionotify_event_loop->scheduler, alloc)) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: aws_task_scheduler_init failed\n", (void *)event_loop);
         goto clean_up_thread;
     }
 
-    ionotify_loop->should_continue = false;
+    ionotify_event_loop->should_continue = false;
 
-    event_loop->impl_data = ionotify_loop;
+    event_loop->impl_data = ionotify_event_loop;
     event_loop->vtable = &s_vtable;
 
-    if (aws_hash_table_init(&ionotify_loop->handles, alloc, 32, aws_hash_ptr, aws_ptr_eq, NULL, NULL)) {
+    if (aws_hash_table_init(&ionotify_event_loop->handles, alloc, 32, aws_hash_ptr, aws_ptr_eq, NULL, NULL)) {
         goto clean_up_thread;
     }
 
     return event_loop;
 
 clean_up_thread:
-    aws_thread_clean_up(&ionotify_loop->thread_created_on);
+    aws_thread_clean_up(&ionotify_event_loop->thread_created_on);
 
 clean_up_ionotify:
-    aws_mem_release(alloc, ionotify_loop);
+    aws_mem_release(alloc, ionotify_event_loop);
 
 clean_up_loop:
     aws_mem_release(alloc, event_loop);
@@ -207,7 +210,7 @@ clean_up_loop:
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);
 
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     /* we don't know if stop() has been called by someone else,
      * just call stop() again and wait for event-loop to finish. */
@@ -215,38 +218,41 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_wait_for_stop_completion(event_loop);
 
     /* setting this so that canceled tasks don't blow up when asking if they're on the event-loop thread. */
-    ionotify_loop->thread_joined_to = aws_thread_current_thread_id();
-    aws_atomic_store_ptr(&ionotify_loop->running_thread_id, &ionotify_loop->thread_joined_to);
-    aws_task_scheduler_clean_up(&ionotify_loop->scheduler);
+    ionotify_event_loop->thread_joined_to = aws_thread_current_thread_id();
+    aws_atomic_store_ptr(&ionotify_event_loop->running_thread_id, &ionotify_event_loop->thread_joined_to);
+    aws_task_scheduler_clean_up(&ionotify_event_loop->scheduler);
 
-    while (!aws_linked_list_empty(&ionotify_loop->task_pre_queue)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&ionotify_loop->task_pre_queue);
+    while (!aws_linked_list_empty(&ionotify_event_loop->task_pre_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&ionotify_event_loop->task_pre_queue);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
     }
 
-    aws_thread_clean_up(&ionotify_loop->thread_created_on);
+    aws_thread_clean_up(&ionotify_event_loop->thread_created_on);
 
-    aws_hash_table_clean_up(&ionotify_loop->handles);
+    aws_hash_table_clean_up(&ionotify_event_loop->handles);
 
-    aws_mem_release(event_loop->alloc, ionotify_loop);
+    aws_mem_release(event_loop->alloc, ionotify_event_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 }
 
 static int s_run(struct aws_event_loop *event_loop) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
 
-    ionotify_loop->should_continue = true;
+    ionotify_event_loop->should_continue = true;
     aws_thread_increment_unjoined_count();
     if (aws_thread_launch(
-            &ionotify_loop->thread_created_on, &aws_event_loop_thread, event_loop, &ionotify_loop->thread_options)) {
+            &ionotify_event_loop->thread_created_on,
+            &aws_event_loop_thread,
+            event_loop,
+            &ionotify_event_loop->thread_options)) {
 
         aws_thread_decrement_unjoined_count();
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Thread creation failed.", (void *)event_loop);
-        ionotify_loop->should_continue = false;
+        ionotify_event_loop->should_continue = false;
         return AWS_OP_ERR;
     }
 
@@ -256,42 +262,42 @@ static int s_run(struct aws_event_loop *event_loop) {
 static void s_stop_task(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)task;
     struct aws_event_loop *event_loop = args;
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     /* now okay to reschedule stop tasks. */
-    aws_atomic_store_ptr(&ionotify_loop->stop_task_ptr, NULL);
+    aws_atomic_store_ptr(&ionotify_event_loop->stop_task_ptr, NULL);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         /* this allows the event loop to invoke the callback once the event loop has completed. */
-        ionotify_loop->should_continue = false;
+        ionotify_event_loop->should_continue = false;
     }
 }
 
 static int s_stop(struct aws_event_loop *event_loop) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     void *expected_ptr = NULL;
-    bool update_succeeded =
-        aws_atomic_compare_exchange_ptr(&ionotify_loop->stop_task_ptr, &expected_ptr, &ionotify_loop->stop_task);
+    bool update_succeeded = aws_atomic_compare_exchange_ptr(
+        &ionotify_event_loop->stop_task_ptr, &expected_ptr, &ionotify_event_loop->stop_task);
     if (!update_succeeded) {
         /* the stop task is already scheduled. */
         return AWS_OP_SUCCESS;
     }
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread", (void *)event_loop);
-    aws_task_init(&ionotify_loop->stop_task, s_stop_task, event_loop, "ionotify_event_loop_stop");
-    s_schedule_task_now(event_loop, &ionotify_loop->stop_task);
+    aws_task_init(&ionotify_event_loop->stop_task, s_stop_task, event_loop, "ionotify_event_loop_stop");
+    s_schedule_task_now(event_loop, &ionotify_event_loop->stop_task);
 
     return AWS_OP_SUCCESS;
 }
 
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-    int result = aws_thread_join(&ionotify_loop->thread_created_on);
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+    int result = aws_thread_join(&ionotify_event_loop->thread_created_on);
     aws_thread_decrement_unjoined_count();
     return result;
 }
 
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     /* if event loop and the caller are the same thread, just schedule and be done with it. */
     if (s_is_on_callers_thread(event_loop)) {
@@ -303,9 +309,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
             /* zero denotes "now" task */
-            aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, task);
+            aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, task);
         } else {
-            aws_task_scheduler_schedule_future(&ionotify_loop->scheduler, task, run_at_nanos);
+            aws_task_scheduler_schedule_future(&ionotify_event_loop->scheduler, task, run_at_nanos);
         }
         return;
     }
@@ -318,10 +324,10 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
         (unsigned long long)run_at_nanos);
     task->timestamp = run_at_nanos;
 
-    aws_mutex_lock(&ionotify_loop->task_pre_queue_mutex);
-    bool is_first_task = aws_linked_list_empty(&ionotify_loop->task_pre_queue);
-    aws_linked_list_push_back(&ionotify_loop->task_pre_queue, &task->node);
-    aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
+    aws_mutex_lock(&ionotify_event_loop->task_pre_queue_mutex);
+    bool is_first_task = aws_linked_list_empty(&ionotify_event_loop->task_pre_queue);
+    aws_linked_list_push_back(&ionotify_event_loop->task_pre_queue, &task->node);
+    aws_mutex_unlock(&ionotify_event_loop->task_pre_queue_mutex);
 
     /* If the list was not empty, we already sent a cross-thread pulse. No need to send it again. */
     if (is_first_task) {
@@ -329,10 +335,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Waking up event-loop thread by sending pulse to connection ID %d",
             (void *)event_loop,
-            ionotify_loop->pulse_connection_id);
+            ionotify_event_loop->pulse_connection_id);
         /* The pulse itself is enough for cross-thread notifications. */
         int user_data_value = 0;
-        int rc = MsgSendPulse(ionotify_loop->pulse_connection_id, -1, CROSS_THREAD_PULSE_SIGEV_CODE, user_data_value);
+        int rc =
+            MsgSendPulse(ionotify_event_loop->pulse_connection_id, -1, CROSS_THREAD_PULSE_SIGEV_CODE, user_data_value);
         int errno_value = errno;
         if (rc == -1) {
             /* The task was scheduled, but we couldn't notify the main loop about it. According to QNX docs, inability
@@ -358,18 +365,20 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Cancelling task %p", (void *)event_loop, (void *)task);
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-    aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, task);
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+    aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, task);
 }
 
 /* Map ionotify_event_data to internal ID. */
-static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_event_data *ionotify_event_data) {
+static int s_add_handle(
+    struct ionotify_event_loop *ionotify_event_loop,
+    struct ionotify_event_data *ionotify_event_data) {
     AWS_ASSERT(s_is_on_callers_thread(ionotify_event_data->event_loop));
 
     /* Special constant, _NOTIFY_DATA_MASK, limits the maximum value that can be used as user data in I/O events. */
     int max_handle_id = _NOTIFY_DATA_MASK;
 
-    if (AWS_UNLIKELY(aws_hash_table_get_entry_count(&ionotify_loop->handles) == (size_t)max_handle_id)) {
+    if (AWS_UNLIKELY(aws_hash_table_get_entry_count(&ionotify_event_loop->handles) == (size_t)max_handle_id)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Maximum number of registered handles reached",
@@ -378,14 +387,14 @@ static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_eve
     }
 
     struct aws_hash_element *elem = NULL;
-    int next_handle_id = ionotify_loop->last_handle_id;
+    int next_handle_id = ionotify_event_loop->last_handle_id;
     int was_created = 0;
     do {
         ++next_handle_id;
         if (next_handle_id > max_handle_id) {
             next_handle_id = 1;
         }
-        aws_hash_table_create(&ionotify_loop->handles, (void *)next_handle_id, &elem, &was_created);
+        aws_hash_table_create(&ionotify_event_loop->handles, (void *)next_handle_id, &elem, &was_created);
         /* next_handle_id is already present in the hash table, skip it. */
         if (was_created == 0) {
             elem = NULL;
@@ -393,7 +402,7 @@ static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_eve
     } while (elem == NULL);
 
     ionotify_event_data->handle_id = next_handle_id;
-    ionotify_loop->last_handle_id = next_handle_id;
+    ionotify_event_loop->last_handle_id = next_handle_id;
     elem->value = ionotify_event_data;
 
     return AWS_OP_SUCCESS;
@@ -401,23 +410,26 @@ static int s_add_handle(struct ionotify_loop *ionotify_loop, struct ionotify_eve
 
 struct ionotify_event_data *s_find_handle(
     struct aws_event_loop *event_loop,
-    struct ionotify_loop *ionotify_loop,
+    struct ionotify_event_loop *ionotify_event_loop,
     int handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
     struct ionotify_event_data *ionotify_event_data = NULL;
     struct aws_hash_element *elem = NULL;
-    aws_hash_table_find(&ionotify_loop->handles, (void *)handle_id, &elem);
+    aws_hash_table_find(&ionotify_event_loop->handles, (void *)handle_id, &elem);
     if (elem != NULL) {
         ionotify_event_data = elem->value;
     }
     return ionotify_event_data;
 }
 
-static void s_remove_handle(struct aws_event_loop *event_loop, struct ionotify_loop *ionotify_loop, int handle_id) {
+static void s_remove_handle(
+    struct aws_event_loop *event_loop,
+    struct ionotify_event_loop *ionotify_event_loop,
+    int handle_id) {
     AWS_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
-    aws_hash_table_remove(&ionotify_loop->handles, (void *)handle_id, NULL, NULL);
+    aws_hash_table_remove(&ionotify_event_loop->handles, (void *)handle_id, NULL, NULL);
 }
 
 /* Scheduled task that performs the actual subscription using ionotify. */
@@ -431,7 +443,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 
     struct ionotify_event_data *ionotify_event_data = user_data;
     struct aws_event_loop *event_loop = ionotify_event_data->event_loop;
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
@@ -442,7 +454,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
 
     /* Map ionotify_event_data to ID. This ID will be returned with the I/O events from ionotify. */
     if (ionotify_event_data->handle_id == 0) {
-        s_add_handle(ionotify_loop, ionotify_event_data);
+        s_add_handle(ionotify_event_loop, ionotify_event_data);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Mapped fd %d to handle ID %u",
@@ -536,8 +548,8 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          * unified manner. */
         int kick_start_event_mask = rc & _NOTIFY_COND_MASK;
         kick_start_event_mask |= ionotify_event_data->handle_id;
-        int send_rc =
-            MsgSendPulse(ionotify_loop->pulse_connection_id, -1, IO_EVENT_KICKSTART_SIGEV_CODE, kick_start_event_mask);
+        int send_rc = MsgSendPulse(
+            ionotify_event_loop->pulse_connection_id, -1, IO_EVENT_KICKSTART_SIGEV_CODE, kick_start_event_mask);
         if (send_rc == -1) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_EVENT_LOOP,
@@ -624,9 +636,9 @@ static void s_process_io_result(
             AWS_LS_IO_EVENT_LOOP, "id=%p: Got EWOULDBLOCK for fd %d, rearming it", (void *)event_loop, handle->data.fd);
         /* We're on the event loop thread, just schedule subscribing task. */
         ionotify_event_data->events_subscribed = event_types;
-        struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-        aws_task_scheduler_cancel_task(&ionotify_loop->scheduler, &ionotify_event_data->resubscribe_task);
-        aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, &ionotify_event_data->resubscribe_task);
+        struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+        aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, &ionotify_event_data->resubscribe_task);
+        aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, &ionotify_event_data->resubscribe_task);
     }
 
     /* Notify event loop of error conditions. */
@@ -636,9 +648,12 @@ static void s_process_io_result(
             "id=%p: fd errored, sending pulse for fd %d",
             (void *)event_loop,
             ionotify_event_data->handle->data.fd);
-        struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+        struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
         int send_rc = MsgSendPulse(
-            ionotify_loop->pulse_connection_id, -1, IO_EVENT_UPDATE_ERROR_SIGEV_CODE, ionotify_event_data->handle_id);
+            ionotify_event_loop->pulse_connection_id,
+            -1,
+            IO_EVENT_UPDATE_ERROR_SIGEV_CODE,
+            ionotify_event_data->handle_id);
         int errno_value = errno;
         if (send_rc == -1) {
             AWS_LOGF_ERROR(
@@ -682,7 +697,8 @@ static void s_update_io_result(
     const struct aws_io_handle_io_op_result *io_op_result) {
 
     if (!s_is_on_callers_thread(event_loop)) {
-        /* Move processing I/O operation results to the epoll thread if the operation is performed in another thread.*/
+        /* Move processing I/O operation results to the event loop thread if the operation is performed in another
+         * thread.*/
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got I/O operation result from another thread", (void *)event_loop);
         struct aws_task *task = aws_mem_calloc(event_loop->alloc, 1, sizeof(struct aws_task));
         struct ionotify_io_op_results *ionotify_io_op_results =
@@ -705,7 +721,7 @@ static int s_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Subscribing to events on fd %d", (void *)event_loop, handle->data.fd);
     struct ionotify_event_data *ionotify_event_data =
@@ -717,7 +733,7 @@ static int s_subscribe_to_io_events(
     ionotify_event_data->event_loop = event_loop;
     ionotify_event_data->on_event = on_event;
     ionotify_event_data->events_subscribed = events;
-    ionotify_event_data->pulse_connection_id = ionotify_loop->pulse_connection_id;
+    ionotify_event_data->pulse_connection_id = ionotify_event_loop->pulse_connection_id;
     ionotify_event_data->user_data = user_data;
     ionotify_event_data->handle->update_io_result = s_update_io_result;
 
@@ -751,7 +767,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP, "id=%p: Unsubscribing from events on fd %d", (void *)event_loop, handle->data.fd);
 
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_ASSERT(handle->additional_data);
     struct ionotify_event_data *ionotify_event_data = handle->additional_data;
@@ -782,7 +798,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: Removing from handles map using ID %u",
         (void *)event_loop,
         ionotify_event_data->handle_id);
-    s_remove_handle(event_loop, ionotify_loop, ionotify_event_data->handle_id);
+    s_remove_handle(event_loop, ionotify_event_loop, ionotify_event_data->handle_id);
 
     handle->additional_data = NULL;
     handle->update_io_result = NULL;
@@ -799,23 +815,23 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 }
 
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
-    aws_thread_id_t *thread_id = aws_atomic_load_ptr(&ionotify_loop->running_thread_id);
+    aws_thread_id_t *thread_id = aws_atomic_load_ptr(&ionotify_event_loop->running_thread_id);
     return thread_id && aws_thread_thread_id_equal(*thread_id, aws_thread_current_thread_id());
 }
 
 static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Processing cross-thread tasks", (void *)event_loop);
 
     struct aws_linked_list task_pre_queue;
     aws_linked_list_init(&task_pre_queue);
 
-    aws_mutex_lock(&ionotify_loop->task_pre_queue_mutex);
-    aws_linked_list_swap_contents(&ionotify_loop->task_pre_queue, &task_pre_queue);
-    aws_mutex_unlock(&ionotify_loop->task_pre_queue_mutex);
+    aws_mutex_lock(&ionotify_event_loop->task_pre_queue_mutex);
+    aws_linked_list_swap_contents(&ionotify_event_loop->task_pre_queue, &task_pre_queue);
+    aws_mutex_unlock(&ionotify_event_loop->task_pre_queue_mutex);
 
     while (!aws_linked_list_empty(&task_pre_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&task_pre_queue);
@@ -827,9 +843,9 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
             (void *)task);
         /* Timestamp 0 is used to denote "now" tasks */
         if (task->timestamp == 0) {
-            aws_task_scheduler_schedule_now(&ionotify_loop->scheduler, task);
+            aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, task);
         } else {
-            aws_task_scheduler_schedule_future(&ionotify_loop->scheduler, task, task->timestamp);
+            aws_task_scheduler_schedule_future(&ionotify_event_loop->scheduler, task, task->timestamp);
         }
     }
 }
@@ -888,8 +904,8 @@ static void s_process_pulse(
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for handle ID %u", (void *)event_loop, handle_id);
 
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
-    struct ionotify_event_data *ionotify_event_data = s_find_handle(event_loop, ionotify_loop, handle_id);
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+    struct ionotify_event_data *ionotify_event_data = s_find_handle(event_loop, ionotify_event_loop, handle_id);
     if (ionotify_event_data == NULL) {
         /* This situation is totally OK when the corresponding fd is already unsubscribed. */
         AWS_LOGF_DEBUG(
@@ -945,10 +961,10 @@ static void s_process_pulse(
 static void aws_event_loop_thread(void *args) {
     struct aws_event_loop *event_loop = args;
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: main loop started", (void *)event_loop);
-    struct ionotify_loop *ionotify_loop = event_loop->impl_data;
+    struct ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     /* set thread id to the thread of the event loop */
-    aws_atomic_store_ptr(&ionotify_loop->running_thread_id, &ionotify_loop->thread_created_on.thread_id);
+    aws_atomic_store_ptr(&ionotify_event_loop->running_thread_id, &ionotify_event_loop->thread_created_on.thread_id);
 
     aws_thread_current_at_exit(s_aws_ionotify_cleanup_aws_lc_thread_local_state, NULL);
 
@@ -965,15 +981,15 @@ static void aws_event_loop_thread(void *args) {
      * - Run all scheduled tasks.
      * - Process queued subscription cleanups.
      */
-    while (ionotify_loop->should_continue) {
+    while (ionotify_event_loop->should_continue) {
         bool should_process_cross_thread_tasks = false;
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p: Waiting for a maximum of %" PRIu64 " ns", (void *)event_loop, timeout);
         struct _pulse pulse;
         int errno_value;
-        rcvid_t rcvid =
-            aws_event_loop_listen_for_io_events(ionotify_loop->io_events_channel_id, &timeout, &pulse, &errno_value);
+        rcvid_t rcvid = aws_event_loop_listen_for_io_events(
+            ionotify_event_loop->io_events_channel_id, &timeout, &pulse, &errno_value);
         aws_event_loop_register_tick_start(event_loop);
 
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Wake up with rcvid %ld\n", (void *)event_loop, rcvid);
@@ -1003,7 +1019,7 @@ static void aws_event_loop_thread(void *args) {
         uint64_t now_ns = 0;
         event_loop->clock(&now_ns);
         AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Running scheduled tasks", (void *)event_loop);
-        aws_task_scheduler_run_all(&ionotify_loop->scheduler, now_ns);
+        aws_task_scheduler_run_all(&ionotify_event_loop->scheduler, now_ns);
 
         /* Set timeout for next MsgReceive call.
          * If clock fails, or scheduler has no tasks, use default timeout. */
@@ -1014,7 +1030,7 @@ static void aws_event_loop_thread(void *args) {
         }
 
         uint64_t next_run_time_ns;
-        if (!aws_task_scheduler_has_tasks(&ionotify_loop->scheduler, &next_run_time_ns)) {
+        if (!aws_task_scheduler_has_tasks(&ionotify_event_loop->scheduler, &next_run_time_ns)) {
             use_default_timeout = true;
         }
 
@@ -1038,5 +1054,5 @@ static void aws_event_loop_thread(void *args) {
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Exiting main loop", (void *)event_loop);
     /* set thread id back to NULL. This should be updated again in destroy, before tasks are canceled. */
-    aws_atomic_store_ptr(&ionotify_loop->running_thread_id, NULL);
+    aws_atomic_store_ptr(&ionotify_event_loop->running_thread_id, NULL);
 }
