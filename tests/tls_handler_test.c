@@ -1831,6 +1831,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
         &local_server_tester.endpoint,
         aws_event_loop_group_get_next_loop(c_tester.el_group),
         s_on_client_connected_do_hangup,
+        NULL,
         shutdown_tester));
 
     /* Wait for client socket to close */

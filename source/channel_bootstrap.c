@@ -628,6 +628,14 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     }
 }
 
+/* Called when a socket connection attempt requires access to TLS options. Currently this is only necessary on
+ * iOS/tvOS where the parameters used to create the Apple Network Framework socket requires TLS options.
+ */
+static void s_retrieve_tls_options(struct aws_tls_connection_options **tls_ctx_options, void *user_data) {
+    struct client_connection_args *connection_args = user_data;
+    *tls_ctx_options = &connection_args->channel_data.tls_options;
+}
+
 struct connection_task_data {
     struct aws_task task;
     struct aws_socket_endpoint endpoint;
@@ -652,18 +660,12 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto socket_init_failed;
     }
 
-    /* Apple Network Framework TLS negotiation requires access to the stored SecItem identity
-     * and host_name. */
-    if (task_data->args->channel_data.use_tls) {
-        outgoing_socket->options.tls_ctx = task_data->args->channel_data.tls_options.ctx;
-        outgoing_socket->options.host_name = task_data->args->host_name;
-    }
-
     if (aws_socket_connect(
             outgoing_socket,
             &task_data->endpoint,
             task_data->connect_loop,
             s_on_client_connection_established,
+            s_retrieve_tls_options,
             task_data->args)) {
 
         goto socket_connect_failed;
@@ -959,7 +961,12 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
 
         s_client_connection_args_acquire(client_connection_args);
         if (aws_socket_connect(
-                outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
+                outgoing_socket,
+                &endpoint,
+                connect_loop,
+                s_on_client_connection_established,
+                s_retrieve_tls_options,
+                client_connection_args)) {
             aws_socket_clean_up(outgoing_socket);
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
             s_client_connection_args_release(client_connection_args);

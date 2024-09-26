@@ -108,10 +108,12 @@ int aws_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_connect_fn);
     AWS_PRECONDITION(socket->event_loop_style & event_loop->vtable->event_loop_style);
-    return socket->vtable->socket_connect_fn(socket, remote_endpoint, event_loop, on_connection_result, user_data);
+    return socket->vtable->socket_connect_fn(
+        socket, remote_endpoint, event_loop, on_connection_result, retrieve_tls_options, user_data);
 }
 
 int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {

@@ -156,6 +156,7 @@ struct nw_socket {
     void *connect_accept_user_data;
     struct aws_event_loop *event_loop;
     struct aws_string *host_name;
+    struct aws_tls_ctx *tls_ctx;
 };
 
 struct socket_address {
@@ -192,13 +193,15 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
-static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
+static int s_setup_socket_params(
+    struct nw_socket *nw_socket,
+    const struct aws_socket_options *options,
+    struct aws_tls_connection_options *tls_ctx_options) {
     if (options->type == AWS_SOCKET_STREAM) {
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
-            if (options->tls_ctx) {
-                struct aws_tls_ctx *tls_ctx = options->tls_ctx;
-                struct secure_transport_ctx *transport_ctx = tls_ctx->impl;
+            if (nw_socket->tls_ctx) {
+                struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
                 struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
 
                 nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
@@ -363,6 +366,7 @@ static int s_socket_connect_fn(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
 static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size);
@@ -469,6 +473,11 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         aws_string_destroy(nw_socket->host_name);
     }
 
+    if (nw_socket->tls_ctx) {
+        aws_tls_ctx_release(nw_socket->tls_ctx);
+        nw_socket->tls_ctx = NULL;
+    }
+
     aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
@@ -545,26 +554,35 @@ static int s_socket_connect_fn(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
     struct nw_socket *nw_socket = socket->impl;
 
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
 
-    if (socket->options.host_name) {
+    struct aws_tls_connection_options *tls_connection_options = NULL;
+    retrieve_tls_options(&tls_connection_options, user_data);
+
+    if (tls_connection_options->server_name) {
         if (nw_socket->host_name != NULL) {
             aws_string_destroy(nw_socket->host_name);
             nw_socket->host_name = NULL;
         }
-        nw_socket->host_name =
-            aws_string_new_from_string(socket->options.host_name->allocator, socket->options.host_name);
+        nw_socket->host_name = aws_string_new_from_string(
+            tls_connection_options->server_name->allocator, tls_connection_options->server_name);
         if (nw_socket->host_name == NULL) {
             return AWS_OP_ERR;
         }
     }
 
+    if (tls_connection_options->ctx) {
+        nw_socket->tls_ctx = tls_connection_options->ctx;
+        aws_tls_ctx_acquire(nw_socket->tls_ctx);
+    }
+
     nw_socket->event_loop = event_loop;
-    if (s_setup_socket_params(nw_socket, &socket->options)) {
+    if (s_setup_socket_params(nw_socket, &socket->options, tls_connection_options)) {
         return AWS_OP_ERR;
     }
 
@@ -1054,6 +1072,7 @@ static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_
     return s_socket_close_fn(socket);
 }
 
+/* DEBUG WIP REMOVE THIS OR SETUP s_setup_socket_params to get TLS options */
 static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_socket_options *options) {
     if (socket->options.domain != options->domain || socket->options.type != options->type) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -1081,7 +1100,7 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
         nw_socket->socket_options_to_params = NULL;
     }
 
-    return s_setup_socket_params(nw_socket, options);
+    return s_setup_socket_params(nw_socket, options, NULL);
 }
 
 static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aws_event_loop *event_loop) {
