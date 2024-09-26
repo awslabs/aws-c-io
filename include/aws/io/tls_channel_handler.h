@@ -342,8 +342,6 @@ AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options
  * cert_path and pkey_path are paths to files on disk. cert_path
  * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
  * from disk and stored in buffers internally.
- *
- * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_tls_ctx_options *options,
@@ -355,8 +353,6 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
  * Initializes options for use with mutual tls in client mode.
  * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
  * armored.
- *
- * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
@@ -532,6 +528,24 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor);
+
+/**
+ * Applies provided SecItem options to certificate and private key being
+ * added to the iOS/tvOS KeyChain.
+ *
+ * NOTE: This only works on iOS and tvOS.
+ *
+ * @param options           aws_tls_ctx_options to be modified.
+ * @param secitem_options   Options for SecItems
+ */
+AWS_IO_API int aws_tls_ctx_options_set_secitem_options(
+    struct aws_tls_ctx_options *options,
+    struct aws_secitem_options *secitem_options);
+
+/**
+ * Cleans up resources allocated by init_* functions
+ */
+AWS_IO_API void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options);
 
 /**
  * Initializes options for use with in server mode.

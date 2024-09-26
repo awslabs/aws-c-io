@@ -269,6 +269,48 @@ int aws_tls_ctx_options_set_keychain_path(
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
 
+int aws_tls_ctx_options_set_secitem_options(
+    struct aws_tls_ctx_options *options,
+    struct aws_secitem_options *secitem_options) {
+#if defined(AWS_OS_IOS)
+
+    if (secitem_options->cert_label != NULL) {
+        aws_string_destroy(options->secitem_options->cert_label);
+        options->secitem_options->cert_label = NULL;
+        options->secitem_options->cert_label =
+            aws_string_new_from_string(options->allocator, secitem_options->cert_label);
+        if (options->secitem_options->cert_label == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cert label option is invalid.");
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
+    if (secitem_options->key_label != NULL) {
+        aws_string_destroy(options->secitem_options->key_label);
+        options->secitem_options->key_label = NULL;
+        options->secitem_options->key_label =
+            aws_string_new_from_string(options->allocator, secitem_options->key_label);
+        if (options->secitem_options->key_label == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Key label option is invalid.");
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+
+#endif /* AWS_OS_IOS */
+
+    (void)options;
+    (void)secitem_options;
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Setting of secitem options only supported on iOS and tvOS.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+
+void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options) {
+    aws_string_destroy(secitem_options->cert_label);
+    aws_string_destroy(secitem_options->key_label);
+}
+
 int aws_tls_ctx_options_init_client_mtls_from_system_path(
     struct aws_tls_ctx_options *options,
     struct aws_allocator *allocator,
