@@ -15,7 +15,7 @@ struct secure_transport_ctx {
     CFArrayRef certs;
     SecIdentityRef secitem_identity;
     CFArrayRef ca_cert;
-    enum aws_tls_versions minimum_version;
+    enum aws_tls_versions minimum_tls_version;
     struct aws_string *alpn_list;
     bool verify_peer;
 };

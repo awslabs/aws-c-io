@@ -213,10 +213,32 @@ static int s_setup_socket_params(
 
                       sec_protocol_options_set_local_identity(sec_options, transport_ctx->secitem_identity);
 
-                      // Set the minimum TLS version to TLS 1.2
-                      sec_protocol_options_set_min_tls_protocol_version(sec_options, tls_protocol_version_TLSv12);
-                      // Set the maximum TLS version to TLS 1.3
-                      sec_protocol_options_set_max_tls_protocol_version(sec_options, tls_protocol_version_TLSv13);
+                      // Set the minimum TLS version
+                      switch (transport_ctx->minimum_tls_version) {
+                          case AWS_IO_TLSv1:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv10);
+                              break;
+                          case AWS_IO_TLSv1_1:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv11);
+                              break;
+                          case AWS_IO_TLSv1_2:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv12);
+                              break;
+                          case AWS_IO_TLSv1_3:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv13);
+                              break;
+                          case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv12);
+                              break;
+                          case AWS_IO_SSLv3:
+                          default:
+                              break;
+                      }
 
                       /* Enable/Disable peer authentication. This setting is ignored by network framework due to our
                        * implementation of the verification block below but we set it in case anything else checks this

@@ -884,7 +884,7 @@ static struct aws_channel_handler *s_tls_handler_new(
         goto cleanup_st_handler;
     }
 
-    switch (secure_transport_ctx->minimum_version) {
+    switch (secure_transport_ctx->minimum_tls_version) {
         case AWS_IO_SSLv3:
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kSSLProtocol3);
             break;
@@ -1051,7 +1051,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         goto cleanup_secure_transport_ctx;
     }
 
-    secure_transport_ctx->minimum_version = options->minimum_tls_version;
+    secure_transport_ctx->minimum_tls_version = options->minimum_tls_version;
 
     if (options->alpn_list) {
         secure_transport_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
