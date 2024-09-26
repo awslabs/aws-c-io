@@ -6,6 +6,8 @@
  */
 
 #include <Security/Security.h>
+#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
 #include <aws/io/tls_channel_handler.h>
 #include <dispatch/dispatch.h>
 

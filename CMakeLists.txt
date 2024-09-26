@@ -118,6 +118,7 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
+            "source/darwin/nw_socket.c"
             "source/darwin/darwin_pki_utils.c"
             "source/darwin/secure_transport_tls_channel_handler.c"
             )
