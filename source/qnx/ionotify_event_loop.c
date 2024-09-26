@@ -510,7 +510,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
         s_add_handle(ionotify_event_loop, ionotify_event_data);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: Mapped fd %d to handle ID %u",
+            "id=%p: Mapped fd %d to handle ID %d",
             (void *)event_loop,
             ionotify_event_data->handle->data.fd,
             ionotify_event_data->handle_id);
@@ -848,7 +848,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Removing from handles map using ID %u",
+        "id=%p: Removing from handles map using ID %d",
         (void *)event_loop,
         ionotify_event_data->handle_id);
     s_remove_handle(event_loop, ionotify_event_loop, ionotify_event_data->handle_id);
@@ -955,7 +955,7 @@ static void s_process_pulse(
         return;
     }
 
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for handle ID %u", (void *)event_loop, handle_id);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for handle ID %d", (void *)event_loop, handle_id);
 
     struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
     struct aws_ionotify_event_data *ionotify_event_data = s_find_handle(event_loop, ionotify_event_loop, handle_id);
