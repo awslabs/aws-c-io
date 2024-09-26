@@ -358,8 +358,6 @@ static int s_setup_socket_params(
 #endif /* !TARGET_OS_OSX */
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
-        // DEBUG WIP We should setup the TCP options in this case too. Maybe we can setup TCP options to  be used
-        // across all types of parameters once and use them for all of these.
         nw_socket->socket_options_to_params = nw_parameters_create_secure_udp(
             NW_PARAMETERS_DISABLE_PROTOCOL,
             // TCP options Block
@@ -780,10 +778,6 @@ static int s_socket_connect_fn(
 
               // Cancel the connection timeout task
               aws_event_loop_cancel_task(event_loop, &nw_socket->timeout_args->task);
-
-              /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
-              //   AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
-              // DEBUG WIP we do in fact allow this to do TLS
               error_code = s_determine_socket_error(error_code);
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
