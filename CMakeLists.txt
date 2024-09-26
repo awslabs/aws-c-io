@@ -118,7 +118,6 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/nw_socket.c"
             "source/darwin/darwin_pki_utils.c"
             "source/darwin/secure_transport_tls_channel_handler.c"
             )
@@ -141,6 +140,7 @@ elseif (APPLE)
         message("use dispatch queue")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
         "source/darwin/dispatch_queue_event_loop.c"
+        "source/darwin/nw_socket.c"
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
