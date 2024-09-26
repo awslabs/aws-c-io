@@ -653,8 +653,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     }
 
     /* Apple Network Framework TLS negotiation requires access to the stored SecItem identity
-     * and host_name. We make pointer copies here. The objects contained within the pointers
-     * will outlive the nw_connection's access to them. */
+     * and host_name. */
     if (task_data->args->channel_data.use_tls) {
         outgoing_socket->options.tls_ctx = task_data->args->channel_data.tls_options.ctx;
         outgoing_socket->options.host_name = task_data->args->host_name;

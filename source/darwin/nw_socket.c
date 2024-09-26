@@ -155,6 +155,7 @@ struct nw_socket {
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
     struct aws_event_loop *event_loop;
+    struct aws_string *host_name;
 };
 
 struct socket_address {
@@ -261,12 +262,12 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
 
                             /* Add the host name to be checked against the available Certificate Authorities */
-                            if (options->host_name != NULL) {
+                            if (nw_socket->host_name != NULL) {
                                 SecPolicyRef policy = NULL;
                                 CFStringRef server_name = CFStringCreateWithBytes(
                                     transport_ctx->wrapped_allocator,
-                                    options->host_name->bytes,
-                                    (CFIndex)options->host_name->len,
+                                    nw_socket->host_name->bytes,
+                                    (CFIndex)nw_socket->host_name->len,
                                     kCFStringEncodingUTF8,
                                     false);
                                 policy = SecPolicyCreateSSL(true, server_name);
@@ -464,6 +465,10 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_connection = NULL;
     }
 
+    if (nw_socket->host_name) {
+        aws_string_destroy(nw_socket->host_name);
+    }
+
     aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
@@ -486,9 +491,6 @@ int aws_socket_init_completion_port_based(
 
     aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
 
-    // if (s_setup_socket_params(nw_socket, options)) {
-    //     return AWS_OP_ERR;
-    // }
     nw_socket->allocator = alloc;
     aws_linked_list_init(&nw_socket->read_queue);
 
@@ -548,6 +550,18 @@ static int s_socket_connect_fn(
 
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
+
+    if (socket->options.host_name) {
+        if (nw_socket->host_name != NULL) {
+            aws_string_destroy(nw_socket->host_name);
+            nw_socket->host_name = NULL;
+        }
+        nw_socket->host_name =
+            aws_string_new_from_string(socket->options.host_name->allocator, socket->options.host_name);
+        if (nw_socket->host_name == NULL) {
+            return AWS_OP_ERR;
+        }
+    }
 
     nw_socket->event_loop = event_loop;
     if (s_setup_socket_params(nw_socket, &socket->options)) {

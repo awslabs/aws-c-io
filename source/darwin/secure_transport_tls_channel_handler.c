@@ -859,9 +859,6 @@ static struct aws_channel_handler *s_tls_handler_new(
 
     struct secure_transport_handler *secure_transport_handler =
         (struct secure_transport_handler *)aws_mem_calloc(allocator, 1, sizeof(struct secure_transport_handler));
-    if (!secure_transport_handler) {
-        return NULL;
-    }
 
     secure_transport_handler->handler.alloc = allocator;
     secure_transport_handler->handler.impl = secure_transport_handler;
@@ -1042,9 +1039,6 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
-    if (!secure_transport_ctx) {
-        return NULL;
-    }
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -1053,11 +1047,11 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     }
 
     secure_transport_ctx->wrapped_allocator = aws_wrapped_cf_allocator_new(alloc);
-    secure_transport_ctx->minimum_version = options->minimum_tls_version;
-
     if (!secure_transport_ctx->wrapped_allocator) {
         goto cleanup_secure_transport_ctx;
     }
+
+    secure_transport_ctx->minimum_version = options->minimum_tls_version;
 
     if (options->alpn_list) {
         secure_transport_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
