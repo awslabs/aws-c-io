@@ -482,21 +482,13 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
     return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
-// As dispatch queue has ARC support, we could directly release the dispatch queue event loop. Disable the
-// caller thread validation on dispatch queue.
-#ifndef AWS_USE_DISPATCH_QUEUE
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop) AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
-#else
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
-#endif
-
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     if (!event_loop) {
         return;
     }
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
-    AWS_EVENT_LOOP_NOT_CALLER_THREAD(event_loop);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     event_loop->vtable->destroy(event_loop);
 }
