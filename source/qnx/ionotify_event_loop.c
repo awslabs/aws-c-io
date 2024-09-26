@@ -540,7 +540,21 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          * It's enough to register an event only once and then reuse it on followup ionotify rearming calls.
          * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
          * it again. */
-        MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
+        int rc = MsgRegisterEvent(&ionotify_event_data->event, ionotify_event_data->handle->data.fd);
+        int errno_value = errno;
+        if (rc == -1) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p fd=%d: Failed to register sigevent, errno %d",
+                (void *)event_loop,
+                ionotify_event_data->handle->data.fd,
+                errno_value);
+            /* With sigevent not registered in the system, I/O events from QNX resource managers can't be delivered
+             * to the event loop. Notify about error via a callback and stop subscribing. */
+            ionotify_event_data->on_event(
+                event_loop, ionotify_event_data->handle, AWS_IO_EVENT_TYPE_ERROR, ionotify_event_data->user_data);
+            return;
+        }
     } else if (!ionotify_event_data->is_subscribed) {
         /* This is a resubscribing task, but unsubscribe happened, so ignore it. */
         return;
@@ -809,6 +823,19 @@ static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aw
     (void)task;
     (void)status;
     struct aws_ionotify_event_data *ionotify_event_data = (struct aws_ionotify_event_data *)arg;
+
+    int rc = MsgUnregisterEvent(&ionotify_event_data->event);
+    int errno_value = errno;
+    if (rc == -1) {
+        /* Not much can be done here, so just log error. */
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p fd=%d: Failed to unregister sigevent, errno %d",
+            (void *)ionotify_event_data->event_loop,
+            ionotify_event_data->handle->data.fd,
+            errno_value);
+    }
+
     s_free_io_event_resources(ionotify_event_data);
 }
 
