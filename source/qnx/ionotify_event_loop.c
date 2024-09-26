@@ -426,7 +426,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_add_handle(
     struct aws_ionotify_event_loop *ionotify_event_loop,
     struct aws_ionotify_event_data *ionotify_event_data) {
-    AWS_ASSERT(s_is_on_callers_thread(ionotify_event_data->event_loop));
+    AWS_FATAL_ASSERT(s_is_on_callers_thread(ionotify_event_data->event_loop));
 
     /* Special constant, _NOTIFY_DATA_MASK, limits the maximum value that can be used as user data in I/O events. */
     int max_handle_id = _NOTIFY_DATA_MASK;
@@ -465,7 +465,7 @@ struct aws_ionotify_event_data *s_find_handle(
     struct aws_event_loop *event_loop,
     struct aws_ionotify_event_loop *ionotify_event_loop,
     int handle_id) {
-    AWS_ASSERT(s_is_on_callers_thread(event_loop));
+    AWS_FATAL_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
     struct aws_ionotify_event_data *ionotify_event_data = NULL;
     struct aws_hash_element *elem = NULL;
@@ -480,7 +480,7 @@ static void s_remove_handle(
     struct aws_event_loop *event_loop,
     struct aws_ionotify_event_loop *ionotify_event_loop,
     int handle_id) {
-    AWS_ASSERT(s_is_on_callers_thread(event_loop));
+    AWS_FATAL_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
     aws_hash_table_remove(&ionotify_event_loop->handles, (void *)handle_id, NULL, NULL);
 }
@@ -651,9 +651,9 @@ static void s_process_io_result(
     struct aws_io_handle *handle,
     const struct aws_io_handle_io_op_result *io_op_result) {
 
-    AWS_ASSERT(s_is_on_callers_thread(event_loop));
+    AWS_FATAL_ASSERT(s_is_on_callers_thread(event_loop));
 
-    AWS_ASSERT(handle->additional_data);
+    AWS_FATAL_ASSERT(handle->additional_data);
     struct aws_ionotify_event_data *ionotify_event_data = handle->additional_data;
 
     if (!ionotify_event_data->is_subscribed) {
@@ -822,7 +822,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 
     struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
-    AWS_ASSERT(handle->additional_data);
+    AWS_FATAL_ASSERT(handle->additional_data);
     struct aws_ionotify_event_data *ionotify_event_data = handle->additional_data;
 
     /* Disarm resource manager for a given fd. */
