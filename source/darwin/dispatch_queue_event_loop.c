@@ -81,7 +81,9 @@ struct dispatch_loop {
         struct aws_linked_list cross_thread_tasks;
         struct aws_mutex lock;
         bool suspended;
-        // `is_executing` flag and `current_thread_id` together are used to identify the excuting thread id for dispatch queue. 
+        // `is_executing` flag and `current_thread_id` together are used to identify the excuting
+        // thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
+        // for details.
         bool is_executing;
         aws_thread_id_t current_thread_id;
     } synced_data;
@@ -505,8 +507,9 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct dispatch_loop *dispatch_queue = event_loop->impl_data;
     aws_mutex_lock(&dispatch_queue->synced_data.lock);
-    bool result = dispatch_queue->synced_data.is_executing &&
-                  aws_thread_thread_id_equal(dispatch_queue->synced_data.current_thread_id, aws_thread_current_thread_id());
+    bool result =
+        dispatch_queue->synced_data.is_executing &&
+        aws_thread_thread_id_equal(dispatch_queue->synced_data.current_thread_id, aws_thread_current_thread_id());
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
