@@ -130,11 +130,34 @@ static void s_dispatch_event_loop_destroy(void *context) {
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy Dispatch Queue Event Loop.", (void *)event_loop);
 
     aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
+    aws_string_destroy(dispatch_loop->dispatch_queue_id);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 
     aws_thread_decrement_unjoined_count();
+}
+
+
+/** Return a aws_string* with unique dispatch queue id string. The id is In format of "com.amazonaws.commonruntime.eventloop.<UUID>"*/
+static struct aws_string* s_get_unique_dispatch_queue_id(struct aws_allocator* alloc)
+{
+    struct aws_uuid uuid;
+    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
+    char uuid_str[AWS_UUID_STR_LEN] = {0};
+    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
+    uuid_buf.len = 0;
+    aws_uuid_to_str(&uuid, &uuid_buf);
+    struct aws_byte_cursor uuid_cursor = aws_byte_cursor_from_buf(&uuid_buf);
+    
+    struct aws_byte_buf dispatch_queue_id_buf;
+    aws_byte_buf_init_copy_from_cursor(&dispatch_queue_id_buf, alloc, aws_byte_cursor_from_c_str("com.amazonaws.commonruntime.eventloop."));
+    
+    aws_byte_buf_append_dynamic(&dispatch_queue_id_buf, &uuid_cursor);
+    
+    struct aws_string* result = aws_string_new_from_buf(alloc, &dispatch_queue_id_buf);
+    aws_byte_buf_clean_up(&dispatch_queue_id_buf);
+    return result;
 }
 
 /* Setup a dispatch_queue with a scheduler. */
@@ -154,24 +177,9 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct dispatch_loop *dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     aws_ref_count_init(&dispatch_loop->ref_count, loop, s_dispatch_event_loop_destroy);
 
-    struct aws_uuid uuid;
-    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
-
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
-    uuid_buf.len = 0;
-    aws_uuid_to_str(&uuid, &uuid_buf);
-    struct aws_byte_cursor uuid_cursor = aws_byte_cursor_from_buf(&uuid_buf);
-
-    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "[DEBUG DISPATCH QUEUE uuID ] : %s", uuid_cursor.ptr);
-
-    struct aws_byte_buf dispatch_queue_id = aws_byte_buf_from_c_str("com.amazonaws.commonruntime.eventloop.");
-    dispatch_queue_id.allocator = alloc;
-    //    aws_byte_buf_append_dynamic(&dispatch_queue_id, &uuid_cursor);
-
-    AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "[DEBUG DISPATCH QUEUE ID ] : %s", dispatch_queue_id.buffer);
-
-    dispatch_loop->dispatch_queue = dispatch_queue_create((char *)uuid_cursor.ptr, DISPATCH_QUEUE_SERIAL);
+    dispatch_loop->dispatch_queue_id = s_get_unique_dispatch_queue_id(alloc);
+    
+    dispatch_loop->dispatch_queue = dispatch_queue_create((char *)dispatch_loop->dispatch_queue_id->bytes, DISPATCH_QUEUE_SERIAL);
     if (!dispatch_loop->dispatch_queue) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to create dispatch queue.", (void *)loop);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
@@ -206,8 +214,7 @@ clean_up_dispatch:
     if (dispatch_loop->dispatch_queue) {
         dispatch_release(dispatch_loop->dispatch_queue);
     }
-
-    aws_mem_release(alloc, dispatch_loop);
+    aws_ref_count_release(&dispatch_loop->ref_count);
     aws_event_loop_clean_up_base(loop);
 
 clean_up_loop:

@@ -496,7 +496,7 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     }
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
-    AWS_EVENT_LOOP_NOT_CALLER_THREAD(event_loop);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     event_loop->vtable->destroy(event_loop);
 }

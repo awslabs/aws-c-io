@@ -119,42 +119,6 @@ struct aws_event_loop {
     void *impl_data;
 };
 
-#ifdef AWS_USE_DISPATCH_QUEUE
-#    include <dispatch/dispatch.h>
-#    include <dispatch/queue.h>
-
-struct dispatch_scheduling_state {
-    // Let's us skip processing an iteration task if one is already in the middle
-    // of executing
-    bool is_executing_iteration;
-
-    // List<scheduled_service_entry> in sorted order by timestamp
-    //
-    // When we go to schedule a new iteration, we check here first to see
-    // if our scheduling attempt is redundant
-    struct aws_linked_list scheduled_services;
-};
-
-struct dispatch_loop {
-    struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
-    dispatch_queue_t dispatch_queue;
-    struct aws_task_scheduler scheduler;
-    struct aws_linked_list local_cross_thread_tasks;
-    aws_thread_id_t m_current_thread_id;
-    bool processing;
-
-    struct {
-        struct dispatch_scheduling_state scheduling_state;
-        struct aws_linked_list cross_thread_tasks;
-        struct aws_mutex lock;
-        bool suspended;
-    } synced_data;
-
-    bool wakeup_schedule_needed;
-};
-#endif
-
 struct aws_event_loop_local_object;
 typedef void(aws_event_loop_on_local_object_removed_fn)(struct aws_event_loop_local_object *);
 

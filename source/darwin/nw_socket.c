@@ -724,7 +724,7 @@ static int s_socket_connect_fn(
            * we uninstall this handler right before calling close on the socket so this shouldn't
            * get hit unless it was triggered remotely */
           // Cancel the connection timeout task
-          s_schedule_cancel_task(socket, &nw_socket->connect_args->task);
+          s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
           AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: socket closed remotely.",
@@ -1259,6 +1259,7 @@ static int s_socket_write_fn(
 
     struct nw_socket *nw_socket = socket->impl;
     aws_ref_count_acquire(&nw_socket->ref_count);
+    nw_connection_t handle = nw_socket->nw_connection;
 
     AWS_ASSERT(written_fn);
 
