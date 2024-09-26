@@ -241,12 +241,13 @@ static void s_destroy(struct aws_event_loop *event_loop) {
 
     /* cancel outstanding tasks */
     dispatch_async_and_wait(dispatch_loop->dispatch_queue, ^{
-      aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
-
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
       dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
       dispatch_loop->synced_data.is_executing = true;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
+
+      aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
+
       while (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
           struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->synced_data.cross_thread_tasks);
           struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
