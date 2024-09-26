@@ -182,10 +182,9 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     if (ionotify_event_loop->pulse_connection_id == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: ConnectAttach failed with errno %d (%s)\n",
+            "id=%p: ConnectAttach failed with errno %d\n",
             (void *)ionotify_event_loop,
-            errno_value,
-            strerror(errno_value));
+            errno_value);
         goto error;
     }
 
@@ -400,10 +399,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
              * is the minor thing in such a scenario. So, just log the error. */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p: Failed to send cross-thread pulse: %d (%s)",
+                "id=%p: Failed to send cross-thread pulse with errno %d",
                 (void *)event_loop,
-                errno_value,
-                strerror(errno_value));
+                errno_value);
         }
     }
 }
@@ -568,11 +566,10 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
     if (rc == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: Failed to subscribe to events on fd %d: error %d (%s)",
+            "id=%p: Failed to subscribe to events on fd %d with errno %d",
             (void *)event_loop,
             ionotify_event_data->handle->data.fd,
-            errno_value,
-            strerror(errno_value));
+            errno_value);
         ionotify_event_data->on_event(
             event_loop, ionotify_event_data->handle, AWS_IO_EVENT_TYPE_ERROR, ionotify_event_data->user_data);
         return;
@@ -711,11 +708,10 @@ static void s_process_io_result(
         if (send_rc == -1) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p: Failed to send UPDATE_ERROR pulse for fd %d: error %d (%s)",
+                "id=%p: Failed to send UPDATE_ERROR pulse for fd %d with errno %d",
                 (void *)event_loop,
                 ionotify_event_data->handle->data.fd,
-                errno_value,
-                strerror(errno_value));
+                errno_value);
         }
     }
 }
@@ -834,11 +830,10 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     if (rc == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: Failed to unsubscribe from events on fd %d: error %d (%s)",
+            "id=%p: Failed to unsubscribe from events on fd %d with errno %d",
             (void *)event_loop,
             ionotify_event_data->handle->data.fd,
-            errno_value,
-            strerror(errno_value));
+            errno_value);
         return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
@@ -1056,10 +1051,9 @@ static void aws_event_loop_thread(void *args) {
             } else {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_EVENT_LOOP,
-                    "id=%p: Listening for I/O events failed with error %d (%s)",
+                    "id=%p: Listening for I/O events failed with errno %d",
                     (void *)event_loop,
-                    errno_value,
-                    strerror(errno_value));
+                    errno_value);
             }
         }
 
